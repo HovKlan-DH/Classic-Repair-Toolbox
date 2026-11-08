@@ -17,8 +17,10 @@ namespace Handlers.DataHandling
     // Per CLAUDE.md's test rules, no test may call Logger.Initialize() - and by construction, no
     // test needs to: CrtLog.Sink stays null (the no-op default) throughout the whole CRT.Data.Tests
     // and CRT.App.Tests suites, so every Logger.* call inside a moved class (BoardDataReader,
-    // BoardDataWriter, BoardComponentHighlightStorage, DataValidator) is inert during tests,
-    // exactly as it always has been.
+    // BoardDataWriter, BoardComponentHighlightStorage) is inert during tests, exactly as it always
+    // has been - but while a test of CRT.App.Tests watches the lines logged (LoggedLines), which
+    // installs CRT's own adapter for its duration and puts the null back: a CRIT line raises CRT's
+    // "Something went wrong" card, so the level is behaviour.
     // ###########################################################################################
     public interface ICrtLog
     {

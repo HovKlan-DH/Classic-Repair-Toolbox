@@ -1,70 +1,358 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:CRT"
+        xmlns:theme="clr-namespace:Handlers.Theming;assembly=Classic-Repair-Toolbox"
         x:Class="CRT.OwnedDeviceWindow"
         Title="Add device"
-        Width="480"
-        MinWidth="420"
-        CanResize="False"
+        Width="1040"
+        Height="700"
+        MinWidth="780"
+        MinHeight="540"
         ShowInTaskbar="False"
-        SizeToContent="Height"
         WindowStartupLocation="CenterOwner"
         Background="{DynamicResource Bg}"
         Foreground="{DynamicResource Fg}">
 
 	<!-- ###########################################################################################
-	     ADD DEVICE / EDIT DEVICE (CRT 4.0 step 4) - one computer the user owns: its name, hardware and
-	     board, region, status, serial number and where it came from. Its notes, photos and changes
-	     are edited on its page in the Workbooks tab. See OwnedDeviceWindow.axaml.cs.
+	     ADD DEVICE / EDIT DEVICE (CRT 4.0 step 4) - one computer the user owns. Laid out as the worklog's
+	     editor is (owner request, 2026-11-06: "I think this modal needs to be more like the 'Worklog'
+	     modal"): on the left what it is - name, hardware and board, status, region (only for a board that
+	     comes in PAL and NTSC), condition in stars, serial number and its description - and its comments;
+	     on the right its photos, a photo clicked opened to zoom in. Its notes stay on its page in the "My
+	     Devices" tab. See OwnedDeviceWindow.axaml.cs.
 	     ########################################################################################### -->
-	<StackPanel Margin="18" Spacing="4">
-		<TextBlock x:Name="HeaderText" Text="Add device" FontSize="16" FontWeight="Bold" />
-		<TextBlock Text="One computer you own - its repairs, the changes made to it and its photos are kept together on its page in the &quot;Workbooks&quot; tab."
-				   TextWrapping="Wrap"
-				   FontSize="11"
-				   Opacity="0.8"
-				   Margin="0,0,0,8" />
+	<Window.Styles>
+		<!-- The rows' Edit and Delete icons - the worklog editor's own look: no button chrome, a hover tint. -->
+		<Style Selector="Button.WorklogRowIconButton">
+			<Setter Property="Background" Value="Transparent" />
+			<Setter Property="BorderThickness" Value="0" />
+			<Setter Property="Padding" Value="4" />
+			<Setter Property="VerticalAlignment" Value="Center" />
+			<Setter Property="Cursor" Value="Hand" />
+		</Style>
+		<Style Selector="Button.WorklogRowIconButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Form_Bg}" />
+		</Style>
+		<!-- The trash can is drawn past the font's ascent - a pixel row reserved (FontAwesomeGlyphMetrics). -->
+		<Style Selector="Button.WorklogRowIconButton > TextBlock">
+			<Setter Property="Padding" Value="0,1,0,0" />
+		</Style>
+	</Window.Styles>
 
-		<TextBlock Text="Name" />
-		<TextBox x:Name="NameTextBox"
-				 PlaceholderText="For example Breadbin #2"
-				 TextChanged="OnNameTextChanged" />
-		<TextBlock x:Name="ValidationText"
-				   Foreground="{DynamicResource Text_Fail_Fg}"
-				   FontSize="11"
-				   TextWrapping="Wrap"
-				   IsVisible="False" />
+	<Grid RowDefinitions="Auto,*,Auto" Margin="16">
 
-		<TextBlock Text="Hardware" Margin="0,8,0,0" />
-		<ComboBox x:Name="HardwareComboBox"
-				  HorizontalAlignment="Stretch"
-				  SelectionChanged="OnHardwareSelectionChanged" />
+		<StackPanel Grid.Row="0" Spacing="4" Margin="0,0,0,12">
+			<TextBlock x:Name="HeaderText" Text="Add device" FontSize="16" FontWeight="Bold" />
+			<TextBlock Text="One computer you own - its workbooks, notes, comments and photos are kept together on its page in the &quot;My Devices&quot; tab."
+					   TextWrapping="Wrap"
+					   FontSize="11"
+					   Opacity="0.8" />
+		</StackPanel>
 
-		<TextBlock Text="Board" Margin="0,8,0,0" />
-		<ComboBox x:Name="BoardComboBox" HorizontalAlignment="Stretch" />
+		<!-- What it is and its comments on the left, its photos on the right - the worklog editor's split, its
+		     4px column in the global GridSplitter style. -->
+		<Grid Grid.Row="1">
+			<Grid.ColumnDefinitions>
+				<ColumnDefinition Width="3*" MinWidth="360" />
+				<ColumnDefinition Width="4" />
+				<ColumnDefinition Width="2*" MinWidth="240" />
+			</Grid.ColumnDefinitions>
 
-		<Grid ColumnDefinitions="*,12,*" Margin="0,8,0,0">
-			<StackPanel Grid.Column="0" Spacing="4">
-				<TextBlock Text="Region" />
-				<ComboBox x:Name="RegionComboBox" HorizontalAlignment="Stretch" />
-			</StackPanel>
-			<StackPanel Grid.Column="2" Spacing="4">
-				<TextBlock Text="Status" />
-				<ComboBox x:Name="StatusComboBox" HorizontalAlignment="Stretch" />
-			</StackPanel>
+			<ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto">
+				<StackPanel Spacing="4" Margin="0,0,12,0">
+
+					<TextBlock Text="Name" />
+					<TextBox x:Name="NameTextBox"
+							 PlaceholderText="For example Breadbin #2"
+							 TextChanged="OnNameTextChanged" />
+					<TextBlock x:Name="ValidationText"
+							   Foreground="{DynamicResource Text_Fail_Fg}"
+							   FontSize="11"
+							   TextWrapping="Wrap"
+							   IsVisible="False" />
+
+					<Grid ColumnDefinitions="*,12,*" Margin="0,8,0,0">
+						<StackPanel Grid.Column="0" Spacing="4">
+							<TextBlock Text="Hardware" />
+							<ComboBox x:Name="HardwareComboBox"
+									  HorizontalAlignment="Stretch"
+									  SelectionChanged="OnHardwareSelectionChanged" />
+						</StackPanel>
+						<StackPanel Grid.Column="2" Spacing="4">
+							<TextBlock Text="Board" />
+							<ComboBox x:Name="BoardComboBox"
+									  HorizontalAlignment="Stretch"
+									  SelectionChanged="OnBoardSelectionChanged" />
+						</StackPanel>
+					</Grid>
+					<!-- Why the hardware and board cannot change: the device has workbooks, which are on its board, and a
+					     workbook is associated only to a device of its own board (owner decision, 2026-11-06). -->
+					<TextBlock x:Name="BoardLockedText"
+							   FontSize="11"
+							   Opacity="0.8"
+							   TextWrapping="Wrap"
+							   IsVisible="False" />
+
+					<!-- Status, and beside it Region - shown only while the board picked comes in PAL and NTSC
+					     (BoardRegions, the one rule; owner request, 2026-11-06). Region stands on the right so
+					     nothing below it moves whether it shows or not. "Unknown" first in both lists (owner
+					     request, 2026-11-06). -->
+					<Grid ColumnDefinitions="*,12,*" Margin="0,8,0,0">
+						<StackPanel Grid.Column="0" Spacing="4">
+							<TextBlock Text="Status" />
+							<ComboBox x:Name="StatusComboBox" HorizontalAlignment="Stretch" />
+						</StackPanel>
+						<StackPanel x:Name="RegionPanel" Grid.Column="2" Spacing="4" IsVisible="False">
+							<TextBlock Text="Region" />
+							<ComboBox x:Name="RegionComboBox" HorizontalAlignment="Stretch" />
+						</StackPanel>
+					</Grid>
+
+					<!-- Its condition, 0 to 5 stars (owner request, 2026-11-06) - a star clicked sets that many,
+					     the one set clicked again none. ConditionStars draws them. -->
+					<TextBlock Text="Condition" Margin="0,8,0,0" />
+					<Decorator x:Name="ConditionStarsHost" HorizontalAlignment="Left" />
+
+					<TextBlock Text="Serial number or unique identifier" Margin="0,8,0,0" />
+					<TextBox x:Name="SerialTextBox" />
+
+					<!-- Several lines: Enter starts a new line here, so Ctrl+Enter saves. "Where it came from"
+					     until 2026-11-06 (owner request: 'change text "Where did it come from" to
+					     "Description"'). It GROWS with its text (owner request, 2026-11-07: "auto-expand to fit all
+					     text") - no height of its own, the column around it scrolls. -->
+					<TextBlock Text="Description" Margin="0,8,0,0" />
+					<local:RichNoteTextBox x:Name="DescriptionTextBox"
+							 AcceptsReturn="True"
+							 TextWrapping="Wrap"
+							 MinHeight="90"
+							 VerticalContentAlignment="Top"
+							 ScrollViewer.VerticalScrollBarVisibility="Disabled"
+							 PlaceholderText="For example where it came from - a flea market, a friend, or new in 1985 - and what came with it" />
+					<TextBlock Text="Ctrl+Enter to save" FontSize="10" Opacity="0.6" Margin="0,2,0,0" />
+
+					<!-- Its links of interest, as a worklog's (owner request, 2026-11-06) - a row clicked opens its address,
+					     the pen changes it, the bin deletes it; saved as the comments are. -->
+					<Grid ColumnDefinitions="*,Auto" Margin="0,16,0,2">
+						<TextBlock x:Name="LinksHeadingText" Text="Links of interest" FontWeight="SemiBold" VerticalAlignment="Center" />
+						<Button Grid.Column="1"
+								x:Name="AddLinkButton"
+								Classes="Accept"
+								Content="Add link"
+								FontSize="11"
+								Padding="8,3"
+								Click="OnAddLinkClick" />
+					</Grid>
+					<ItemsControl x:Name="LinksList">
+						<ItemsControl.ItemTemplate>
+							<DataTemplate x:DataType="local:WorklogLinkRow">
+								<Border Background="{DynamicResource Form_Bg}"
+										BorderBrush="{DynamicResource Form_Border}"
+										BorderThickness="1"
+										CornerRadius="3"
+										Padding="8,6"
+										Margin="0,0,0,4"
+										Cursor="Hand"
+										Tag="{Binding Url}"
+										ToolTip.Tip="{Binding Url}"
+										PointerPressed="OnLinkRowPointerPressed">
+									<Grid ColumnDefinitions="Auto,*,Auto">
+										<Button Grid.Column="0" Classes="WorklogRowIconButton" Margin="0,0,8,0" Tag="{Binding Id}" ToolTip.Tip="Edit link" Click="OnEditLinkClick">
+											<TextBlock Text="&#xf044;" FontFamily="{DynamicResource FontAwesomeRegular}" FontSize="13" Foreground="{DynamicResource Schematics_Panels_Fg}" />
+										</Button>
+										<TextBlock Grid.Column="1" Text="{Binding Headline}" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+										<Button Grid.Column="2" Classes="WorklogRowIconButton" Margin="8,0,0,0" Tag="{Binding Id}" ToolTip.Tip="Delete link" Click="OnDeleteLinkClick">
+											<TextBlock Text="&#xf2ed;" FontFamily="{DynamicResource FontAwesomeSolid}" FontSize="13" Foreground="{DynamicResource Text_Fail_Fg}" />
+										</Button>
+									</Grid>
+								</Border>
+							</DataTemplate>
+						</ItemsControl.ItemTemplate>
+					</ItemsControl>
+					<TextBlock x:Name="NoLinksText" Text="No links added" FontSize="11" Opacity="0.7" />
+
+					<!-- Its comments, newest first, each dated - a row clicked changes it, the bin deletes it.
+					     An existing device's are saved at once, as an existing worklog's are (owner decision,
+					     2026-11-06); a new device's go in with it. -->
+					<Grid ColumnDefinitions="*,Auto" Margin="0,16,0,2">
+						<TextBlock x:Name="CommentsHeadingText" Text="Comments" FontWeight="SemiBold" VerticalAlignment="Center" />
+						<Button Grid.Column="1"
+								x:Name="AddCommentButton"
+								Classes="Accept"
+								Content="Add comment"
+								FontSize="11"
+								Padding="8,3"
+								Click="OnAddCommentClick" />
+					</Grid>
+					<ItemsControl x:Name="CommentsList">
+						<ItemsControl.ItemTemplate>
+							<DataTemplate x:DataType="local:WorklogCommentRow">
+								<Border Background="{DynamicResource Form_Bg}"
+										BorderBrush="{DynamicResource Form_Border}"
+										BorderThickness="1"
+										CornerRadius="3"
+										Padding="8,6"
+										Margin="0,0,0,4"
+										Cursor="Hand"
+										Tag="{Binding Id}"
+										PointerPressed="OnCommentRowPointerPressed">
+									<Grid ColumnDefinitions="*,Auto">
+										<StackPanel Grid.Column="0" Spacing="1">
+											<TextBlock Text="{Binding DateText}" FontSize="10" Opacity="0.7" />
+											<TextBlock theme:TextLinkRenderer.LinkText="{Binding Text}" FontSize="12" TextWrapping="Wrap" />
+										</StackPanel>
+										<Button Grid.Column="1"
+												Classes="WorklogRowIconButton"
+												Margin="8,0,0,0"
+												VerticalAlignment="Top"
+												Tag="{Binding Id}"
+												ToolTip.Tip="Delete comment"
+												Click="OnDeleteCommentClick">
+											<TextBlock Text="&#xf2ed;" FontFamily="{DynamicResource FontAwesomeSolid}" FontSize="13" Foreground="{DynamicResource Text_Fail_Fg}" />
+										</Button>
+									</Grid>
+								</Border>
+							</DataTemplate>
+						</ItemsControl.ItemTemplate>
+					</ItemsControl>
+					<TextBlock x:Name="NoCommentsText" Text="No comments added" FontSize="11" Opacity="0.7" />
+				</StackPanel>
+			</ScrollViewer>
+
+			<GridSplitter Grid.Column="1"
+						  ResizeDirection="Columns"
+						  HorizontalAlignment="Stretch" />
+
+			<!-- Its photos, each with its comment - the thumbnail clicked opens it whole, to zoom in with the
+			     wheel (owner request, 2026-11-06), and a row dragged by the space beside its thumbnail moves it, a
+			     dashed slot showing where it lands, as a worklog's photos move ("I would like to be able to
+			     rearrange the photos, just like it is possible to do in the worklogs"; ListRowDrag). -->
+			<ScrollViewer x:Name="PhotosScroller" Grid.Column="2" VerticalScrollBarVisibility="Auto">
+				<StackPanel Spacing="6" Margin="12,0,0,0">
+					<Grid ColumnDefinitions="*,Auto">
+						<TextBlock x:Name="PhotosHeadingText" Text="Photos" FontWeight="SemiBold" VerticalAlignment="Center" />
+						<Button Grid.Column="1"
+								x:Name="AddPhotoButton"
+								Classes="Accept"
+								Content="Add photo"
+								FontSize="11"
+								Padding="8,3"
+								Click="OnAddPhotoClick" />
+					</Grid>
+					<ItemsControl x:Name="PhotosList">
+						<ItemsControl.ItemTemplate>
+							<DataTemplate x:DataType="local:WorklogAttachmentRow">
+								<Grid>
+								<!-- The dashed slot where the row being dragged will land - the worklog's own. -->
+								<Panel IsVisible="{Binding IsDropPlaceholder}"
+									   Height="{Binding PlaceholderHeight}"
+									   Margin="0,0,0,4">
+									<Rectangle Stroke="{DynamicResource Text_Fail_Fg}"
+											   StrokeThickness="2"
+											   StrokeDashArray="4,3"
+											   RadiusX="3"
+											   RadiusY="3"
+											   Fill="{DynamicResource Bg}" />
+									<TextBlock Text="Move the image up/down and release mouse button for new location"
+											   FontSize="11"
+											   Opacity="0.7"
+											   TextWrapping="Wrap"
+											   TextAlignment="Center"
+											   Margin="14,0"
+											   HorizontalAlignment="Center"
+											   VerticalAlignment="Center" />
+								</Panel>
+								<Border IsVisible="{Binding IsNotDropPlaceholder}"
+										Background="{DynamicResource Form_Bg}"
+										BorderBrush="{DynamicResource Form_Border}"
+										BorderThickness="1"
+										CornerRadius="3"
+										Padding="8,6"
+										Margin="0,0,0,4">
+									<Grid ColumnDefinitions="Auto,*">
+										<Panel Grid.Column="0"
+											   Margin="0,0,8,0"
+											   Cursor="Hand"
+											   Background="Transparent"
+											   Tag="{Binding Id}"
+											   ToolTip.Tip="Click to view"
+											   PointerPressed="OnPhotoThumbnailPointerPressed">
+											<Image Source="{Binding Thumbnail}"
+												   Stretch="Uniform"
+												   MaxWidth="200"
+												   MaxHeight="144"
+												   VerticalAlignment="Center"
+												   IsVisible="{Binding HasThumbnail}" />
+											<Border Width="96"
+													Height="96"
+													Background="{DynamicResource Bg}"
+													BorderBrush="{DynamicResource Form_Border}"
+													BorderThickness="1"
+													CornerRadius="2"
+													IsVisible="{Binding HasNoThumbnail}">
+												<TextBlock Text="&#xf127;"
+														   FontFamily="{DynamicResource FontAwesomeSolid}"
+														   FontSize="26"
+														   Opacity="0.5"
+														   HorizontalAlignment="Center"
+														   VerticalAlignment="Center"
+														   ToolTip.Tip="This photo's file is missing" />
+											</Border>
+										</Panel>
+
+										<!-- The handle to drag the row by - the whole space beside the thumbnail, as in a worklog;
+										     its background makes the blank part of it take the press. -->
+										<Panel Grid.Column="1"
+											   Background="Transparent"
+											   Cursor="SizeNorthSouth"
+											   PointerPressed="OnPhotoHandlePressed">
+											<TextBlock theme:TextLinkRenderer.LinkText="{Binding Comment}"
+													   FontSize="11"
+													   Opacity="0.8"
+													   TextWrapping="Wrap"
+													   VerticalAlignment="Center"
+													   Margin="0,20,0,0"
+													   IsVisible="{Binding HasComment}" />
+											<StackPanel Orientation="Horizontal"
+														Spacing="6"
+														HorizontalAlignment="Right"
+														VerticalAlignment="Top">
+												<Button Classes="WorklogRowIconButton" Tag="{Binding Id}" ToolTip.Tip="Edit photo" Click="OnEditPhotoClick">
+													<TextBlock Text="&#xf044;" FontFamily="{DynamicResource FontAwesomeRegular}" FontSize="13" Foreground="{DynamicResource Schematics_Panels_Fg}" />
+												</Button>
+												<Button Classes="WorklogRowIconButton" Tag="{Binding Id}" ToolTip.Tip="Delete photo" Click="OnDeletePhotoClick">
+													<TextBlock Text="&#xf2ed;" FontFamily="{DynamicResource FontAwesomeSolid}" FontSize="13" Foreground="{DynamicResource Text_Fail_Fg}" />
+												</Button>
+											</StackPanel>
+										</Panel>
+									</Grid>
+								</Border>
+								</Grid>
+							</DataTemplate>
+						</ItemsControl.ItemTemplate>
+					</ItemsControl>
+					<TextBlock x:Name="NoPhotosText" Text="No photos added" FontSize="11" Opacity="0.7" />
+				</StackPanel>
+			</ScrollViewer>
 		</Grid>
 
-		<TextBlock Text="Serial number" Margin="0,8,0,0" />
-		<TextBox x:Name="SerialTextBox" />
-
-		<TextBlock Text="Where it came from" Margin="0,8,0,0" />
-		<TextBox x:Name="OriginTextBox" PlaceholderText="For example a flea market, a friend, or new in 1985" />
-
-		<StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right" Margin="0,16,0,0">
+		<!-- What could not be done, beside Cancel and Save - a photo not copied, a device not saved. -->
+		<StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right" Margin="0,12,0,0">
+			<TextBlock x:Name="ProblemText"
+					   Foreground="{DynamicResource Text_Fail_Fg}"
+					   FontSize="11"
+					   TextWrapping="Wrap"
+					   MaxWidth="560"
+					   VerticalAlignment="Center"
+					   IsVisible="False" />
 			<Button Content="Cancel" Click="OnCancelClick" />
 			<Button x:Name="SaveButton"
 					Classes="Accept"
 					Content="Add device"
 					Click="OnSaveClick" />
 		</StackPanel>
-	</StackPanel>
+
+		<!-- "Please wait" while photos are copied in (code review, 2026-11-08; CLAUDE.md: every wait the user watches runs
+		     under BusyOverlay) - the last child, over everything. The -16 margin covers the grid's own margin. -->
+		<local:BusyOverlay Grid.RowSpan="3" Margin="-16" />
+	</Grid>
 </Window>

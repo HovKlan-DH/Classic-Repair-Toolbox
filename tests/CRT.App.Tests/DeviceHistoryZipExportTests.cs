@@ -54,10 +54,9 @@ public sealed class DeviceHistoryZipExportTests : IDisposable
             Id = 3,
             Name = "Breadbin #2",
             BoardKey = "Commodore 64|250407",
-            Notes = "Came with the box - see https://example.org/c64",
+            Description = "A flea market\r\nCame with its box - see https://example.org/c64\nJiffyDOS ROM fitted",
             Status = OwnedDeviceStatus.InRepair,
             Photos = [new WorklogAttachmentRecord { Id = 1, FileName = "front.txt" }],
-            Changes = [new OwnedDeviceChangeRecord { Id = 1, Date = new DateTime(2025, 6, 14), Text = "JiffyDOS ROM fitted" }],
         };
 
         string photo = this.WriteFile("device_3", "front.txt");
@@ -72,7 +71,8 @@ public sealed class DeviceHistoryZipExportTests : IDisposable
         return archive.Entries.Select(entry => entry.FullName).ToList();
     }
 
-    // Every part filled - notes, changes, photos, two repairs - and the PDF is made.
+    // Every part filled - where it came from and notes in several lines, photos, two repairs - and
+    // the PDF is made.
     [Fact]
     public void A_history_with_every_part_is_written_as_a_PDF()
     {
@@ -83,7 +83,7 @@ public sealed class DeviceHistoryZipExportTests : IDisposable
         Assert.True(new FileInfo(path).Length > 0);
     }
 
-    // A device with no repair yet still has a history - what it is, its changes and photos.
+    // A device with no repair yet still has a history - what it is, its notes and photos.
     [Fact]
     public void A_history_with_no_repair_is_still_written()
     {

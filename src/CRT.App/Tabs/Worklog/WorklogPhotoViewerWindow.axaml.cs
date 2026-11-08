@@ -3,21 +3,26 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
 using Handlers.DataHandling;
+using Handlers.Geometry;
+using Handlers.Theming;
 using System;
 using System.IO;
 
 namespace CRT
 {
     // ###########################################################################################
-    // Read-only viewer for one worklog photo, opened by clicking a photo row's thumbnail in the
-    // entry editor. Shows the image at full size with its file name and comment; editing and
-    // deleting stay in the editor's row buttons, so this window has nothing to save.
+    // Read-only viewer for one photo, opened by clicking a photo's thumbnail in the worklog editor,
+    // in the device form or on a device's page. Shows the image whole with its file name and comment -
+    // the wheel zooms in at the pointer (owner request, 2026-11-06; PhotoZoomView); editing and
+    // deleting stay with the rows' buttons, so this window has nothing to save.
     // ###########################################################################################
     public partial class WorklogPhotoViewerWindow : Window
     {
         public WorklogPhotoViewerWindow()
         {
             this.InitializeComponent();
+
+            this.ZoomHintText.Text = PanGesture.Hint + " Double-click to see it whole.";
 
             this.AddHandler(KeyDownEvent, this.OnWindowPreviewKeyDown, RoutingStrategies.Tunnel);
 
@@ -38,7 +43,9 @@ namespace CRT
             this.Title = string.IsNullOrWhiteSpace(fileName) ? "Photo" : fileName;
             this.FileNameText.Text = fileName;
 
-            this.CommentText.Text = comment;
+            // The comment is a note with formatting (RichNote): drawn as it reads, its links clickable - never its
+            // marks as typed (code review, 2026-11-08: "**dead** SID" showed with its stars).
+            TextLinkRenderer.SetLinkText(this.CommentText, RichNote.TrimMarkup(comment));
             this.CommentText.IsVisible = !string.IsNullOrWhiteSpace(comment);
 
             if (string.IsNullOrWhiteSpace(imagePath) || !File.Exists(imagePath))

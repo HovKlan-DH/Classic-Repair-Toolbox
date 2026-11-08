@@ -19,7 +19,8 @@ namespace CRT
     // to zoom in/out in that small thumbnail so I can view relevant parts of it"):
     //
     //   - IT ZOOMS (IsZoomable): Ctrl+scroll at the pointer - a plain scroll goes on scrolling the
-    //     cards, as on a web page's map - drag to move, double-click to see it whole. Zoomed in, it
+    //     cards, as on a web page's map - a drag with the right or middle button to move (the Schematics
+    //     tab's way, PanGesture; 2026-11-06), double-click to see it whole. Zoomed in, it
     //     asks for the image decoded sharper (SharperWanted, with the pixels across it needs).
     //   - IT DRAWS EITHER SIDE'S TRACES when handed them (in the image's pixels) - this side's in the
     //     highlight's trace colour over the other side's in the trace colour - the card's "Traces on the
@@ -177,23 +178,28 @@ namespace CRT
             e.Handled = true;
         }
 
+        // A left double-click shows it whole; a drag with the RIGHT or the MIDDLE button moves it zoomed - the Schematics
+        // tab's way, CRT's one way (owner request, 2026-11-06: "the same pan functionality as present in the
+        // 'Schematics' tab"; PanGesture - a left drag until then).
         protected override void OnPointerPressed(PointerPressedEventArgs e)
         {
             base.OnPointerPressed(e);
 
-            if (!this.IsZoomable || !e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+            if (!this.IsZoomable)
             {
                 return;
             }
 
-            if (e.ClickCount >= 2)
+            PointerPointProperties properties = e.GetCurrentPoint(this).Properties;
+
+            if (properties.IsLeftButtonPressed && e.ClickCount >= 2)
             {
                 this.ShowWhole();
                 e.Handled = true;
                 return;
             }
 
-            if (this.thisZoom > 1.0)
+            if (PanGesture.IsPanPress(properties) && this.thisZoom > 1.0)
             {
                 this.thisDragFrom = e.GetPosition(this);
                 e.Pointer.Capture(this);

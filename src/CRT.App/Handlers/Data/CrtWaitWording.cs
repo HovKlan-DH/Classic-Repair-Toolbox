@@ -80,8 +80,6 @@ namespace Handlers.DataHandling
 
         public const string ImportingKiCad = "Importing the KiCad data...";
 
-        public const string ReadingKiCad = "Reading the board's KiCad data...";
-
         public const string CheckingKiCadMatches = "Checking what the KiCad data lines up with...";
 
         // The KiCad components added to the board (step 3).
@@ -90,19 +88,18 @@ namespace Handlers.DataHandling
         // "Mark all automatically" on a picture aligned with KiCad (step 3).
         public const string MarkingFromKiCad = "Drawing the components' rectangles from the KiCad data...";
 
-        // TEMPORARY, with BaselinePinMigration: "Create pinouts for the whole board".
-        public const string MigrationMakingPinouts = "Making the pinouts of the whole board...";
-
         // A suggested match used on Board status (step 3).
         public const string MatchingPictures = "Matching the pictures to their KiCad views...";
 
         // Files dropped on "Board: Schematic images", looked at before they are added (step 3).
         public const string ReadingDroppedFiles = "Looking at the files dropped...";
 
-        // A device's photos copied in, and a device deleted with its photos (step 4).
-        public const string AddingDevicePhotos = "Adding the photos to the device...";
-
+        // A device deleted with its photos (step 4).
         public const string DeletingDevice = "Deleting the device...";
+
+        // A device's photos copied into its folder - the device form's "Add photo", a photo replaced, and a new device's
+        // photos as it is added (code review, 2026-11-08).
+        public const string AddingDevicePhotos = "Copying the photos in...";
 
         public const string ConnectingOscilloscope = "Connecting to the oscilloscope...";
 

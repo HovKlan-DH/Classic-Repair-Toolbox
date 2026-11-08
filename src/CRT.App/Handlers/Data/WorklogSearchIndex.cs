@@ -5,6 +5,9 @@ namespace Handlers.DataHandling
     // ###########################################################################################
     // Which text a search query is matched against, for each kind of worklog record.
     //
+    // A note that can be formatted (RichNote, 2026-11-07) is searched as its PLAIN text, as it is shown - "dead SID"
+    // finds "dead **SID**", and the marks are found where the text is drawn (TextLinkRenderer).
+    //
     // ONLY fields a user typed are included. Numbers are deliberately left out - ids, hours spent,
     // cost, display order - because a search for "2" would otherwise match half the database
     // through entry ids and costs nobody was searching for. Dates are out for the same reason
@@ -38,7 +41,7 @@ namespace Handlers.DataHandling
                 yield break;
 
             yield return workbook.Title;
-            yield return workbook.Note;
+            yield return RichNote.PlainOf(workbook.Note);
         }
 
         // ###########################################################################################
@@ -52,7 +55,7 @@ namespace Handlers.DataHandling
                 yield break;
 
             yield return entry.Title;
-            yield return entry.Description;
+            yield return RichNote.PlainOf(entry.Description);
             yield return entry.Category;
             yield return entry.SchematicName;
 
@@ -66,22 +69,55 @@ namespace Handlers.DataHandling
             }
 
             foreach (var comment in entry.Comments)
-                yield return comment.Text;
+                yield return RichNote.PlainOf(comment.Text);
 
             // The note only - HoursSpent and Cost are numbers, see the class header.
             foreach (var workDone in entry.WorkDoneItems)
-                yield return workDone.Text;
+                yield return RichNote.PlainOf(workDone.Text);
 
             foreach (var photo in entry.Photos)
             {
                 yield return photo.FileName;
-                yield return photo.Comment;
+                yield return RichNote.PlainOf(photo.Comment);
             }
 
             foreach (var file in entry.Files)
             {
                 yield return file.FileName;
-                yield return file.Comment;
+                yield return RichNote.PlainOf(file.Comment);
+            }
+        }
+
+        // ###########################################################################################
+        // One of the user's devices - "My devices" is searched too (owner request, 2026-11-06: "searching a serial/unique
+        // in the filter in 'My Devices' should filter and highlight info in this list also, so it also covers devices
+        // and not only workbooks/worklogs"): what its card shows - its name, serial number and `boardText`, its board
+        // as the card names it - and everything typed on it: its description, comments, links and photos'
+        // names and comments. Its status and region are words picked, not typed, as a workbook's state is not searched.
+        // ###########################################################################################
+        public static IEnumerable<string?> ForDevice(OwnedDeviceRecord device, string? boardText)
+        {
+            if (device == null)
+                yield break;
+
+            yield return device.Name;
+            yield return device.SerialNumber;
+            yield return boardText;
+            yield return RichNote.PlainOf(device.Description);
+
+            foreach (var comment in device.Comments)
+                yield return RichNote.PlainOf(comment.Text);
+
+            foreach (var link in device.Links)
+            {
+                yield return link.Headline;
+                yield return link.Url;
+            }
+
+            foreach (var photo in device.Photos)
+            {
+                yield return photo.FileName;
+                yield return RichNote.PlainOf(photo.Comment);
             }
         }
     }

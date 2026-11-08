@@ -75,6 +75,33 @@ public sealed class LocalChecksumCacheTests : IDisposable
         Assert.Equal(Hash, reloaded.TryGet("C64/a.png", Stamp));
     }
 
+    // ###########################################################################################
+    // A cache that could not be saved needs nothing done - every file is hashed again next time - so it is a WARNING, listed
+    // only (code review, 2026-11-07: a virus scanner holding the file for a moment raised "Something went wrong"). What
+    // somebody would lose - settings, a worklog - stays an error (AtomicJsonFile's default).
+    // ###########################################################################################
+    [Fact]
+    public void A_cache_that_cannot_be_saved_is_a_warning_not_an_error()
+    {
+        // A folder stands where the file goes: nothing can be written there.
+        Directory.CreateDirectory(this.CachePath);
+
+        var cache = LocalChecksumCache.Load(this.CachePath, this.DataRoot);
+        cache.Remember("C64/a.png", Stamp, Hash, HashedAt);
+
+        using LoggedLines logged = LoggedLines.Watch();
+        cache.Save();
+
+        Assert.Equal(1, logged.Count(Handlers.DataHandling.LogCategory.WARN, "Failed to save local checksum cache"));
+        Assert.Equal(0, logged.Count(Handlers.DataHandling.LogCategory.CRIT, "Failed to save"));
+
+        // Somebody's own file is an error.
+        string held = this.thisWorkspace.Path_("settings.json");
+        Directory.CreateDirectory(held);
+        Assert.False(Handlers.DataHandling.AtomicJsonFile.Write(held, new { a = 1 }, new System.Text.Json.JsonSerializerOptions(), "settings"));
+        Assert.Equal(1, logged.Count(Handlers.DataHandling.LogCategory.CRIT, "Failed to save settings"));
+    }
+
     // Another data folder's hashes say nothing about this one's files.
     [Fact]
     public void A_cache_made_for_another_data_folder_is_empty()

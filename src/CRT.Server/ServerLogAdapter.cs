@@ -10,7 +10,7 @@ namespace CRT.Server
     // This is the ServerLogAdapter that ICrtLog.cs's own header names as the intended Phase 3
     // wiring - it is installed once in Program.cs, immediately after the host is built. Before
     // that point CrtLog.Sink is null and every CRT.Data log call is inert, which is exactly what
-    // the whole test suite relies on (no test installs a sink, so no test writes a log).
+    // the whole test suite relies on (no test installs this sink, so no test writes a log).
     //
     // MAPPING. CRT.Data's four levels map onto the nearest ILogger level. "Critical" is mapped to
     // Error rather than LogCritical deliberately: CRT.Data uses Critical for "this operation

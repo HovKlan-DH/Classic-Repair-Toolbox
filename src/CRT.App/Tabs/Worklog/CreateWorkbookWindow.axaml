@@ -1,7 +1,8 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:CRT"
         x:Class="CRT.CreateWorkbookWindow"
-        Title="Create new workbook"
+        Title="Add workbook"
         Width="480"
         MinWidth="420"
         CanResize="False"
@@ -35,7 +36,7 @@
 
 		<TextBlock Text="Note"
 				   Margin="0,10,0,0" />
-		<TextBox x:Name="NoteTextBox"
+		<local:RichNoteTextBox x:Name="NoteTextBox"
 				 AcceptsReturn="True"
 				 TextWrapping="Wrap"
 				 Height="100"
@@ -46,7 +47,7 @@
 		     device with this board, and "Add device" beside them for a new one on this board. "None"
 		     keeps the repair on no device; a device can be picked later under the workbook's title. -->
 		<StackPanel x:Name="DevicePanel" Spacing="4" Margin="0,10,0,0" IsVisible="False">
-			<TextBlock Text="On my device" />
+			<TextBlock Text="Associate workbook to device" />
 			<Grid ColumnDefinitions="*,Auto">
 				<ComboBox x:Name="DeviceComboBox"
 						  HorizontalAlignment="Stretch"

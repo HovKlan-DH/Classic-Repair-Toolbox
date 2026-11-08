@@ -217,7 +217,7 @@ public sealed class OpenedFilesTests
 
             await OpenedFiles.SaveAndLaunchInAsync(root, [1], "a.pdf", path =>
             {
-                object?[] arguments = [path, root, null];
+                object?[] arguments = [path, root, null, true];
 
                 bool taken = (bool)typeof(CRT.ExternalTargetLauncher)
                     .GetMethod("TryResolveDataRootScopedFilePath", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!

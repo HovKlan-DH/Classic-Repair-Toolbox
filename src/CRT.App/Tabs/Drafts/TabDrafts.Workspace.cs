@@ -85,6 +85,10 @@ namespace CRT
             this.thisCurrentRegion = region ?? string.Empty;
             this.thisDraftedLabels = draftedLabels;
 
+            // A published board with no draft says its own errors and warnings - checked once this tab is shown
+            // (TabDrafts.Problems.cs).
+            this.ReadPublishedProblemsOnceShown();
+
             // What is open on the right shows the region CRT shows - either switch picks it (2026-11-01).
             if (!anotherBoard)
             {

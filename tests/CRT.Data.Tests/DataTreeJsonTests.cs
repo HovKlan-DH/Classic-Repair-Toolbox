@@ -298,4 +298,31 @@ public sealed class DataTreeJsonTests
         Assert.Equal("PAL", read.ComponentFiles[0].Region);
         Assert.Contains("\"region\":\"PAL\"", DataTreeJson.Write(board).Replace(" ", string.Empty), StringComparison.Ordinal);
     }
+
+    // ###########################################################################################
+    // A board file's and a board link's note (owner request, 2026-11-06) is written only when filled,
+    // as the region is - every board without notes keeps its bytes - and comes back with its lines.
+    // ###########################################################################################
+    [Fact]
+    public void A_board_file_or_link_writes_its_note_only_when_it_has_one_and_keeps_its_lines()
+    {
+        BoardDocument board = Board();
+
+        // One row per line: the file's and the link's lines, as written.
+        string LineOf(string text, string needle) => text.Split('\n').Single(line => line.Contains(needle, StringComparison.Ordinal));
+
+        string before = DataTreeJson.Write(board);
+
+        Assert.DoesNotContain("\"note\"", LineOf(before, "manual.pdf"), StringComparison.Ordinal);
+        Assert.DoesNotContain("\"note\"", LineOf(before, "example.org/v"), StringComparison.Ordinal);
+
+        board.BoardFiles[0].Note = "The full service manual.\nPage 12 has the PLA pinout.";
+        board.BoardLinks[0].Note = "How to replace the VIC-II";
+
+        BoardDocument read = DataTreeJson.ReadBoard(DataTreeJson.Write(board));
+
+        Assert.Equal("The full service manual.\nPage 12 has the PLA pinout.", read.BoardFiles[0].Note);
+        Assert.Equal("How to replace the VIC-II", read.BoardLinks[0].Note);
+        Assert.Equal(DataTreeJson.Write(board), DataTreeJson.Write(read));
+    }
 }

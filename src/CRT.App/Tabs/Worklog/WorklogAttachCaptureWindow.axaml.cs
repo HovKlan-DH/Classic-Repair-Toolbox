@@ -295,7 +295,7 @@ namespace CRT
                 return;
             }
 
-            this.Close(new AttachResult(choice.Target?.Entry.Id, this.CommentTextBox.Text ?? string.Empty));
+            this.Close(new AttachResult(choice.Target?.Entry.Id, this.CommentTextBox.Markup ?? string.Empty));
         }
 
         private void OnCancelClick(object? sender, RoutedEventArgs e) => this.Close(null);

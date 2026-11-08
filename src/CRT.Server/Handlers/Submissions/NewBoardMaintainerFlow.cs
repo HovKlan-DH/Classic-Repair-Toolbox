@@ -159,7 +159,7 @@ namespace CRT.Server.Handlers.Submissions
 
         public const string Failed =
             "This new board's creator could not be made its maintainer - the server's log says why. Add the maintainer under " +
-            MaintainerScreenWording.AccountQuoted + ", \"Maintainers\".";
+            MaintainerScreenWording.ManagementQuoted + ", \"Maintainers\".";
 
         public static string Added(string name, string email) =>
             $"{NewBoardMaintainerWording.Who(name, email)}, who created this new board, is now its maintainer.";
@@ -170,7 +170,7 @@ namespace CRT.Server.Handlers.Submissions
         public static string TypedAddressHasAccount(string email) =>
             $"This new board was sent without signing in, giving {email} - an address that has an account. Nobody was made " +
             "its maintainer: nothing proves the sender owns that address. If that account's owner created the board, add it under " +
-            MaintainerScreenWording.AccountQuoted + ", \"Maintainers\".";
+            MaintainerScreenWording.ManagementQuoted + ", \"Maintainers\".";
 
         public static string Invited(string email) =>
             $"{email}, who created this new board, has no account, so an invitation to become its maintainer was mailed there.";
@@ -180,7 +180,7 @@ namespace CRT.Server.Handlers.Submissions
 
         public static string Unverified(string email) =>
             $"{email} created this new board, but that account's address is not verified yet, so it was not made the board's " +
-            $"maintainer. Add it under {MaintainerScreenWording.AccountQuoted}, \"Maintainers\", once it is.";
+            $"maintainer. Add it under {MaintainerScreenWording.ManagementQuoted}, \"Maintainers\", once it is.";
 
         private static string Who(string name, string email) =>
             string.IsNullOrWhiteSpace(name) ? email : $"{name.Trim()} ({email})";

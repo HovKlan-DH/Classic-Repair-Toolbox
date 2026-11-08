@@ -211,12 +211,60 @@ namespace Handlers.Theming
         }
 
         // ###########################################################################################
-        // Restyles an EXISTING pill declared in markup, for the two sites that cannot simply be
-        // handed a new Border: the worklog bar and the Workbooks top-line each keep one long-lived
-        // pill in their AXAML and swap its text as the active workbook changes.
+        // A COUNT in the same informational visual - how many workbooks a line of the worklog bar's "Device"
+        // drop-down holds (owner request, 2026-11-06: "I actually did mean an outlined badge, and please show
+        // that as the last, right of the status"). Outlined in the muted text color, as it counts and says no
+        // state; a zero muted further and not bold, as the summary strip's counted zero is.
+        // ###########################################################################################
+        public static Border BuildCountPill(int count, double fontSize = 11.0)
+        {
+            IBrush brush = count == 0 ? MutedPillBrush : ThemeResources.ResolveBrush("Workbooks_Muted_Fg", Brushes.Gray);
+
+            return new Border
+            {
+                Background = ThemeResources.ResolveBrush("Form_Bg", Brushes.Transparent),
+                BorderBrush = brush,
+                BorderThickness = InfoBorderThickness,
+                CornerRadius = PillCornerRadius,
+                Padding = new Thickness(7, 2),
+                VerticalAlignment = VerticalAlignment.Center,
+                Child = BuildCountLabel(count, fontSize, brush, isMuted: count == 0),
+            };
+        }
+
+        // ###########################################################################################
+        // A DEVICE'S NAME in the same informational visual - first on a line of the worklog bar's "Workbook" drop-down
+        // while it lists every device's workbooks, so they are told apart (owner request, 2026-11-07: "the workbook
+        // drop-down to show the device name first in a badge"). Outlined in the muted text color as the count is - a
+        // name, no state; cut short with "..." when the line has little room (BarPickerLinePanel caps it).
+        // ###########################################################################################
+        public static Border BuildDeviceNamePill(string name, double fontSize = 11.0)
+        {
+            IBrush brush = ThemeResources.ResolveBrush("Workbooks_Muted_Fg", Brushes.Gray);
+
+            TextBlock label = BuildLabel(name.Trim(), fontSize, brush);
+            label.TextTrimming = TextTrimming.CharacterEllipsis;
+
+            return new Border
+            {
+                Background = ThemeResources.ResolveBrush("Form_Bg", Brushes.Transparent),
+                BorderBrush = brush,
+                BorderThickness = InfoBorderThickness,
+                CornerRadius = PillCornerRadius,
+                Padding = new Thickness(7, 2),
+                VerticalAlignment = VerticalAlignment.Center,
+                Child = label,
+            };
+        }
+
+        // ###########################################################################################
+        // Restyles an EXISTING pill declared in markup, for the site that cannot simply be handed a
+        // new Border: the Workbooks top-line keeps one long-lived pill in its AXAML and swaps its text
+        // as the active workbook changes. (The worklog bar's went on 2026-11-06 - its workbook picker's
+        // lines end in a built pill now, Main.Devices.cs.)
         //
-        // Same visual as BuildStatePill, applied to controls someone else owns - so those two sites
-        // cannot drift from the built ones without this method changing too.
+        // Same visual as BuildStatePill, applied to controls someone else owns - so that site cannot
+        // drift from the built ones without this method changing too.
         // ###########################################################################################
         public static void ApplyStatePillVisual(Border pill, TextBlock glyph, TextBlock label, string state)
         {

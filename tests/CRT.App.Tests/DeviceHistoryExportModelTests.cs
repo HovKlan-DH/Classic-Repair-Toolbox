@@ -5,7 +5,7 @@ namespace ClassicRepairToolbox.Tests;
 // ###########################################################################################
 // DeviceHistoryExportModel - what goes into a device's exported history (CRT 4.0 step 4, slice 4d -
 // the plan: "Export history puts every repair into one PDF or ZIP"): what the device is, its
-// changes and photos, every repair oldest first, and what they add up to by the device page's rule.
+// notes and photos, every repair oldest first, and what they add up to by the device page's rule.
 // ###########################################################################################
 public sealed class DeviceHistoryExportModelTests : IDisposable
 {
@@ -22,9 +22,9 @@ public sealed class DeviceHistoryExportModelTests : IDisposable
         BoardKey = "Commodore 64|250407",
         Region = "PAL",
         SerialNumber = "CA123456",
-        Origin = "A flea market",
-        Notes = " Keyboard needs cleaning. ",
+        Description = "A flea market",
         Status = "in repair",
+        Condition = 3,
     };
 
     private static WorkbookExportModel.Document Repair(int id, string status, params (double Hours, double Cost)[] work)
@@ -76,7 +76,7 @@ public sealed class DeviceHistoryExportModelTests : IDisposable
     }
 
     // What the device is, as its page says it - name trimmed, status as one of its words, the line
-    // under the name and where it came from.
+    // under the name, its condition in words (a PDF font may have no star) and its description.
     [Fact]
     public void The_device_is_described_as_its_page_describes_it()
     {
@@ -86,27 +86,59 @@ public sealed class DeviceHistoryExportModelTests : IDisposable
         Assert.Equal("Breadbin #2", history.Name);
         Assert.Equal(OwnedDeviceStatus.InRepair, history.Status);
         Assert.Equal("Commodore 64 - 250407 - PAL - serial CA123456", history.DetailLine);
-        Assert.Equal("Where it came from: A flea market", history.OriginLine);
-        Assert.Equal("Keyboard needs cleaning.", history.Notes);
+        Assert.Equal("Condition: 3 of 5 stars", history.ConditionLine);
+        Assert.Equal("A flea market", history.Description);
+        Assert.Empty(history.Comments);
         Assert.Empty(history.Repairs);
     }
 
-    // The changes oldest first (one day's by the order they were added), a blank one left out.
+    // ###########################################################################################
+    // The description keeps the lines it was typed in (owner request, 2026-11-06: the description - "Where
+    // it came from" until that day - is several lines) - each break a "\n", whatever the box typed, so the
+    // PDF breaks where the user did. A device has no notes of its own since 2026-11-07 - its description
+    // says it (OwnedDeviceStore.FoldNotes).
+    // ###########################################################################################
     [Fact]
-    public void The_changes_come_oldest_first_and_a_blank_one_is_left_out()
+    public void The_description_keeps_its_lines()
     {
         OwnedDeviceRecord device = Device();
-        device.Changes =
+        device.Description = "A flea market in Odense\r\nCame with its box";
+
+        DeviceHistoryExportModel.Document history = Build(device);
+
+        Assert.Equal("A flea market in Odense\nCame with its box", history.Description);
+    }
+
+    // ###########################################################################################
+    // Its comments go in too (owner request, 2026-11-06: "Comments" on a device), dated as the page dates
+    // them - oldest first, as a history reads; a blank one is none.
+    // ###########################################################################################
+    [Fact]
+    public void The_comments_come_oldest_first_and_dated()
+    {
+        OwnedDeviceRecord device = Device();
+        device.Comments =
         [
-            new OwnedDeviceChangeRecord { Id = 1, Date = new DateTime(2026, 1, 2), Text = "New power supply " },
-            new OwnedDeviceChangeRecord { Id = 2, Date = new DateTime(2025, 6, 14), Text = "JiffyDOS ROM fitted" },
-            new OwnedDeviceChangeRecord { Id = 3, Date = new DateTime(2025, 6, 14), Text = "  " },
-            new OwnedDeviceChangeRecord { Id = 4, Date = new DateTime(2025, 6, 14), Text = "Keycaps cleaned" },
+            new WorklogCommentRecord { Id = 2, Text = "Recapped.\r\nRuns cool now.", Date = new DateTime(2026, 11, 2, 18, 30, 0) },
+            new WorklogCommentRecord { Id = 1, Text = " Bought at a flea market ", Date = new DateTime(2026, 10, 1, 9, 5, 0) },
+            new WorklogCommentRecord { Id = 3, Text = "  ", Date = new DateTime(2026, 11, 3) },
         ];
 
+        DeviceHistoryExportModel.Document history = Build(device);
+
         Assert.Equal(
-            ["JiffyDOS ROM fitted", "Keycaps cleaned", "New power supply"],
-            Build(device).Changes.Select(change => change.Text));
+            [new DeviceHistoryExportModel.Comment("2026-10-01 09:05", "Bought at a flea market"), new DeviceHistoryExportModel.Comment("2026-11-02 18:30", "Recapped.\nRuns cool now.")],
+            history.Comments);
+    }
+
+    // A comment's first line nested once is exported so, not trimmed to the first level (code review, 2026-11-08).
+    [Fact]
+    public void A_comments_first_line_keeps_the_indent_that_says_what_it_is()
+    {
+        OwnedDeviceRecord device = Device();
+        device.Comments = [new WorklogCommentRecord { Id = 1, Text = "  - replaced C14\r\n- U8", Date = new DateTime(2026, 11, 8, 9, 0, 0) }];
+
+        Assert.Equal("  - replaced C14\n- U8", Assert.Single(Build(device).Comments).Text);
     }
 
     // The photos in the order the page shows them, each where it lies - one not there left out.

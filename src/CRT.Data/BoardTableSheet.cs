@@ -493,7 +493,8 @@ namespace Handlers.DataHandling
             }
         }
 
-        // A cell's text by COLUMN NAME, trimmed - "" when the sheet has no such column.
+        // A cell's text by COLUMN NAME, as the cell keeps it (trimmed, a note as notes are - BoardTableCell) - "" when
+        // the sheet has no such column.
         internal string CellText(BoardTableRow row, string column)
         {
             int index = -1;
@@ -509,7 +510,7 @@ namespace Handlers.DataHandling
 
             return index < 0 || index >= row.Cells.Count
                 ? string.Empty
-                : BoardTableCell.NormaliseText(row.Cells[index].Text);
+                : row.Cells[index].Text;
         }
 
         // ###########################################################################################
@@ -672,69 +673,14 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // FILL DOWN (Ctrl+D, as in a spreadsheet): in every column among `cells`, the TOPMOST of its
-        // cells - in the sheet's order - gives its text to the others. The top cell may be a red
-        // row's (its text is the published value shown); the others must be live. A caller wanting a
-        // spreadsheet's Ctrl+D on one row hands the row above's cell too (BoardTableEditor.FillDown).
-        // One change. Returns how many cells changed.
-        // ###########################################################################################
-        public int FillDown(IReadOnlyList<BoardTableCell> cells)
-        {
-            ArgumentNullException.ThrowIfNull(cells);
-
-            List<(BoardTableCell Target, string Text)> fills = this.FillsOf(cells, out _);
-
-            return fills.Count == 0
-                ? 0
-                : this.AsOneChange(() => fills.Count(fill => BoardTableSheet.Write(fill.Target, fill.Text)));
-        }
-
-        // ###########################################################################################
-        // Whether every cell a write would go into is on a red row - so the paste or the fill can
-        // change nothing, and says why rather than "the cells already held it" (code review,
-        // 2026-10-25). OnlyDeletedRows for a paste into `cells`, FillsOnlyDeletedRows for a FillDown.
+        // Whether every cell a paste into `cells` would go into is on a red row - so it can change
+        // nothing, and says why rather than "the cells already held it" (code review, 2026-10-25).
         // ###########################################################################################
         public bool OnlyDeletedRows(IReadOnlyList<BoardTableCell> cells)
         {
             ArgumentNullException.ThrowIfNull(cells);
 
             return this.LiveCellsOf(cells).Count == 0 && cells.Any(cell => cell.Row.IsDeleted && ReferenceEquals(cell.Row.Sheet, this));
-        }
-
-        public bool FillsOnlyDeletedRows(IReadOnlyList<BoardTableCell> cells)
-        {
-            ArgumentNullException.ThrowIfNull(cells);
-
-            return this.FillsOf(cells, out int onDeletedRows).Count == 0 && onDeletedRows > 0;
-        }
-
-        // What a FillDown of `cells` writes: each live cell below its column's topmost and the text it
-        // takes - and how many cells below a top one it passes over for being on a red row.
-        private List<(BoardTableCell Target, string Text)> FillsOf(IReadOnlyList<BoardTableCell> cells, out int onDeletedRows)
-        {
-            var position = new Dictionary<BoardTableRow, int>(ReferenceEqualityComparer.Instance);
-            for (int i = 0; i < this.Rows.Count; i++)
-            {
-                position[this.Rows[i]] = i;
-            }
-
-            var fills = new List<(BoardTableCell Target, string Text)>();
-            onDeletedRows = 0;
-
-            foreach (IGrouping<int, BoardTableCell> column in cells
-                         .Where(cell => position.ContainsKey(cell.Row))
-                         .Distinct(ReferenceEqualityComparer.Instance)
-                         .Cast<BoardTableCell>()
-                         .GroupBy(cell => cell.ColumnIndex))
-            {
-                List<BoardTableCell> ordered = column.OrderBy(cell => position[cell.Row]).ToList();
-                string text = ordered[0].Text;
-
-                onDeletedRows += ordered.Skip(1).Count(cell => cell.Row.IsDeleted);
-                fills.AddRange(ordered.Skip(1).Where(cell => !cell.Row.IsDeleted).Select(cell => (cell, text)));
-            }
-
-            return fills;
         }
 
         // The live cells of `cells` that are this sheet's, each once.
@@ -1076,8 +1022,12 @@ namespace Handlers.DataHandling
 
                 cell.PublishedText = publishedText;
 
-                // Trimmed and ordinal - BoardDataDiffer.DifferingFields' rule exactly.
-                bool modified = !string.Equals(cell.Text.Trim(), publishedText.Trim(), StringComparison.Ordinal);
+                // BoardDataDiffer.DifferingFields' rule exactly: trimmed, a note with formatting as notes are, ordinal.
+                bool isNote = i < this.Columns.Count && this.Definition.IsNoteColumn(this.Columns[i]);
+                bool modified = !string.Equals(
+                    BoardDataDiffer.ComparableText(cell.Text, isNote),
+                    BoardDataDiffer.ComparableText(publishedText, isNote),
+                    StringComparison.Ordinal);
                 cell.State = modified ? BoardTableCellState.Modified : BoardTableCellState.Unchanged;
 
                 anyModified |= modified;

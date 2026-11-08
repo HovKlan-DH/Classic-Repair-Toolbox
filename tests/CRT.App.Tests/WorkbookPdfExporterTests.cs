@@ -30,6 +30,48 @@ public class WorkbookPdfExporterTests : IDisposable
     public void Dispose() => this.thisWorkspace.Dispose();
 
     // ###########################################################################################
+    // *** A SUB-LIST ROW READS ITS NOTE AS THE NOTE IT IS, AND NOTHING ELSE AS FORMATTING (code review, 2026-11-07). ***
+    // A row was "{date} - {note}" read as one note: a comment starting with a bullet printed "2026-11-07 - - replaced
+    // C14", its dash no bullet, and a file named "C64__rev__B.pdf" printed underlined as "C64revB.pdf". The date, the
+    // file's name and a work item's totals are plain text; a note starting with a bullet starts on a line of its own.
+    // ###########################################################################################
+    [Fact]
+    public void A_sub_list_row_reads_its_note_and_nothing_else_as_formatting()
+    {
+        // Each stretch of one style, in order, as "text:style".
+        static string Runs(RichNoteText note)
+        {
+            var pieces = new List<string>();
+            int start = 0;
+
+            for (int index = 1; index <= note.Text.Length; index++)
+            {
+                if (index == note.Text.Length || note.Styles[index] != note.Styles[start])
+                {
+                    pieces.Add($"{note.Text[start..index]}:{note.Styles[start]}");
+                    start = index;
+                }
+            }
+
+            return string.Join("|", pieces);
+        }
+
+        RichNoteText bullets = WorkbookPdfExporter.ComposeSubListLine(new("2026-11-07", "- replaced C14\n- tested"));
+        Assert.Equal("2026-11-07\n• replaced C14\n• tested", bullets.Text);
+
+        RichNoteText comment = WorkbookPdfExporter.ComposeSubListLine(new("2026-11-07", "recapped the **PSU**"));
+        Assert.Equal("2026-11-07 - recapped the :None|PSU:Bold", Runs(comment));
+
+        RichNoteText file = WorkbookPdfExporter.ComposeSubListLine(new("C64__rev__B.pdf", "the *good* one"));
+        Assert.Equal("C64__rev__B.pdf - the :None|good:Italic| one:None", Runs(file));
+
+        Assert.Equal("C64__rev__B.pdf:None", Runs(WorkbookPdfExporter.ComposeSubListLine(new("C64__rev__B.pdf", "  "))));
+
+        RichNoteText work = WorkbookPdfExporter.ComposeSubListLine(new("2026-11-07", "swapped U7", "(1 hour)"));
+        Assert.Equal("2026-11-07 - swapped U7  (1 hour)", work.Text);
+    }
+
+    // ###########################################################################################
     // THE REGRESSION TEST for the QuestPDF 2026.9.0 upgrade: text no available font can draw must
     // cost a glyph, never the export.
     //

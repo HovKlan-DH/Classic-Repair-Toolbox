@@ -69,7 +69,7 @@ namespace Handlers.DataHandling
             }
             catch (Exception ex)
             {
-                Logger.Warning($"Failed to load user-drawn traces: [{ex.Message}] - none shown, and none saved this session");
+                Logger.Critical($"Failed to load user-drawn traces: [{ex.Message}] - none shown, and none saved this session");
             }
         }
 
@@ -97,7 +97,7 @@ namespace Handlers.DataHandling
                 }
                 catch (Exception ex)
                 {
-                    Logger.Warning($"User-drawn traces could not be read: [{path}] [{ex.Message}] - none shown, and the file is not written this session");
+                    Logger.Critical($"User-drawn traces could not be read: [{path}] [{ex.Message}] - none shown, and the file is not written this session");
                     TraceStorage.filePath = string.Empty;
                     return;
                 }
@@ -120,12 +120,12 @@ namespace Handlers.DataHandling
 
                     if (keptAs == null)
                     {
-                        Logger.Warning($"User-drawn traces could not be parsed [{reason}] nor moved aside: [{path}] - none shown, and the file is not written this session");
+                        Logger.Critical($"User-drawn traces could not be parsed [{reason}] nor moved aside: [{path}] - none shown, and the file is not written this session");
                         TraceStorage.filePath = string.Empty;
                     }
                     else
                     {
-                        Logger.Warning($"User-drawn traces could not be parsed [{reason}] - the file was kept as [{keptAs}]");
+                        Logger.Critical($"User-drawn traces could not be parsed [{reason}] - the file was kept as [{keptAs}]");
                     }
 
                     return;

@@ -16,6 +16,14 @@ command-line (global) property - see the comment on SelfContained below.
     <SelfContained>false</SelfContained>
     <PublishSelfContained>false</PublishSelfContained>
     <IsPublishable>false</IsPublishable>
+    <!--
+    The test host's runtime, measured (2026-11-07, the suite at 6 minutes): a test process runs once and briefly, so
+    tiered PGO's instrumented code is all cost and never pays back - a headless UI class went from 43 s to 33 s without
+    it - and the server collector collects on every core instead of one (33 s -> 29 s). Only the tests: CRT itself
+    keeps the runtime's defaults.
+    -->
+    <TieredPGO>false</TieredPGO>
+    <ServerGarbageCollection>true</ServerGarbageCollection>
     <RootNamespace>Classic_Repair_Toolbox.Tests</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
@@ -27,24 +35,20 @@ command-line (global) property - see the comment on SelfContained below.
     nearly all of them CRT.Server.Tests calling a flow against an in-memory fake. The token exists
     so that a test stuck on real I/O can be cancelled, and test rule 6 in CLAUDE.md already rules
     that I/O out (no network, no hardware, no spawned process) - so threading it through every call
-    would add noise to tests meant to read as specifications, and cancel nothing. Set in all four
-    test projects alike, so the first async call added to any of them does not break Release.
+    would add noise to tests meant to read as specifications, and cancel nothing. Set in every
+    test project alike, so the first async call added to any of them does not break Release.
     -->
     <NoWarn>$(NoWarn);xUnit1051</NoWarn>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Avalonia.Headless only. The Avalonia.Headless.XUnit adapter (12.1.3) is built against
-         xunit v3's 3.2 extensibility API, which xunit 4.0 changed, and it has not been tried
-         against 4.x - so UiTest drives the headless session directly instead, depending on no
-         test framework at all.
+    <!-- No Avalonia.Headless: the headless UI tests are CRT.App.UiTests' (2026-11-08).
 
          xunit.v3.mtp-OFF, not plain xunit.v3: from 4.0 the plain package runs on Microsoft
          Testing Platform v2, where coverlet.collector (the "XPlat Code Coverage" CI collects)
          does not work. The mtp-off package is the same framework on VSTest, which is what
          `dotnet test`, CI, the release gate and the Stop hook all use. -->
-    <PackageReference Include="Avalonia.Headless" Version="12.1.4" />
     <PackageReference Include="coverlet.collector" Version="10.1.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
     <PackageReference Include="xunit.v3.mtp-off" Version="4.0.2" />

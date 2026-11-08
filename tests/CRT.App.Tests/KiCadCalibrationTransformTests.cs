@@ -302,6 +302,43 @@ public class KiCadCalibrationTransformTests
             out _));
     }
 
+    // ###########################################################################################
+    // IsTranslationOnly says when geometry moved by a delta is drawn exactly as a rebuild would draw
+    // it (2026-11-06): the box moved by a key or a drag, not resized nor flipped. Such geometry is
+    // never built again - so a scale or a flip it misses would leave traces of the wrong width.
+    // ###########################################################################################
+    [Fact]
+    public void A_box_moved_without_resizing_is_a_translation_only()
+    {
+        // The box as the calibration mode stores it, moved one pixel right by a key: its width is
+        // (right + 1) - (left + 1), not always right - left in floating point.
+        const double left = 66.51, right = 2150.49;
+        var reference = new KiCadCalibrationValues((right - left) / PixelWidth, 0.77, left, 260.0, false, false);
+        var moved = new KiCadCalibrationValues(((right + 1.0) - (left + 1.0)) / PixelWidth, 0.77, left + 1.0, 260.0, false, false);
+
+        Assert.True(KiCadCalibrationTransform.TryBuildDeltaTransform(reference, moved, WorldBounds, ContentRect, PixelWidth, PixelHeight, out var delta));
+        Assert.True(KiCadCalibrationTransform.IsTranslationOnly(delta));
+        Assert.True(KiCadCalibrationTransform.IsTranslationOnly(Matrix.Identity));
+    }
+
+    [Fact]
+    public void A_box_resized_or_flipped_is_not_a_translation_only()
+    {
+        var reference = new KiCadCalibrationValues(0.82, 0.77, 120.0, 260.0, false, false);
+
+        foreach (var current in new[]
+                 {
+                     new KiCadCalibrationValues(0.82 + (1.0 / PixelWidth), 0.77, 120.0, 260.0, false, false),
+                     new KiCadCalibrationValues(0.82, 0.77 - (1.0 / PixelHeight), 120.0, 260.0, false, false),
+                     new KiCadCalibrationValues(0.82, 0.77, 120.0, 260.0, true, false),
+                     new KiCadCalibrationValues(0.82, 0.77, 120.0, 260.0, false, true),
+                 })
+        {
+            Assert.True(KiCadCalibrationTransform.TryBuildDeltaTransform(reference, current, WorldBounds, ContentRect, PixelWidth, PixelHeight, out var delta));
+            Assert.False(KiCadCalibrationTransform.IsTranslationOnly(delta));
+        }
+    }
+
     [Fact]
     public void A_missing_image_size_falls_back_to_an_unscaled_offset()
     {

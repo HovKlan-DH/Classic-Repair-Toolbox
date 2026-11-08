@@ -53,6 +53,9 @@ namespace CRT
         private bool IsNarrowed =>
             this.thisFilter != BoardTableRowKinds.None || this.thisSearch.IsActive || this.thisPart != BoardTableSheetPart.Whole;
 
+        // A pill picked or a search applied - what a host's own pages, which neither looks in, are left out by.
+        internal bool IsFilteredByPillsOrSearch => this.thisFilter != BoardTableRowKinds.None || this.thisSearch.IsActive;
+
         // The search applied - set to apply one at once (the box shows it too).
         internal string SearchText
         {
@@ -97,6 +100,14 @@ namespace CRT
 
         private void OnSearchBoxTextChanged(object? sender, TextChangedEventArgs e)
         {
+            // The replace bar's "Find" is the filter while it is open; the box emptied as it opened says nothing then -
+            // Avalonia posts TextChanged, so it arrives after the bar's own filter was applied, and would replace it.
+            if (this.ReplaceBar.IsVisible)
+            {
+                this.thisSearchTimer?.Stop();
+                return;
+            }
+
             string text = this.SearchBox.Text ?? string.Empty;
             this.ClearSearchButton.IsVisible = text.Length > 0;
 
@@ -124,43 +135,134 @@ namespace CRT
             this.SearchBox.Focus();
         }
 
+        // ###########################################################################################
         // Applies `text` as the search: which rows show, which tabs show (moving to a sheet with a
-        // match when the one on screen has none, as a picked pill does), and the marks.
-        private void ApplySearch(string? text)
+        // match when the one on screen has none, as a picked pill does), and the marks. `literal`: the
+        // replace bar's "Find" (BoardTableEditor.BlockEdits.cs) - the text as typed, no grammar
+        // (BoardTableSearch.Literal), the search box itself empty and off meanwhile. `stayOnSheet`: the
+        // sheet and part shown stay, whatever they show - "Find" looked for again in the columns ticked
+        // for them, which are theirs alone (code review, 2026-11-08).
+        // ###########################################################################################
+        private void ApplySearch(string? text, bool literal = false, bool stayOnSheet = false)
         {
             this.thisSearchTimer?.Stop();
 
             text ??= string.Empty;
             this.thisSearchText = text;
-            this.ClearSearchButton.IsVisible = text.Length > 0;
+            this.thisSearchIsLiteral = literal;
+            this.ClearSearchButton.IsVisible = !literal && text.Length > 0;
 
             this.TableGrid.CommitEdit();
-            this.thisSearch = this.thisDocument is null ? BoardTableSearch.None : BoardTableSearch.For(this.thisDocument, text);
+            this.thisSearch = this.SearchOver(this.thisDocument, text);
 
             this.UpdateRowsDraggable();
             this.ApplyViewFilter();
-            this.ShowASheetWithRowsShown();
+
+            this.thisApplyingSearch = true;
+
+            try
+            {
+                if (!stayOnSheet)
+                {
+                    this.ShowASheetWithRowsShown();
+                }
+            }
+            finally
+            {
+                this.thisApplyingSearch = false;
+            }
+
+            // The replace bar's "Find" looks in the columns ticked for the sheet and part SHOWN (ColumnsFindLooksIn): moved
+            // to another to show its rows, it is worked out once more for that one - once, so a "Find" finding nothing
+            // there cannot send the table on round the sheets.
+            if (literal && !this.IsFindTakenForWhatIsShown)
+            {
+                this.thisSearch = this.SearchOver(this.thisDocument, text);
+                this.ApplyViewFilter();
+            }
+
             this.UpdateSheetTabs();
             this.UpdateToolbar();
             this.UpdateSearchMarks();
         }
 
+        // Whether the search applied is the replace bar's "Find" - the text as typed.
+        private bool thisSearchIsLiteral;
+
+        // While a search is applied - a sheet it shows is no reason to apply "Find" again (FollowSheetInReplaceFind).
+        private bool thisApplyingSearch;
+
+        // The sheet and part shown when the replace bar's "Find" was last worked out - its columns are theirs.
+        private (BoardTableSheet? Sheet, BoardTableSheetPart Part) thisFindTakenFor;
+
+        private bool IsFindTakenForWhatIsShown =>
+            ReferenceEquals(this.thisFindTakenFor.Sheet, this.thisCurrentSheet) && this.thisFindTakenFor.Part == this.thisPart;
+
+        private BoardTableSearch SearchOver(BoardTableDocument? document, string text)
+        {
+            if (document is null)
+            {
+                return BoardTableSearch.None;
+            }
+
+            if (!this.thisSearchIsLiteral)
+            {
+                return BoardTableSearch.For(document, text);
+            }
+
+            this.thisFindTakenFor = (this.thisCurrentSheet, this.thisPart);
+            return BoardTableSearch.Literal(document, text, this.ColumnsFindLooksIn(document));
+        }
+
+        // ###########################################################################################
+        // *** ANOTHER SHEET OR PART SHOWN WHILE THE REPLACE BAR IS OPEN: "FIND" LOOKS AGAIN, IN ITS COLUMNS (code review,
+        // 2026-11-07). *** The columns are ticked per sheet and part, and "Find" took them as it was typed: with
+        // "Oscilloscope baseline" picked after "Pictures", the rows shown and marked still went by the pictures' ticks while
+        // "Replace all" and its count went by the baselines' - what was marked was not what would be replaced. Called by
+        // SelectSheet, which every sheet and part shown goes through.
+        // ###########################################################################################
+        private void FollowSheetInReplaceFind()
+        {
+            if (!this.thisApplyingSearch && this.ReplaceBar.IsVisible && this.thisSearchIsLiteral && !this.IsFindTakenForWhatIsShown)
+            {
+                this.ApplyReplaceFind();
+            }
+        }
+
         // The search worked out afresh on the document just attached - its rows are new objects.
         private void ReapplySearchTo(BoardTableDocument document) =>
-            this.thisSearch = BoardTableSearch.For(document, this.thisSearchText);
+            this.thisSearch = this.SearchOver(document, this.thisSearchText);
 
         // ###########################################################################################
         // The search handed to every cell's text (BoardTableCellText.Marks, inherited from the grid),
         // which marks what it finds in its own row - a new one each time, so every cell looks again.
-        // None while nothing is searched for.
+        // None while nothing is searched for. The replace bar's "Find" carries what "Replace with" holds:
+        // the cells draw it in place of what it replaces, in the replacement's own colors (owner request,
+        // 2026-11-07) - with nothing typed there, what "Find" found is marked as the search box marks.
         // ###########################################################################################
         private void UpdateSearchMarks()
         {
-            BoardTableCellText.SetMarks(
-                this.TableGrid,
-                this.thisSearch.IsActive
-                    ? new BoardTableSearchMarks(this.thisSearch, this.thisSearchHitBackground, this.thisSearchHitForeground)
-                    : null);
+            BoardTableSearchMarks? marks = null;
+
+            if (this.thisSearch.IsActive)
+            {
+                marks = new BoardTableSearchMarks(this.thisSearch, this.thisSearchHitBackground, this.thisSearchHitForeground)
+                {
+                    IsLiteral = this.thisSearchIsLiteral,
+                };
+
+                if (this.thisSearchIsLiteral && this.ReplaceWithBox.Text is { Length: > 0 } replacement)
+                {
+                    marks = marks with
+                    {
+                        Replacement = replacement,
+                        ReplacementBackground = ThemeResources.Resolve<IBrush>("BoardTable_ReplacePreview_Bg", Brushes.LightGreen),
+                        ReplacementForeground = ThemeResources.Resolve<IBrush>("BoardTable_ReplacePreview_Fg", Brushes.Black),
+                    };
+                }
+            }
+
+            BoardTableCellText.SetMarks(this.TableGrid, marks);
         }
     }
 }

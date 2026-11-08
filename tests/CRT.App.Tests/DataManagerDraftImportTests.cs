@@ -77,6 +77,29 @@ public sealed class DataManagerDraftImportTests : IDisposable
         Assert.Equal("310378 Open128", status.NewBoard.BoardName);
     }
 
+    // ###########################################################################################
+    // *** A FOLDER THAT CANNOT BE TAKEN IN IS AN ERROR SAID ONCE, NOT AT EVERY LOAD OF THE LIST (code review, 2026-11-08).
+    // *** The list is loaded at launch and at every data check, and each load said it again: the "Something went wrong"
+    // card came back as soon as it was closed, counting up - as a damaged workbook once did (UnreadableFiles).
+    // ###########################################################################################
+    [Fact]
+    public void A_folder_that_cannot_be_taken_in_is_said_once_however_often_the_list_is_loaded()
+    {
+        string main = MainFiles.Write(this.DataRoot, C64);
+        string leftover = Path.Combine(this.DraftsRoot, "Commodore", "VIC-20", "Leftover");
+        Directory.CreateDirectory(leftover);
+        File.WriteAllText(Path.Combine(leftover, "notes.txt"), "nothing to take in");
+
+        using LoggedLines logged = LoggedLines.Watch();
+
+        DataManager.LoadFrom(this.DataRoot, main);
+        DataManager.LoadFrom(this.DataRoot, main);
+        DataManager.LoadFrom(this.DataRoot, main);
+
+        Assert.Equal(1, logged.Count(LogCategory.CRIT, "was not taken in as a draft"));
+        Assert.Equal(2, logged.Count(LogCategory.DBUG, "was not taken in as a draft"));
+    }
+
     [Fact]
     public void A_hand_placed_board_nothing_lists_appears_as_a_new_board_of_its_own()
     {

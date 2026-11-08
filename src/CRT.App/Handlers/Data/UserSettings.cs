@@ -42,6 +42,24 @@ namespace Handlers.DataHandling
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public bool? MultipleInstancesForComponentPopup { get; set; }
 
+        // The pinout in a window of its own beside the component popup (owner request, 2026-11-07), and that window's
+        // size and place - one for every popup, board and component.
+        [JsonPropertyName("detachPinoutInComponentPopup")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public bool? DetachPinoutInComponentPopup { get; set; }
+
+        [JsonPropertyName("hasPinoutWindowLayout")] public bool HasPinoutWindowLayout { get; set; } = false;
+        [JsonPropertyName("pinoutWindowWidth")] public double PinoutWindowWidth { get; set; } = 870.0;
+        [JsonPropertyName("pinoutWindowHeight")] public double PinoutWindowHeight { get; set; } = 960.0;
+        [JsonPropertyName("pinoutWindowX")] public int PinoutWindowX { get; set; } = 0;
+        [JsonPropertyName("pinoutWindowY")] public int PinoutWindowY { get; set; } = 0;
+
+        // The time of the last fatal crash report the "CRT closed unexpectedly" card has said (CrashReports), as the crash
+        // file writes it - so each is said once.
+        [JsonPropertyName("lastCrashReportSaid")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? LastCrashReportSaid { get; set; }
+
         [JsonPropertyName("detachSchematicsThumbnails")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public bool? DetachSchematicsThumbnails { get; set; }
@@ -109,6 +127,8 @@ namespace Handlers.DataHandling
 
         [JsonPropertyName("workbooksScope")] public string WorkbooksScope { get; set; } = "CurrentBoard";
 
+        [JsonPropertyName("deviceSorting")] public string DeviceSorting { get; set; } = OwnedDeviceSorting.ByName;
+
         [JsonPropertyName("worklogCurrencyCode")] public string WorklogCurrencyCode { get; set; } = WorklogCurrency.DefaultCode;
 
         [JsonPropertyName("worklogCommentsSortNewestFirst")]
@@ -122,6 +142,11 @@ namespace Handlers.DataHandling
         [JsonPropertyName("worklogShowEntriesChecked")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public bool? WorklogShowEntriesChecked { get; set; }
+
+        // The worklog bar's device filter - null: "Show workbooks for all devices" (2026-11-06).
+        [JsonPropertyName("worklogBarDeviceId")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public int? WorklogBarDeviceId { get; set; }
 
         // "Write a detailed log" since contributor mode went (slice 6) - the stored name stays.
         [JsonPropertyName("contributorMode")]
@@ -532,7 +557,8 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // Returns true when "Write a detailed log" is on (stored as contributor mode was - see DetailedLog).
+        // Returns true when the stored "contributorMode" is on - "Write a detailed log" was it, and CRT 3.x, reading the same
+        // file, still goes by it and the two settings it came from (SyncDetailedLogLinkedSettings).
         // ###########################################################################################
         private static bool IsDetailedLogEnabled()
         {
@@ -558,7 +584,9 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // Keeps the removed legacy settings synchronized with the detailed log.
+        // Keeps the removed legacy settings synchronized with the stored flag - an earlier CRT reading the same file
+        // finds them as it left them. The log holds its debug lines whatever is stored (owner request, 2026-11-07:
+        // "remove this checkbox and then always write this detailed logfile").
         // ###########################################################################################
         private static void SyncDetailedLogLinkedSettings()
         {
@@ -566,7 +594,6 @@ namespace Handlers.DataHandling
 
             _data.ValidateDataOnLaunch = isEnabled;
             _data.DebugLogging = isEnabled;
-            Logger.IsDebugEnabled = isEnabled;
         }
 
         private static readonly HashSet<string> UserThemeColorResourceKeys = new(StringComparer.Ordinal)
@@ -728,30 +755,6 @@ namespace Handlers.DataHandling
             }
         }
 
-        public static bool ValidateDataOnLaunch
-        {
-            get => IsDetailedLogEnabled();
-            set
-            {
-                _data.ContributorMode = value;
-                SyncDetailedLogLinkedSettings();
-                Logger.Info($"Setting changed: [ValidateDataOnLaunch] [{value}]");
-                Save();
-            }
-        }
-
-        public static bool DebugLogging
-        {
-            get => IsDetailedLogEnabled();
-            set
-            {
-                _data.ContributorMode = value;
-                SyncDetailedLogLinkedSettings();
-                Logger.Info($"Setting changed: [DebugLogging] [{value}]");
-                Save();
-            }
-        }
-
         public static bool MultipleInstancesForComponentPopup
         {
             get => _data.MultipleInstancesForComponentPopup ?? false;
@@ -761,6 +764,64 @@ namespace Handlers.DataHandling
                 Logger.Info($"Setting changed: [MultipleInstancesForComponentPopup] [{value}]");
                 Save();
             }
+        }
+
+        // ###########################################################################################
+        // "Detach pinout image in component info popup" (owner request, 2026-11-07): the pinout - drawing and pins - in a
+        // window of its own beside the popup. Raises DetachPinoutChanged, so an open popup follows at once.
+        // ###########################################################################################
+        public static event Action? DetachPinoutChanged;
+
+        // The last fatal crash report said at launch (Main.Problems.cs) - CrashLogger's time text.
+        public static string? LastCrashReportSaid
+        {
+            get => _data.LastCrashReportSaid;
+            set
+            {
+                if (string.Equals(_data.LastCrashReportSaid, value, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
+                _data.LastCrashReportSaid = value;
+                Logger.Info($"Setting changed: [LastCrashReportSaid] [{value}]");
+                Save();
+            }
+        }
+
+        public static bool DetachPinoutInComponentPopup
+        {
+            get => _data.DetachPinoutInComponentPopup ?? false;
+            set
+            {
+                if ((_data.DetachPinoutInComponentPopup ?? false) == value)
+                {
+                    return;
+                }
+
+                _data.DetachPinoutInComponentPopup = value;
+                Logger.Info($"Setting changed: [DetachPinoutInComponentPopup] [{value}]");
+                Save();
+                DetachPinoutChanged?.Invoke();
+            }
+        }
+
+        // The pinout window's size and place, one for all - read-only; written by SavePinoutWindowLayout.
+        public static bool HasPinoutWindowLayout => _data.HasPinoutWindowLayout;
+        public static double PinoutWindowWidth => _data.PinoutWindowWidth;
+        public static double PinoutWindowHeight => _data.PinoutWindowHeight;
+        public static int PinoutWindowX => _data.PinoutWindowX;
+        public static int PinoutWindowY => _data.PinoutWindowY;
+
+        public static void SavePinoutWindowLayout(double width, double height, int x, int y)
+        {
+            _data.HasPinoutWindowLayout = true;
+            _data.PinoutWindowWidth = width;
+            _data.PinoutWindowHeight = height;
+            _data.PinoutWindowX = x;
+            _data.PinoutWindowY = y;
+            Logger.Info($"Setting changed: [PinoutWindowLayout] [{width:F0}x{height:F0}] [Position: {x},{y}]");
+            Save();
         }
 
         public static bool DetachSchematicsThumbnails
@@ -984,21 +1045,17 @@ namespace Handlers.DataHandling
         public static event Action? WorkbooksScopeChanged;
 
         // ###########################################################################################
-        // Which workbooks the Workbooks tab's left-hand list shows: every workbook on every board
-        // ("AllBoards"), or only the ones for the currently selected board ("CurrentBoard", the
-        // original and default behaviour). Set from the Configuration tab's radio group below
-        // "Enable Worklog".
+        // Which devices and workbooks the "My Devices" tab lists (MyDevicesScope): every one
+        // ("AllBoards"), those of the hardware shown ("CurrentHardware", 2026-11-06), or those of the
+        // board shown ("CurrentBoard", the original and default behaviour). Set from the
+        // Configuration tab's radio group below "Enable Worklog".
         // ###########################################################################################
         public static string WorkbooksScope
         {
-            get => string.Equals(_data.WorkbooksScope, "AllBoards", StringComparison.OrdinalIgnoreCase)
-                ? "AllBoards"
-                : "CurrentBoard";
+            get => MyDevicesScope.Normalise(_data.WorkbooksScope);
             set
             {
-                string normalized = string.Equals(value, "AllBoards", StringComparison.OrdinalIgnoreCase)
-                    ? "AllBoards"
-                    : "CurrentBoard";
+                string normalized = MyDevicesScope.Normalise(value);
 
                 if (string.Equals(_data.WorkbooksScope, normalized, StringComparison.Ordinal))
                     return;
@@ -1007,6 +1064,30 @@ namespace Handlers.DataHandling
                 Logger.Info($"Setting changed: [WorkbooksScope] [{normalized}]");
                 Save();
                 WorkbooksScopeChanged?.Invoke();
+            }
+        }
+
+        public static event Action? DeviceSortingChanged;
+
+        // ###########################################################################################
+        // The order "My devices" and the worklog bar's "Device" drop-down list the devices in (OwnedDeviceSorting) - by
+        // name (the default), by hardware, board and name, or as dragged by hand. Set from the Configuration tab's
+        // "Sorting of devices" (owner request, 2026-11-07); raises DeviceSortingChanged, so the lists follow at once.
+        // ###########################################################################################
+        public static string DeviceSorting
+        {
+            get => OwnedDeviceSorting.Normalise(_data.DeviceSorting);
+            set
+            {
+                string normalized = OwnedDeviceSorting.Normalise(value);
+
+                if (string.Equals(_data.DeviceSorting, normalized, StringComparison.Ordinal))
+                    return;
+
+                _data.DeviceSorting = normalized;
+                Logger.Info($"Setting changed: [DeviceSorting] [{normalized}]");
+                Save();
+                DeviceSortingChanged?.Invoke();
             }
         }
 
@@ -1103,19 +1184,21 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // "Write a detailed log" on the Configuration tab (CRT 4.0 step 2, slice 6): the debug lines in
-        // the log, and every board's data checked at launch into it - what contributor mode switched on
-        // besides its menu, before the mode went. Kept under the name already STORED, "contributorMode",
-        // so whoever had the mode on keeps the detailed log (stored names keep their spelling).
+        // The device the worklog bar's "Device" drop-down narrows its "Workbook" drop-down to - null for
+        // "Show workbooks for all devices", which it is until something else is picked (owner request,
+        // 2026-11-06: "per default if never set before"). An id no device has any more reads as all
+        // (Main.FillBarPickers).
         // ###########################################################################################
-        public static bool DetailedLog
+        public static int? WorklogBarDeviceId
         {
-            get => _data.ContributorMode ?? false;
+            get => _data.WorklogBarDeviceId;
             set
             {
-                _data.ContributorMode = value;
-                SyncDetailedLogLinkedSettings();
-                Logger.Info($"Setting changed: [DetailedLog] [{value}]");
+                if (_data.WorklogBarDeviceId == value)
+                    return;
+
+                _data.WorklogBarDeviceId = value;
+                Logger.Info($"Setting changed: [WorklogBarDeviceId] [{(value is { } id ? $"#{id}" : "all devices")}]");
                 Save();
             }
         }
@@ -1793,6 +1876,18 @@ namespace Handlers.DataHandling
                 Logger.Info($"    CPU architecture is [{archDescription}]");
                 Logger.Info($"    Using self-contained .NET Runtime [{RuntimeInformation.FrameworkDescription}]");
 
+                // What a problem report needs besides (owner request, 2026-11-07: "please add more details, which could be
+                // relevant to know when a user has any errors or issues"): how numbers are written here - a "0,3" read as
+                // three was one - the machine's size, where CRT runs from and was started with, and the service it
+                // contributes to.
+                var culture = System.Globalization.CultureInfo.CurrentCulture;
+                Logger.Info($"    Language and number format [{culture.Name}] - decimal separator [{culture.NumberFormat.NumberDecimalSeparator}], user interface [{System.Globalization.CultureInfo.CurrentUICulture.Name}]");
+                Logger.Info($"    Processors [{Environment.ProcessorCount}], memory available to CRT [{GC.GetGCMemoryInfo().TotalAvailableMemoryBytes / (1024 * 1024)} MB]");
+                Logger.Info($"    Program folder [{AppContext.BaseDirectory}]");
+                Logger.Info($"    Started with [{string.Join(" ", Environment.GetCommandLineArgs().Skip(1))}]");
+                Logger.Info($"    Settings file [{_settingsFilePath}]");
+                Logger.Info($"    Contribution service [{CRT.AppConfig.ContributionServerRootUrl}]{(CRT.AppConfig.UsesTestServer ? " - the test instance" : string.Empty)}");
+
                 // Now evaluate settings
                 if (!File.Exists(_settingsFilePath))
                 {
@@ -1836,26 +1931,27 @@ namespace Handlers.DataHandling
                 Logger.Info($"        [EnableMaintainerTab] [{EnableMaintainerTab}]");
                 Logger.Info($"        [ShowMaintainerTabOnlyWhenWorkWaiting] [{ShowMaintainerTabOnlyWhenWorkWaiting}]");
                 Logger.Info($"        [WorkbooksScope] [{WorkbooksScope}]");
+                Logger.Info($"        [DeviceSorting] [{DeviceSorting}]");
                 Logger.Info($"        [WorklogCurrencyCode] [{WorklogCurrencyCode}]");
                 Logger.Info($"        [WorklogCommentsSortNewestFirst] [{WorklogCommentsSortNewestFirst}]");
                 Logger.Info($"        [WorklogWorkDoneSortNewestFirst] [{WorklogWorkDoneSortNewestFirst}]");
                 Logger.Info($"        [WorklogShowEntriesChecked] [{WorklogShowEntriesChecked}]");
+                Logger.Info($"        [WorklogBarDeviceId] [{(WorklogBarDeviceId is { } barDevice ? $"#{barDevice}" : "all devices")}]");
                 Logger.Info($"        [CheckDataOnLaunch] [{CheckDataOnLaunch}]");
                 Logger.Info($"        [DownloadDataFromTestSource] [{DownloadDataFromTestSource}]");
                 Logger.Info($"        [AllowDeletionOfOrphanAndNonUsedFiles] [{AllowDeletionOfOrphanAndNonUsedFiles}]");
                 Logger.Info($"        [CheckVersionOnLaunch] [{CheckVersionOnLaunch}]");
                 Logger.Info($"        [AllowBetaNotification] [{ShowDevelopmentVersionNotification}]");
                 Logger.Info($"        [AllowAlphaVersionNotification] [{AllowAlphaVersionNotification}]");
-                Logger.Info($"        [ValidateDataOnLaunch] [{ValidateDataOnLaunch}]");
-                Logger.Info($"        [DebugLogging] [{DebugLogging}]");
                 Logger.Info($"    Various other settings:");
                 Logger.Info($"        [BlinkSelected] [{BlinkSelected}]");
                 Logger.Info($"        [ComponentInfoWindowLayout] [{_data.ComponentInfoWindowState}] [{_data.ComponentInfoWindowWidth:F0}x{_data.ComponentInfoWindowHeight:F0}] [LeftRatio: {_data.ComponentInfoWindowLeftColumnRatio:F3}] [ThumbnailHeight: {_data.ComponentInfoWindowThumbnailRowHeight:F1}] [Position: {_data.ComponentInfoWindowX},{_data.ComponentInfoWindowY}]");
+                Logger.Info($"        [DetachPinoutInComponentPopup] [{DetachPinoutInComponentPopup}]");
+                Logger.Info($"        [PinoutWindowLayout] [{_data.PinoutWindowWidth:F0}x{_data.PinoutWindowHeight:F0}] [Position: {_data.PinoutWindowX},{_data.PinoutWindowY}]");
                 Logger.Info($"        [SchematicsThumbnailsWindowLayout] [{_data.SchematicsThumbnailsWindowState}] [{_data.SchematicsThumbnailsWindowWidth:F0}x{_data.SchematicsThumbnailsWindowHeight:F0}] [Position: {_data.SchematicsThumbnailsWindowX},{_data.SchematicsThumbnailsWindowY}]");
                 Logger.Info($"        [ComponentInfoKeyboardHandling] [{ComponentInfoKeyboardHandling}]");
                 Logger.Info($"        [ComponentInfoScrollAction] [{ComponentInfoScrollAction}]");
                 Logger.Info($"        [ContactEmail] [{(string.IsNullOrWhiteSpace(ContactEmail) ? "empty" : "set")}]");
-                Logger.Info($"        [DetailedLog] [{DetailedLog}]");
                 Logger.Info($"        [InteractiveCadTraceHoverMode] [{InteractiveCadTraceHoverMode}]");
                 Logger.Info($"        [LeftPanelWidth] [{_data.LeftPanelWidth:F1}]");
                 Logger.Info($"        [WorkbooksLeftPanelWidth] [{_data.WorkbooksLeftPanelWidth:F1}]");

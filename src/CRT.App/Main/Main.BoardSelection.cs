@@ -820,12 +820,12 @@ namespace CRT
                 return (entry.HardwareName, entry.BoardName);
             }
 
-            // "Hardware|Board" is the key's own shape - see FindEntryForBoardKey, which builds it.
-            int separator = boardKey?.IndexOf('|') ?? -1;
+            // "Hardware|Board" is the key's own shape - see FindEntryForBoardKey - split by BoardKeyParts, the one rule.
+            (string hardware, string board) = BoardKeyParts.Split(boardKey);
 
-            if (separator > 0 && separator < boardKey!.Length - 1)
+            if (hardware.Length > 0 && board.Length > 0)
             {
-                return (boardKey[..separator], boardKey[(separator + 1)..]);
+                return (hardware, board);
             }
 
             // Not a key of the expected shape at all (blank, or hand-edited): show whatever it is on
@@ -878,7 +878,8 @@ namespace CRT
                 .Select(link => new ResourceItem(
                     link.Category,
                     link.Name,
-                    link.Url));
+                    link.Url,
+                    note: link.Note));
 
             this.TabResources.LoadData(
                 Main.ResourceFilesOf(boardData, this._localRegion, dataRoot, draftBoardFolder, entry.ExcelDataFile, new BoardFileListings()),
@@ -913,7 +914,8 @@ namespace CRT
                             (string.IsNullOrWhiteSpace(file.File)
                                 ? string.Empty
                                 : DraftFileResolver.PathUnderDataRoot(dataRoot, file.File)),
-                        resolved?.Root);
+                        resolved?.Root,
+                        file.Note);
                 })
                 .ToList();
 

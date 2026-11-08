@@ -1,5 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:CRT"
         x:Class="CRT.WorklogPhotoViewerWindow"
         Title="Photo"
         Width="900"
@@ -12,12 +13,20 @@
 
 	<Grid RowDefinitions="Auto,*,Auto" Margin="14">
 
-		<TextBlock x:Name="FileNameText"
-				   Grid.Row="0"
-				   FontSize="14"
-				   FontWeight="Bold"
-				   TextTrimming="CharacterEllipsis"
-				   Margin="0,0,0,10" />
+		<!-- The file's name, and beside it how the photo is moved and zoomed - CRT's one way (PanGesture). -->
+		<Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,10">
+			<TextBlock x:Name="FileNameText"
+					   FontSize="14"
+					   FontWeight="Bold"
+					   TextTrimming="CharacterEllipsis"
+					   VerticalAlignment="Center" />
+			<TextBlock x:Name="ZoomHintText"
+					   Grid.Column="1"
+					   FontSize="11"
+					   Opacity="0.7"
+					   VerticalAlignment="Center"
+					   Margin="12,0,0,0" />
+		</Grid>
 
 		<Border Grid.Row="1"
 				Background="{DynamicResource Form_Bg}"
@@ -26,7 +35,9 @@
 				CornerRadius="3"
 				Padding="6">
 			<Grid>
-				<Image x:Name="PhotoImage" Stretch="Uniform" />
+				<!-- Shown whole; the wheel zooms in at the pointer, a drag moves it, a double-click shows it
+				     whole again (owner request, 2026-11-06) - PhotoZoomView. -->
+				<local:PhotoZoomView x:Name="PhotoImage" />
 
 				<!-- Shown instead of the image when the file is missing or will not decode, so the
 				     viewer explains itself rather than opening as an empty frame. -->

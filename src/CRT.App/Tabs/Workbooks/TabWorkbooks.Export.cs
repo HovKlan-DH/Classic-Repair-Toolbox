@@ -127,11 +127,10 @@ namespace CRT
             }
             catch (Exception ex)
             {
-                // Logged rather than swallowed, and deliberately not turned into a dialog: the app
-                // has no error-modal convention, and every other failure on this tab reports the
-                // same way. The user sees no file appear, which with the log line is enough to
-                // diagnose. A missing file is honest; a silent partial write would not be.
-                Logger.Warning($"Failed to export workbook [#{workbook.Id}]: [{ex.Message}]");
+                // No dialog - the app has no error-modal convention - but an error, said on Main's "Something
+                // went wrong" card (owner request, 2026-11-07: every error in the UI): no file appearing was
+                // all a person saw. A missing file is honest; a silent partial write would not be.
+                Logger.Critical($"Failed to export workbook [#{workbook.Id}]: [{ex.Message}]");
             }
             finally
             {

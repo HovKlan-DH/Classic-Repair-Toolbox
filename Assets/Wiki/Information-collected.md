@@ -59,7 +59,7 @@ The Submit dialog offers to credit you for your work. A credit you tick goes int
 
 ## When you send in an oscilloscope model
 
-**Submit this model** on the "Oscilloscope" tab sends:
+**Submit**, under "Submit this model for everybody" on the "Oscilloscope" tab, sends:
 
 - The model: its vendor, its name and every command and setting of it
 - Your email address (your account's, when you are signed in on the "Maintainer" tab), so you are told whether it was published

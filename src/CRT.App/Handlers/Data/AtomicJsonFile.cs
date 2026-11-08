@@ -20,8 +20,13 @@ namespace Handlers.DataHandling
         // Serializes value to path via a temp-file swap. Returns false (and logs) when nothing
         // reached disk, so callers can tell the user their data was not saved rather than reporting
         // a success that never happened. The temp file is cleaned up on failure.
+        //
+        // A failure is an ERROR (the "Something went wrong" card) - somebody's settings, worklog or
+        // device not saved - unless the caller says the file needs nothing done when it is not
+        // saved (`needsNothingDone`, code review 2026-11-07: a rebuildable cache, the local checksum
+        // cache, held for a moment by a virus scanner, raised the card), which is a warning, only listed.
         // ###########################################################################################
-        public static bool Write<T>(string path, T value, JsonSerializerOptions options, string whatFailed)
+        public static bool Write<T>(string path, T value, JsonSerializerOptions options, string whatFailed, bool needsNothingDone = false)
         {
             if (string.IsNullOrEmpty(path))
             {
@@ -49,7 +54,16 @@ namespace Handlers.DataHandling
             }
             catch (Exception ex)
             {
-                Logger.Warning($"Failed to save {whatFailed}: [{path}] [{ex.Message}]");
+                string message = $"Failed to save {whatFailed}: [{path}] [{ex.Message}]";
+
+                if (needsNothingDone)
+                {
+                    Logger.Warning(message);
+                }
+                else
+                {
+                    Logger.Critical(message);
+                }
 
                 // Clean up the temp file if it was left behind. Best-effort: the real failure is
                 // already logged above, and failing to delete a leftover temp file is not itself

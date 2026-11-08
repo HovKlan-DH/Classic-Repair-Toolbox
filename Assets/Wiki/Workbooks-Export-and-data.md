@@ -6,7 +6,7 @@ Exporting a repair, where the files live, and deleting.
 
 ## Export
 
-Two buttons in the "Workbooks" tab header, acting on the selected workbook.
+Two buttons in the "My Devices" tab header, acting on the selected workbook.
 
 | | PDF | ZIP |
 | --- | --- | --- |
@@ -26,7 +26,7 @@ The hardware and board are the names in the two drop-downs ("Commodore 64" and "
 
 The workbook description is deliberately not in the file name - it often holds personal details, on a file you may be about to send to someone.
 
-The file is not opened after export - you get it where you saved it. If an export fails, no file appears and no message is shown - the reason is written to the log ("Configuration" tab -> **Open logs and settings folder**).
+The file is not opened after export - you get it where you saved it. If an export fails, no file appears and a "Something went wrong" card says why; the "Configuration" tab's **Show errors and warnings** lists it too.
 
 ### What the PDF contains
 
@@ -59,7 +59,7 @@ Everything is on your own machine, in a `Workbooks` folder next to your settings
 * Linux: `~/.local/share/Classic-Repair-Toolbox/Workbooks`
 * macOS: `~/Library/Application Support/Classic-Repair-Toolbox/Workbooks`
 
-The "Configuration" tab has a button `Open workbooks folder` that takes you straight there.
+The "Configuration" tab has a button `Open workbooks and devices folder` that takes you straight there.
 
 One folder per workbook, holding everything belonging to it:
 

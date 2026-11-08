@@ -7,8 +7,8 @@ namespace Handlers.DataHandling
 {
     // ###########################################################################################
     // THE CONTENT OF A DEVICE'S HISTORY EXPORT (CRT 4.0 step 4, slice 4d - the plan: "Export history
-    // puts every repair into one PDF or ZIP"): what the device is, the changes made to it, its notes
-    // and photos, and every repair as its own workbook document - with no idea how it is drawn, as
+    // puts every repair into one PDF or ZIP"): what the device is, its notes, comments and photos, and every
+    // repair as its own workbook document - with no idea how it is drawn, as
     // WorkbookExportModel is for one workbook. WorkbookPdfExporter.History.cs paints it.
     //
     // The repairs come OLDEST FIRST: a history reads as it happened (the device's page lists them
@@ -31,12 +31,17 @@ namespace Handlers.DataHandling
             // "Commodore 64 - 250407 - PAL - serial CA123456" - the device page's line under its name.
             public string DetailLine { get; init; } = string.Empty;
 
-            // "Where it came from: ..." - empty when it says nothing.
-            public string OriginLine { get; init; } = string.Empty;
+            // "Condition: 3 of 5 stars" - its stars in words, as a PDF font may have no star.
+            public string ConditionLine { get; init; } = string.Empty;
 
-            public string Notes { get; init; } = string.Empty;
+            // Its description - empty when it has none. Its line breaks kept, as "\n".
+            public string Description { get; init; } = string.Empty;
 
-            public IReadOnlyList<Change> Changes { get; init; } = Array.Empty<Change>();
+            // Its comments, oldest first - a history reads as it happened.
+            public IReadOnlyList<Comment> Comments { get; init; } = Array.Empty<Comment>();
+
+            // Its links of interest, in their order - one with no address left out.
+            public IReadOnlyList<WorklogLinkRecord> Links { get; init; } = Array.Empty<WorklogLinkRecord>();
 
             public IReadOnlyList<WorkbookExportModel.Attachment> Photos { get; init; } = Array.Empty<WorkbookExportModel.Attachment>();
 
@@ -51,8 +56,8 @@ namespace Handlers.DataHandling
             public string CurrencyCode { get; init; } = WorklogCurrency.DefaultCode;
         }
 
-        // One change made to the device, as the history lists it.
-        public sealed record Change(DateTime Date, string Text);
+        // One comment of the device: when, as the page shows it, and what - its line breaks as "\n".
+        public sealed record Comment(string DateText, string Text);
 
         // ###########################################################################################
         // The history of `device`: `repairs` are its workbooks' documents (each built as a workbook
@@ -77,13 +82,14 @@ namespace Handlers.DataHandling
                 Name = device.Name.Trim(),
                 Status = OwnedDeviceStatus.Normalise(device.Status),
                 DetailLine = OwnedDeviceWording.DetailLine(device, boardText),
-                OriginLine = OwnedDeviceWording.OriginLine(device.Origin),
-                Notes = device.Notes?.Trim() ?? string.Empty,
-                Changes = device.Changes
-                    .Where(change => !string.IsNullOrWhiteSpace(change.Text))
-                    .OrderBy(change => change.Date)
-                    .ThenBy(change => change.Id)
-                    .Select(change => new Change(change.Date, change.Text.Trim()))
+                ConditionLine = OwnedDeviceWording.ConditionLine(device.Condition),
+                Description = OwnedDeviceWording.DescriptionText(device.Description),
+                Links = (device.Links ?? []).Where(link => !string.IsNullOrWhiteSpace(link.Url)).ToList(),
+                Comments = (device.Comments ?? [])
+                    .Where(comment => !string.IsNullOrWhiteSpace(comment.Text))
+                    .OrderBy(comment => comment.Date)
+                    .ThenBy(comment => comment.Id)
+                    .Select(comment => new Comment(OwnedDeviceWording.CommentDate(comment.Date), RichNote.TrimMarkup(comment.Text.ReplaceLineEndings("\n"))))
                     .ToList(),
                 Photos = PhotosOf(device, photoPath),
                 Repairs = oldestFirst,

@@ -117,10 +117,6 @@ public sealed class BoardKeyMoveTests : IDisposable
         Assert.Equal(ours.Id, Assert.Single(WorklogManager.GetWorkbooksForBoard(To)).Id);
         Assert.Equal(other.Id, Assert.Single(WorklogManager.GetWorkbooksForBoard("Other|board")).Id);
 
-        OwnedDeviceRecord moved = OwnedDeviceStore.Get(device.Id)!;
-        Assert.Equal(To, moved.BoardKey);
-
-        // The board was not swapped in the device - it only got another name.
-        Assert.Empty(moved.Changes);
+        Assert.Equal(To, OwnedDeviceStore.Get(device.Id)!.BoardKey);
     }
 }

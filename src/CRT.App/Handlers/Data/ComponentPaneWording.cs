@@ -187,18 +187,6 @@ namespace Handlers.DataHandling
 
         public static string CategoryAlreadyThere(string name) => $"This board already has the category [{name.Trim()}].";
 
-        // ---- TEMPORARY: the tool that makes pinouts of oscilloscope baselines ---------------------------
-        // *** REMOVED BEFORE CRT 4.0 GOES LIVE - see BaselinePinMigration. ***
-
-        public const string MigrationNote =
-            "Temporary, until CRT 4.0 goes live: make the pins from the oscilloscope baselines - each pin's number and signal name, and the package when that is certain. \"Create pinouts for the whole board\" also fills in every component the board's KiCad data has, with the package its footprint says. What you typed stays, and \"Undo\" takes it back.";
-
-        public const string MigrationNothing = "The pins already have everything the oscilloscope baselines and the KiCad data say.";
-
-        public static string MigratedBoard(int components) =>
-            components == 1
-                ? "Made the pins of 1 component from its oscilloscope baselines and the KiCad data. \"Undo\" takes it back."
-                : $"Made the pins of {components.ToString(CultureInfo.InvariantCulture)} components from their oscilloscope baselines and the KiCad data. \"Undo\" takes them all back.";
 
         public static string ShowOnBoardTip(string label, bool marked) =>
             marked
@@ -291,6 +279,10 @@ namespace Handlers.DataHandling
 
         public static string LinkNotOpened(string? name) =>
             $"[{name?.Trim()}] has no web address CRT can open.";
+
+        // "Reveal" on a file the file manager could not be asked to show.
+        public static string FileNotRevealed(string? name) =>
+            $"[{name?.Trim()}] could not be shown in your file manager.";
 
         // What the "Draft" mark says of a component, and of a board part - neither on a new board, where
         // nothing is published to differ from (owner request, 2026-11-02).

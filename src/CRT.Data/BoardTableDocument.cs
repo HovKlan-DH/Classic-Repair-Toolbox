@@ -820,22 +820,18 @@ namespace Handlers.DataHandling
             {
                 using (this.DeferProblems())
                 {
-                    foreach (BoardTableSheet sheet in sheets.Where(sheet => this.Sheets.Contains(sheet)).Distinct())
+                    foreach (BoardTableSheet sheet in this.SheetsAmong(sheets))
                     {
                         int cellsBefore = cells;
-                        IReadOnlyList<int>? columns = columnsOf?.Invoke(sheet);
 
-                        foreach (BoardTableRow row in sheet.Rows.Where(row => !row.IsDeleted && shows(row)).ToList())
+                        foreach (BoardTableCell cell in BoardTableDocument.CellsToReplaceIn(sheet, shows, columnsOf).ToList())
                         {
-                            foreach (BoardTableCell cell in columns is null ? row.Cells : columns.Select(column => row.Cells[column]))
-                            {
-                                int count = BoardTableDocument.CountOccurrences(cell.Text, find);
+                            int count = BoardTableReplaceText.Occurrences(cell.Text, find);
 
-                                if (count > 0 && BoardTableSheet.Write(cell, cell.Text.Replace(find, replacement ?? string.Empty, StringComparison.OrdinalIgnoreCase)))
-                                {
-                                    occurrences += count;
-                                    cells++;
-                                }
+                            if (count > 0 && BoardTableSheet.Write(cell, cell.Text.Replace(find, replacement ?? string.Empty, StringComparison.OrdinalIgnoreCase)))
+                            {
+                                occurrences += count;
+                                cells++;
                             }
                         }
 
@@ -857,17 +853,52 @@ namespace Handlers.DataHandling
             return new BoardTableReplaceResult(occurrences, cells, touched.Count);
         }
 
-        // How often `find` occurs in `text`, ignoring capitals, not overlapping - as Replace counts.
-        private static int CountOccurrences(string text, string find)
+        // ###########################################################################################
+        // How many places ReplaceAll would replace, given the same arguments - the count on "Replace all" (owner request,
+        // 2026-11-07: "a counter badge for how many places it will replace"). A place whose cell the replacement would
+        // leave as it is (the same text in other capitals) is no place, as ReplaceAll counts it none.
+        // ###########################################################################################
+        public int CountReplacements(
+            string? find,
+            string? replacement,
+            IReadOnlyList<BoardTableSheet> sheets,
+            Func<BoardTableRow, bool> shows,
+            Func<BoardTableSheet, IReadOnlyList<int>>? columnsOf = null)
         {
-            int count = 0;
+            ArgumentNullException.ThrowIfNull(sheets);
+            ArgumentNullException.ThrowIfNull(shows);
 
-            for (int at = text.IndexOf(find, StringComparison.OrdinalIgnoreCase); at >= 0; at = text.IndexOf(find, at + find.Length, StringComparison.OrdinalIgnoreCase))
+            if (string.IsNullOrEmpty(find))
             {
-                count++;
+                return 0;
             }
 
-            return count;
+            return this.SheetsAmong(sheets)
+                .SelectMany(sheet => BoardTableDocument.CellsToReplaceIn(sheet, shows, columnsOf))
+                .Where(cell => !string.Equals(cell.Text, cell.Text.Replace(find, replacement ?? string.Empty, StringComparison.OrdinalIgnoreCase), StringComparison.Ordinal))
+                .Sum(cell => BoardTableReplaceText.Occurrences(cell.Text, find));
+        }
+
+        // The sheets handed that are this document's, each once.
+        private IEnumerable<BoardTableSheet> SheetsAmong(IReadOnlyList<BoardTableSheet> sheets) =>
+            sheets.Where(sheet => this.Sheets.Contains(sheet)).Distinct();
+
+        // The cells Replace looks in on `sheet`: the rows `shows` lets through but the red ones, the columns `columnsOf`
+        // gives - every one without it.
+        private static IEnumerable<BoardTableCell> CellsToReplaceIn(
+            BoardTableSheet sheet,
+            Func<BoardTableRow, bool> shows,
+            Func<BoardTableSheet, IReadOnlyList<int>>? columnsOf)
+        {
+            IReadOnlyList<int>? columns = columnsOf?.Invoke(sheet);
+
+            foreach (BoardTableRow row in sheet.Rows.Where(row => !row.IsDeleted && shows(row)))
+            {
+                foreach (BoardTableCell cell in columns is null ? row.Cells : columns.Select(column => row.Cells[column]))
+                {
+                    yield return cell;
+                }
+            }
         }
 
         public void MarkSaved()

@@ -65,6 +65,38 @@ public sealed class CreditSuggestionsTests
         Assert.Equal([new CreditSuggestion("Board data", "")], CreditSuggestions.For(Published(), draft));
     }
 
+    // A baseline's note nested a level deeper is work on the baseline, as "Review changes" counts it (owner decision,
+    // 2026-11-08: an indent-only change of a note "is a change like any other change") - a space at its end is not.
+    [Fact]
+    public void A_baselines_note_nested_deeper_is_credited_and_a_space_at_its_end_is_not()
+    {
+        static BoardData WithNote(BoardData board, string note) => board.WithComponentSections(
+            componentImages: [new ComponentImageEntry { BoardLabel = "U8", Pin = "1", Name = "PHI2", File = "Scope baseline/U8_1.png", TimeDiv = "1us", Note = note }]);
+
+        BoardData published = WithNote(Published(), "- clean");
+
+        Assert.Equal(["Oscilloscope baseline"], CreditSuggestions.For(published, WithNote(Draft(), "  - clean")).Select(suggestion => suggestion.Category));
+        Assert.Empty(CreditSuggestions.For(published, WithNote(Draft(), "- clean ")));
+    }
+
+    // A note written on a board file or link is board data (code review, 2026-11-08: the keys left the note out, so a
+    // draft writing only notes was offered no credit) - its line ends no change.
+    [Fact]
+    public void A_note_on_a_board_file_or_link_is_board_data()
+    {
+        BoardData published = Published().WithBoardSections(
+            boardLocalFiles: [new BoardLocalFileEntry { Category = "Resources", Name = "Manual", File = "Board local files/manual.pdf", Note = "first\nsecond" }],
+            boardLinks: [new BoardLinkEntry { Category = "Forums", Name = "Lemon64", Url = "https://www.lemon64.com" }]);
+
+        BoardData fileNote = published.WithBoardSections(boardLocalFiles: [new BoardLocalFileEntry { Category = "Resources", Name = "Manual", File = "Board local files/manual.pdf", Note = "first\nsecond, page 4" }]);
+        BoardData linkNote = published.WithBoardSections(boardLinks: [new BoardLinkEntry { Category = "Forums", Name = "Lemon64", Url = "https://www.lemon64.com", Note = "the repair thread" }]);
+        BoardData lineEnds = published.WithBoardSections(boardLocalFiles: [new BoardLocalFileEntry { Category = "Resources", Name = "Manual", File = "Board local files/manual.pdf", Note = "first\r\nsecond" }]);
+
+        Assert.Equal([new CreditSuggestion("Board data", "")], CreditSuggestions.For(published, fileNote));
+        Assert.Equal([new CreditSuggestion("Board data", "")], CreditSuggestions.For(published, linkNote));
+        Assert.Empty(CreditSuggestions.For(published, lineEnds));
+    }
+
     // Capitals and order are no change - nothing to credit.
     [Fact]
     public void Capitals_and_order_are_no_change()

@@ -1,0 +1,1250 @@
+﻿using Avalonia.Controls;
+using Avalonia.Headless;
+using Avalonia.Input;
+using Avalonia.Threading;
+using CRT;
+using Handlers.DataHandling;
+
+namespace ClassicRepairToolbox.Tests.Ui;
+
+// ###########################################################################################
+// The component info popup - the window that opens when a component is clicked on a schematic.
+//
+// It was the third-worst file in the codebase at 0% (804 lines), despite needing no seams at
+// all: SetComponent is public and takes plain data (component entries, images, local files,
+// links, a region and a data root), so a test can drive it directly. What kept it uncovered was
+// simply that nothing opened it.
+//
+// WHAT THESE COVER. The content decisions SetComponent makes: which component entry wins for the
+// current region, how the title and info lines are composed from it, and which sections appear
+// or stay hidden based on what the board actually carries. These are the things a user sees
+// wrong when board data changes shape.
+//
+// WHAT THEY DO NOT. Image loading is async and needs real files on disk (LoadImagesAsync), so
+// the fixtures below carry image ENTRIES only where a test is about filtering, never about
+// decoding. Anything involving the oscilloscope session, the IC test panel or opening an
+// external file is out of scope here - the first two need hardware state and the third is
+// Process.Start, which rule 6 puts out of bounds.
+//
+// COLLECTION NOTE: "HeadlessUi" because it constructs a Window. The constructor reads
+// UserSettings for its saved size and splitter positions, so every test points UserSettings at
+// a temp file first - without that, constructing the window reads the developer's real settings.
+// ###########################################################################################
+[Collection("HeadlessUi")]
+public class ComponentInfoWindowTests : IDisposable
+{
+    private const string BoardLabel = "U8";
+    // A root nothing is ever written under, built for THIS machine - never a literal @"C:\..."
+    // (see TestPathLiteralTests).
+    private static readonly string DataRoot = Path.Combine(Path.GetTempPath(), "crt-no-such-data-root-" + Guid.NewGuid().ToString("N"));
+
+    private readonly TempWorkspace thisWorkspace = new();
+
+    public ComponentInfoWindowTests()
+    {
+        // A fresh, empty settings file per test: the window's constructor reads window size,
+        // splitter ratio and the two switch states from UserSettings.
+        UserSettings.LoadFrom(this.thisWorkspace.Path_(Guid.NewGuid().ToString("N") + ".json"));
+    }
+
+    public void Dispose()
+    {
+        UserSettings.LoadFrom(this.thisWorkspace.Path_(Guid.NewGuid().ToString("N") + ".json"));
+        this.thisWorkspace.Dispose();
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Construction
+    // -----------------------------------------------------------------------------------------
+
+    [Fact]
+    public void The_window_constructs_without_throwing()
+    {
+        UiTest.Run(() =>
+        {
+            var window = new ComponentInfoWindow();
+
+            Assert.NotNull(window);
+        });
+    }
+
+    // The popup's three helps that open a Wiki page read "Learn more" (CRT 4.0 step 5, the plan:
+    // "The remaining help buttons read 'Learn more'") - a link beside the tool it explains, never
+    // a bare "?" that does not say it opens a page.
+    [Theory]
+    [InlineData("MiniProHelpButton")]
+    [InlineData("SyncOscilloscopeHelpButton")]
+    [InlineData("NumpadOscilloscopeHelpButton")]
+    public void A_help_that_opens_a_Wiki_page_reads_Learn_more(string name)
+    {
+        UiTest.Run(() =>
+        {
+            var window = new ComponentInfoWindow();
+            var button = window.GetControl<Avalonia.Controls.Button>(name);
+
+            Assert.Contains("LearnMore", button.Classes);
+            Assert.Equal("Learn more", ((Avalonia.Controls.TextBlock)button.Content!).Text);
+            Assert.Contains("Wiki", Assert.IsType<string>(Avalonia.Controls.ToolTip.GetTip(button)));
+        });
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // The title line
+    // -----------------------------------------------------------------------------------------
+
+    // The title joins board label, friendly name and technical name with " | ", skipping any that
+    // are blank - so a sparsely filled component still reads correctly rather than showing
+    // stranded separators.
+    [Fact]
+    public void The_title_joins_the_label_friendly_name_and_technical_name()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            SetComponent(window, entries: new[]
+            {
+                Component(friendlyName: "SuperPLA", technicalName: "251715"),
+            });
+
+            Assert.Equal("U8 | SuperPLA | 251715", TextOf(window, "TitleText"));
+        });
+    }
+
+    [Fact]
+    public void The_title_skips_blank_parts_rather_than_leaving_separators()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            SetComponent(window, entries: new[]
+            {
+                Component(friendlyName: "SuperPLA", technicalName: ""),
+            });
+
+            Assert.Equal("U8 | SuperPLA", TextOf(window, "TitleText"));
+        });
+    }
+
+    // With no component entry the board label alone still forms the title - the label is always
+    // known, because it is what was clicked on the schematic.
+    [Fact]
+    public void The_title_is_just_the_board_label_when_there_is_no_matching_entry()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            SetComponent(window, entries: Array.Empty<ComponentEntry>(), displayText: "U8 (unknown)");
+
+            Assert.Equal("U8", TextOf(window, "TitleText"));
+        });
+    }
+
+    // The supplied display text is the last resort, used only when there is nothing at all to
+    // build a title from - no entry AND no board label. The popup must never open blank-headed.
+    [Fact]
+    public void The_title_falls_back_to_the_display_text_when_there_is_nothing_else()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            window.SetComponent(
+                string.Empty,
+                "Unknown component",
+                new List<ComponentEntry>(),
+                new List<ComponentImageEntry>(),
+                new List<ComponentLocalFileEntry>(),
+                new List<ComponentLinkEntry>(),
+                "PAL",
+                DataRoot,
+                false);
+
+            Assert.Equal("Unknown component", TextOf(window, "TitleText"));
+        });
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Region selection
+    // -----------------------------------------------------------------------------------------
+
+    // A board can carry a different part for PAL and NTSC. The popup must show the one matching
+    // the region in force, or the user is reading the wrong part number for their machine.
+    [Fact]
+    public void The_entry_matching_the_current_region_is_the_one_shown()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            var entries = new[]
+            {
+                Component(friendlyName: "PAL PLA", technicalName: "251715", region: "PAL"),
+                Component(friendlyName: "NTSC PLA", technicalName: "906114", region: "NTSC"),
+            };
+
+            SetComponent(window, entries, region: "NTSC");
+
+            Assert.Equal("U8 | NTSC PLA | 906114", TextOf(window, "TitleText"));
+        });
+    }
+
+    // A region-less entry is the generic fallback when nothing matches the current region.
+    [Fact]
+    public void A_region_less_entry_is_used_when_no_region_matches()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            var entries = new[]
+            {
+                Component(friendlyName: "PAL only", technicalName: "251715", region: "PAL"),
+                Component(friendlyName: "Generic", technicalName: "0000", region: ""),
+            };
+
+            SetComponent(window, entries, region: "NTSC");
+
+            Assert.Equal("U8 | Generic | 0000", TextOf(window, "TitleText"));
+        });
+    }
+
+    // The region toggle buttons only make sense for a board that actually has region-specific
+    // components; on any other board they are hidden rather than shown and inert.
+    [Fact]
+    public void The_region_buttons_are_hidden_when_the_board_has_no_region_components()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            SetComponent(window, new[] { Component() }, hasExplicitRegionComponents: false);
+
+            Assert.False(ControlOf<Button>(window, "PalRegionButton").IsVisible);
+            Assert.False(ControlOf<Button>(window, "NtscRegionButton").IsVisible);
+        });
+    }
+
+    [Fact]
+    public void The_region_buttons_are_shown_when_the_board_has_region_components()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            SetComponent(window, new[] { Component() }, hasExplicitRegionComponents: true);
+
+            Assert.True(ControlOf<Button>(window, "PalRegionButton").IsVisible);
+            Assert.True(ControlOf<Button>(window, "NtscRegionButton").IsVisible);
+        });
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // The info lines
+    // -----------------------------------------------------------------------------------------
+
+    [Fact]
+    public void The_category_and_part_number_line_joins_both_when_present()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            SetComponent(window, new[] { Component(category: "IC", partNumber: "906114-01") });
+
+            Assert.True(ControlOf<TextBlock>(window, "InfoCategoryPartNumber").IsVisible);
+            Assert.Equal("IC | 906114-01", TextOf(window, "InfoCategoryPartNumber"));
+        });
+    }
+
+    // With neither value the whole line is hidden - an empty line would leave a gap in the
+    // layout that reads as a rendering fault.
+    [Fact]
+    public void The_category_and_part_number_line_is_hidden_when_both_are_blank()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            SetComponent(window, new[] { Component(category: "", partNumber: "") });
+
+            Assert.False(ControlOf<TextBlock>(window, "InfoCategoryPartNumber").IsVisible);
+        });
+    }
+
+    [Fact]
+    public void The_description_section_shows_the_entrys_description()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            SetComponent(window, new[] { Component(description: "Programmable logic array") });
+
+            Assert.True(ControlOf<Control>(window, "OneLinerSection").IsVisible);
+
+            // A read-only TextBox rather than a TextBlock, so the description can be selected and
+            // copied - part numbers and pin notes routinely get pasted into a search.
+            Assert.Equal(
+                "Programmable logic array",
+                ControlOf<TextBox>(window, "InfoDescription").Text);
+        });
+    }
+
+    [Fact]
+    public void The_description_section_is_hidden_when_there_is_no_description()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            SetComponent(window, new[] { Component(description: "   ") });
+
+            Assert.False(ControlOf<Control>(window, "OneLinerSection").IsVisible);
+        });
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // CRT 4.0's new component data (step 2, slice 3c)
+    // -----------------------------------------------------------------------------------------
+
+    // The package joins the category line.
+    [Fact]
+    public void The_package_joins_the_category_line()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            SetComponent(window, new[]
+            {
+                new ComponentEntry { BoardLabel = BoardLabel, Category = "IC", PartNumber = "906114-01", Package = "DIP-28" },
+            });
+
+            Assert.Equal("IC | 906114-01 | DIP-28", TextOf(window, "InfoCategoryPartNumber"));
+        });
+    }
+
+    [Fact]
+    public void Without_new_data_the_new_sections_stay_hidden()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            SetComponent(window, new[] { Component() });
+
+            Assert.False(ControlOf<Control>(window, "PinoutSection").IsVisible);
+            Assert.False(ControlOf<Control>(window, "ReplacementsSection").IsVisible);
+            Assert.False(ControlOf<Control>(window, "BaselineConditionsSection").IsVisible);
+        });
+    }
+
+    // ###########################################################################################
+    // A SINGLE RESISTOR'S COLOR BANDS UNDER THE PINOUT (owner request, 2026-11-07: "automatically create such an image
+    // and show it under the pinout info in component info popup"), drawn from its value, with the value in words as the
+    // owner writes it and its power rating apart - and none for a resistor pack, or a value the bands cannot say.
+    // ###########################################################################################
+    [Fact]
+    public void A_resistor_shows_its_color_bands_and_value_under_the_pinout_and_a_pack_none()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            SetComponent(window, new[] { new ComponentEntry { BoardLabel = BoardLabel, Category = "Resistor", TechnicalNameOrValue = "560Ω 1/4W 5%" } });
+
+            Assert.True(ControlOf<Control>(window, "ResistorSection").IsVisible);
+            Assert.Equal(
+                [ResistorColorCode.Band.Green, ResistorColorCode.Band.Blue, ResistorColorCode.Band.Brown, ResistorColorCode.Band.Gold],
+                ControlOf<ResistorBandsDrawing>(window, "InfoResistorDrawing").Bands.Select(band => band.Color));
+            Assert.Equal("560 Ω 5%", TextOf(window, "InfoResistorValueText"));
+            Assert.Equal("Power rating: 1/4W", TextOf(window, "InfoResistorPowerText"));
+            Assert.Equal(["Green", "Blue", "Brown", "Gold"], window.ResistorColorsShownForTests);
+
+            // A value with no ohm sign - a board made from KiCad data writes "8.2k" - reads the same (owner request,
+            // 2026-11-07).
+            SetComponent(window, new[] { new ComponentEntry { BoardLabel = BoardLabel, Category = "Resistor", TechnicalNameOrValue = "8.2k" } });
+            Assert.True(ControlOf<Control>(window, "ResistorSection").IsVisible);
+            Assert.Equal("8.2K Ω", TextOf(window, "InfoResistorValueText"));
+            Assert.Equal(["Grey", "Red", "Red"], window.ResistorColorsShownForTests);
+
+            SetComponent(window, new[] { new ComponentEntry { BoardLabel = BoardLabel, Category = "Resistor", FriendlyName = "Resistor pack", TechnicalNameOrValue = "1KΩ, 6pin" } });
+            Assert.False(ControlOf<Control>(window, "ResistorSection").IsVisible);
+
+            SetComponent(window, new[] { new ComponentEntry { BoardLabel = BoardLabel, Category = "Resistor", TechnicalNameOrValue = "wire" } });
+            Assert.False(ControlOf<Control>(window, "ResistorSection").IsVisible);
+
+            SetComponent(window, new[] { Component() });
+            Assert.False(ControlOf<Control>(window, "ResistorSection").IsVisible);
+        });
+    }
+
+    // ###########################################################################################
+    // "DETACH PINOUT IMAGE IN COMPONENT INFO POPUP" (owner request, 2026-11-07: "do show the pinout and its information in
+    // another popup window and do make sure to save size and location etc. (one global, and not per component/board)"):
+    // the popup's pinout section stands in a window of its own while the component has pins, back in the popup when it
+    // has none or the setting is unticked; the window's size is saved as it closes, one for all.
+    // ###########################################################################################
+    [Fact]
+    public void A_detached_pinout_stands_in_a_window_of_its_own_and_its_size_is_kept()
+    {
+        UiTest.Run(() =>
+        {
+            ComponentPinEntry[] pins = [new ComponentPinEntry { BoardLabel = BoardLabel, Pin = "1", Name = "VCC", Direction = "Power" }];
+            ComponentEntry[] chip = [new ComponentEntry { BoardLabel = BoardLabel, Category = "IC", Package = "DIP-8" }];
+
+            UserSettings.DetachPinoutInComponentPopup = true;
+
+            var window = CreateWindow();
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            Control section = ControlOf<Control>(window, "PinoutSection");
+
+            SetComponent(window, chip, pins: pins);
+            Dispatcher.UIThread.RunJobs();
+
+            ComponentPinoutWindow pinout = Assert.IsType<ComponentPinoutWindow>(window.PinoutWindowForTests);
+            Assert.True(pinout.IsVisible);
+            Assert.Same(pinout, TopLevel.GetTopLevel(section));
+            Assert.StartsWith("Pinout - ", pinout.Title, StringComparison.Ordinal);
+
+            // Its size the first time (owner request, 2026-11-07: "aprox 870x960px").
+            Assert.Equal((ComponentPinoutWindow.DefaultWidth, ComponentPinoutWindow.DefaultHeight), (pinout.Width, pinout.Height));
+
+            // No pins: no window, the section back in the popup.
+            SetComponent(window, new[] { Component() });
+            Assert.Null(window.PinoutWindowForTests);
+            Assert.False(pinout.IsVisible);
+            Dispatcher.UIThread.RunJobs();
+            Assert.Same(window, TopLevel.GetTopLevel(section));
+
+            // Unticked while open: back in the popup.
+            SetComponent(window, chip, pins: pins);
+            Assert.NotNull(window.PinoutWindowForTests);
+            UserSettings.DetachPinoutInComponentPopup = false;
+            Dispatcher.UIThread.RunJobs();
+            Assert.Null(window.PinoutWindowForTests);
+            Assert.Same(window, TopLevel.GetTopLevel(section));
+
+            // Ticked again, resized, and the popup closed: the size is kept for the next one.
+            UserSettings.DetachPinoutInComponentPopup = true;
+            Dispatcher.UIThread.RunJobs();
+            pinout = Assert.IsType<ComponentPinoutWindow>(window.PinoutWindowForTests);
+            pinout.Width = 512;
+            Dispatcher.UIThread.RunJobs();
+
+            window.Close();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.False(pinout.IsVisible);
+            Assert.True(UserSettings.HasPinoutWindowLayout);
+            Assert.Equal(512, UserSettings.PinoutWindowWidth);
+
+            UserSettings.DetachPinoutInComponentPopup = false;
+        });
+    }
+
+    // ###########################################################################################
+    // *** A LAYOUT PASS BETWEEN EVERY MOVE (owner report, 2026-11-07: a resistor clicked with the pinout detached, and
+    // CRT ended on "Attempt to call InvalidateArrange on wrong LayoutManager"). *** Avalonia keeps a control queued for
+    // the layout of the window it stood in after it is taken out, and arranging it there once it stands in another window
+    // throws. So the popup's rows, rebuilt for the next component, were still the popup's to arrange as the section moved
+    // into the pinout window - and the other way round. Every move here is followed by both windows' layout, as on screen.
+    // ###########################################################################################
+    [Fact]
+    public void The_pinout_moves_between_its_windows_with_the_layout_of_both_running_in_between()
+    {
+        UiTest.Run(() =>
+        {
+            ComponentPinEntry[] chipPins = [new ComponentPinEntry { BoardLabel = BoardLabel, Pin = "1", Name = "VCC", Direction = "Power" }];
+            ComponentPinEntry[] resistorPins =
+            [
+                new ComponentPinEntry { BoardLabel = BoardLabel, Pin = "1", Name = "1", Direction = "Unknown" },
+                new ComponentPinEntry { BoardLabel = BoardLabel, Pin = "2", Name = "2", Direction = "Unknown" },
+            ];
+            ComponentEntry[] chip = [new ComponentEntry { BoardLabel = BoardLabel, Category = "IC", Package = "DIP-8" }];
+            ComponentEntry[] resistor = [new ComponentEntry { BoardLabel = BoardLabel, Category = "Resistor", Package = "Axial", TechnicalNameOrValue = "100k" }];
+
+            UserSettings.DetachPinoutInComponentPopup = true;
+
+            // Jobs, then a render pass - each window's layout - then what it posted.
+            static void Settle()
+            {
+                Dispatcher.UIThread.RunJobs();
+                AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+                Dispatcher.UIThread.RunJobs();
+            }
+
+            try
+            {
+                var window = CreateWindow();
+                window.Width = 320;
+                SetComponent(window, new[] { Component() });
+                window.Show();
+                Settle();
+
+                Control section = ControlOf<Control>(window, "PinoutSection");
+
+                // No pins, then pins: out into a window of its own, the rows just made - a popup this narrow lists the pins
+                // under the drawing, a window that wide beside it, so the move changes the section's layout. Taken out at
+                // once, it stands in neither window until the popup has had its layout.
+                SetComponent(window, resistor, pins: resistorPins);
+                Assert.Null(section.Parent);
+                Assert.NotNull(window.PinoutWindowForTests);
+                Settle();
+                Assert.Same(window.PinoutWindowForTests, TopLevel.GetTopLevel(section));
+
+                // Other pins, in the window.
+                SetComponent(window, chip, pins: chipPins);
+                Settle();
+
+                // No pins: back into the popup, the rows just cleared.
+                SetComponent(window, new[] { Component() });
+                Settle();
+                Assert.Same(window, TopLevel.GetTopLevel(section));
+
+                // And out again, and back by the setting.
+                SetComponent(window, resistor, pins: resistorPins);
+                Settle();
+                UserSettings.DetachPinoutInComponentPopup = false;
+                Settle();
+                Assert.Same(window, TopLevel.GetTopLevel(section));
+
+                window.Close();
+                Settle();
+            }
+            finally
+            {
+                UserSettings.DetachPinoutInComponentPopup = false;
+            }
+        });
+    }
+
+    // The pins of the region shown are listed, the case drawn; switching the popup's region lists
+    // that region's.
+    [Fact]
+    public void The_pinout_lists_the_pins_of_the_region_shown_and_follows_the_region_buttons()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            SetComponent(
+                window,
+                new[] { new ComponentEntry { BoardLabel = BoardLabel, Category = "IC", Package = "DIP-8" } },
+                hasExplicitRegionComponents: true,
+                pins:
+                [
+                    new ComponentPinEntry { BoardLabel = BoardLabel, Pin = "1", Name = "VCC", Direction = "Power" },
+                    new ComponentPinEntry { BoardLabel = BoardLabel, Region = "NTSC", Pin = "2", Name = "NTSC clock" },
+                    new ComponentPinEntry { BoardLabel = "U9", Pin = "1", Name = "Another chip" },
+                ]);
+
+            Assert.True(ControlOf<Control>(window, "PinoutSection").IsVisible);
+            Assert.Equal([new ComponentPopupPin("1", "VCC", "Power")], ItemsOf<ComponentPopupPin>(window, "InfoPinsItemsControl"));
+            Assert.Equal(8, ControlOf<PinoutDrawing>(window, "InfoPinoutDrawing").LayoutForTests!.Pins.Count);
+
+            ControlOf<Button>(window, "NtscRegionButton").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+
+            Assert.Equal(["1", "2"], ItemsOf<ComponentPopupPin>(window, "InfoPinsItemsControl").Select(pin => pin.Pin));
+
+            // Without the board's KiCad data there are no nets, and no heading for them.
+            Assert.True(ControlOf<Control>(window, "InfoPinsHeading").IsVisible);
+            Assert.False(ControlOf<Control>(window, "InfoPinsNetHeading").IsVisible);
+        });
+    }
+
+    // ###########################################################################################
+    // With the board's KiCad data loaded, each pin shows its net on this board beside its signal name
+    // (the plan: "side by side"), under headings saying which is which.
+    // ###########################################################################################
+    [Fact]
+    public void Each_pin_shows_its_net_on_this_board_beside_its_signal_name()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            SetComponent(
+                window,
+                new[] { new ComponentEntry { BoardLabel = BoardLabel, Category = "IC", Package = "DIP-8" } },
+                pins:
+                [
+                    new ComponentPinEntry { BoardLabel = BoardLabel, Pin = "1", Name = "VCC", Direction = "Power" },
+                    new ComponentPinEntry { BoardLabel = BoardLabel, Pin = "2", Name = "PHI2", Direction = "Input" },
+                ],
+                pinNets: new Dictionary<string, string> { ["1"] = "+5V" });
+
+            Assert.True(ControlOf<Control>(window, "InfoPinsNetHeading").IsVisible);
+            Assert.Equal(
+                [new ComponentPopupPin("1", "VCC", "Power", "+5V"), new ComponentPopupPin("2", "PHI2", "Input", "")],
+                ItemsOf<ComponentPopupPin>(window, "InfoPinsItemsControl"));
+        });
+    }
+
+    // ###########################################################################################
+    // Under a scope baseline, how the board's baselines were measured: its "Scope measurements"
+    // files, each a link (2026-10-26). Read once the picture has loaded - the section follows the
+    // picture selected.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_scope_baseline_links_the_boards_scope_measurement_files()
+    {
+        string root = this.thisWorkspace.Path_("Data-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "Scope baseline"));
+        File.WriteAllBytes(Path.Combine(root, "Scope baseline", "U8_1.png"), Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="));
+
+        await UiTest.RunAsync(async () =>
+        {
+            var window = CreateWindow();
+
+            window.SetComponent(
+                BoardLabel,
+                "U8",
+                [Component()],
+                [new ComponentImageEntry { BoardLabel = BoardLabel, Pin = "1", Name = "PHI2", File = "Scope baseline/U8_1.png", TimeDiv = "1us" }],
+                [],
+                [],
+                "PAL",
+                root,
+                hasExplicitRegionComponents: false,
+                boardFiles:
+                [
+                    new BoardLocalFileEntry { Category = "Scope measurements", Name = "Introduction", File = "Scope baseline/intro.txt" },
+                    new BoardLocalFileEntry { Category = "Resources", Name = "Manual", File = "Board local files/manual.pdf" },
+                ]);
+
+            for (int attempt = 0; attempt < 100 && ItemsOf<ComponentImageItem>(window, "ThumbnailList").Count == 0; attempt++)
+            {
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+                await Task.Delay(10);
+            }
+
+            Assert.True(ControlOf<Control>(window, "BaselineConditionsSection").IsVisible);
+            Assert.True(ControlOf<Control>(window, "InfoMeasuringNotesLabel").IsVisible);
+            Assert.Equal(["Introduction"], ItemsOf<ComponentLocalFileItem>(window, "InfoMeasuringNotesItemsControl").Select(note => note.Name));
+        });
+    }
+
+    // A note of one region is linked only under that region's baselines (code review, 2026-11-02) - the
+    // popup's own PAL/NTSC switch moves it, as it moves the component's files.
+    [Fact]
+    public async Task A_scope_measurement_file_of_the_other_region_is_not_linked()
+    {
+        string root = this.thisWorkspace.Path_("Data-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "Scope baseline"));
+        File.WriteAllBytes(Path.Combine(root, "Scope baseline", "U8_1.png"), Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="));
+
+        await UiTest.RunAsync(async () =>
+        {
+            var window = CreateWindow();
+
+            window.SetComponent(
+                BoardLabel,
+                "U8",
+                [Component()],
+                [new ComponentImageEntry { BoardLabel = BoardLabel, Pin = "1", Name = "PHI2", File = "Scope baseline/U8_1.png", TimeDiv = "1us" }],
+                [],
+                [],
+                "PAL",
+                root,
+                hasExplicitRegionComponents: true,
+                boardFiles:
+                [
+                    new BoardLocalFileEntry { Category = "Scope measurements", Name = "Every region", File = "Scope baseline/every.txt" },
+                    new BoardLocalFileEntry { Category = "Scope measurements", Name = "NTSC's", File = "Scope baseline/ntsc.txt", Region = "NTSC" },
+                ]);
+
+            for (int attempt = 0; attempt < 100 && ItemsOf<ComponentImageItem>(window, "ThumbnailList").Count == 0; attempt++)
+            {
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+                await Task.Delay(10);
+            }
+
+            Assert.Equal(["Every region"], ItemsOf<ComponentLocalFileItem>(window, "InfoMeasuringNotesItemsControl").Select(note => note.Name));
+        });
+    }
+
+    [Fact]
+    public void The_replacement_parts_are_listed()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            SetComponent(
+                window,
+                new[] { Component() },
+                replacements: [new ComponentReplacementEntry { BoardLabel = BoardLabel, PartNumber = "PLAnkton", Kind = "Drop-in replacement" }]);
+
+            Assert.True(ControlOf<Control>(window, "ReplacementsSection").IsVisible);
+            Assert.Equal("PLAnkton - Drop-in replacement", Assert.Single(ItemsOf<ComponentPopupReplacement>(window, "InfoReplacementsItemsControl")).Title);
+        });
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Local files and links
+    // -----------------------------------------------------------------------------------------
+
+    // Both lists are filtered by board label: the board's full file and link tables are passed in,
+    // and only the rows belonging to THIS component may appear.
+    [Fact]
+    public void Only_this_components_local_files_are_listed()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            SetComponent(window, new[] { Component() }, localFiles: new[]
+            {
+                LocalFile(BoardLabel, "Datasheet", "docs/pla.pdf"),
+                LocalFile("U9", "Other datasheet", "docs/other.pdf"),
+            });
+
+            var items = ItemsOf<ComponentLocalFileItem>(window, "LocalFilesItemsControl");
+
+            Assert.Single(items);
+            Assert.Equal("Datasheet", items[0].Name);
+        });
+    }
+
+    // The stored path is relative to the data root; the popup has to resolve it before anything
+    // can open it.
+    [Fact]
+    public void A_local_files_path_is_resolved_against_the_data_root()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            SetComponent(window, new[] { Component() }, localFiles: new[]
+            {
+                LocalFile(BoardLabel, "Datasheet", "docs/pla.pdf"),
+            });
+
+            var items = ItemsOf<ComponentLocalFileItem>(window, "LocalFilesItemsControl");
+
+            Assert.Equal(Path.Combine(DataRoot, "docs", "pla.pdf"), items[0].FullPath);
+        });
+    }
+
+    [Fact]
+    public void The_local_files_section_is_hidden_when_this_component_has_none()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            SetComponent(window, new[] { Component() }, localFiles: new[]
+            {
+                LocalFile("U9", "Someone elses", "docs/other.pdf"),
+            });
+
+            Assert.False(ControlOf<Control>(window, "LocalFilesSection").IsVisible);
+        });
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Draft-fallback file resolution (NewContributeStrategy.md Phase 2, session 2c, task 8's
+    // component/file/link attachment piece). A file attached only in a local draft has never been
+    // synced under DataRoot, so it does not exist there at all - SetComponent must still resolve
+    // it, via the draft folder DraftFileResolver falls back to, and record which root it actually
+    // came from (SourceRoot) so a later open can be validated against the right containment root.
+    // -----------------------------------------------------------------------------------------
+
+    // ###########################################################################################
+    // The ordinary case for a freshly attached file: nothing under DataRoot, a real copy inside
+    // the draft folder.
+    //
+    // *** THE DRAFT FOLDER MUST BE A REALISTIC Manufacturer/Hardware/Board PATH (Phase 6). ***
+    // DraftFileResolver strips the board's own prefix off a stored path, and it works out what
+    // that prefix is from the folder's last three segments. A flat "draft" folder - which this
+    // test used before - has no such segments, so nothing strips and the file is looked for in
+    // the wrong place.
+    // ###########################################################################################
+    [Fact]
+    public void A_draft_only_local_file_resolves_to_the_draft_folder_copy()
+    {
+        UiTest.Run(() =>
+        {
+            string draftFolder = Path.Combine(
+                this.thisWorkspace.Path_("Drafts"), "Commodore", "C64", "250407");
+
+            string draftedFile = Path.Combine(draftFolder, "docs", "pla.pdf");
+            Directory.CreateDirectory(Path.GetDirectoryName(draftedFile)!);
+            File.WriteAllText(draftedFile, "drafted copy");
+
+            var window = CreateWindow();
+
+            SetComponent(
+                window,
+                new[] { Component() },
+                localFiles: new[] { LocalFile(BoardLabel, "Datasheet", "Commodore/C64/250407/docs/pla.pdf") },
+                draftBoardFolder: draftFolder);
+
+            var items = ItemsOf<ComponentLocalFileItem>(window, "LocalFilesItemsControl");
+
+            Assert.Equal(draftedFile, items[0].FullPath);
+            Assert.Equal(draftFolder, items[0].SourceRoot);
+        });
+    }
+
+    // ###########################################################################################
+    // *** THE DRAFTED COPY WINS WHEN BOTH EXIST - FLIPPED IN PHASE 6 (2026-09-23). ***
+    //
+    // It used to assert the official copy won, matching DraftFileResolver's official-first
+    // rule. That rule was right while a draft was an OVERLAY holding only newly attached
+    // extras; a draft is now a full copy of the board, so a drafted file is a REPLACEMENT and
+    // showing the published bytes would put the old picture on screen for an image the
+    // contributor has already replaced.
+    //
+    // *** THIS TEST ALSO USED A FLAT "draft" FOLDER, WHICH MADE IT PASS FOR THE WRONG
+    // REASON. *** DraftFileResolver works out the board prefix to strip from the folder's
+    // last three segments, so a one-segment folder strips nothing and the drafted file is
+    // never found at all - the test went green because the lookup failed, not because
+    // precedence worked. The folder is now a realistic Manufacturer/Hardware/Board path.
+    // ###########################################################################################
+    [Fact]
+    public void A_drafted_local_file_is_preferred_over_a_same_named_official_copy()
+    {
+        UiTest.Run(() =>
+        {
+            string dataRoot = this.thisWorkspace.Path_("data");
+            string officialFile = Path.Combine(
+                dataRoot, "Commodore", "C64", "250407", "docs", "pla.pdf");
+            Directory.CreateDirectory(Path.GetDirectoryName(officialFile)!);
+            File.WriteAllText(officialFile, "official copy");
+
+            string draftFolder = Path.Combine(
+                this.thisWorkspace.Path_("Drafts"), "Commodore", "C64", "250407");
+
+            string draftedFile = Path.Combine(draftFolder, "docs", "pla.pdf");
+            Directory.CreateDirectory(Path.GetDirectoryName(draftedFile)!);
+            File.WriteAllText(draftedFile, "drafted copy");
+
+            var window = CreateWindow();
+
+            window.SetComponent(
+                BoardLabel,
+                "U8",
+                new[] { Component() }.ToList(),
+                new List<ComponentImageEntry>(),
+                new List<ComponentLocalFileEntry>
+                {
+                    LocalFile(BoardLabel, "Datasheet", "Commodore/C64/250407/docs/pla.pdf"),
+                },
+                new List<ComponentLinkEntry>(),
+                "PAL",
+                dataRoot,
+                false,
+                draftFolder);
+
+            var items = ItemsOf<ComponentLocalFileItem>(window, "LocalFilesItemsControl");
+
+            Assert.Equal(draftedFile, items[0].FullPath);
+
+            // ###########################################################################################
+            // *** AND THE ROOT MUST BE THE DRAFT FOLDER TOO (code review, 2026-09-25). ***
+            //
+            // This test used to stop at FullPath, and that let a real defect through: SetComponent
+            // derived SourceRoot with the OLD official-first assumption ("drafted only when the
+            // official copy is missing"), so with both copies present the path was the draft's
+            // while the root was the data root. OnLocalFileButtonClick hands that pair to
+            // ExternalTargetLauncher, whose containment check refuses a path outside its root - so
+            // the datasheet button did nothing at all on every board that had a draft, which is
+            // every file a seeded draft copies. The second assertion is the invariant the launcher
+            // actually needs: the path lies inside the root it is opened against.
+            // ###########################################################################################
+            Assert.Equal(draftFolder, items[0].SourceRoot);
+            Assert.StartsWith(
+                items[0].SourceRoot + Path.DirectorySeparatorChar,
+                items[0].FullPath,
+                StringComparison.OrdinalIgnoreCase);
+        });
+    }
+
+    // Neither copy exists (a stale entry, or a draft that was discarded after the popup was last
+    // opened): SetComponent must still fall back to building the ordinary DataRoot-relative path
+    // rather than leaving FullPath blank, and SourceRoot names DataRoot as the (missing) source.
+    [Fact]
+    public void A_local_file_missing_from_both_roots_still_falls_back_to_the_data_root_path()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            SetComponent(
+                window,
+                new[] { Component() },
+                localFiles: new[] { LocalFile(BoardLabel, "Datasheet", "docs/pla.pdf") },
+                draftBoardFolder: this.thisWorkspace.Path_("nonexistent-draft"));
+
+            var items = ItemsOf<ComponentLocalFileItem>(window, "LocalFilesItemsControl");
+
+            Assert.Equal(Path.Combine(DataRoot, "docs", "pla.pdf"), items[0].FullPath);
+            Assert.Equal(DataRoot, items[0].SourceRoot);
+        });
+    }
+
+    [Fact]
+    public void Only_this_components_links_are_listed()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            SetComponent(window, new[] { Component() }, links: new[]
+            {
+                Link(BoardLabel, "Pinout", "https://example.com/pla"),
+                Link("U9", "Other", "https://example.com/other"),
+            });
+
+            var items = ItemsOf<ComponentLinkItem>(window, "LinksItemsControl");
+
+            Assert.Single(items);
+            Assert.Equal("Pinout", items[0].Name);
+            Assert.Equal("https://example.com/pla", items[0].Url);
+        });
+    }
+
+    [Fact]
+    public void The_links_section_is_hidden_when_this_component_has_none()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            SetComponent(window, new[] { Component() }, links: Array.Empty<ComponentLinkEntry>());
+
+            Assert.False(ControlOf<Control>(window, "LinksSection").IsVisible);
+        });
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Reloading
+    // -----------------------------------------------------------------------------------------
+
+    // The popup is reused for the next component clicked rather than reopened, so a second
+    // SetComponent must fully replace the first one's content - not merge with it.
+    [Fact]
+    public void Loading_a_second_component_replaces_the_first_ones_content()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            SetComponent(
+                window,
+                new[] { Component(friendlyName: "SuperPLA", technicalName: "251715") },
+                links: new[] { Link(BoardLabel, "Pinout", "https://example.com/pla") });
+
+            SetComponent(
+                window,
+                new[] { Component(friendlyName: "Other", technicalName: "0001") },
+                links: Array.Empty<ComponentLinkEntry>());
+
+            Assert.Equal("U8 | Other | 0001", TextOf(window, "TitleText"));
+            Assert.False(ControlOf<Control>(window, "LinksSection").IsVisible);
+        });
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // Fixture
+    // -----------------------------------------------------------------------------------------
+
+    private static ComponentInfoWindow CreateWindow() => new();
+
+    // Drives the real public entry point. Image entries default to none: loading them is async
+    // and needs files on disk, which is out of scope here (see the header).
+    private static void SetComponent(
+        ComponentInfoWindow window,
+        IEnumerable<ComponentEntry> entries,
+        string displayText = "U8",
+        IEnumerable<ComponentLocalFileEntry>? localFiles = null,
+        IEnumerable<ComponentLinkEntry>? links = null,
+        string region = "PAL",
+        bool hasExplicitRegionComponents = false,
+        string draftBoardFolder = "",
+        IReadOnlyList<ComponentPinEntry>? pins = null,
+        IReadOnlyList<ComponentReplacementEntry>? replacements = null,
+        IReadOnlyDictionary<string, string>? pinNets = null)
+    {
+        window.SetComponent(
+            BoardLabel,
+            displayText,
+            entries.ToList(),
+            new List<ComponentImageEntry>(),
+            (localFiles ?? Array.Empty<ComponentLocalFileEntry>()).ToList(),
+            (links ?? Array.Empty<ComponentLinkEntry>()).ToList(),
+            region,
+            DataRoot,
+            hasExplicitRegionComponents,
+            draftBoardFolder,
+            boardIdentity: string.Empty,
+            pins,
+            replacements,
+            boardFiles: null,
+            pinNets: pinNets);
+    }
+
+    private static ComponentEntry Component(
+        string friendlyName = "SuperPLA",
+        string technicalName = "251715",
+        string category = "IC",
+        string partNumber = "906114-01",
+        string description = "Programmable logic array",
+        string region = "") =>
+        new()
+        {
+            BoardLabel = BoardLabel,
+            FriendlyName = friendlyName,
+            TechnicalNameOrValue = technicalName,
+            Category = category,
+            PartNumber = partNumber,
+            Description = description,
+            Region = region,
+        };
+
+    private static ComponentLocalFileEntry LocalFile(string boardLabel, string name, string file) =>
+        new() { BoardLabel = boardLabel, Name = name, File = file };
+
+    private static ComponentLinkEntry Link(string boardLabel, string name, string url) =>
+        new() { BoardLabel = boardLabel, Name = name, Url = url };
+
+    private static T ControlOf<T>(ComponentInfoWindow window, string name) where T : Control =>
+        window.GetControl<T>(name);
+
+    private static string TextOf(ComponentInfoWindow window, string name) =>
+        window.GetControl<TextBlock>(name).Text ?? string.Empty;
+
+    private static List<T> ItemsOf<T>(ComponentInfoWindow window, string name)
+    {
+        var itemsSource = window.GetControl<ItemsControl>(name).ItemsSource;
+
+        return itemsSource is null
+            ? new List<T>()
+            : itemsSource.Cast<T>().ToList();
+    }
+
+    // -----------------------------------------------------------------------------------------
+    // The captured oscilloscope image, and releasing it again
+    // -----------------------------------------------------------------------------------------
+
+    /// <summary>A real PNG on disk, so the show path performs a genuine decode as a capture does.</summary>
+    private string WriteCaptureImage()
+    {
+        string path = this.thisWorkspace.Path_(Guid.NewGuid().ToString("N") + ".png");
+
+        using var renderTarget = new Avalonia.Media.Imaging.RenderTargetBitmap(
+            new Avalonia.PixelSize(24, 24), new Avalonia.Vector(96, 96));
+
+        using (var context = renderTarget.CreateDrawingContext())
+        {
+            context.DrawRectangle(Avalonia.Media.Brushes.White, null, new Avalonia.Rect(0, 0, 24, 24));
+        }
+
+        using (var stream = File.Create(path))
+        {
+            renderTarget.Save(stream, Avalonia.Media.Imaging.PngBitmapEncoderOptions.Default);
+        }
+
+        return path;
+    }
+
+    // ###########################################################################################
+    // RELEASING THE CAPTURE MUST DROP IT OUT OF THE IMAGE CONTROL BEFORE DISPOSING IT.
+    //
+    // The clear disposes the decoded bitmap, and the popup's large Image was still pointing at it.
+    // Every long-standing caller happened to reassign that Source immediately afterwards, so the
+    // freed surface was never rendered - but the attach flow's own caller does not: it re-shows the
+    // banner instead, which forces a layout pass over the still-visible Image. That is an
+    // ObjectDisposedException on the RENDER thread, which is fatal in Avalonia - the same failure
+    // mode the Workbooks board pane carries a warning about in its detach path.
+    //
+    // So the release now happens inside the clear itself rather than depending on each caller to
+    // remember. Asserting on the Source is what makes that provable: a disposed bitmap cannot be
+    // rendered by a headless test, but a Source still holding one is exactly the state that crashes.
+    //
+    // Fails against the version that disposed without clearing.
+    // ###########################################################################################
+    [Fact]
+    public void Clearing_a_captured_image_does_not_leave_the_main_image_holding_the_disposed_bitmap()
+    {
+        UiTest.Run(() =>
+        {
+            var window = new ComponentInfoWindow();
+
+            window.ShowTemporaryCapturedOscilloscopeImageForTests(this.WriteCaptureImage());
+            Assert.NotNull(window.MainComponentImageSourceForTests);
+
+            window.ClearTemporaryCapturedOscilloscopeImageForTests();
+
+            Assert.Null(window.MainComponentImageSourceForTests);
+        });
+    }
+
+    // The clear runs at the START of every show too (a second capture replaces the first), so it
+    // must not sabotage the assignment that follows it - the new bitmap has to survive.
+    [Fact]
+    public void Showing_a_second_capture_leaves_the_new_bitmap_in_the_main_image()
+    {
+        UiTest.Run(() =>
+        {
+            var window = new ComponentInfoWindow();
+
+            window.ShowTemporaryCapturedOscilloscopeImageForTests(this.WriteCaptureImage());
+            var first = window.MainComponentImageSourceForTests;
+
+            window.ShowTemporaryCapturedOscilloscopeImageForTests(this.WriteCaptureImage());
+            var second = window.MainComponentImageSourceForTests;
+
+            Assert.NotNull(second);
+            Assert.NotSame(first, second);
+        });
+    }
+
+    // A clear with no capture showing must leave whatever else the popup is displaying alone - the
+    // release is targeted at the capture bitmap, not a blanket "empty the image".
+    [Fact]
+    public void Clearing_with_no_capture_showing_does_not_blank_the_main_image()
+    {
+        UiTest.Run(() =>
+        {
+            var window = new ComponentInfoWindow();
+
+            var unrelated = new Avalonia.Media.Imaging.RenderTargetBitmap(
+                new Avalonia.PixelSize(8, 8), new Avalonia.Vector(96, 96));
+
+            window.GetControl<Image>("MainComponentImage").Source = unrelated;
+
+            window.ClearTemporaryCapturedOscilloscopeImageForTests();
+
+            Assert.Same(unrelated, window.MainComponentImageSourceForTests);
+        });
+    }
+
+    // ###########################################################################################
+    // A pin clicked goes to its images (owner request, 2026-11-01: "so the user quickly can go to that pin
+    // and see what images are available for that pin") - the first of them selected, the pin flashed over
+    // it; one with none says so and leaves the image shown where it is.
+    // ###########################################################################################
+    [Fact]
+    public void A_pin_goes_to_its_first_image_or_says_it_has_none()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+            SetComponent(window, new[] { Component() });
+
+            ListBox thumbnails = ControlOf<ListBox>(window, "ThumbnailList");
+            thumbnails.ItemsSource = new List<ComponentImageItem> { new() { Pin = "1" }, new() { Pin = "7" }, new() { Pin = "7" }, new() { Pin = "9" } };
+
+            window.GoToPin("7");
+
+            Assert.Equal(1, thumbnails.SelectedIndex);
+            Assert.True(ControlOf<Border>(window, "PinFlashBorder").IsVisible);
+            Assert.Equal("7", ControlOf<TextBlock>(window, "PinFlashText").Text);
+
+            window.GoToPin("3");
+
+            Assert.Equal(1, thumbnails.SelectedIndex);
+            Assert.Equal(ComponentPopupContent.NoImageOfPin("3"), ControlOf<TextBlock>(window, "PinFlashText").Text);
+        });
+    }
+
+    // ###########################################################################################
+    // A pin typed goes where the same pin clicked goes (code review, 2026-11-02): "2 [64K]" is pin 2 to
+    // the drawing and the list, and typing 2 flashed "Not found", comparing the text exactly.
+    // ###########################################################################################
+    [Fact]
+    public void A_pin_typed_finds_the_image_a_click_on_that_pin_finds()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+            SetComponent(window, new[] { Component() });
+
+            ListBox thumbnails = ControlOf<ListBox>(window, "ThumbnailList");
+            thumbnails.ItemsSource = new List<ComponentImageItem> { new() { Pin = "1" }, new() { Pin = "2 [64K]" }, new() { Pin = "A3" } };
+
+            window.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.D2 });
+
+            Assert.Equal(1, thumbnails.SelectedIndex);
+            Assert.Equal("2", ControlOf<TextBlock>(window, "PinFlashText").Text);
+        });
+    }
+
+    // Beside the drawing while there is room, so both are seen at once; under it when the popup is narrow.
+    [Fact]
+    public void The_pin_list_stands_beside_the_drawing_and_under_it_in_a_narrow_popup()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            SetComponent(
+                window,
+                new[] { new ComponentEntry { BoardLabel = BoardLabel, Category = "IC", Package = "DIP-8" } },
+                pins: [new ComponentPinEntry { BoardLabel = BoardLabel, Pin = "1", Name = "VCC", Direction = "Power" }]);
+
+            Control list = ControlOf<Control>(window, "InfoPinsPanel");
+            Grid grid = ControlOf<Grid>(window, "PinoutGrid");
+
+            grid.RaiseEvent(new SizeChangedEventArgs(Control.SizeChangedEvent, grid, new Avalonia.Size(0, 0), new Avalonia.Size(600, 200)));
+
+            Assert.Equal((1, 0), (Grid.GetColumn(list), Grid.GetRow(list)));
+
+            grid.RaiseEvent(new SizeChangedEventArgs(Control.SizeChangedEvent, grid, new Avalonia.Size(600, 200), new Avalonia.Size(300, 200)));
+
+            Assert.Equal((0, 1), (Grid.GetColumn(list), Grid.GetRow(list)));
+            Assert.Equal(2, Grid.GetColumnSpan(list));
+        });
+    }
+
+    // ###########################################################################################
+    // A file or a link of one region shows in that region only, and follows the popup's own switch
+    // (owner request, 2026-11-02).
+    // ###########################################################################################
+    [Fact]
+    public void The_files_and_links_follow_the_region_buttons()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            SetComponent(
+                window,
+                new[] { Component() },
+                localFiles: [new ComponentLocalFileEntry { BoardLabel = BoardLabel, Name = "PAL note", File = "a.pdf", Region = "PAL" }],
+                links: [new ComponentLinkEntry { BoardLabel = BoardLabel, Name = "NTSC page", Url = "https://example.org", Region = "NTSC" }],
+                region: "PAL",
+                hasExplicitRegionComponents: true);
+
+            Assert.True(ControlOf<Control>(window, "LocalFilesSection").IsVisible);
+            Assert.False(ControlOf<Control>(window, "LinksSection").IsVisible);
+
+            ControlOf<Button>(window, "NtscRegionButton").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+
+            Assert.False(ControlOf<Control>(window, "LocalFilesSection").IsVisible);
+            Assert.True(ControlOf<Control>(window, "LinksSection").IsVisible);
+        });
+    }
+
+    // The headings say "Net name", in bold (owner request, 2026-11-02).
+    [Fact]
+    public void The_pin_headings_are_bold_and_the_net_heading_says_net_name()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+            TextBlock net = ControlOf<TextBlock>(window, "InfoPinsNetHeading");
+
+            Assert.Equal("Net name", net.Text);
+            Assert.Equal(Avalonia.Media.FontWeight.Bold, net.FontWeight);
+        });
+    }
+}

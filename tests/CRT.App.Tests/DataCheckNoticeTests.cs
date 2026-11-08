@@ -22,6 +22,32 @@ public sealed class DataCheckNoticeTests
         Assert.True(notice.GoesByItself);
     }
 
+    // ###########################################################################################
+    // *** FILES THAT COULD NOT BE DOWNLOADED ARE SAID, NEVER "ALL UP TO DATE" (owner request, 2026-11-07: every error and
+    // warning in the UI). *** The card said the data was up to date while downloads had been given up on. It stays,
+    // with what did arrive offering the refresh; at launch too - the data on this computer is behind.
+    // ###########################################################################################
+    [Theory]
+    [InlineData(0, 1, true, "[1] file could not be downloaded from the stable source - the data on this computer may be behind. \"Show errors and warnings\" in the \"Configuration\" tab says which", false)]
+    [InlineData(0, 3, false, "[3] files could not be downloaded from the stable source - the data on this computer may be behind. \"Show errors and warnings\" in the \"Configuration\" tab says which", false)]
+    [InlineData(1, 2, true, "[1] file updated in background and [2] files could not be downloaded from the stable source - please refresh board", true)]
+    [InlineData(4, 1, false, "[4] files updated and [1] file could not be downloaded from the stable source - please refresh board", true)]
+    public void Files_that_could_not_be_downloaded_are_said_and_the_card_stays(int changed, int failed, bool atLaunch, string expected, bool refresh)
+    {
+        var notice = DataCheckNotice.After(changed, atLaunch, "stable source", failed);
+
+        Assert.Equal(expected, notice.Text);
+        Assert.Equal(refresh, notice.OffersRefresh);
+        Assert.False(notice.GoesByItself);
+    }
+
+    // A check that could not run at all says that, whatever failed before it.
+    [Fact]
+    public void A_check_that_could_not_run_says_so_whatever_failed_before()
+    {
+        Assert.StartsWith("Could not check", DataCheckNotice.After(-1, atLaunch: true, "stable source", failedCount: 2).Text, StringComparison.Ordinal);
+    }
+
     // Files changed: the board on screen may be out of date, so the card offers the refresh and
     // waits for it. The launch check ran in the background, and says so - the same words as before.
     [Theory]

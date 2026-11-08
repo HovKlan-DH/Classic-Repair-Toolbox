@@ -352,6 +352,26 @@ public sealed class ChangedFilesTests
             property => Assert.Equal(property.GetValue(row), property.GetValue(pointed)));
     }
 
+    // A board file's row is copied field by field too - its note (2026-11-06) and anything added later
+    // would be lost on the other board unless copied, so every one is checked by name.
+    [Fact]
+    public void A_board_file_pointed_at_the_new_file_keeps_every_other_field()
+    {
+        var row = new BoardLocalFileEntry();
+
+        foreach (System.Reflection.PropertyInfo property in typeof(BoardLocalFileEntry).GetProperties().Where(property => property.PropertyType == typeof(string)))
+        {
+            property.SetValue(row, property.Name == nameof(BoardLocalFileEntry.File) ? "old.pdf" : property.Name);
+        }
+
+        BoardLocalFileEntry pointed = ChangedFiles.Repointed(new BoardData { BoardLocalFiles = [row] }, "old.pdf", "new.pdf").BoardLocalFiles.Single();
+
+        Assert.Equal("new.pdf", pointed.File);
+        Assert.All(
+            typeof(BoardLocalFileEntry).GetProperties().Where(property => property.Name != nameof(BoardLocalFileEntry.File)),
+            property => Assert.Equal(property.GetValue(row), property.GetValue(pointed)));
+    }
+
     // Put in before, the board's rows cite the new bytes under a name of their own: it is so already.
     [Fact]
     public void A_board_whose_rows_cite_the_new_bytes_has_it_already()

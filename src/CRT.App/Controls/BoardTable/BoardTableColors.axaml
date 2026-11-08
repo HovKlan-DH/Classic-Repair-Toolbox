@@ -58,9 +58,16 @@
                  Excel shades a selected range - translucent, so the green, orange or red
                  underneath still shows. One selected cell keeps the dashed frame alone. -->
             <SolidColorBrush x:Key="BoardTable_Selection_Fill">#330B5CAD</SolidColorBrush>
+            <!-- Each selected cell's edge (owner report, 2026-11-07: the lines between selected cells were
+                 gone - the fill is as light as the grey line beside it, so the line vanished into it). -->
+            <SolidColorBrush x:Key="BoardTable_Selection_Edge">#990B5CAD</SolidColorBrush>
             <!-- The 1px frame round a picture in a file's hover card (owner request, 2026-10-10),
                  so where a scan with a white or transparent edge really ends can be seen. -->
             <SolidColorBrush x:Key="BoardTable_PreviewImage_Border">#5A5A5A</SolidColorBrush>
+            <!-- What "Replace with" holds, drawn in place of what it replaces (owner request, 2026-11-07) - a green
+                 apart from the search's yellow marks, so the cells read as they will. -->
+            <SolidColorBrush x:Key="BoardTable_ReplacePreview_Bg">#A5E3A9</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_ReplacePreview_Fg">#0F2E12</SolidColorBrush>
         </ResourceDictionary>
 
         <!-- The same meanings as deep tints the light foreground stays readable on. -->
@@ -86,7 +93,10 @@
             <SolidColorBrush x:Key="BoardTable_Error_Bg">#4A1C1C</SolidColorBrush>
             <SolidColorBrush x:Key="BoardTable_Warning_Bg">#4A3A0E</SolidColorBrush>
             <SolidColorBrush x:Key="BoardTable_Selection_Fill">#405A9FE0</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_Selection_Edge">#B05A9FE0</SolidColorBrush>
             <SolidColorBrush x:Key="BoardTable_PreviewImage_Border">#B0B0B0</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_ReplacePreview_Bg">#2E7D32</SolidColorBrush>
+            <SolidColorBrush x:Key="BoardTable_ReplacePreview_Fg">#FFFFFF</SolidColorBrush>
         </ResourceDictionary>
 
     </ResourceDictionary.ThemeDictionaries>

@@ -40,6 +40,13 @@ namespace Handlers.DataHandling
             new(ComponentsGroup, "Links", BoardWorkbookSchema.SheetComponentLinks, BoardTableSheetPart.Whole),
         ];
 
+        // ###########################################################################################
+        // A group starting a line of its own in a strip of these tabs (owner request, 2026-11-06: "just have the
+        // 'Components' part on a new-line"): the components' seven tabs on one line, the board's and KiCad's on
+        // the line above - never broken wherever the width ran out (SheetTabsLayout).
+        // ###########################################################################################
+        public static bool StartsLine(string group) => string.Equals(group, BoardTableTabs.ComponentsGroup, StringComparison.Ordinal);
+
         // The sheets in the order the tabs have them - what a pill or a search going to the first it finds goes by.
         public static IReadOnlyList<BoardWorkbookSchema.SheetDefinition> SheetsInOrder { get; } =
             BoardTableTabs.All

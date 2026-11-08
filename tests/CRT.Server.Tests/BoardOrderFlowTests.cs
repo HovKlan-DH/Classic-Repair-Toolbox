@@ -219,7 +219,8 @@ namespace CRT.Server.Tests
             Assert.Contains("checksum manifest of BETA", outcome.Answer.Problem, StringComparison.Ordinal);
 
             // And where to rebuild it, by the Maintainer tab's own name for the screen (2026-10-04).
-            Assert.Contains("use \"Account\" > \"Rebuild checksum manifests\"", outcome.Answer.Problem, StringComparison.Ordinal);
+            // The administrator's entries are the "Management" screen's since 2026-11-07.
+            Assert.Contains("use \"Management\" > \"Rebuild checksum manifests\"", outcome.Answer.Problem, StringComparison.Ordinal);
         }
 
         // ###########################################################################################

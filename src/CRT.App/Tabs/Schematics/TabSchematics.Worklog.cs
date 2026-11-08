@@ -560,6 +560,26 @@ public partial class TabSchematics
         this.RefreshWorklogEntriesListOverlay();
 
     // ###########################################################################################
+    // The worklog overlay as aligning KiCad data starts or ends - gone while it is on, back as it goes. Called with
+    // the picture tools' bar (FollowPictureTool), which every start and end of the alignment calls.
+    // ###########################################################################################
+    private bool thisWorklogsHiddenForAligning;
+
+    private void FollowAligningInWorklogOverlay()
+    {
+        if (this.thisWorklogsHiddenForAligning == this.thisIsKiCadTraceCalibrationMode)
+        {
+            return;
+        }
+
+        this.thisWorklogsHiddenForAligning = this.thisIsKiCadTraceCalibrationMode;
+        this.RefreshWorklogEntriesListOverlay();
+    }
+
+    // Whether the worklog overlay is drawn on the picture now - for a test.
+    internal bool WorklogOverlayShownForTests => this.SchematicsWorklogEntriesOverlay.IsVisible;
+
+    // ###########################################################################################
     // Rebuilds the "Show worklogs" list view for the schematic currently on screen: every saved
     // entry whose SchematicName matches it, each drawn in its own category color, with a "#N"
     // badge and state pill anchored at its area's top-left. Entries are deliberately scoped to
@@ -590,7 +610,10 @@ public partial class TabSchematics
         // entry's colors would make the next reset a no-op and strand those colors on the label.
         this.ResetSchematicsHoverLabelToDefaultAppearance();
 
-        if (!this.thisIsShowingWorklogEntriesList || this.currentFullResBitmap == null)
+        // Nothing of the worklog over the picture while KiCad data is aligned on it (owner request, 2026-11-07: "When I
+        // am aligning KiCad data, then I do not want to see any worklogs on top") - drawn again as the tool goes
+        // (FollowAligningInWorklogOverlay).
+        if (!this.thisIsShowingWorklogEntriesList || this.currentFullResBitmap == null || this.thisIsKiCadTraceCalibrationMode)
         {
             this.SchematicsWorklogEntriesOverlay.IsVisible = false;
             this.SchematicsWorklogEntriesOverlay.Entries = Array.Empty<WorklogEntriesOverlay.Entry>();

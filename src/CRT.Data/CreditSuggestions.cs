@@ -127,8 +127,10 @@ namespace Handlers.DataHandling
             CreditSuggestions.Differ(before.ComponentLocalFiles, draft.ComponentLocalFiles, row => string.Join('\u001F', CreditSuggestions.Key(row.BoardLabel), row.Region?.Trim(), row.Name?.Trim(), CreditSuggestions.Key(row.File))) ||
             CreditSuggestions.Differ(before.ComponentLinks, draft.ComponentLinks, row => string.Join('\u001F', CreditSuggestions.Key(row.BoardLabel), row.Region?.Trim(), row.Name?.Trim(), row.Url?.Trim())) ||
             CreditSuggestions.Differ(before.ComponentReplacements, draft.ComponentReplacements, row => string.Join('\u001F', CreditSuggestions.Key(row.BoardLabel), row.Region?.Trim(), row.PartNumber?.Trim(), row.Kind?.Trim(), row.Note?.Trim())) ||
-            CreditSuggestions.Differ(before.BoardLocalFiles, draft.BoardLocalFiles, row => string.Join('\u001F', row.Category?.Trim(), row.Region?.Trim(), row.Name?.Trim(), CreditSuggestions.Key(row.File))) ||
-            CreditSuggestions.Differ(before.BoardLinks, draft.BoardLinks, row => string.Join('\u001F', row.Category?.Trim(), row.Region?.Trim(), row.Name?.Trim(), row.Url?.Trim())) ||
+            // A board file's and link's note is work too (code review, 2026-11-08: left out, a draft writing only notes was
+            // offered no credit) - plain text, kept as ComponentPaneEdits.NormalisedNote keeps it.
+            CreditSuggestions.Differ(before.BoardLocalFiles, draft.BoardLocalFiles, row => string.Join('\u001F', row.Category?.Trim(), row.Region?.Trim(), row.Name?.Trim(), CreditSuggestions.Key(row.File), ComponentPaneEdits.NormalisedNote(row.Note))) ||
+            CreditSuggestions.Differ(before.BoardLinks, draft.BoardLinks, row => string.Join('\u001F', row.Category?.Trim(), row.Region?.Trim(), row.Name?.Trim(), row.Url?.Trim(), ComponentPaneEdits.NormalisedNote(row.Note))) ||
             CreditSuggestions.Differ(before.KiCadImportantSignals, draft.KiCadImportantSignals, row => string.Join('\u001F', row.DisplayName?.Trim(), row.KiCadNetName?.Trim())) ||
             CreditSuggestions.PictureSettingsDiffer(before.Schematics, draft.Schematics);
 
@@ -163,8 +165,9 @@ namespace Handlers.DataHandling
             return draft.Any(row => had.TryGetValue(Picture(row), out string? settings) && !string.Equals(settings, Settings(row), StringComparison.Ordinal));
         }
 
+        // The note as notes are compared (BoardDataDiffer, [RichNoteMarkup]): a note nested a level deeper is work too.
         private static string ImageKey(ComponentImageEntry row) =>
-            string.Join('\u001F', CreditSuggestions.Key(row.BoardLabel), row.Region?.Trim(), row.Pin?.Trim(), row.Name?.Trim(), row.ExpectedOscilloscopeReading?.Trim(), CreditSuggestions.Key(row.File), row.Note?.Trim(), row.TimeDiv?.Trim(), row.VoltsDiv?.Trim(), row.TriggerLevelVolts?.Trim(), row.MachineState?.Trim());
+            string.Join('\u001F', CreditSuggestions.Key(row.BoardLabel), row.Region?.Trim(), row.Pin?.Trim(), row.Name?.Trim(), row.ExpectedOscilloscopeReading?.Trim(), CreditSuggestions.Key(row.File), RichNote.NormalisedMarkup(row.Note), row.TimeDiv?.Trim(), row.VoltsDiv?.Trim(), row.TriggerLevelVolts?.Trim(), row.MachineState?.Trim());
 
         // A name or label as rows are matched by - capitals are no change.
         private static string Key(string? value) => value?.Trim().ToUpperInvariant() ?? string.Empty;

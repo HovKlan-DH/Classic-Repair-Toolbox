@@ -8,11 +8,13 @@ From nothing to a recorded repair.
 
 ## 1. Turn it on
 
-It is on by default: you have a "Workbooks" tab, and a bar above the tabs.
+It is on by default: you have a "My Devices" tab, and a bar above the tabs.
 
-If you do not see them: "Configuration" tab -> tick **Enable "Workbooks" tab**.
+If you do not see them: "Configuration" tab -> tick **Enable "My Devices" tab**.
 
-Under the checkbox, "Scope in Workbooks tab:" chooses whether the Workbooks tab lists **Show all workbooks** or **Show only workbooks for selected board**. Start with the default (selected board only).
+Under the checkbox, "Scope in "My Devices" tab:" chooses which devices and workbooks the tab lists: **Show all devices**, **Show only devices for selected hardware** (every board of it), or **Show only devices for selected board**. Start with the default (selected board only).
+
+Below it, "Sorting of devices in "My devices" list:" orders the devices in the list: **Sort automatically by name** (the default), **Sort automatically by hardware/board/name**, or **Sort manually in list (drag up/down)**.
 
 ## 2. Select the board
 
@@ -22,11 +24,11 @@ The workbook belongs to whichever board is selected when you create it, and it c
 
 ## 3. Create the workbook
 
-Click **Create new workbook** in the bar.
+Click **Add workbook** in the bar.
 
 * **Description** - required. The repair, in one line: `Dead C64, no video - top attic find`
 * **Note** - optional. Anything else: how the fault showed itself, where the board came from, etc.
-* **On my device** - None, or one of your own machines with this board. **Add device** beside it adds one - see [Devices](Workbooks-Devices).
+* **Associate workbook to device** - None, or one of your own machines with this board. **Add device** beside it adds one - see [Devices](Workbooks-Devices).
 
 Click **Create workbook** (or Ctrl+Enter).
 
@@ -57,7 +59,7 @@ Set the worklog to **Closed** when it is done. When the last one closes, so does
 
 ## 6. Export it
 
-"Workbooks" tab -> **Export to PDF** for the write-up on its own, or **Export to ZIP** to include the original photos and files.
+"My Devices" tab -> **Export to PDF** for the write-up on its own, or **Export to ZIP** to include the original photos and files.
 
 See [Export and your data](Workbooks-Export-and-data).
 

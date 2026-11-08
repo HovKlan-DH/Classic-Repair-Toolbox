@@ -84,6 +84,52 @@ public sealed class BoardWorkbookSchemaTests
         }
     }
 
+    // ###########################################################################################
+    // *** A NOTE COLUMN IS ONE WHOSE PROPERTY IS A NOTE WITH FORMATTING (owner decision, 2026-11-08: an indent-only change
+    // of a note "is a change like any other change so it should count"). *** The table compares a sheet's NoteColumns as
+    // BoardDataDiffer compares a [RichNoteMarkup] property - a first line's indent an edit - so its colors and counts agree
+    // with "N rows changed". Read off the very cells BuildRows makes, every column of every sheet: a note column exactly
+    // when the value in it came from such a property.
+    // ###########################################################################################
+    [Fact]
+    public void A_sheets_note_columns_are_exactly_the_columns_holding_a_note_with_formatting()
+    {
+        BoardData board = new()
+        {
+            Schematics = [Filled<BoardSchematicEntry>("a")],
+            Components = [Filled<ComponentEntry>("a")],
+            ComponentImages = [Filled<ComponentImageEntry>("a")],
+            ComponentLocalFiles = [Filled<ComponentLocalFileEntry>("a")],
+            ComponentLinks = [Filled<ComponentLinkEntry>("a")],
+            ComponentPins = [Filled<ComponentPinEntry>("a")],
+            ComponentReplacements = [Filled<ComponentReplacementEntry>("a")],
+            BoardLocalFiles = [Filled<BoardLocalFileEntry>("a")],
+            BoardLinks = [Filled<BoardLinkEntry>("a")],
+            Credits = [Filled<CreditEntry>("a")],
+            KiCadImportantSignals = [Filled<KiCadImportantSignalEntry>("a")],
+        };
+
+        int noteColumns = 0;
+
+        foreach (BoardWorkbookSchema.SheetDefinition sheet in BoardWorkbookSchema.AllSheets)
+        {
+            Type rowType = Assert.Single(BoardWorkbookSchema.EntriesOf(sheet, board)).GetType();
+            IReadOnlyDictionary<string, string> cells = Assert.Single(BoardWorkbookSchema.BuildRows(sheet, board));
+
+            foreach (string column in sheet.ColumnOrder)
+            {
+                PropertyInfo? from = rowType.GetProperties().SingleOrDefault(property => cells[column] == $"a-{property.Name}");
+                bool isNote = from?.IsDefined(typeof(RichNoteMarkupAttribute), inherit: false) == true;
+
+                Assert.True(isNote == sheet.IsNoteColumn(column), $"[{sheet.SheetName}] [{column}]: a note with formatting is [{isNote}], a note column [{sheet.IsNoteColumn(column)}]");
+                noteColumns += isNote ? 1 : 0;
+            }
+        }
+
+        // The pictures' and baselines' note, so the walk above met one.
+        Assert.Equal(1, noteColumns);
+    }
+
     [Fact]
     public void EntriesOf_lines_up_index_for_index_with_BuildRows()
     {

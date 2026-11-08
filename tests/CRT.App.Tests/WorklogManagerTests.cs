@@ -149,6 +149,27 @@ public sealed class WorklogManagerTests : IDisposable
         Assert.Equal(1, active!.Id);
     }
 
+    // ###########################################################################################
+    // *** A NOTE'S FIRST LINE KEEPS THE INDENT THAT SAYS WHAT IT IS (code review, 2026-11-08). *** A workbook's note and
+    // a worklog's description are markup (RichNote): trimmed whole, a first line nested once - "  - PSU" - came back a
+    // bullet of the first level. Blank lines around them and white space at their end still go (RichNote.TrimMarkup).
+    // ###########################################################################################
+    [Fact]
+    public void A_workbooks_note_and_a_worklogs_description_keep_their_first_lines_indent()
+    {
+        this.LoadWorklog();
+
+        WorkbookRecord workbook = CreateWorkbook("Commodore 64|250469", "No video", "\n  - PSU\n- RAM\n");
+        Assert.Equal("  - PSU\n- RAM", workbook.Note);
+
+        WorkbookRecord? updated = WorklogManager.UpdateWorkbook(workbook.Id, "No video", "  - VIC  \n");
+        Assert.Equal("  - VIC", updated!.Note);
+
+        WorklogEntryRecord? entry = WorklogManager.AddEntry(
+            workbook.Id, "Top", new Rect(0, 0, 1, 1), "Dead", "  - socket U7\n- U8", "Issue", "Open", Array.Empty<string>());
+        Assert.Equal("  - socket U7\n- U8", entry!.Description);
+    }
+
     [Fact]
     public void The_next_id_advances_after_each_workbook_is_created()
     {
@@ -1952,6 +1973,21 @@ public sealed class WorklogManagerTests : IDisposable
         };
 
         Assert.Equal(3, WorklogManager.ResolveActiveWorkbook(workbooks, null)!.Id);
+    }
+
+    // "Clear" under the "My Devices" tab's workbook list saves NoWorkbookChosen: no workbook at all, not the newest
+    // (owner decision, 2026-11-06: "No workbook worked in") - ids start at 1, so it names none.
+    [Fact]
+    public void No_workbook_chosen_saved_is_no_workbook_at_all()
+    {
+        var workbooks = new List<WorkbookRecord>
+        {
+            new() { Id = 3, Title = "Newest" },
+            new() { Id = 1, Title = "Oldest" },
+        };
+
+        Assert.Equal(0, WorklogManager.NoWorkbookChosen);
+        Assert.Null(WorklogManager.ResolveActiveWorkbook(workbooks, WorklogManager.NoWorkbookChosen));
     }
 
     // A saved id naming a workbook this board no longer has - the folder deleted by hand, or the id

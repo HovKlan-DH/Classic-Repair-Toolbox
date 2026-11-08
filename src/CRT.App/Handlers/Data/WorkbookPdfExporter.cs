@@ -1184,16 +1184,14 @@ namespace Handlers.DataHandling
                                 WorklogCurrency.ResolveRecordedCode(w.CurrencyCode, currencyCode))
                         }.Where(part => part.Length > 0));
 
-                        return totals.Length > 0
-                            ? $"{FormatDate(w.Date)} - {w.Text}  ({totals})"
-                            : $"{FormatDate(w.Date)} - {w.Text}";
+                        return new SubListLine(FormatDate(w.Date), w.Text, totals.Length > 0 ? $"({totals})" : null);
                     })));
                 }
 
                 if (record.Comments.Count > 0)
                 {
                     column.Item().Element(e => ComposeSubList(e, "Comments",
-                        record.Comments.Select(c => $"{FormatDate(c.Date)} - {c.Text}")));
+                        record.Comments.Select(c => new SubListLine(FormatDate(c.Date), c.Text))));
                 }
 
                 if (record.Links.Count > 0)
@@ -1205,8 +1203,7 @@ namespace Handlers.DataHandling
                 {
                     // Named but not embedded: a PDF cannot show a datasheet or a scope capture. The
                     // ZIP export carries the actual bytes, which is what the list here refers to.
-                    column.Item().Element(e => ComposeSubList(e, "Files", entry.Files.Select(f =>
-                        string.IsNullOrWhiteSpace(f.Comment) ? f.FileName : $"{f.FileName} - {f.Comment}")));
+                    column.Item().Element(e => ComposeSubList(e, "Files", entry.Files.Select(f => new SubListLine(f.FileName, f.Comment))));
                 }
 
                 if (entry.Photos.Count > 0)
@@ -1346,7 +1343,7 @@ namespace Handlers.DataHandling
             });
         }
 
-        private static void ComposeSubList(IContainer container, string heading, IEnumerable<string> lines)
+        private static void ComposeSubList(IContainer container, string heading, IEnumerable<SubListLine> lines)
         {
             container.PaddingTop(2).Column(column =>
             {
@@ -1358,10 +1355,65 @@ namespace Handlers.DataHandling
                     // Linkified: these rows are the work-done / comment / link / file lines, all of
                     // which are free text the user typed and routinely carry a URL. The app makes
                     // those clickable on screen (TextLinkRenderer), so the exported document does
-                    // too, through the SAME TextLinkFinder rules.
-                    column.Item().Element(e => ComposeLinkedText(e, $"\u2022 {line}", 9, HeadingColor));
+                    // too, through the SAME TextLinkFinder rules. The bullet stands in a column of its
+                    // own, so a row of several lines hangs under it.
+                    column.Item().Row(row =>
+                    {
+                        row.ConstantItem(9).Text("\u2022").FontSize(9).FontColor(HeadingColor);
+                        row.RelativeItem().Element(e => ComposeNote(e, ComposeSubListLine(line), 9, HeadingColor));
+                    });
                 }
             });
+        }
+
+        // ###########################################################################################
+        // One row of a sub-list: what LEADS it (a date, a file's name, a repair's line) and what TRAILS it (a work item's
+        // time and cost) as plain text, and between them a NOTE as its RichNoteTextBox wrote it - null for none.
+        // ###########################################################################################
+        internal sealed record SubListLine(string Lead, string? Note = null, string? Trail = null);
+
+        // ###########################################################################################
+        // *** A SUB-LIST ROW AS ITS NOTE IS SHOWN (code review, 2026-11-07). *** A row was "{date} - {note}" read as ONE
+        // note: a note starting with a bullet ("- replaced C14") printed as "2026-11-07 - - replaced C14", its dash no
+        // bullet, and a file named "C64__rev__B.pdf" printed underlined as "C64revB.pdf". The lead and the trail are plain
+        // text, never read as formatting; the note is read as the note it is, after " - " - or, starting with a bullet, on
+        // a line of its own under the lead, where its bullet starts a line as it does on screen.
+        // ###########################################################################################
+        internal static RichNoteText ComposeSubListLine(SubListLine line)
+        {
+            ArgumentNullException.ThrowIfNull(line);
+
+            var text = new System.Text.StringBuilder();
+            var styles = new List<RichNoteStyle>();
+
+            void Plain(string part)
+            {
+                text.Append(part);
+                styles.AddRange(Enumerable.Repeat(RichNoteStyle.None, part.Length));
+            }
+
+            string lead = line.Lead ?? string.Empty;
+            Plain(lead);
+
+            if (RichNote.TrimMarkup(line.Note) is { Length: > 0 } markup)
+            {
+                RichNoteText note = RichNote.Parse(markup);
+
+                if (lead.Length > 0)
+                {
+                    Plain(RichNote.TryReadBullet(note.Text.Split('\n')[0], out _, out _) ? "\n" : " - ");
+                }
+
+                text.Append(note.Text);
+                styles.AddRange(note.Styles);
+            }
+
+            if (line.Trail is { Length: > 0 } trail)
+            {
+                Plain("  " + trail);
+            }
+
+            return new RichNoteText(text.ToString(), styles);
         }
 
         // ###########################################################################################
@@ -1432,15 +1484,25 @@ namespace Handlers.DataHandling
         // link". A PDF viewer offers no hover cue of its own, and on a printed page the styling is
         // the ONLY thing that survives.
         // ###########################################################################################
-        private static void ComposeLinkedText(IContainer container, string text, float fontSize, string color)
-        {
-            var spans = TextLinkFinder.FindSpans(text);
+        // ###########################################################################################
+        // A note's text with its links clickable - and its formatting (owner request, 2026-11-07; RichNote): drawn as its
+        // plain text, bullets as their glyphs, each piece bold, italic, underlined or struck through as it was typed.
+        // ###########################################################################################
+        private static void ComposeLinkedText(IContainer container, string text, float fontSize, string color) =>
+            ComposeNote(container, RichNote.Parse(text), fontSize, color);
 
-            // The overwhelmingly common case - no link at all - stays one plain span rather than
+        // A note already read - its plain text and styles - drawn with its links (ComposeLinkedText).
+        private static void ComposeNote(IContainer container, RichNoteText note, float fontSize, string color)
+        {
+            string plain = note.Text;
+            var spans = TextLinkFinder.FindSpans(plain);
+            bool styled = note.Styles.Any(style => style != RichNoteStyle.None);
+
+            // The overwhelmingly common case - no link, no style - stays one plain span rather than
             // paying for a composed text block.
-            if (spans.Count == 1 && !spans[0].IsLink)
+            if (!styled && spans.Count == 1 && !spans[0].IsLink)
             {
-                container.Text(text).FontSize(fontSize).FontColor(color);
+                container.Text(plain).FontSize(fontSize).FontColor(color);
                 return;
             }
 
@@ -1450,12 +1512,37 @@ namespace Handlers.DataHandling
 
                 foreach (var span in spans)
                 {
-                    string run = text.Substring(span.Start, span.Length);
+                    // A link or a stretch of text, cut again where its style changes.
+                    int from = span.Start;
 
-                    if (span.IsLink)
-                        composed.Hyperlink(run, span.Url!).FontColor(LinkColor).Underline();
-                    else
-                        composed.Span(run);
+                    for (int index = span.Start + 1; index <= span.Start + span.Length; index++)
+                    {
+                        if (index < span.Start + span.Length && note.Styles[index] == note.Styles[from])
+                        {
+                            continue;
+                        }
+
+                        string run = plain[from..index];
+                        RichNoteStyle style = note.Styles[from];
+
+                        TextSpanDescriptor drawn = span.IsLink
+                            ? composed.Hyperlink(run, span.Url!).FontColor(LinkColor).Underline()
+                            : composed.Span(run);
+
+                        if ((style & RichNoteStyle.Bold) != 0)
+                            drawn.Bold();
+
+                        if ((style & RichNoteStyle.Italic) != 0)
+                            drawn.Italic();
+
+                        if ((style & RichNoteStyle.Underline) != 0)
+                            drawn.Underline();
+
+                        if ((style & RichNoteStyle.Strike) != 0)
+                            drawn.Strikethrough();
+
+                        from = index;
+                    }
                 }
             });
         }

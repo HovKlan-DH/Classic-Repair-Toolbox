@@ -25,8 +25,25 @@ namespace CRT
         private bool thisHasEstablishedOscilloscopeSession;
         private readonly SemaphoreSlim thisOscilloscopeImageSyncSemaphore = new(1, 1);
         private readonly SemaphoreSlim thisOscilloscopeSessionSemaphore = new(1, 1);
-        private ScopeScpiClient? thisConnectedScopeClient;
+        private IScopeClient? thisConnectedScopeClient;
         private bool thisShouldAutoReconnectEstablishedOscilloscopeSession;
+
+        // ###########################################################################################
+        // AUTOMATIC CONNECTING HELD BACK after "Try it" lost the session on the Identify command (owner report,
+        // 2026-11-07: "*IaDN?" tried, and then "it seems to repeat forever(?) this command, not only sending it one time,
+        // but every X seconds"): connecting sends the model's Identify, so every automatic try sent the command the scope
+        // had just left unanswered, a new connection every few seconds - after a few minutes of that the scope answered
+        // nothing at all, "*IDN?" included. Held until "Connect to oscilloscope" is pressed, or automatic connect ticked
+        // again; the output says so once.
+        // ###########################################################################################
+        private volatile bool thisAutomaticConnectHeld;
+
+        // Why the last automatic connect failed - for the ONE line a run of failed tries writes (ScopeAutoConnectBackoff).
+        private string? thisLastAutomaticConnectFailure;
+
+        internal const string AutomaticConnectHeldLine =
+            "Automatic connect is paused, so the Identify command the scope did not answer is not sent again on its own - " +
+            "correct it, then press \"Connect to oscilloscope\".";
         private int thisAutoReconnectAttemptInProgress;
         private DateTime thisLastAutoReconnectAttemptUtc = DateTime.MinValue;
         private bool thisHasSeenEstablishedOscilloscopeSession;
@@ -211,9 +228,12 @@ namespace CRT
             }
 
             bool enteredSemaphore = false;
+            bool tookConnection = false;
             ScopeScpiClient? newScopeClient = null;
             OscilloscopeEntry selectedOscilloscope = selectionSnapshot.SelectedOscilloscope!;
             bool isReestablishingSession = this.thisHasSeenEstablishedOscilloscopeSession;
+
+            this.thisLastAutomaticConnectFailure = null;
 
             this.SetOscilloscopeButtonsEnabled(false);
 
@@ -250,6 +270,7 @@ namespace CRT
                     selectionSnapshot.Port,
                     linkedCts.Token).ConfigureAwait(false);
 
+                tookConnection = true;
                 this.AppendOutputLine("Info", "Network session established");
 
                 await this.ExecutePaletteAsync(
@@ -299,6 +320,12 @@ namespace CRT
                 {
                     this.AppendOutputLine("Warning", "Connection or SCPI communication timed out");
                 }
+                else
+                {
+                    this.thisLastAutomaticConnectFailure = tookConnection
+                        ? $"the scope took the connection but did not answer the Identify command \"{ScopeCommandResolver.GetCommandText(selectedOscilloscope, ScopeCommand.Identify)}\" in time"
+                        : "the scope did not take the connection in time";
+                }
             }
             catch (Exception ex)
             {
@@ -317,6 +344,10 @@ namespace CRT
                         this.AppendOutputLine("Info", hint);
                         this.thisHasLoggedAutomaticConnectHint |= isAutomaticReconnect;
                     }
+                }
+                else if (isAutomaticReconnect)
+                {
+                    this.thisLastAutomaticConnectFailure = ex.Message;
                 }
             }
             finally
@@ -367,7 +398,8 @@ namespace CRT
             OscilloscopeSelectionSnapshot selectionSnapshot,
             Func<IScopeClient, OscilloscopeEntry, CancellationToken, Task> runAsync,
             CancellationToken externalCancellationToken,
-            bool writeWarnings)
+            bool writeWarnings,
+            bool holdAutomaticConnectOnFailure = false)
         {
             if (!this.TryValidateOscilloscopeSelectionSnapshot(selectionSnapshot, writeWarnings))
             {
@@ -411,10 +443,12 @@ namespace CRT
             catch (OperationCanceledException)
             {
                 await this.HandleOscilloscopeSessionFailureCoreAsync("Connection or SCPI communication timed out");
+                this.HoldAutomaticConnectIf(holdAutomaticConnectOnFailure);
             }
             catch (Exception ex)
             {
                 await this.HandleOscilloscopeSessionFailureCoreAsync(ex.Message);
+                this.HoldAutomaticConnectIf(holdAutomaticConnectOnFailure);
             }
             finally
             {
@@ -430,12 +464,31 @@ namespace CRT
         }
 
         // ###########################################################################################
+        // The session lost to a command the scope left unanswered: automatic connecting held back (see
+        // thisAutomaticConnectHeld), said once - only where something would have connected again by itself.
+        // ###########################################################################################
+        private void HoldAutomaticConnectIf(bool hold)
+        {
+            if (!hold || this.thisAutomaticConnectHeld ||
+                (!UserSettings.OscilloscopeAutoConnect && !this.thisShouldAutoReconnectEstablishedOscilloscopeSession))
+            {
+                return;
+            }
+
+            this.thisAutomaticConnectHeld = true;
+            this.AppendOutputLine("Info", TabOscilloscope.AutomaticConnectHeldLine);
+        }
+
+        internal bool IsAutomaticConnectHeldForTests => this.thisAutomaticConnectHeld;
+
+        // ###########################################################################################
         // Runs work against the already established persistent SCPI client without reconnecting.
         // Used by direct UI actions that are initiated from the oscilloscope tab itself.
         // ###########################################################################################
         private async Task RunWithEstablishedOscilloscopeSessionAsync(
             Func<IScopeClient, OscilloscopeEntry, CancellationToken, Task> runAsync,
-            CancellationToken externalCancellationToken)
+            CancellationToken externalCancellationToken,
+            bool holdAutomaticConnectOnFailure = false)
         {
             OscilloscopeSelectionSnapshot selectionSnapshot = this.CreateOscilloscopeSelectionSnapshot();
 
@@ -443,7 +496,8 @@ namespace CRT
                 selectionSnapshot,
                 runAsync,
                 externalCancellationToken,
-                writeWarnings: true);
+                writeWarnings: true,
+                holdAutomaticConnectOnFailure);
         }
 
         // ###########################################################################################
@@ -456,6 +510,9 @@ namespace CRT
             // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
             try
             {
+                // Pressed: automatic connecting may go on again, should this session drop later (thisAutomaticConnectHeld).
+                this.thisAutomaticConnectHeld = false;
+
                 // A connect the user pressed for waits under the "please wait" overlay (2026-09-28); the
                 // automatic reconnect in the background does not - nobody is waiting on it. Its token is
                 // the overlay's, so an oscilloscope that never answers is let go after the limit.
@@ -715,7 +772,10 @@ namespace CRT
 
             try
             {
-                await this.thisConnectedScopeClient.DisposeAsync();
+                if (this.thisConnectedScopeClient is IAsyncDisposable disposable)
+                {
+                    await disposable.DisposeAsync();
+                }
             }
             catch
             {
@@ -785,7 +845,7 @@ namespace CRT
                 return;
             }
 
-            if (!this.thisShouldAutoReconnectEstablishedOscilloscopeSession)
+            if (!this.thisShouldAutoReconnectEstablishedOscilloscopeSession || this.thisAutomaticConnectHeld)
             {
                 return;
             }
@@ -925,6 +985,12 @@ namespace CRT
             UserSettings.OscilloscopeAutoConnect = isEnabled;
             this.thisShouldAutoReconnectEstablishedOscilloscopeSession = isEnabled;
 
+            // Ticked again: asked for, so no longer held (thisAutomaticConnectHeld).
+            if (isEnabled)
+            {
+                this.thisAutomaticConnectHeld = false;
+            }
+
             if (isEnabled && UserSettings.EnableNetworkConnectedOscilloscopeTab)
             {
                 this.StartOscilloscopeAutoConnectLoop();
@@ -990,15 +1056,24 @@ namespace CRT
         // ###########################################################################################
         private async Task RunOscilloscopeAutoConnectLoopAsync(CancellationToken cancellationToken)
         {
+            // Tries failed in a row - each one waits longer before the next (ScopeAutoConnectBackoff), so a scope that takes
+            // connections and answers nothing is not sent a new one every second (owner report, 2026-11-07).
+            int failures = 0;
+
             try
             {
                 while (!cancellationToken.IsCancellationRequested)
                 {
                     OscilloscopeSelectionSnapshot selectionSnapshot = this.CreateOscilloscopeSelectionSnapshot();
 
+                    // A turn with no try - connect held or off, a session established (by hand too), no scope to try -
+                    // ends a run of failed tries: the next try is a second away and says why it fails (code review,
+                    // 2026-11-08; ScopeAutoConnectBackoff.FailuresAfter).
                     if (!UserSettings.OscilloscopeAutoConnect ||
-                        !UserSettings.EnableNetworkConnectedOscilloscopeTab)
+                        !UserSettings.EnableNetworkConnectedOscilloscopeTab ||
+                        this.thisAutomaticConnectHeld)
                     {
+                        failures = ScopeAutoConnectBackoff.FailuresAfter(failures, ScopeAutoConnectBackoff.Turn.NoTry);
                         await Task.Delay(
                             GetOscilloscopeAutoConnectRetryDelay(),
                             cancellationToken).ConfigureAwait(false);
@@ -1009,6 +1084,7 @@ namespace CRT
                         this.thisHasEstablishedOscilloscopeSession ||
                         this.thisConnectedScopeClient != null)
                     {
+                        failures = ScopeAutoConnectBackoff.FailuresAfter(failures, ScopeAutoConnectBackoff.Turn.NoTry);
                         await Task.Delay(
                             GetOscilloscopeAutoConnectRetryDelay(),
                             cancellationToken).ConfigureAwait(false);
@@ -1017,6 +1093,7 @@ namespace CRT
 
                     if (!this.TryValidateOscilloscopeSelectionSnapshot(selectionSnapshot, writeWarnings: false))
                     {
+                        failures = ScopeAutoConnectBackoff.FailuresAfter(failures, ScopeAutoConnectBackoff.Turn.NoTry);
                         await Task.Delay(
                             GetOscilloscopeAutoConnectRetryDelay(),
                             cancellationToken).ConfigureAwait(false);
@@ -1029,11 +1106,13 @@ namespace CRT
                         continue;
                     }
 
+                    bool connected;
+
                     try
                     {
                         this.thisLastAutoReconnectAttemptUtc = DateTime.UtcNow;
 
-                        await this.ConnectSelectedOscilloscopeAsync(
+                        connected = await this.ConnectSelectedOscilloscopeAsync(
                             cancellationToken,
                             isAutomaticReconnect: true).ConfigureAwait(false);
                     }
@@ -1042,8 +1121,18 @@ namespace CRT
                         Interlocked.Exchange(ref this.thisAutoReconnectAttemptInProgress, 0);
                     }
 
+                    failures = ScopeAutoConnectBackoff.FailuresAfter(
+                        failures,
+                        connected ? ScopeAutoConnectBackoff.Turn.Connected : ScopeAutoConnectBackoff.Turn.Failed);
+
+                    // The first failure of a run says why, once - and that CRT keeps trying, less often.
+                    if (failures == 1 && this.thisLastAutomaticConnectFailure is { } reason)
+                    {
+                        this.AppendOutputLine("Warning", ScopeAutoConnectBackoff.FailedLine(reason));
+                    }
+
                     await Task.Delay(
-                        GetOscilloscopeAutoConnectRetryDelay(),
+                        ScopeAutoConnectBackoff.DelayAfter(failures),
                         cancellationToken).ConfigureAwait(false);
                 }
             }

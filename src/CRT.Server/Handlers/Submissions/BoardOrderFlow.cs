@@ -234,7 +234,7 @@ namespace CRT.Server.Handlers.Submissions
 
                 problems.Add(
                     $"The checksum manifest of {source} could not be rebuilt, so CRT will not download {whatChanged} from there yet - " +
-                    "use " + MaintainerScreenWording.AccountQuoted + " > \"Rebuild checksum manifests\".");
+                    "use " + MaintainerScreenWording.ManagementQuoted + " > \"Rebuild checksum manifests\".");
             }
         }
     }

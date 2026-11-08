@@ -37,6 +37,47 @@ public sealed class BoardPartEditsTests
         Assert.Equal(["Resources", "Troubleshooting"], BoardPartEdits.CategoriesOf(Board().BoardLocalFiles, row => row.Category));
     }
 
+    // ###########################################################################################
+    // A board file's and a board link's note (owner request, 2026-11-06): a change of it alone is a change
+    // of the list, its lines are kept with only its ends trimmed, and a row with nothing typed but a note
+    // is a row - typed into, so the draft takes it, its required fields then marked.
+    // ###########################################################################################
+    [Fact]
+    public void A_board_files_or_links_note_is_a_change_kept_with_its_lines_and_a_note_alone_is_a_row()
+    {
+        BoardData board = Board();
+
+        BoardData files = BoardPartEdits.WithBoardFiles(board,
+            [new BoardLocalFileEntry { Category = board.BoardLocalFiles[0].Category, Name = board.BoardLocalFiles[0].Name, File = board.BoardLocalFiles[0].File, Region = board.BoardLocalFiles[0].Region, Note = "  The manual.\nPage 12: the PLA.  " },
+             .. board.BoardLocalFiles.Skip(1)]);
+
+        Assert.NotSame(board, files);
+        Assert.Equal("The manual.\nPage 12: the PLA.", files.BoardLocalFiles[0].Note);
+        Assert.Same(files, BoardPartEdits.WithBoardFiles(files, files.BoardLocalFiles));
+
+        BoardData links = BoardPartEdits.WithBoardLinks(board, [.. board.BoardLinks, new BoardLinkEntry { Note = "Only a note so far" }]);
+
+        Assert.Equal("Only a note so far", links.BoardLinks[^1].Note);
+        Assert.False(BoardPartEdits.IsBlank(new BoardLocalFileEntry { Note = "x" }));
+        Assert.True(BoardPartEdits.IsBlank(new BoardLinkEntry { Note = "  " }));
+    }
+
+    // Its line ends are "\n" on every platform (code review, 2026-11-08: typed on Windows, its plain box made them
+    // "\r\n", and the same note from Linux read as changed).
+    [Fact]
+    public void A_board_files_or_links_note_is_kept_with_n_line_ends()
+    {
+        BoardData board = Board();
+
+        BoardData files = BoardPartEdits.WithBoardFiles(board,
+            [new BoardLocalFileEntry { Category = board.BoardLocalFiles[0].Category, Name = board.BoardLocalFiles[0].Name, File = board.BoardLocalFiles[0].File, Note = "The manual.\r\nPage 12\rthe PLA." },
+             .. board.BoardLocalFiles.Skip(1)]);
+        BoardData links = BoardPartEdits.WithBoardLinks(board, [.. board.BoardLinks, new BoardLinkEntry { Note = "One\r\nTwo" }]);
+
+        Assert.Equal("The manual.\nPage 12\nthe PLA.", files.BoardLocalFiles[0].Note);
+        Assert.Equal("One\nTwo", links.BoardLinks[^1].Note);
+    }
+
     // The list as the board has it - which is how the pane shows it - is no change: opening the part
     // and leaving it makes no step.
     [Fact]

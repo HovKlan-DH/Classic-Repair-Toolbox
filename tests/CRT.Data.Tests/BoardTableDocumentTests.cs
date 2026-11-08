@@ -721,6 +721,31 @@ public sealed class BoardTableDocumentTests
         Assert.True(BoardTableRowFilter.Shows(BoardTableRowKinds.Warnings, upper));
     }
 
+    // ###########################################################################################
+    // A picture's note nested a level deeper is a change on the table too (owner decision, 2026-11-08): its Note cell
+    // orange, counted as "N rows changed" counts it - a space at its end is still no change.
+    // ###########################################################################################
+    [Fact]
+    public void A_note_nested_a_level_deeper_is_an_orange_cell_counted_as_the_draft_counts_it()
+    {
+        BoardData published = ImagesWithComponents(Image("R9", "Pinout", R9Pinout.File, note: "- checked"), R12Pinout);
+        BoardData draft = ImagesWithComponents(Image("R9", "Pinout", R9Pinout.File, note: "  - checked"), Image("R12", "Pinout", R12Pinout.File, note: " "));
+
+        BoardTableDocument document = BoardTableDocument.Create(published, draft);
+        BoardTableSheet sheet = ImagesSheet(document);
+        int noteColumn = Column(sheet, BoardWorkbookSchema.ColNote);
+
+        Assert.Equal(BoardTableCellState.Modified, sheet.Rows[0].Cells[noteColumn].State);
+        Assert.Equal(BoardTableCellState.Unchanged, sheet.Rows[1].Cells[noteColumn].State);
+        Assert.Equal(1, sheet.ModifiedCount);
+        Assert.Equal(BoardDataDiffer.CountChanges(published, document.ApplyTo(draft)), document.TotalChangeCount);
+
+        // Saved back with another change of its sheet, the note keeps its indent - trimmed whole, it went a level up.
+        sheet.Rows[1].Cells[Column(sheet, BoardWorkbookSchema.ColName)].Text = "Pinout 1k";
+        sheet.Refresh();
+        Assert.Equal("  - checked", document.ApplyTo(draft).ComponentImages.Single(image => image.BoardLabel == "R9").Note);
+    }
+
     // Case 8 - green since 2026-10-03 (violet until then): the colour says what changed.
     [Fact]
     public void An_upper_row_that_is_new_is_green_and_counts_as_added()

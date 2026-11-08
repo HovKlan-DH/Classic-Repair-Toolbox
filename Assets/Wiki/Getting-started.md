@@ -49,7 +49,7 @@ If the board has [KiCad data](KiCad-folder), clicking a pin or a trace lights up
 | **Schematics** | The board, its components and its traces |
 | **Overview** | Every component as a list, and a printable bill of materials |
 | **Resources** | Datasheets, service manuals and links for this board |
-| **[Workbooks](Workbooks-tab)** | Record a repair from first fault to finished write-up - and keep your own machines, each with its repairs |
+| **[My Devices](Workbooks-tab)** | Record a repair from first fault to finished write-up - and keep your own machines, each with its repairs |
 | **Oscilloscope** | Drive a network-connected scope - see [Synchronize oscilloscope](Synchronize-oscilloscope) |
 | **Contribute** | Correct or add board data, or add a whole new board, and send it in |
 | **[Maintainer](Maintainer-tab)** | For maintainers only: review and publish what others send in |
@@ -57,13 +57,13 @@ If the board has [KiCad data](KiCad-folder), clicking a pin or a trace lights up
 | **Feedback** | Send an issue or a question to the developer |
 | **About** | Versions, links, and who contributed this board's data |
 
-**Workbooks** and **Oscilloscope** can both be hidden from the "Configuration" tab if you do not use them. **Maintainer** shows only when `Enable "Maintainer" tab` is ticked there - it needs a maintainer account.
+**My Devices** and **Oscilloscope** can both be hidden from the "Configuration" tab if you do not use them. **Maintainer** shows only when `Enable "Maintainer" tab` is ticked there - it needs a maintainer account.
 
 Each tab says what it is for as you use it. Where a setting has more to it, **Learn more** beside it opens the page about it here.
 
 ## 6. Record what you find
 
-The **Workbooks** tab lets you write down each fault as you find it, mark where it is on the picture, log time and cost, attach photos, and export the finished repair as a PDF or a ZIP to keep or to share.
+The **My Devices** tab lets you write down each fault as you find it, mark where it is on the picture, log time and cost, attach photos, and export the finished repair as a PDF or a ZIP to keep or to share.
 
 That is the one feature worth reading about before you need it - see [Workbooks](Workbooks-tab).
 
@@ -81,3 +81,5 @@ The **Contribute** tab is always there. Change anything on the board you are loo
 | Clicking a trace does nothing | That board has no [KiCad data](KiCad-folder) - not every board does - or **Traces visible** is off |
 | No **Workbooks** or **Oscilloscope** tab | Both can be switched off in "Configuration" - check they are still ticked |
 | No **Maintainer** tab | It shows only with `Enable "Maintainer" tab` ticked in "Configuration" |
+
+When something CRT tried did not work - a button, a file it could not read or save, a link it could not open - a **Something went wrong** card in the bottom-right corner says what. **Show details** on it, or **Show errors and warnings** on the "Configuration" tab, lists everything that went wrong since CRT started, with **Copy all** to paste into the "Feedback" tab. If CRT ever closes by itself, it says so the next time you start it.

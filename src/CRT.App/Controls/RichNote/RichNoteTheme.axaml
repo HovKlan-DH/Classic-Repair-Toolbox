@@ -1,0 +1,213 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:local="clr-namespace:CRT">
+
+	<!-- ###########################################################################################
+	     THE LOOK OF A RichNoteTextBox (owner request, 2026-11-07: "a very simple WYSIWYG ... see it directly in the
+	     text"): Avalonia 12.1.4's own Fluent TextBox theme (Avalonia.Themes.Fluent/Controls/TextBox.xaml, copied whole,
+	     its states included, so the box looks and behaves as every other box of CRT) with two differences:
+	       - its presenter is RichNoteTextPresenter, which draws each character in its style;
+	       - a row of five small buttons over the text - bold, italic, underline, struck through, bullets - Font Awesome's
+	         icons, never taking the keyboard from the text (Focusable False), so the selection they act on stays.
+	     A theme of its own, not BasedOn Fluent's: a StaticResource to a theme in FluentTheme is not found from a
+	     dictionary merged into App's resources while it loads. When Avalonia is updated, compare this with its
+	     TextBox.xaml again.
+	     ########################################################################################### -->
+
+	<ControlTheme x:Key="RichNoteFormatButton" TargetType="Button">
+		<Setter Property="Focusable" Value="False" />
+		<Setter Property="Background" Value="Transparent" />
+		<Setter Property="BorderThickness" Value="0" />
+		<Setter Property="Padding" Value="4,1" />
+		<Setter Property="MinWidth" Value="22" />
+		<Setter Property="Cursor" Value="Hand" />
+		<Setter Property="Foreground" Value="{DynamicResource TextControlForeground}" />
+		<Setter Property="FontFamily" Value="{DynamicResource FontAwesomeSolid}" />
+		<Setter Property="FontSize" Value="11" />
+		<Setter Property="Template">
+			<ControlTemplate>
+				<!-- A border always there, transparent while off - so a button turned on keeps its size. -->
+				<ContentPresenter x:Name="PART_ContentPresenter"
+								  Background="{TemplateBinding Background}"
+								  BorderBrush="Transparent"
+								  BorderThickness="1"
+								  CornerRadius="3"
+								  Padding="{TemplateBinding Padding}"
+								  Content="{TemplateBinding Content}"
+								  HorizontalContentAlignment="Center"
+								  VerticalContentAlignment="Center" />
+			</ControlTemplate>
+		</Setter>
+		<Style Selector="^:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource TextControlButtonBackgroundPointerOver}" />
+		</Style>
+		<Style Selector="^:pressed /template/ ContentPresenter#PART_ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource TextControlButtonBackgroundPressed}" />
+		</Style>
+		<!-- PRESSED while a press would turn its style off - the selection all bold, or bold being what is typed next
+		     (RichNoteTextBox.ShowPressedButtons; owner decision, 2026-11-08) - in CRT's "selected" look, the switches'. LAST,
+		     so the pointer over it keeps it (code review, 2026-11-08: it looked off just as it was looked at). -->
+		<Style Selector="^.On /template/ ContentPresenter#PART_ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Mode_Selected_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Mode_Selected_Border}" />
+		</Style>
+	</ControlTheme>
+
+	<ControlTheme x:Key="{x:Type local:RichNoteTextBox}" TargetType="local:RichNoteTextBox">
+		<Setter Property="Foreground" Value="{DynamicResource TextControlForeground}" />
+		<Setter Property="Background" Value="{DynamicResource TextControlBackground}" />
+		<Setter Property="CaretBrush" Value="{DynamicResource TextControlForeground}" />
+		<Setter Property="BorderBrush" Value="{DynamicResource TextControlBorderBrush}" />
+		<Setter Property="SelectionBrush" Value="{DynamicResource TextControlSelectionHighlightColor}" />
+		<Setter Property="PlaceholderForeground" Value="{DynamicResource TextControlPlaceholderForeground}" />
+		<Setter Property="BorderThickness" Value="{DynamicResource TextControlBorderThemeThickness}" />
+		<Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" />
+		<Setter Property="MinHeight" Value="{DynamicResource TextControlThemeMinHeight}" />
+		<Setter Property="MinWidth" Value="{DynamicResource TextControlThemeMinWidth}" />
+		<Setter Property="Padding" Value="{DynamicResource TextControlThemePadding}" />
+		<Setter Property="FocusAdorner" Value="{x:Null}" />
+		<Setter Property="ScrollViewer.IsScrollChainingEnabled" Value="True" />
+		<Setter Property="ContextFlyout" Value="{DynamicResource DefaultTextBoxContextFlyout}" />
+		<Setter Property="Template">
+			<ControlTemplate>
+				<DataValidationErrors>
+					<Panel>
+						<Border Name="PART_BorderElement"
+								Background="{TemplateBinding Background}"
+								BorderBrush="{TemplateBinding BorderBrush}"
+								BorderThickness="{TemplateBinding BorderThickness}"
+								CornerRadius="{TemplateBinding CornerRadius}"
+								MinWidth="{TemplateBinding MinWidth}"
+								MinHeight="{TemplateBinding MinHeight}" />
+
+						<Border Margin="{TemplateBinding BorderThickness}">
+							<Grid ColumnDefinitions="Auto,*,Auto">
+								<ContentPresenter Grid.Column="0"
+												  VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+												  Content="{TemplateBinding InnerLeftContent}" />
+								<DockPanel x:Name="PART_InnerDockPanel"
+										   Grid.Column="1"
+										   Margin="{TemplateBinding Padding}">
+									<!-- The format row: what a selection, or the next character typed, becomes. -->
+									<StackPanel x:Name="PART_FormatBar"
+												DockPanel.Dock="Top"
+												Orientation="Horizontal"
+												Spacing="2"
+												Margin="-4,-2,0,4">
+										<Button x:Name="PART_BoldButton" Classes="FormatTool" Theme="{StaticResource RichNoteFormatButton}" Content="&#xf032;" ToolTip.Tip="Bold (Ctrl+B)" />
+										<Button x:Name="PART_ItalicButton" Classes="FormatTool" Theme="{StaticResource RichNoteFormatButton}" Content="&#xf033;" ToolTip.Tip="Italic (Ctrl+I)" />
+										<Button x:Name="PART_UnderlineButton" Classes="FormatTool" Theme="{StaticResource RichNoteFormatButton}" Content="&#xf0cd;" ToolTip.Tip="Underline (Ctrl+U)" />
+										<Button x:Name="PART_StrikeButton" Classes="FormatTool" Theme="{StaticResource RichNoteFormatButton}" Content="&#xf0cc;" ToolTip.Tip="Strikethrough (Ctrl+Shift+X)" />
+										<Button x:Name="PART_BulletButton" Classes="FormatTool" Theme="{StaticResource RichNoteFormatButton}" Content="&#xf0ca;" ToolTip.Tip="Bullet list (Ctrl+Shift+8) - Tab nests a bullet, Shift+Tab takes it out a level" />
+									</StackPanel>
+
+									<TextBlock Name="PART_FloatingPlaceholder"
+											   Foreground="{TemplateBinding PlaceholderForeground}"
+											   IsVisible="False"
+											   Text="{TemplateBinding PlaceholderText}"
+											   DockPanel.Dock="Top" />
+
+									<ScrollViewer Name="PART_ScrollViewer"
+												  HorizontalScrollBarVisibility="{TemplateBinding (ScrollViewer.HorizontalScrollBarVisibility)}"
+												  VerticalScrollBarVisibility="{TemplateBinding (ScrollViewer.VerticalScrollBarVisibility)}"
+												  IsScrollChainingEnabled="{TemplateBinding (ScrollViewer.IsScrollChainingEnabled)}"
+												  AllowAutoHide="{TemplateBinding (ScrollViewer.AllowAutoHide)}"
+												  BringIntoViewOnFocusChange="{TemplateBinding (ScrollViewer.BringIntoViewOnFocusChange)}">
+										<Panel>
+											<TextBlock Name="PART_Placeholder"
+													   Foreground="{TemplateBinding PlaceholderForeground}"
+													   Opacity="{DynamicResource TextControlPlaceholderOpacity}"
+													   Text="{TemplateBinding PlaceholderText}"
+													   TextAlignment="{TemplateBinding TextAlignment}"
+													   TextWrapping="{TemplateBinding TextWrapping}"
+													   HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+													   VerticalAlignment="{TemplateBinding VerticalContentAlignment}">
+												<TextBlock.IsVisible>
+													<MultiBinding Converter="{x:Static BoolConverters.And}">
+														<Binding ElementName="PART_TextPresenter" Path="PreeditText" Converter="{x:Static StringConverters.IsNullOrEmpty}" />
+														<Binding RelativeSource="{RelativeSource TemplatedParent}" Path="Text" Converter="{x:Static StringConverters.IsNullOrEmpty}" />
+													</MultiBinding>
+												</TextBlock.IsVisible>
+											</TextBlock>
+
+											<local:RichNoteTextPresenter Name="PART_TextPresenter"
+																		 Text="{TemplateBinding Text, Mode=TwoWay}"
+																		 CaretBlinkInterval="{TemplateBinding CaretBlinkInterval}"
+																		 CaretIndex="{TemplateBinding CaretIndex}"
+																		 SelectionStart="{TemplateBinding SelectionStart}"
+																		 SelectionEnd="{TemplateBinding SelectionEnd}"
+																		 TextAlignment="{TemplateBinding TextAlignment}"
+																		 TextWrapping="{TemplateBinding TextWrapping}"
+																		 LineHeight="{TemplateBinding LineHeight}"
+																		 LetterSpacing="{TemplateBinding LetterSpacing}"
+																		 PasswordChar="{TemplateBinding PasswordChar}"
+																		 RevealPassword="{TemplateBinding RevealPassword}"
+																		 SelectionBrush="{TemplateBinding SelectionBrush}"
+																		 SelectionForegroundBrush="{TemplateBinding SelectionForegroundBrush}"
+																		 CaretBrush="{TemplateBinding CaretBrush}"
+																		 HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+																		 VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+										</Panel>
+										<ScrollViewer.Styles>
+											<Style Selector="ScrollContentPresenter#PART_ContentPresenter">
+												<Setter Property="Cursor" Value="IBeam" />
+											</Style>
+										</ScrollViewer.Styles>
+									</ScrollViewer>
+								</DockPanel>
+								<ContentPresenter Grid.Column="2"
+												  VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+												  Content="{TemplateBinding InnerRightContent}" />
+							</Grid>
+						</Border>
+					</Panel>
+				</DataValidationErrors>
+			</ControlTemplate>
+		</Setter>
+
+		<!-- Disabled State -->
+		<Style Selector="^:disabled">
+			<Setter Property="Foreground" Value="{DynamicResource TextControlForegroundDisabled}" />
+			<Style Selector="^ /template/ Border#PART_BorderElement">
+				<Setter Property="Background" Value="{DynamicResource TextControlBackgroundDisabled}" />
+				<Setter Property="BorderBrush" Value="{DynamicResource TextControlBorderBrushDisabled}" />
+			</Style>
+		</Style>
+
+		<!-- PointerOver State -->
+		<Style Selector="^:pointerover">
+			<Setter Property="Foreground" Value="{DynamicResource TextControlForegroundPointerOver}" />
+			<Style Selector="^ /template/ Border#PART_BorderElement">
+				<Setter Property="BorderBrush" Value="{DynamicResource TextControlBorderBrushPointerOver}" />
+				<Setter Property="Background" Value="{DynamicResource TextControlBackgroundPointerOver}" />
+			</Style>
+		</Style>
+
+		<!-- Focused State -->
+		<Style Selector="^:focus">
+			<Setter Property="Foreground" Value="{DynamicResource TextControlForegroundFocused}" />
+			<Style Selector="^ /template/ Border#PART_BorderElement">
+				<Setter Property="Background" Value="{DynamicResource TextControlBackgroundFocused}" />
+				<Setter Property="BorderBrush" Value="{DynamicResource TextControlBorderBrushFocused}" />
+				<Setter Property="BorderThickness" Value="{DynamicResource TextControlBorderThemeThicknessFocused}" />
+			</Style>
+		</Style>
+
+		<Style Selector="^:error /template/ Border#PART_BorderElement">
+			<Setter Property="BorderBrush" Value="{DynamicResource SystemControlErrorTextForegroundBrush}" />
+		</Style>
+
+		<Style Selector="^ /template/ TextBlock#PART_FloatingPlaceholder">
+			<Setter Property="Cursor" Value="IBeam" />
+		</Style>
+
+		<Style Selector="^[UseFloatingPlaceholder=true]:not(:empty) /template/ TextBlock#PART_FloatingPlaceholder">
+			<Setter Property="IsVisible" Value="True" />
+		</Style>
+
+		<!-- A read-only note has nothing to format. -->
+		<Style Selector="^[IsReadOnly=true] /template/ StackPanel#PART_FormatBar">
+			<Setter Property="IsVisible" Value="False" />
+		</Style>
+	</ControlTheme>
+</ResourceDictionary>

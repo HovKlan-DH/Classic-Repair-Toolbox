@@ -689,13 +689,27 @@ namespace CRT
             }
         }
 
-        internal void OpenBoardLink(ComponentPaneBoardLinkRow row)
+        internal void OpenBoardLink(ComponentPaneBoardLinkRow row) => this.OpenLink(row.Url, row.Name);
+
+        // "Open link" on a component's link (owner request, 2026-11-07: "it misses the "Open link" in the component
+        // "Links"") - a board link's own way.
+        private void OnOpenComponentLinkClick(object? sender, RoutedEventArgs e)
+        {
+            if (sender is Control { Tag: ComponentPaneLinkRow row })
+            {
+                this.OpenLink(row.Url, row.Name);
+            }
+        }
+
+        private void OpenLink(string url, string name)
         {
             this.ShowMessage(null);
 
-            if (LinkTarget.For(row.Url) is not { } target)
+            string said = name.Trim().Length > 0 ? name : url;
+
+            if (LinkTarget.For(url) is not { } target)
             {
-                this.ShowMessage(ComponentPaneWording.LinkNotOpened(row.Name.Trim().Length > 0 ? row.Name : row.Url));
+                this.ShowMessage(ComponentPaneWording.LinkNotOpened(said));
                 return;
             }
 
@@ -707,7 +721,7 @@ namespace CRT
 
             if (!ExternalTargetLauncher.TryOpen(target))
             {
-                this.ShowMessage(ComponentPaneWording.LinkNotOpened(row.Name.Trim().Length > 0 ? row.Name : row.Url));
+                this.ShowMessage(ComponentPaneWording.LinkNotOpened(said));
             }
         }
 
@@ -1160,17 +1174,23 @@ namespace CRT
 
         public IReadOnlyList<string> CategoryChoices { get; init; } = [];
 
+        // What the file is about, several lines (owner request, 2026-11-06) - shown in the "Resources" tab.
+        private string thisNote = string.Empty;
+
+        public string Note { get => this.thisNote; set => this.SetField(ref this.thisNote, value); }
+
         public static ComponentPaneBoardFileRow From(BoardLocalFileEntry row, IReadOnlyList<string> categories) => new()
         {
             Category = row.Category ?? string.Empty,
             Name = row.Name ?? string.Empty,
             File = row.File ?? string.Empty,
             Region = row.Region ?? string.Empty,
+            Note = row.Note ?? string.Empty,
             CategoryChoices = categories,
             Committed = row,
         };
 
-        public override BoardLocalFileEntry ToEntry() => new() { Category = this.thisCategory, Name = this.thisName, File = this.thisFile, Region = this.Region };
+        public override BoardLocalFileEntry ToEntry() => new() { Category = this.thisCategory, Name = this.thisName, File = this.thisFile, Region = this.Region, Note = this.thisNote };
     }
 
     public sealed class ComponentPaneBoardLinkRow : ComponentPaneListRow<BoardLinkEntry>
@@ -1220,7 +1240,7 @@ namespace CRT
 
         public override bool IsBlank =>
             BoardPartEdits.IsBlank(this.ToEntry()) ||
-            (string.IsNullOrWhiteSpace(this.thisName) && string.IsNullOrWhiteSpace(this.thisUrl) &&
+            (string.IsNullOrWhiteSpace(this.thisName) && string.IsNullOrWhiteSpace(this.thisUrl) && string.IsNullOrWhiteSpace(this.thisNote) &&
              string.Equals(this.thisCategory.Trim(), this.OfferedCategory.Trim(), StringComparison.Ordinal));
 
         protected override IReadOnlyList<string> EmptyColumns() => BoardRowRequired.EmptyColumns(this.ToEntry());
@@ -1236,17 +1256,23 @@ namespace CRT
 
         public IReadOnlyList<string> CategoryChoices { get; init; } = [];
 
+        // What the link is about, several lines (owner request, 2026-11-06) - shown in the "Resources" tab.
+        private string thisNote = string.Empty;
+
+        public string Note { get => this.thisNote; set => this.SetField(ref this.thisNote, value); }
+
         public static ComponentPaneBoardLinkRow From(BoardLinkEntry row, IReadOnlyList<string> categories) => new()
         {
             Category = row.Category ?? string.Empty,
             Name = row.Name ?? string.Empty,
             Url = row.Url ?? string.Empty,
             Region = row.Region ?? string.Empty,
+            Note = row.Note ?? string.Empty,
             CategoryChoices = categories,
             Committed = row,
         };
 
-        public override BoardLinkEntry ToEntry() => new() { Category = this.thisCategory, Name = this.thisName, Url = this.thisUrl, Region = this.Region };
+        public override BoardLinkEntry ToEntry() => new() { Category = this.thisCategory, Name = this.thisName, Url = this.thisUrl, Region = this.Region, Note = this.thisNote };
     }
 
     public sealed class ComponentPaneCreditRow : ComponentPaneListRow<CreditEntry>

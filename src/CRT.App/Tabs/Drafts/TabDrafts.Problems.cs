@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows.Input;
 
 namespace CRT
@@ -119,13 +120,162 @@ namespace CRT
         }
 
         // ###########################################################################################
+        // *** A PUBLISHED BOARD WITH NO DRAFT SAYS ITS OWN ERRORS AND WARNINGS (owner decision, 2026-11-07: the launch check
+        // of every board, written to the log alone, "needs to run for everyone and its findings should show just like any
+        // other error or warning in the "Contribute" tab"). *** The same checks a draft gets, on the published board file,
+        // read off the UI thread (DraftStatusReader.PublishedProblemsCached) - in the badges, the component list's and
+        // "Overview"'s panels as a draft's are. A draft made then has its own, as ever.
+        //
+        // *** ONLY ONCE THIS TAB IS SHOWN (code review, 2026-11-08). *** Nothing but this tab shows them, and every board
+        // shown on another tab - switching back and forth on "Schematics" - checked its whole published board, every row and
+        // every file it cites, with only one board's read kept: each switch checked the board again. Shown, the tab checks
+        // the board on screen (OnAttachedToVisualTree), and the board status's panels wait for that very check rather than
+        // run a second one beside it (PublishedProblemsOf).
+        // ###########################################################################################
+        private (string Identity, BoardProblemsRead Read)? thisPublishedProblems;
+
+        private int thisPublishedProblemsAsk;
+
+        // The board on screen's published board not checked, the tab being off screen as it was shown.
+        private bool thisPublishedProblemsStale;
+
+        private void ReadPublishedProblemsOnceShown()
+        {
+            if (this.thisCurrentEntry is not { } entry)
+            {
+                this.thisPublishedProblemsStale = false;
+                return;
+            }
+
+            if (!this.IsOnScreen())
+            {
+                this.thisPublishedProblemsStale = true;
+                return;
+            }
+
+            this.thisPublishedProblemsStale = false;
+            _ = this.ReadPublishedProblemsAsync(entry);
+        }
+
+        // ###########################################################################################
+        // *** A DATA SYNC OVER: THE BOARD SHOWN IS CHECKED AGAIN (code review, 2026-11-08). *** The board files sync before
+        // CRT's window opens and the files they name after it, so a published board checked meanwhile said "is not in the
+        // downloaded data" of files still on their way - and kept saying it until the board or the tab was shown again.
+        // Checked again, a read finds what has arrived since (DraftStatusReader keeps a read only while every file it
+        // missed is still missing), and the board status's panels with it. From Main, after the launch's sync and a check
+        // asked for; off screen, both wait for the tab to be shown.
+        // ###########################################################################################
+        internal void CheckPublishedBoardAgain()
+        {
+            // A check still running began before the files arrived: never handed back for these (PublishedProblemsOf).
+            this.thisPublishedCheckGeneration++;
+            this.ReadPublishedProblemsOnceShown();
+            this.ShowReadiness();
+        }
+
+        // The tab shown: the check the board on screen waited for.
+        private void ReadPublishedProblemsIfStale()
+        {
+            if (this.thisPublishedProblemsStale)
+            {
+                this.ReadPublishedProblemsOnceShown();
+            }
+        }
+
+        private async Task ReadPublishedProblemsAsync(HardwareBoardEntry entry)
+        {
+            int ask = ++this.thisPublishedProblemsAsk;
+            string identity = entry.ExcelDataFile;
+
+            if (this.thisPublishedProblems is { } held && !string.Equals(held.Identity, identity, StringComparison.OrdinalIgnoreCase))
+            {
+                this.thisPublishedProblems = null;
+            }
+
+            if (entry.IsDraftOnly || string.IsNullOrWhiteSpace(identity))
+            {
+                return;
+            }
+
+            try
+            {
+                // A board with a draft has the draft's own - asked off the UI thread, as the check is.
+                string draftsRoot = DraftManager.DraftsRoot;
+
+                if (await Task.Run(() => DraftBoardSource.HasDraft(draftsRoot, identity)))
+                {
+                    return;
+                }
+
+                BoardProblemsRead read = await this.PublishedProblemsOf(entry);
+
+                if (ask != this.thisPublishedProblemsAsk || this.thisCurrentEntry is not { } shown || !TabDrafts.SameBoard(shown, entry))
+                {
+                    return;
+                }
+
+                this.thisPublishedProblems = (identity, read);
+                this.ShowProblems();
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"The published board [{identity}] could not be checked for errors and warnings - [{ex.Message}]");
+            }
+        }
+
+        // ###########################################################################################
+        // The published board's check, off the UI thread - the one still running for the board when there is one, so the
+        // badges and the board status's panels share it. A check done is not kept here: DraftStatusReader keeps its read
+        // while the board file is as it was, so asking again after a data update checks the file as it is.
+        // ###########################################################################################
+        private (string Identity, int Generation, Task<BoardProblemsRead> Check)? thisPublishedCheck;
+
+        // Moved by a data sync's end (CheckPublishedBoardAgain): a check started before it is never handed back after it
+        // (code review, 2026-11-08) - it began before the files the sync brought down.
+        private int thisPublishedCheckGeneration;
+
+        private Task<BoardProblemsRead> PublishedProblemsOf(HardwareBoardEntry entry)
+        {
+            string identity = entry.ExcelDataFile;
+
+            if (this.thisPublishedCheck is { } running &&
+                !running.Check.IsCompleted &&
+                running.Generation == this.thisPublishedCheckGeneration &&
+                string.Equals(running.Identity, identity, StringComparison.OrdinalIgnoreCase))
+            {
+                return running.Check;
+            }
+
+            string published = this.PublishedBoardFileOf(entry);
+            string dataRoot = DataManager.DataRoot;
+            string draftFolder = DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, identity);
+
+            this.PublishedChecksForTests++;
+            Task<BoardProblemsRead> check = Task.Run(() => DraftStatusReader.PublishedProblemsCached(published, dataRoot, draftFolder, identity));
+            this.thisPublishedCheck = (identity, this.thisPublishedCheckGeneration, check);
+
+            return check;
+        }
+
+        // How many published boards' checks were started - for the tests.
+        internal int PublishedChecksForTests { get; private set; }
+
+        // The published board's read, for the board shown while it has no draft's.
+        private BoardProblemsRead? PublishedProblemsOfBoardShown() =>
+            this.thisCurrentEntry is { } entry &&
+            this.thisPublishedProblems is { } held &&
+            string.Equals(held.Identity, entry.ExcelDataFile, StringComparison.OrdinalIgnoreCase)
+                ? held.Read
+                : null;
+
+        // ###########################################################################################
         // Where the read goes, for the board shown - only worked out for a read not placed yet.
         // ###########################################################################################
         private void PlaceProblems()
         {
             BoardProblemsRead? read = this.thisCurrentEntry is { } entry && this.thisProblemsRead.TryGetValue(entry.ExcelDataFile, out BoardProblemsRead? found)
                 ? found
-                : null;
+                : this.PublishedProblemsOfBoardShown();
 
             if (!ReferenceEquals(read, this.thisProblemsPlacedFrom))
             {

@@ -156,10 +156,12 @@ in CI needs a Mac.
 
 ## Running the test suite
 
-There are three xUnit test projects: `tests/CRT.App.Tests` (CRT itself, including headless UI tests
-of its tabs and windows), `tests/CRT.Data.Tests` (the shared data library) and
-`tests/CRT.Server.Tests` (the contribution service). No hardware, no network, no display and no
-database - the whole run takes about two minutes in Release, build included:
+There are five xUnit test projects: `tests/CRT.App.Tests` (CRT itself), two of headless UI tests of
+its tabs and windows - `tests/CRT.App.ContributeUiTests` (the "Contribute" tab) and
+`tests/CRT.App.UiTests` (the rest) - `tests/CRT.Data.Tests` (the shared data library) and
+`tests/CRT.Server.Tests` (the contribution service). They run side by side, each in a process of its
+own. No hardware, no network, no display and no database - the whole run takes about three minutes in
+Release, build included:
 
 ```
 dotnet test Classic-Repair-Toolbox.slnx -c Release

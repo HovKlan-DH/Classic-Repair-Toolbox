@@ -450,7 +450,10 @@ namespace CRT
                 return DraftWorkbookEditOutcome.NoDraft;
             }
 
-            while (this.thisSaveInFlight is { } running)
+            // A finished save is finished, its own continuation run or not - it clears the field at the priority
+            // the save began under, and a later one asked for from a click looped for ever on it here, awaiting a
+            // finished task returning at once (owner report, 2026-11-06: CRT froze; ComponentPane's own copy).
+            while (this.thisSaveInFlight is { IsCompleted: false } running)
             {
                 await running;
             }

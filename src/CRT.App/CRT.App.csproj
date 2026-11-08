@@ -129,9 +129,12 @@
   -->
 
   <!-- Much of Handlers/ is internal (KiCad loaders, board JSON storage, Excel reader/writer).
-       The test project needs to see it; nothing else does. -->
+       The App's three test projects need to see it - the headless UI tests are two projects of
+       their own since 2026-11-08 - and nothing else does. -->
   <ItemGroup>
     <InternalsVisibleTo Include="CRT.App.Tests" />
+    <InternalsVisibleTo Include="CRT.App.UiTests" />
+    <InternalsVisibleTo Include="CRT.App.ContributeUiTests" />
   </ItemGroup>
 
     <ItemGroup>
@@ -173,6 +176,16 @@
 
     <ItemGroup>
         <Content Include="../../Assets/CRT_icon.ico" />
+    </ItemGroup>
+
+    <!--
+    The changelog on the "About" tab (Tabs/About/TabAbout.Changelog.cs): the repository's own
+    CHANGELOG.md, embedded as it is when this build is made, so CRT always shows the changelog of
+    the version running. The LogicalName is what TabAbout.ChangelogResourceName reads. Only READ
+    here - the file is written by hand, and the release workflow uses it as the release body.
+    -->
+    <ItemGroup>
+        <EmbeddedResource Include="../../CHANGELOG.md" Link="CHANGELOG.md" LogicalName="CRT.CHANGELOG.md" />
     </ItemGroup>
 
 	<!--

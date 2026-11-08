@@ -186,6 +186,13 @@ namespace Handlers.Oscilloscope
             {
                 int read = await this.thisStream.ReadAsync(singleByte.AsMemory(0, 1), cancellationToken);
 
+                // Closed by the scope before it said anything: no answer, said as that - an empty line read as an
+                // answer hid why nothing worked (owner report, 2026-11-07: the scope ended every new connection at once).
+                if (read == 0 && bytes.Count == 0)
+                {
+                    throw new System.IO.IOException("The oscilloscope closed the connection without answering");
+                }
+
                 if (read == 0)
                 {
                     break;

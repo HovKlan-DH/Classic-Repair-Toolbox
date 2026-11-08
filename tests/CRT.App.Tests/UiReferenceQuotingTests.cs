@@ -15,7 +15,8 @@ namespace ClassicRepairToolbox.Tests;
 // ###########################################################################################
 public sealed class UiReferenceQuotingTests
 {
-    private const string Tabs = "About|Configuration|Contribute|Feedback|Maintainer|Oscilloscope|Overview|Resources|Schematics|Workbooks";
+    // "My Devices" is the tab that was "Workbooks" (2026-11-06); both stay, so a sentence naming either bare fails.
+    private const string Tabs = "About|Configuration|Contribute|Feedback|Maintainer|Oscilloscope|Overview|Resources|Schematics|Workbooks|My Devices";
 
     // A tab named with no quote around it - "the Schematics tab", and the possessive.
     private static readonly Regex UnquotedTab = new(@"(?<![""';\w])(?:" + Tabs + @") tab\b", RegexOptions.Compiled);

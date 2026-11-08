@@ -1,0 +1,56 @@
+<!--
+The Contribute tab's headless UI tests - the component pane, the table editor, the drafts, the Submit
+dialog and the windows of that flow - in a project of their own, beside CRT.App.UiTests, which has
+every other tab's (owner request, 2026-11-08: "yes, do this"). Each project runs in its own process
+with its own Avalonia session, so the two run at the same time; CRT.App.UiTests.csproj says more.
+The harness (UiTest, TestAppBuilder) and the helpers are compiled in from the two Shared folders.
+
+TreatAsLocalProperty lets this project override SelfContained even when it arrives as a
+command-line (global) property - see the comment on SelfContained in CRT.App.Tests.csproj.
+-->
+<Project Sdk="Microsoft.NET.Sdk" TreatAsLocalProperty="SelfContained;PublishSelfContained">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <SelfContained>false</SelfContained>
+    <PublishSelfContained>false</PublishSelfContained>
+    <IsPublishable>false</IsPublishable>
+    <!-- The test host's runtime, measured: see CRT.App.Tests.csproj. -->
+    <TieredPGO>false</TieredPGO>
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <RootNamespace>Classic_Repair_Toolbox.Tests</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <TreatWarningsAsErrors Condition="'$(Configuration)' == 'Release'">true</TreatWarningsAsErrors>
+    <!-- xUnit1051 is off in every test project alike - CRT.App.Tests.csproj says why. -->
+    <NoWarn>$(NoWarn);xUnit1051</NoWarn>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- As CRT.App.UiTests: Avalonia.Headless without its xunit adapter, and xunit.v3.mtp-OFF. -->
+    <PackageReference Include="Avalonia.Headless" Version="12.1.4" />
+    <PackageReference Include="coverlet.collector" Version="10.1.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
+    <PackageReference Include="xunit.v3.mtp-off" Version="4.0.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\CRT.App\CRT.App.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\CRT.App.Tests\Shared\**\*.cs" Link="Shared\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\CRT.App.UiTests\Shared\**\*.cs" Link="Shared\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

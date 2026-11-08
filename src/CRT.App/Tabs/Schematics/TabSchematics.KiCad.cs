@@ -303,7 +303,7 @@ public partial class TabSchematics
         }
         catch (Exception ex)
         {
-            Logger.Warning($"Failed to load KiCad project in background - [{ex}]");
+            Logger.Critical($"Failed to load KiCad project in background - [{ex}]");
         }
         finally
         {
@@ -553,6 +553,17 @@ public partial class TabSchematics
     // A test's KiCad project, in place of a board's load - and the nets locked, lit up.
     internal void UseKiCadProjectForTests(KiCadProjectBundle? project) => this.thisKiCadProject = project;
 
+    // The board's KiCad files as a load leaves them: the paths, and the runtime cache scope's key
+    // worked out from them as LoadKiCadProjectForCurrentBoardAsync works it out.
+    internal void UseKiCadRawPathsForTests(IReadOnlyList<string> rawPaths)
+    {
+        this.thisCurrentKiCadRawPaths = rawPaths;
+        this.thisCurrentKiCadRuntimeCacheScopeKey = this.BuildCurrentKiCadRuntimeCacheScopeKey();
+    }
+
+    // The runtime cache scope the overlay's caches go into - an object, its type being this tab's own.
+    internal object? KiCadRuntimeCacheScopeForTests => this.GetOrCreateCurrentKiCadRuntimeCacheScope();
+
     internal void RefreshKiCadOverlayForTests() => this.RefreshKiCadOverlayNow();
 
     internal IReadOnlyCollection<string> LockedKiCadNetNamesForTests => this.thisLockedKiCadNetNames;
@@ -747,11 +758,20 @@ public partial class TabSchematics
     // ###########################################################################################
     // Returns the active KiCad runtime cache scope for the current board and updates the LRU order.
     // Creates a new scope when this KiCad project has not been seen before in the current session.
+    //
+    // *** BY THE KEY WORKED OUT AS THE BOARD'S KiCad DATA WAS LOADED - NEVER WORKED OUT AGAIN HERE
+    // (2026-11-06, the alignment's slowness). *** This is asked once per net for every net a rebuild
+    // of the overlay builds - and per hover hit-test - and it built the key again each time: for every
+    // KiCad file of the board a full path, File.Exists and File.GetLastWriteTimeUtc. Measured on the
+    // Open128's top (451 nets, 25 KiCad files), a rebuild after the calibration box moved took 261 ms,
+    // nearly all of it in those 20,000 or so file system calls - 30 ms without them. The key
+    // is the files of the project loaded (LoadKiCadProjectForCurrentBoardAsync sets both): files
+    // changed on disk are a board read again, which loads the project and works the key out anew - a
+    // key worked out here instead named a new scope for the OLD project, which caches nothing new.
     // ###########################################################################################
     private KiCadRuntimeCacheScope? GetOrCreateCurrentKiCadRuntimeCacheScope()
     {
-        string scopeKey = this.BuildCurrentKiCadRuntimeCacheScopeKey();
-        this.thisCurrentKiCadRuntimeCacheScopeKey = scopeKey;
+        string scopeKey = this.thisCurrentKiCadRuntimeCacheScopeKey;
 
         if (string.IsNullOrWhiteSpace(scopeKey))
         {

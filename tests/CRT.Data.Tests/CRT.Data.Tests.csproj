@@ -16,6 +16,14 @@ command-line (global) property - see the comment on SelfContained below.
     <SelfContained>false</SelfContained>
     <PublishSelfContained>false</PublishSelfContained>
     <IsPublishable>false</IsPublishable>
+    <!--
+    The test host's runtime, measured (2026-11-07, the suite at 6 minutes): a test process runs once and briefly, so
+    tiered PGO's instrumented code is all cost and never pays back - a headless UI class went from 43 s to 33 s without
+    it - and the server collector collects on every core instead of one (33 s -> 29 s). Only the tests: CRT itself
+    keeps the runtime's defaults.
+    -->
+    <TieredPGO>false</TieredPGO>
+    <ServerGarbageCollection>true</ServerGarbageCollection>
     <RootNamespace>ClassicRepairToolbox.Tests</RootNamespace>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>

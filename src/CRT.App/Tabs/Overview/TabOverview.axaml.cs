@@ -300,7 +300,7 @@ namespace CRT
             {
                 (string target, string? root) = this.ResolveLinkTarget(link);
 
-                ExternalTargetLauncher.TryOpen(target, root);
+                ExternalTargetLauncher.OpenOrSay(target, root);
             }
         }
 

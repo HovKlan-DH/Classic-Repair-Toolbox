@@ -484,7 +484,10 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Cancels "Add worklog" area-marking mode on Escape, closes the single component popup on
+        // Hands the arrow keys and Escape to "Align KiCad" while it is on and the keyboard is outside
+        // the Schematics tab (KeyIsForKiCadAlignment, below - 2026-11-06), Home, End, Page Up and Page
+        // Down to the "About" page while it is shown (KeyIsForAboutPage),
+        // cancels "Add worklog" area-marking mode on Escape, closes the single component popup on
         // Escape otherwise, and toggles the schematics fullscreen window on F11 (ToggleSchematicsFullscreenWindow -
         // opens it if closed, closes it if already open, so repeatedly pressing F11 here behaves the
         // same as pressing Escape while it is open).
@@ -516,6 +519,31 @@ namespace CRT
             // A color dropper on: the key is its own (2026-11-03).
             if (ColorDropperButton.IsAnyPicking)
                 return;
+
+            // The arrow keys move the box "Align KiCad" aligns wherever the keyboard is (owner report,
+            // 2026-11-06: "it seems not always to react when I use the keys for fine-tuning") - see
+            // KeyIsForKiCadAlignment. Each press, a held key's every repeat included.
+            if (e.Key is Key.Left or Key.Right or Key.Up or Key.Down && this.KeyIsForKiCadAlignment())
+            {
+                if (this.TabSchematicsControl.TakeKiCadCalibrationKey(e.Key, e.KeyModifiers))
+                {
+                    e.Handled = true;
+                }
+
+                return;
+            }
+
+            // Home, End, Page Up and Page Down scroll the "About" tab from wherever the keyboard is (owner request,
+            // 2026-11-06) - see KeyIsForAboutPage.
+            if (e.Key is Key.Home or Key.End or Key.PageUp or Key.PageDown && e.KeyModifiers == KeyModifiers.None && this.KeyIsForAboutPage())
+            {
+                if (this.TabAbout.TakeScrollKey(e.Key))
+                {
+                    e.Handled = true;
+                }
+
+                return;
+            }
 
             // Not over the Maintainer tab (2026-09-29): F11 opens the SCHEMATICS fullscreen, which has
             // nothing to do with reviewing, over a window whose sidebar that tab has collapsed.
@@ -551,15 +579,74 @@ namespace CRT
                 return;
             }
 
-            if (UserSettings.MultipleInstancesForComponentPopup)
-                return;
-
             var popup = this._singleComponentInfoWindow;
-            if (popup == null || !popup.IsVisible)
+            if (!UserSettings.MultipleInstancesForComponentPopup && popup != null && popup.IsVisible)
+            {
+                popup.Close();
+                e.Handled = true;
                 return;
+            }
 
-            popup.Close();
-            e.Handled = true;
+            // "Align KiCad" ends on Escape wherever the keyboard is, as its arrow keys work (above) -
+            // after the popup, which Escape has always closed first.
+            if (this.KeyIsForKiCadAlignment() && this.TabSchematicsControl.TakeKiCadCalibrationKey(e.Key, e.KeyModifiers))
+            {
+                e.Handled = true;
+            }
+        }
+
+        // ###########################################################################################
+        // *** A KEY FOR "ALIGN KICAD" FROM WHEREVER THE KEYBOARD IS IN THIS WINDOW (owner report,
+        // 2026-11-06). *** The alignment's keys reached the box only through the Schematics tab's own
+        // handler, which sees a key only while the keyboard is in that tab: after a press on the
+        // component list, a drop-down, a tab header or a button of the left panel - or with nothing
+        // focused at all, once the Contribute tab that asked for the tool let go of its button - the
+        // arrow keys moved a list's selection or nothing, and the box stayed where it was.
+        //
+        // So while the tool is on and the Schematics tab is shown, Main hands them over - unless:
+        //   - the keyboard is in the Schematics tab itself: its own handler takes the key next on the
+        //     route, and handing it over here too would move the box twice;
+        //   - it is in a box being typed in (the component filter, as the Delete key's rule has it,
+        //     MainPictureToolsTests): there an arrow moves the caret;
+        //   - it is in an open drop-down list (code review, 2026-11-08): there the arrows move through it and
+        //     Escape closes it - handed over, Escape ended the alignment, the box's place thrown away, with the
+        //     list still open. A closed drop-down is not spared, as KeyIsForAboutPage has it.
+        // ###########################################################################################
+        private bool KeyIsForKiCadAlignment() =>
+            this.TabSchematicsControl.IsAligningKiCad &&
+            ReferenceEquals(this.MainTabControl?.SelectedItem, this.SchematicsTabItem) &&
+            !this.TabSchematicsControl.IsKeyboardFocusWithin &&
+            TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is not (TextBox or ComboBox { IsDropDownOpen: true } or ComboBoxItem);
+
+        // ###########################################################################################
+        // *** HOME, END, PAGE UP AND PAGE DOWN ARE THE "ABOUT" PAGE'S WHILE IT IS SHOWN (owner request,
+        // 2026-11-06: "When I am placed anywhere in the 'About' tab and I press 'Home', then I want it to navigate
+        // to the top of the page"). *** The tab has nothing that takes the keyboard, and every click on it sends
+        // the focus back to the component filter (ShouldReturnFocusToComponentSearch) - so the keys moved the
+        // filter's caret, or a drop-down's selection, and the page stayed where it was. Main hands them over
+        // unless the keyboard is where those keys mean something else:
+        //   - a box being typed in other than the component filter (none on this tab, but a tab switch with
+        //     the focus left in one);
+        //   - an open drop-down list, which they move through;
+        //   - a list on the left (components, categories), which they move through too.
+        // A closed drop-down on the left is not spared: there Home or End would pick another hardware or board.
+        // ###########################################################################################
+        private bool KeyIsForAboutPage()
+        {
+            if (!ReferenceEquals(this.MainTabControl?.SelectedItem, this.AboutTabItem))
+            {
+                return false;
+            }
+
+            object? focused = TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement();
+
+            return focused switch
+            {
+                TextBox box => ReferenceEquals(box, this.ComponentSearchTextBox),
+                ComboBox combo => !combo.IsDropDownOpen,
+                ListBoxItem or ListBox => false,
+                _ => true,
+            };
         }
 
         // ###########################################################################################

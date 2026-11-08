@@ -167,7 +167,8 @@ namespace Handlers.OnlineHandling
                 this.thisChanged = false;
             }
 
-            AtomicJsonFile.Write(this.thisCachePath, stored, new JsonSerializerOptions(), "local checksum cache");
+            // A cache not saved is hashed again next time - nothing for anybody to do (a warning, AtomicJsonFile).
+            AtomicJsonFile.Write(this.thisCachePath, stored, new JsonSerializerOptions(), "local checksum cache", needsNothingDone: true);
         }
 
         private static string NormaliseRoot(string dataRoot) =>

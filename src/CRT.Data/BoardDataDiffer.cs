@@ -655,6 +655,11 @@ namespace Handlers.DataHandling
         // through BoardDraftNaturalKeys.ForRow, so the case is real rather than hypothetical. A
         // culture-formatted double would make the same value compare unequal between a
         // comma-decimal and a point-decimal machine.
+        //
+        // *** A NOTE WITH FORMATTING IS TRIMMED AS NOTES ARE ([RichNoteMarkup]; owner decision, 2026-11-08: "this is a
+        // change like any other change so it should count"). *** Its first line's indent says whether it is a bullet and
+        // how deep, so Trim() made a note nested a level deeper compare equal: saved, and never said by "Review changes",
+        // Submit or the "Draft" mark. RichNote.NormalisedMarkup, the rule the pane saves it by.
         // ###########################################################################################
         private static string ReadValue(PropertyInfo property, object row)
         {
@@ -663,13 +668,28 @@ namespace Handlers.DataHandling
             return value switch
             {
                 null => string.Empty,
-                string text => text.Trim(),
+                string text => BoardDataDiffer.ComparableText(text, BoardDataDiffer.IsNote(property)),
                 IFormattable formattable => formattable.ToString(
                     null,
                     System.Globalization.CultureInfo.InvariantCulture),
                 _ => value.ToString()?.Trim() ?? string.Empty
             };
         }
+
+        // ###########################################################################################
+        // A value as two are compared: trimmed - or, a note with formatting (`isNote`), trimmed as notes are, its first
+        // line's indent kept. The table's cells are compared by this very rule (BoardTableSheet.ComparePaired), so its
+        // colors and counts agree with this class's.
+        // ###########################################################################################
+        public static string ComparableText(string? text, bool isNote) =>
+            isNote ? RichNote.NormalisedMarkup(text) : text?.Trim() ?? string.Empty;
+
+        // Whether a row's property is a note with formatting - looked up once per property: the differ runs at every
+        // typing pause, over every value of the board (code review, 2026-11-08).
+        private static bool IsNote(PropertyInfo property) =>
+            BoardDataDiffer.NoteProperties.GetOrAdd(property, each => each.IsDefined(typeof(RichNoteMarkupAttribute), inherit: false));
+
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<PropertyInfo, bool> NoteProperties = new();
 
         // ###########################################################################################
         // A row described for a human. The same shapes DraftDriftReport.BuildDisplayLabel produces,

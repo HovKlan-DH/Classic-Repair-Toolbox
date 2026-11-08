@@ -455,14 +455,16 @@ namespace Handlers.DataHandling
                 new(BoardWorkbookSchema.ColCategory, entry.Category),
                 new(BoardWorkbookSchema.ColName, entry.Name),
                 new(BoardWorkbookSchema.ColFile, entry.File),
-                new(BoardWorkbookSchema.ColRegion, entry.Region)
+                new(BoardWorkbookSchema.ColRegion, entry.Region),
+                new(BoardWorkbookSchema.ColNote, entry.Note)
             ],
             BoardLinkEntry entry =>
             [
                 new(BoardWorkbookSchema.ColCategory, entry.Category),
                 new(BoardWorkbookSchema.ColName, entry.Name),
                 new(BoardWorkbookSchema.ColUrl, entry.Url),
-                new(BoardWorkbookSchema.ColRegion, entry.Region)
+                new(BoardWorkbookSchema.ColRegion, entry.Region),
+                new(BoardWorkbookSchema.ColNote, entry.Note)
             ],
             CreditEntry entry =>
             [

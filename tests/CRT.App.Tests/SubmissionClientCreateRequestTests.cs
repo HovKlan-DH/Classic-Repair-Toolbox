@@ -85,4 +85,26 @@ public sealed class SubmissionClientCreateRequestTests
         SubmissionManifest? received = JsonSerializer.Deserialize<SubmissionManifest>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web));
         Assert.Equal("Open-source replica.", received!.HardwareNotes);
     }
+
+    // ###########################################################################################
+    // A BOARD FILE'S AND A BOARD LINK'S NOTE (owner request, 2026-11-06) travels the whole way: CRT's
+    // body, the server's binding (ASP.NET Core's web defaults), and the publish that writes the rows into
+    // the board - so the note typed in the Contribute tab is the note every "Resources" tab shows.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_board_files_and_links_note_reaches_the_published_board()
+    {
+        SubmissionManifest manifest = SubmissionClientCreateRequestTests.Manifest();
+        manifest.Rows.BoardLocalFiles = [new BoardLocalFileEntry { Category = "Resources", Name = "Service manual", File = "Board local files/manual.pdf", Note = "Page 12 has the PLA.\nThe rest is the C64C." }];
+        manifest.Rows.BoardLinks = [new BoardLinkEntry { Category = "Forums", Name = "Lemon64", Url = "https://lemon64.com", Note = "Search for 250407" }];
+
+        using HttpRequestMessage request = SubmissionClient.BuildCreateRequest("https://example.com/api", manifest, null);
+        string json = await request.Content!.ReadAsStringAsync();
+
+        SubmissionManifest received = JsonSerializer.Deserialize<SubmissionManifest>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web))!;
+        BoardData published = PublishMerge.Build(received, published: null);
+
+        Assert.Equal("Page 12 has the PLA.\nThe rest is the C64C.", published.BoardLocalFiles.Single().Note);
+        Assert.Equal("Search for 250407", published.BoardLinks.Single().Note);
+    }
 }

@@ -7,14 +7,15 @@ using Handlers.Theming;
 namespace Handlers.MaintainerHandling
 {
     // ###########################################################################################
-    // THE FOUR SCREENS BEHIND THE BUTTONS AT THE TOP LEFT (owner request, 2026-09-27):
+    // THE SCREENS BEHIND THE BUTTONS AT THE TOP LEFT (owner request, 2026-09-27):
     //
-    //   Review   - the queue of contributions, as it always was.
-    //   BETA     - boards in BETA waiting to be published to production (the "Production" window).
-    //   Boards  - every board: its maintainers, contributors and submissions.
-    //   Account  - "My account" and "Server version" for every maintainer, and the administrator's
-    //              own entries below them (it was "Admin", the administrator's alone, until
-    //              2026-10-04).
+    //   Review     - the queue of contributions, as it always was.
+    //   BETA       - boards in BETA waiting to be published to production (the "Production" window).
+    //   Boards     - every board: its maintainers, contributors and submissions.
+    //   Management - the administrator's own entries, the screen shown to nobody else (owner request,
+    //                2026-11-07: they stood under Account until then, each padlocked).
+    //   Account    - "My account" and "Server version" for every maintainer (it was "Admin", the
+    //                administrator's alone, until 2026-10-04).
     //
     // Each shows its list on the left and what is chosen in it on the right, where three separate
     // windows used to open over the queue.
@@ -30,6 +31,7 @@ namespace Handlers.MaintainerHandling
         Review,
         Beta,
         Boards,
+        Management,
         Account
     }
 
@@ -71,7 +73,7 @@ namespace Handlers.MaintainerHandling
         // other approver - is no badge.
         //
         // *** THE ADMINISTRATOR'S OSCILLOSCOPE MODELS WAITING COUNT TOO (code review, 2026-10-29), ***
-        // badged on the Account button that holds them: with "hide the tab while no work is waiting"
+        // badged on the Management button that holds them: with "hide the tab while no work is waiting"
         // ticked, the tab stayed hidden while they waited. Which screen the tab OPENS on is still the
         // two queues' alone (ScreenOnOpening).
         // ###########################################################################################
@@ -156,7 +158,7 @@ namespace Handlers.MaintainerHandling
         //
         // *** ONLY A QUEUE SCREEN GIVES WAY, AND NEVER OVER SOMETHING OPEN. *** A submission the
         // maintainer opened, which waits for the other approver, is still where it was on coming
-        // back; and Boards and Account were chosen, so they stay. Switching would lose nothing - a
+        // back; and Boards, Management and Account were chosen, so they stay. Switching would lose nothing - a
         // screen is hidden, never closed - but it would move the maintainer away from what they
         // were looking at.
         // ###########################################################################################

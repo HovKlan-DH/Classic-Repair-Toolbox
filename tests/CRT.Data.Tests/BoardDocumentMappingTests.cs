@@ -150,8 +150,9 @@ public sealed class BoardDocumentMappingTests
             // 4 each since 2026-11-02: the region they apply to.
             [typeof(ComponentLocalFileEntry)] = 4,
             [typeof(ComponentLinkEntry)] = 4,
-            [typeof(BoardLocalFileEntry)] = 4,
-            [typeof(BoardLinkEntry)] = 4,
+            // 5 each since 2026-11-06: a note saying what the board's file or link is about.
+            [typeof(BoardLocalFileEntry)] = 5,
+            [typeof(BoardLinkEntry)] = 5,
             [typeof(CreditEntry)] = 4,
             [typeof(KiCadImportantSignalEntry)] = 2,
             [typeof(KiCadCalibrationEntry)] = 8,

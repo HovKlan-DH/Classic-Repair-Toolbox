@@ -34,6 +34,11 @@ namespace CRT
             // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
             try
             {
+                // Each command's box in the model editor framed as its step goes (TabOscilloscope.ModelEditor.cs) - the
+                // frames of the last run gone first.
+                this.ClearTrialMarks();
+                this.thisMarkingSuite = true;
+
                 await this.RunWithEstablishedOscilloscopeSessionAsync(async (scopeClient, selectedOscilloscope, cancellationToken) =>
                 {
                     this.thisLastTriggerLevelVolts = null;
@@ -68,6 +73,10 @@ namespace CRT
             {
                 Logger.Critical($"OnRunFullTestSuiteClick failed - [{ex}]");
                 this.AppendOutputLine("Critical", $"Oscilloscope action failed: {ex.Message}");
+            }
+            finally
+            {
+                this.thisMarkingSuite = false;
             }
         }
 
@@ -106,7 +115,19 @@ namespace CRT
 
             this.AppendOutputLine("Debug", $"SCPI >> {dumpImageCommand}");
 
-            byte[] rawData = await scopeClient.QueryBinaryBlockAsync(dumpImageCommand, cancellationToken).ConfigureAwait(false);
+            byte[] rawData;
+
+            try
+            {
+                rawData = await scopeClient.QueryBinaryBlockAsync(dumpImageCommand, cancellationToken).ConfigureAwait(false);
+            }
+            catch
+            {
+                this.NoteSuiteCommand(ScopeCommand.DumpImage, worked: false);
+                throw;
+            }
+
+            this.NoteSuiteCommand(ScopeCommand.DumpImage, worked: true);
             this.AppendOutputLine("Debug", $"SCPI << <{rawData.Length} bytes binary>");
 
             this.AppendHexDump("Dumping FIRST 64 bytes from raw data stream:", rawData, 64, fromStart: true);

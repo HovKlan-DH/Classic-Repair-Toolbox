@@ -251,56 +251,12 @@ public sealed class BoardTableSheetTests
         Assert.False(document.History.CanUndo);
     }
 
-    // ------------------------------------------------------------------ FillDown
-
-    [Fact]
-    public void The_top_cell_of_each_column_fills_the_cells_below_it_as_one_undo_step()
-    {
-        BoardTableDocument document = Draft(Component("U1", "CPU"), Component("U2", "VIC"), Component("U3", "SID"));
-        BoardTableSheet sheet = Components(document);
-        int part = Column(BoardWorkbookSchema.ColTechnicalNameOrValue);
-
-        // Two columns: the name over three rows, the part over the first two.
-        int changed = sheet.FillDown(
-        [
-            Row(sheet, "U3").Cells[NameColumn],
-            Row(sheet, "U1").Cells[NameColumn],
-            Row(sheet, "U2").Cells[NameColumn],
-            Row(sheet, "U1").Cells[part],
-            Row(sheet, "U2").Cells[part],
-        ]);
-
-        Assert.Equal(3, changed);
-        Assert.Equal(["U1:CPU", "U2:CPU", "U3:CPU"], Picture(sheet));
-        Assert.Equal("part U1", Row(sheet, "U2").Cells[part].Text);
-        Assert.Equal("part U3", Row(sheet, "U3").Cells[part].Text);
-
-        document.History.Undo();
-        Assert.Equal(["U1:CPU", "U2:VIC", "U3:SID"], Picture(sheet));
-        Assert.False(document.History.CanUndo);
-    }
-
-    // A red row's text is what is published, and shown - it may be filled FROM, never into.
-    [Fact]
-    public void A_red_row_can_be_filled_from_but_is_never_filled()
-    {
-        BoardTableDocument document = BoardTableDocument.Create(
-            Board(Component("U1", "CPU"), Component("U2", "VIC"), Component("U3", "SID")),
-            Board(Component("U2", "VIC"), Component("U3", "SID")));
-        BoardTableSheet sheet = Components(document);
-
-        Assert.Equal(["-U1:CPU", "U2:VIC", "U3:SID"], Picture(sheet));
-
-        sheet.FillDown([Row(sheet, "U1", deleted: true).Cells[NameColumn], Row(sheet, "U2").Cells[NameColumn]]);
-        Assert.Equal(["-U1:CPU", "U2:CPU", "U3:SID"], Picture(sheet));
-    }
-
     // ###########################################################################################
-    // Told apart from "the cells already hold it" (code review, 2026-10-25): every cell the paste or
-    // the fill would write is on a red row - and it is said as that.
+    // Told apart from "the cells already hold it" (code review, 2026-10-25): every cell the paste
+    // would write is on a red row - and it is said as that.
     // ###########################################################################################
     [Fact]
-    public void A_paste_or_a_fill_onto_red_rows_alone_is_told_apart_from_one_changing_nothing()
+    public void A_paste_onto_red_rows_alone_is_told_apart_from_one_changing_nothing()
     {
         BoardTableDocument document = BoardTableDocument.Create(
             Board(Component("U1", "CPU"), Component("U2", "VIC"), Component("U3", "SID")),
@@ -309,32 +265,9 @@ public sealed class BoardTableSheetTests
         BoardTableCell top = Row(sheet, "U1").Cells[NameColumn];
         BoardTableCell red2 = Row(sheet, "U2", deleted: true).Cells[NameColumn];
         BoardTableCell red3 = Row(sheet, "U3", deleted: true).Cells[NameColumn];
-        BoardTableCell added = Row(sheet, "U4").Cells[NameColumn];
 
         Assert.True(sheet.OnlyDeletedRows([red2, red3]));
         Assert.False(sheet.OnlyDeletedRows([top, red2]));
         Assert.False(sheet.OnlyDeletedRows([top]));
-
-        Assert.True(sheet.FillsOnlyDeletedRows([top, red2, red3]));
-        Assert.False(sheet.FillsOnlyDeletedRows([top, red2, added]));
-        Assert.False(sheet.FillsOnlyDeletedRows([top]));
-
-        Assert.Equal(0, sheet.FillDown([top, red2, red3]));
-        Assert.False(document.History.CanUndo);
-    }
-
-    [Fact]
-    public void One_cell_alone_has_nothing_to_fill_and_leaves_no_undo_step()
-    {
-        BoardTableDocument document = Draft(Component("U1", "CPU"));
-        BoardTableSheet sheet = Components(document);
-
-        Assert.Equal(0, sheet.FillDown([Row(sheet, "U1").Cells[NameColumn]]));
-        Assert.False(document.History.CanUndo);
-
-        // And the history is not left grouping: the next edit is a step of its own.
-        Row(sheet, "U1").Cells[NameColumn].Text = "CPU 6510";
-        Row(sheet, "U1").Cells[LabelColumn].Text = "U7";
-        Assert.Equal(2, document.History.UndoCount);
     }
 }

@@ -95,6 +95,6 @@ The words in the notices are examples: the version, the board and the files are 
 
 ## Which folders am I actually using?
 
-The "Configuration" tab has three buttons - `Open data folder`, `Open workbooks folder` and `Open logs and settings folder` - and each opens the folder CRT is really using. So if you have set one of the parameters above and want to check it took effect, the button is the quickest answer: it opens where the data actually is, not where it would have been by default.
+The "Configuration" tab has three buttons - `Open data folder`, `Open workbooks and devices folder` and `Open logs and settings folder` - and each opens the folder CRT is really using. So if you have set one of the parameters above and want to check it took effect, the button is the quickest answer: it opens where the data actually is, not where it would have been by default.
 
 There is no button for the drafts folder. The log file shows all three near the top: a `Data root is [...]` line, a `Drafts root is [...]` line, and a `Worklog loaded: [...] from [...]` line for the workbooks folder.

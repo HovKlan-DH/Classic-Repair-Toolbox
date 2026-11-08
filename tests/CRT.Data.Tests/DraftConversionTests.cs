@@ -101,6 +101,29 @@ public sealed class DraftConversionTests
         Assert.Equal(DataTreeJson.Write(situation.Published()).Replace(situation.Published().RevisionDate, "x"), DataTreeJson.Write(situation.Draft()).Replace(situation.Draft().RevisionDate, "x"));
     }
 
+    // ###########################################################################################
+    // THE PINOUTS THE TREE'S CONVERSION MADE ARE THE DRAFT'S AND ITS BASE'S TOO (2026-11-06): the published
+    // board has them, the Excel-era draft none, and a draft sends its whole pin list - without them the
+    // draft and its base would both read as every pin removed, the moment the contributor submits.
+    // ###########################################################################################
+    [Fact]
+    public void The_draft_and_its_base_take_the_pinouts_the_published_board_was_converted_with()
+    {
+        using var situation = new Situation();
+        situation.Seed();
+
+        situation.Convert();
+
+        string Pins(BoardDocument document) =>
+            string.Join(" ", BoardDocumentMapping.ToContent(document).Board.ComponentPins.Select(pin => $"{pin.BoardLabel}:{pin.Pin}={pin.Name}"));
+
+        BoardDocument baseDocument = DataTreeJson.ReadBoard(File.ReadAllText(Path.Combine(situation.DraftFolder, DraftFolderLayout.DraftBaseFileName)));
+
+        Assert.NotEmpty(Pins(situation.Published()));
+        Assert.Equal(Pins(situation.Published()), Pins(situation.Draft()));
+        Assert.Equal(Pins(situation.Published()), Pins(baseDocument));
+    }
+
     // Nothing the 4.0 tree holds is copied into the draft.
     [Fact]
     public void Bytes_the_tree_holds_are_not_stored_in_the_draft()

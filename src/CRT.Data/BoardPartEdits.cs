@@ -77,10 +77,12 @@ namespace Handlers.DataHandling
         // of a board with three, an empty row never written).
         // ###########################################################################################
         public static bool IsBlank(BoardLocalFileEntry row) =>
-            string.IsNullOrWhiteSpace(row.Category) && string.IsNullOrWhiteSpace(row.Name) && string.IsNullOrWhiteSpace(row.File);
+            string.IsNullOrWhiteSpace(row.Category) && string.IsNullOrWhiteSpace(row.Name) && string.IsNullOrWhiteSpace(row.File) &&
+            string.IsNullOrWhiteSpace(row.Note);
 
         public static bool IsBlank(BoardLinkEntry row) =>
-            string.IsNullOrWhiteSpace(row.Category) && string.IsNullOrWhiteSpace(row.Name) && string.IsNullOrWhiteSpace(row.Url);
+            string.IsNullOrWhiteSpace(row.Category) && string.IsNullOrWhiteSpace(row.Name) && string.IsNullOrWhiteSpace(row.Url) &&
+            string.IsNullOrWhiteSpace(row.Note);
 
         public static bool IsBlank(CreditEntry row) =>
             string.IsNullOrWhiteSpace(row.Category) && string.IsNullOrWhiteSpace(row.SubCategory) &&
@@ -103,11 +105,15 @@ namespace Handlers.DataHandling
                     Name = row.Name?.Trim() ?? string.Empty,
                     File = row.File?.Trim() ?? string.Empty,
                     Region = row.Region?.Trim() ?? string.Empty,
+
+                    // Its line ends "\n" on every platform (code review, 2026-11-08: typed in a plain box on Windows it
+                    // was stored with "\r\n", and the same note from Linux read as changed) - a replacement part's rule.
+                    Note = ComponentPaneEdits.NormalisedNote(row.Note),
                 })
                 .Where(row => !BoardPartEdits.IsBlank(row))
                 .ToList();
 
-            return BoardPartEdits.SameRows(board.BoardLocalFiles, rows, row => string.Join('\u001F', row.Category, row.Name, row.File, row.Region))
+            return BoardPartEdits.SameRows(board.BoardLocalFiles, rows, row => string.Join('\u001F', row.Category, row.Name, row.File, row.Region, row.Note))
                 ? board
                 : board.WithBoardSections(boardLocalFiles: rows);
         }
@@ -124,11 +130,12 @@ namespace Handlers.DataHandling
                     Name = row.Name?.Trim() ?? string.Empty,
                     Url = row.Url?.Trim() ?? string.Empty,
                     Region = row.Region?.Trim() ?? string.Empty,
+                    Note = ComponentPaneEdits.NormalisedNote(row.Note),
                 })
                 .Where(row => !BoardPartEdits.IsBlank(row))
                 .ToList();
 
-            return BoardPartEdits.SameRows(board.BoardLinks, rows, row => string.Join('\u001F', row.Category, row.Name, row.Url, row.Region))
+            return BoardPartEdits.SameRows(board.BoardLinks, rows, row => string.Join('\u001F', row.Category, row.Name, row.Url, row.Region, row.Note))
                 ? board
                 : board.WithBoardSections(boardLinks: rows);
         }

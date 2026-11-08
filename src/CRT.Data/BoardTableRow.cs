@@ -68,6 +68,12 @@ namespace Handlers.DataHandling
     // saved with a trailing space would come back without it - trimming here means the table
     // never shows something a reload would change. It also absorbs the line break Excel puts
     // after a copied cell, which would otherwise ride into the cell on a paste.
+    //
+    // *** A NOTE WITH FORMATTING IS TRIMMED AS NOTES ARE (owner decision, 2026-11-08). *** In a
+    // sheet's note column (SheetDefinition.IsNoteColumn - a picture's or baseline's note) a first
+    // line's indent says whether it is a bullet and how deep: trimmed whole, the table showed a
+    // nested bullet a level up and saved it so with any change of its sheet. BoardDataDiffer.
+    // ComparableText is the one rule, the comparison's too.
     // ###########################################################################################
     public sealed class BoardTableCell : INotifyPropertyChanged
     {
@@ -79,8 +85,14 @@ namespace Handlers.DataHandling
         {
             this.Row = row;
             this.ColumnIndex = columnIndex;
-            this.thisText = BoardTableCell.NormaliseText(text);
+            this.thisText = this.Normalise(text);
         }
+
+        // Whether this cell holds a note with formatting.
+        internal bool IsNote =>
+            this.ColumnIndex < this.Row.Sheet.Columns.Count && this.Row.Sheet.Definition.IsNoteColumn(this.Row.Sheet.Columns[this.ColumnIndex]);
+
+        private string Normalise(string? text) => BoardDataDiffer.ComparableText(text, this.IsNote);
 
         public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -108,7 +120,7 @@ namespace Handlers.DataHandling
                     return;
                 }
 
-                string normalised = BoardTableCell.NormaliseText(value);
+                string normalised = this.Normalise(value);
                 if (string.Equals(normalised, this.thisText, StringComparison.Ordinal))
                 {
                     return;
@@ -129,7 +141,7 @@ namespace Handlers.DataHandling
         // refreshes the sheet itself once every row is back.
         internal void RestoreText(string text)
         {
-            string normalised = BoardTableCell.NormaliseText(text);
+            string normalised = this.Normalise(text);
             if (string.Equals(normalised, this.thisText, StringComparison.Ordinal))
             {
                 return;

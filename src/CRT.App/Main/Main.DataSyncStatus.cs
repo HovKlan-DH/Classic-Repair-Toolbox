@@ -5,6 +5,7 @@ using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Handlers.DataHandling;
+using Handlers.OnlineHandling;
 using Handlers.Theming;
 using System;
 using System.Collections.Generic;
@@ -101,6 +102,8 @@ namespace CRT
         //
         // Posted rather than run inline, matching OnCheckDataOnLaunchSettingChanged: the event is
         // raised from a UserSettings setter, so this keeps the rebuild off the setter's own stack.
+        //
+        // "Sorting of devices" (2026-11-07) is followed the same way: it orders the same two lists.
         // ###########################################################################################
         private void OnWorkbooksScopeSettingChanged()
         {
@@ -313,9 +316,15 @@ namespace CRT
         // Internal for MainWindowTests (and the demo) - the checks that call these need a network.
         // ###########################################################################################
 
-        // A check is starting: no progress from the one before, and its card says it has started.
-        internal void BeginDataSyncProgress()
+        // ###########################################################################################
+        // A check is starting: no progress from the one before, and its card says it has started. `failedAlready`: the
+        // downloads this check gave up on before its card came - THE LAUNCH CHECK BEGAN IN THE SPLASH, which synced the main
+        // file and every board file (DataManager.FailedDownloadsAtLaunch; code review, 2026-11-07: counted from here, a
+        // board file that failed there was left out, and the card said "up to date" over the files that matter most).
+        // ###########################################################################################
+        internal void BeginDataSyncProgress(int failedAlready = 0)
         {
+            this.thisFailedDownloadsAtCheckStart = OnlineServices.FailedDownloads - Math.Max(0, failedAlready);
             this.thisDataSyncProgress = string.Empty;
             this._currentSyncFileRelativePath = string.Empty;
             this.thisIsDataCheckOnCard = true;
@@ -354,7 +363,13 @@ namespace CRT
         // Closed while it ran, the card is not brought back to say something that needs nothing
         // done - only for files to refresh, or a failure somebody asked about.
         // ###########################################################################################
-        internal void FinishDataCheck(int changedCount, bool atLaunch)
+        // The files a sync had given up on when this check began (OnlineServices.FailedDownloads) - those since are its own.
+        private int thisFailedDownloadsAtCheckStart;
+
+        internal void FinishDataCheck(int changedCount, bool atLaunch) =>
+            this.FinishDataCheck(changedCount, atLaunch, Math.Max(0, OnlineServices.FailedDownloads - this.thisFailedDownloadsAtCheckStart));
+
+        internal void FinishDataCheck(int changedCount, bool atLaunch, int failedCount)
         {
             this.thisLastDataSyncCheck = DataSyncStatusTip.LastCheck(changedCount, DateTime.Now);
             this._currentSyncFileRelativePath = string.Empty;
@@ -363,7 +378,7 @@ namespace CRT
             this.DataCheckBannerFileText.IsVisible = false;
             this.RefreshDataSyncStatusTip();
 
-            var notice = DataCheckNotice.After(changedCount, atLaunch, AppConfig.GetOnlineSourceLabel());
+            var notice = DataCheckNotice.After(changedCount, atLaunch, AppConfig.GetOnlineSourceLabel(), failedCount);
 
             if (notice.GoesByItself && this.thisDataCheckClosedWhileRunning)
             {
@@ -528,24 +543,6 @@ namespace CRT
         internal bool IsDataSyncStatusIconSpinning => this._dataSyncStatusIconSpinRequestCount > 0;
 
         // ###########################################################################################
-        // Starts the background data validation task and converts failures into log entries only.
-        // ###########################################################################################
-        private static Task StartBackgroundDataValidationAsync()
-        {
-            return Task.Run(async () =>
-            {
-                try
-                {
-                    await DataValidator.ValidateAllDataAsync();
-                }
-                catch (Exception ex)
-                {
-                    Logger.Warning($"Background data validation failed - [{ex.Message}]");
-                }
-            });
-        }
-
-        // ###########################################################################################
         // Schedules orphan/non-used file cleanup once per application session when both launch-time
         // sync and orphan cleanup are enabled.
         // ###########################################################################################
@@ -563,7 +560,7 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Waits until startup UI work, background sync, and background validation are all settled before
+        // Waits until startup UI work and the background sync are settled before
         // running the orphan/non-used file cleanup as a low-priority background task.
         // ###########################################################################################
         private async Task RunOrphanAndUnusedFileCleanupAfterStartupAsync()
@@ -572,11 +569,6 @@ namespace CRT
             {
                 await this.thisWindowOpenedCompletionSource.Task;
                 await this.thisBackgroundStartupSyncCompletionSource.Task;
-
-                if (this.thisBackgroundDataValidationTask != null)
-                {
-                    await this.thisBackgroundDataValidationTask;
-                }
 
                 await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);
                 await Dispatcher.UIThread.InvokeAsync(() => { }, DispatcherPriority.Background);

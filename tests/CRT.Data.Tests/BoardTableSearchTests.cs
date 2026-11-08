@@ -52,6 +52,40 @@ public sealed class BoardTableSearchTests
     private static List<string> Shown(BoardTableSearch search, BoardTableSheet sheet) =>
         sheet.Rows.Where(search.Shows).Select(Label).ToList();
 
+    // ###########################################################################################
+    // *** THE REPLACE BAR'S "FIND" IN THE COLUMNS TICKED (owner request, 2026-11-07: "restrict replacement to specific
+    // columns, and not necessarily all"). *** "u8" is a label on two rows and part of a file's name on one: with only the
+    // File column it shows that one, and says it looks in that column alone - a sheet it answers null for, and no columns
+    // handed at all, in every column.
+    // ###########################################################################################
+    [Fact]
+    public void Find_with_columns_ticked_shows_and_searches_only_those_columns()
+    {
+        BoardTableDocument document = Document();
+        BoardTableSheet images = Images(document);
+        int file = Column(images, BoardWorkbookSchema.ColFile);
+        int label = Column(images, BoardWorkbookSchema.ColBoardLabel);
+
+        BoardTableSearch everywhere = BoardTableSearch.Literal(document, "u8");
+        Assert.Equal(["U8"], Shown(everywhere, images));
+        Assert.Equal(["U8"], Shown(everywhere, Components(document)));
+        Assert.True(everywhere.Searches(images, label));
+
+        BoardTableSearch inFiles = BoardTableSearch.Literal(document, "cr1", sheet => ReferenceEquals(sheet, images) ? [file] : null);
+        Assert.Equal(["CR13", "CR17"], Shown(inFiles, images));
+        Assert.True(inFiles.Searches(images, file));
+        Assert.False(inFiles.Searches(images, label));
+        Assert.True(inFiles.Searches(Components(document), 0));
+
+        // In the label alone, "cr13.png" is in no cell looked in.
+        BoardTableSearch inLabels = BoardTableSearch.Literal(document, "cr13.png", sheet => ReferenceEquals(sheet, images) ? [label] : null);
+        Assert.Empty(Shown(inLabels, images));
+
+        // No column at all: nothing is found on that sheet.
+        BoardTableSearch inNone = BoardTableSearch.Literal(document, "cr", sheet => ReferenceEquals(sheet, images) ? [] : null);
+        Assert.Empty(Shown(inNone, images));
+    }
+
     // Case 10: a word finds the rows with it in any cell, whatever its case.
     [Fact]
     public void A_word_finds_the_rows_with_it_in_any_cell_in_any_case()

@@ -22,33 +22,9 @@
 
 	<UserControl.Styles>
 
-		<!-- A workbook card in the left list. The cards themselves are built in the code-behind
-		     (see BuildWorkbookCard), which adds this class to each one. .Selected is the currently
-		     activated workbook - a tinted fill, applied/removed by SelectWorkbook. -->
-		<Style Selector="Border.WorkbooksJobCard">
-			<Setter Property="Background" Value="{DynamicResource Form_Bg}" />
-			<Setter Property="BorderBrush" Value="{DynamicResource Button_Border}" />
-			<Setter Property="BorderThickness" Value="1" />
-			<Setter Property="Padding" Value="7" />
-			<Setter Property="Cursor" Value="Hand" />
-		</Style>
-
-		<Style Selector="Border.WorkbooksJobCard.Selected">
-			<Setter Property="Background" Value="{DynamicResource Workbooks_SelectedCard_Bg}" />
-			<Setter Property="BorderBrush" Value="{DynamicResource Form_Border}" />
-		</Style>
-
-		<Style Selector="TextBlock.WorkbooksMuted">
-			<Setter Property="FontSize" Value="10" />
-			<Setter Property="Foreground" Value="{DynamicResource Workbooks_Muted_Fg}" />
-			<Setter Property="VerticalAlignment" Value="Center" />
-		</Style>
-
-		<Style Selector="TextBlock.WorkbooksFaint">
-			<Setter Property="FontSize" Value="10" />
-			<Setter Property="Foreground" Value="{DynamicResource Workbooks_Faint_Fg}" />
-			<Setter Property="VerticalAlignment" Value="Center" />
-		</Style>
+		<!-- The cards and muted text - in a file of their own, as the list of devices takes them along into Main's
+		     left panel (TabWorkbooks.ShowDevicesIn). -->
+		<StyleInclude Source="avares://Classic-Repair-Toolbox/Tabs/Workbooks/TabWorkbooksCardStyles.axaml" />
 
 		<!-- The workbook summary strip's expand/collapse line: a Button stripped back to plain
 		     text, so it reads as a line in the header rather than as a control sitting in one.
@@ -154,11 +130,13 @@
 			</Grid>
 		</Border>
 
-		<!-- Left = the board's workbooks, right = the selected workbook. The splitter matches the
+		<!-- Left = the workbooks, right = the selected workbook or device. The splitter matches the
 		     main window and the Schematics tab: a fixed 4px column so the global GridSplitter style
 		     colours it. Column 0's width is restored from UserSettings.WorkbooksLeftPanelWidth in
 		     the code-behind (Initialize) and saved back on OnOuterSplitterPointerReleased - the
-		     same pattern Main.axaml.cs uses for its own LeftPanelWidth.
+		     same pattern Main.axaml.cs uses for its own LeftPanelWidth. "My devices" stands in Main's
+		     left panel while this tab is shown (owner request, 2026-11-06; TabWorkbooks.ShowDevicesIn,
+		     Main.DeviceList.cs) - a tab built on its own, as a test builds it, keeps it above the workbooks.
 
 		     Both panel columns carry a live-drag MinWidth, the same protection Main.axaml's own
 		     splitter columns use - without it GridSplitter would let either panel be dragged down
@@ -186,37 +164,81 @@
 				Background="{DynamicResource Workbooks_Panel_Bg}"
 				BorderBrush="{DynamicResource Workbooks_Separator}"
 				BorderThickness="0,0,1,0">
-			<ScrollViewer Margin="9" VerticalScrollBarVisibility="Auto">
+			<!-- The list scrolls; "Clear" under it stays in sight - no workbook worked in (owner request, 2026-11-06:
+			     'a similar button named "Clear" (like for the "My devices" panel in left-side) that will clear the
+			     selection of the workbook'; TabWorkbooks.ClearWorkbookPick). -->
+			<Grid RowDefinitions="*,Auto">
+			<ScrollViewer Margin="9,9,9,0" VerticalScrollBarVisibility="Auto">
 				<StackPanel Spacing="5">
 
-					<!-- "My devices" (CRT 4.0 step 4): the computers the user owns, every one
-					     whatever board is shown - a click opens its page on the right in place of
-					     the workbook (TabWorkbooks.Devices.cs). The workbooks below stay as they
-					     were; one on a device names it on its card. -->
-					<Grid ColumnDefinitions="*,Auto">
-						<TextBlock x:Name="DeviceListHeadingText"
-								   Text="My devices"
-								   FontSize="11"
-								   FontWeight="Bold"
-								   VerticalAlignment="Center" />
-						<Button x:Name="AddDeviceButton"
-								Grid.Column="1"
-								Classes="Accept"
-								Content="Add device"
-								FontSize="10"
-								Padding="6,2"
-								Click="OnAddDeviceClick" />
+					<!-- "My devices" (CRT 4.0 step 4): the computers the user owns, as the Configuration tab's
+					     scope has them - a click picks it, the bar's "Device" drop-down with it, and opens its
+					     page on the right in place of the workbook (TabWorkbooks.Devices.cs). In CRT it stands
+					     in Main's left panel while this tab is shown (owner request, 2026-11-06), so it is a
+					     frame of its own, with its own scrolling and its own card styles (a style of this tab no
+					     longer reaches it there). Its heading stands over the frame as "Hardware" and "Board"
+					     stand over theirs, not bold (owner request, 2026-11-06: "make it a headline for the panel
+					     below"), and "Clear" at its foot stays in sight however the list is scrolled ("should
+					     always be visible even if scrolling down in list"). No "Add device" here (owner request,
+					     2026-11-06: "no need for it") - the worklog bar has one.
+
+					     The headline counts the devices listed in a badge (owner request, 2026-11-07: 'a device counter
+					     after "My devices (X)" headline ... show as badge'), and "Clear" stands UNDER the frame, at the
+					     panel's foot, level with the workbook list's "Clear" in the tab (owner request, 2026-11-07: "move
+					     the 'Clear' button outside of the 'My devices' panel and show it below the panel, and then
+					     vertically align the two buttons" - both 16px from the window's foot). The cards are the list's
+					     own items (DeviceListCard), so sorted by hand each is dragged by its handle (ListRowDrag). -->
+					<Grid x:Name="DeviceListArea" RowDefinitions="Auto,*,Auto">
+						<StackPanel Orientation="Horizontal" Spacing="6">
+							<TextBlock x:Name="DeviceListHeadingText"
+									   Text="My devices"
+									   FontSize="11"
+									   VerticalAlignment="Center"
+									   Foreground="{DynamicResource Fg}" />
+							<!-- How many the list holds - WorklogInfoPillBuilder.BuildCountPill, the bar's own badge. -->
+							<Decorator x:Name="DeviceCountHost" VerticalAlignment="Center" />
+						</StackPanel>
+
+						<Border x:Name="DeviceListBorder"
+								Grid.Row="1"
+								Margin="0,8,0,0"
+								Background="{DynamicResource Workbooks_Panel_Bg}">
+							<Border.Styles>
+								<StyleInclude Source="avares://Classic-Repair-Toolbox/Tabs/Workbooks/TabWorkbooksCardStyles.axaml" />
+							</Border.Styles>
+							<ScrollViewer x:Name="DeviceListScroller" VerticalScrollBarVisibility="Auto">
+								<StackPanel Spacing="5">
+									<TextBlock x:Name="NoDevicesText"
+											   Classes="WorkbooksFaint"
+											   FontSize="10"
+											   TextWrapping="Wrap"
+											   IsVisible="False" />
+
+									<ItemsControl x:Name="DeviceListPanel">
+										<ItemsControl.ItemsPanel>
+											<ItemsPanelTemplate>
+												<StackPanel Spacing="5" />
+											</ItemsPanelTemplate>
+										</ItemsControl.ItemsPanel>
+									</ItemsControl>
+								</StackPanel>
+							</ScrollViewer>
+						</Border>
+
+						<!-- The device picked let go of - every device's workbooks again. -->
+						<Button x:Name="ClearDeviceButton"
+								Grid.Row="2"
+								Content="Clear"
+								HorizontalAlignment="Stretch"
+								HorizontalContentAlignment="Center"
+								FontSize="12"
+								Padding="4"
+								Margin="0,6,0,0"
+								Click="OnClearDeviceClick" />
 					</Grid>
 
-					<TextBlock x:Name="NoDevicesText"
-							   Classes="WorkbooksFaint"
-							   FontSize="10"
-							   TextWrapping="Wrap"
-							   IsVisible="False" />
-
-					<StackPanel x:Name="DeviceListPanel" Spacing="5" />
-
-					<Border Height="1"
+					<Border x:Name="DeviceListSeparator"
+							Height="1"
 							Background="{DynamicResource Workbooks_Separator}"
 							Margin="0,6,0,2" />
 
@@ -231,7 +253,7 @@
 					     count above still reads "0 workbooks", so this only has to say what to
 					     do about it. -->
 					<TextBlock x:Name="NoWorkbooksText"
-							   Text="No repairs recorded for this board yet.&#10;Use &quot;Create new workbook&quot; above the tabs to start one."
+							   Text="No repairs recorded for this board yet.&#10;Use &quot;Add workbook&quot; above the tabs to start one."
 							   Classes="WorkbooksFaint"
 							   FontSize="10"
 							   TextWrapping="Wrap"
@@ -245,6 +267,20 @@
 
 				</StackPanel>
 			</ScrollViewer>
+
+			<!-- 15px from the tab's foot, one more being the right panel's border: 16px from the window's, as the
+			     left panel's padding puts the "Clear" under "My devices" - the two stand level (owner request,
+			     2026-11-07: "vertically align the two buttons"). -->
+			<Button x:Name="ClearWorkbookButton"
+					Grid.Row="1"
+					Content="Clear"
+					HorizontalAlignment="Stretch"
+					HorizontalContentAlignment="Center"
+					FontSize="12"
+					Padding="4"
+					Margin="9,6,9,15"
+					Click="OnClearWorkbookClick" />
+			</Grid>
 		</Border>
 
 		<GridSplitter x:Name="OuterSplitter" Grid.Column="1" />
@@ -344,7 +380,7 @@
 									Orientation="Horizontal"
 									Spacing="6"
 									IsVisible="False">
-							<TextBlock Text="On my device"
+							<TextBlock Text="Associate workbook to device"
 									   Classes="WorkbooksMuted"
 									   FontSize="11" />
 							<ComboBox x:Name="WorkbookDeviceComboBox"
@@ -522,9 +558,9 @@
 			     restored from UserSettings.WorkbooksEntryListWidth in the code-behind (Initialize)
 			     and saved back on OnBoardEntrySplitterPointerReleased.
 
-			     Both panel columns carry a 200px MinWidth, matching OuterSplitGrid's own - see its
-			     comment for why a live drag floor is needed in addition to ClampPanelWidth's
-			     restore-time one. -->
+			     Both panel columns carry a 200px MinWidth: a live drag floor, in addition to
+			     ClampPanelWidth's restore-time one - without it GridSplitter would let either panel
+			     be dragged down to nothing while dragging. -->
 			<Grid x:Name="BoardEntrySplitGrid" Grid.Row="1">
 				<Grid.ColumnDefinitions>
 					<ColumnDefinition Width="*" MinWidth="200" />
@@ -619,8 +655,8 @@
 
 		<!-- ===================================================================================
 		     A DEVICE'S PAGE (CRT 4.0 step 4 - the plan: "Its page is its history"), in place of the
-		     workbook while a device is picked in "My devices": what it is, its repairs with their
-		     totals, the changes made to it, and its notes and photos. Filled and wired in
+		     workbook while a device is picked in "My devices": what it is, the workbooks associated to it
+		     with their totals, and its notes and photos. Filled and wired in
 		     TabWorkbooks.Devices.cs; a workbook clicked, or a repair opened, brings the workbook back.
 		     =================================================================================== -->
 		<ScrollViewer x:Name="DevicePageScroller"
@@ -638,9 +674,12 @@
 									   VerticalAlignment="Center" />
 							<!-- The status pill, WorklogInfoPillBuilder's - the one place it is drawn. -->
 							<Decorator x:Name="DeviceStatusHost" VerticalAlignment="Center" />
+							<!-- Its condition, 0 to 5 stars (owner request, 2026-11-06) - ConditionStars'. -->
+							<Decorator x:Name="DeviceConditionHost" VerticalAlignment="Center" />
 						</WrapPanel>
 						<TextBlock x:Name="DeviceDetailText" Classes="WorkbooksMuted" FontSize="11" TextWrapping="Wrap" />
-						<TextBlock x:Name="DeviceOriginText" Classes="WorkbooksMuted" FontSize="11" TextWrapping="Wrap" />
+						<!-- Its description, in the lines it was typed in - links in it clickable. -->
+						<TextBlock x:Name="DeviceDescriptionText" FontSize="11" TextWrapping="Wrap" Margin="0,4,0,0" />
 					</StackPanel>
 
 					<!-- Edit and Delete, and under them "Export history" (slice 4d,
@@ -677,22 +716,14 @@
 					</StackPanel>
 				</Grid>
 
-				<!-- Its repairs: the workbooks naming it, newest first, each opening the workbook. -->
+				<!-- "Workbooks associated to this device": the workbooks naming it, newest first, each
+				     opening the workbook - and, with none, a line saying so. -->
 				<StackPanel Spacing="5">
-					<Grid ColumnDefinitions="*,Auto">
-						<StackPanel Spacing="2" VerticalAlignment="Center">
-							<TextBlock x:Name="DeviceRepairsHeadingText" FontSize="13" FontWeight="Bold" />
-							<!-- Runs, the numbers bold - see TabWorkbooks.Devices.cs. -->
-							<TextBlock x:Name="DeviceRepairsSummaryText" FontSize="11" TextWrapping="Wrap" />
-						</StackPanel>
-						<Button x:Name="NewRepairButton"
-								Grid.Column="1"
-								Classes="Accept"
-								Content="New repair"
-								FontSize="11"
-								VerticalAlignment="Center"
-								Click="OnNewRepairClick" />
-					</Grid>
+					<StackPanel Spacing="2">
+						<TextBlock x:Name="DeviceRepairsHeadingText" FontSize="13" FontWeight="Bold" />
+						<!-- Runs, the numbers bold - see TabWorkbooks.Devices.cs. -->
+						<TextBlock x:Name="DeviceRepairsSummaryText" FontSize="11" TextWrapping="Wrap" />
+					</StackPanel>
 					<TextBlock x:Name="NoDeviceRepairsText"
 							   Classes="WorkbooksFaint"
 							   FontSize="11"
@@ -701,59 +732,30 @@
 					<StackPanel x:Name="DeviceRepairsPanel" Spacing="4" />
 				</StackPanel>
 
-				<!-- The changes made to it outside a repair, oldest first, and a line to add one. -->
-				<StackPanel Spacing="5">
-					<TextBlock x:Name="DeviceChangesHeadingText" FontSize="13" FontWeight="Bold" />
-					<TextBlock x:Name="NoDeviceChangesText"
-							   Classes="WorkbooksFaint"
-							   FontSize="11"
-							   TextWrapping="Wrap"
-							   IsVisible="False" />
-					<StackPanel x:Name="DeviceChangesPanel" Spacing="3" />
-					<Grid ColumnDefinitions="Auto,8,*,8,Auto" Margin="0,2,0,0">
-						<CalendarDatePicker x:Name="ChangeDatePicker" FontSize="11" />
-						<TextBox x:Name="ChangeTextBox"
-								 Grid.Column="2"
-								 FontSize="11"
-								 PlaceholderText="What was changed - for example a new power supply"
-								 KeyDown="OnChangeTextKeyDown" />
-						<Button x:Name="AddChangeButton"
-								Grid.Column="4"
-								Classes="Accept"
-								Content="Add change"
-								FontSize="11"
-								Click="OnAddChangeClick" />
-					</Grid>
+				<!-- THE PAGE IS ONLY READ (owner request, 2026-11-07: "it should not allow for direct edits or 'Add X', as
+				     this should be a view-only place. If anything needs to be added or edited, the user should go to the
+				     'Edit device' button"). Each part under a headline of its own, and only while it holds something
+				     ("if it has no comments, then do not show the headline with comments"): its links of interest, its
+				     comments, and its photos, each in a panel of its own with its comment under it, a photo clicked opened
+				     to zoom. Its notes went that day - its description says it ('Remove the "Notes" as we now have the
+				     "Description"'; OwnedDeviceStore.FoldNotes keeps what they held). -->
+				<StackPanel x:Name="DeviceLinksSection" Spacing="5">
+					<TextBlock x:Name="DeviceLinksHeadingText" FontSize="13" FontWeight="Bold" />
+					<StackPanel x:Name="DeviceLinksPanel" Spacing="4" />
 				</StackPanel>
 
-				<!-- Notes (saved when the box is left) and photos. -->
-				<StackPanel Spacing="5">
-					<Grid ColumnDefinitions="*,Auto">
-						<TextBlock x:Name="DevicePhotosHeadingText" FontSize="13" FontWeight="Bold" VerticalAlignment="Center" />
-						<Button x:Name="AddDevicePhotosButton"
-								Grid.Column="1"
-								Classes="Accept"
-								Content="Add photos"
-								FontSize="11"
-								Click="OnAddDevicePhotosClick" />
-					</Grid>
-					<!-- What "Add photos" did - how many went in, and how many could not. -->
+				<StackPanel x:Name="DeviceCommentsSection" Spacing="5">
+					<TextBlock x:Name="DeviceCommentsHeadingText" FontSize="13" FontWeight="Bold" />
+					<StackPanel x:Name="DeviceCommentsPanel" Spacing="4" />
+				</StackPanel>
+
+				<StackPanel x:Name="DevicePhotosSection" Spacing="5">
+					<TextBlock x:Name="DevicePhotosHeadingText" FontSize="13" FontWeight="Bold" />
+					<!-- Photos "Add device" could not copy in, said on the page it opens - the section shown for it. -->
 					<TextBlock x:Name="DevicePhotosNoteText"
 							   Classes="WorkbooksMuted"
 							   FontSize="11"
 							   TextWrapping="Wrap"
-							   IsVisible="False" />
-					<TextBox x:Name="DeviceNotesTextBox"
-							 FontSize="11"
-							 AcceptsReturn="True"
-							 TextWrapping="Wrap"
-							 MinHeight="60"
-							 VerticalContentAlignment="Top"
-							 PlaceholderText="Notes about this device - what it needs, what it came with"
-							 LostFocus="OnDeviceNotesLostFocus" />
-					<TextBlock x:Name="NoDevicePhotosText"
-							   Classes="WorkbooksFaint"
-							   FontSize="11"
 							   IsVisible="False" />
 					<WrapPanel x:Name="DevicePhotosPanel" Orientation="Horizontal" ItemSpacing="8" LineSpacing="8" />
 				</StackPanel>

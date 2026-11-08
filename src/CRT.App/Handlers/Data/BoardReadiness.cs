@@ -62,6 +62,67 @@ namespace Handlers.DataHandling
                 .Select(view => view.DisplayName?.Trim() ?? string.Empty)
                 .Where(name => name.Length > 0)
                 .ToList();
+
+        // ###########################################################################################
+        // HOW MANY COMPONENTS EACH KiCad VIEW SHOWS, by the view's name, capitals ignored (owner request,
+        // 2026-11-01: "per image I want to see status of how many components is available from KiCad"):
+        // a side of the board, the components of its PCB file seen from that side - marking's own rule,
+        // KiCadFootprintMarks.IsOnSide, so a through-hole part counts on both; a schematic sheet, the
+        // parts drawn on it. Each once, however many units it has. (KiCadComponentTable's until
+        // 2026-11-06, when that went to CRT.Data, which has no marking geometry.)
+        // ###########################################################################################
+        public static Dictionary<string, int> CountsByView(KiCadProjectRoot? root)
+        {
+            var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+            if (root is null)
+            {
+                return counts;
+            }
+
+            foreach (KiCadProjectView view in root.Project.Views)
+            {
+                string name = view.DisplayName?.Trim() ?? string.Empty;
+
+                if (name.Length > 0)
+                {
+                    counts[name] = BoardKiCadFacts.CountOn(root, view);
+                }
+            }
+
+            return counts;
+        }
+
+        private static int CountOn(KiCadProjectRoot root, KiCadProjectView view)
+        {
+            KiCadViewSide side = BoardKiCadFacts.SideOf(view);
+
+            if (side != KiCadViewSide.Sheet)
+            {
+                if (view.SourceIndex < 0 || view.SourceIndex >= root.Pcb.Count)
+                {
+                    return 0;
+                }
+
+                return root.Pcb[view.SourceIndex].Footprints
+                    .Where(footprint => KiCadBoardComponents.IsComponent(KiCadComponentTable.InfoOf(footprint)) &&
+                                        Handlers.Geometry.KiCadFootprintMarks.IsOnSide(footprint, side == KiCadViewSide.Bottom ? "B.Cu" : "F.Cu"))
+                    .Select(footprint => footprint.Reference?.Trim() ?? string.Empty)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .Count();
+            }
+
+            if (view.SourceIndex < 0 || view.SourceIndex >= root.Schematics.Count)
+            {
+                return 0;
+            }
+
+            return root.Schematics[view.SourceIndex].Symbols
+                .Where(symbol => KiCadBoardComponents.IsComponentReference(symbol.Reference))
+                .Select(symbol => symbol.Reference!.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Count();
+        }
     }
 
     // ###########################################################################################

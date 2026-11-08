@@ -65,6 +65,11 @@ namespace CRT
 
     // ###########################################################################################
     // Popup window that displays detailed component information in a split-panel layout.
+    //
+    // File map:
+    //   ComponentInfoWindow.axaml.cs   - everything but what follows
+    //   ComponentInfoWindow.Pinout.cs  - the pinout in a window of its own, "Detach pinout image in component info
+    //                                    popup" (owner request, 2026-11-07)
     // ###########################################################################################
     public partial class ComponentInfoWindow : Window
     {
@@ -272,6 +277,10 @@ namespace CRT
                 if (this.Owner is Main mainOwner && mainOwner.isHoveringComponent)
                     return;
 
+                // Its pinout's own window taking the front is no leaving the popup (ComponentInfoWindow.Pinout.cs).
+                if (this.CloseUnlessPinoutWindowTakesOver())
+                    return;
+
                 this.Close();
             };
 
@@ -295,8 +304,11 @@ namespace CRT
                 UserSettings.SaveComponentInfoWindowLayout(state, this._normalWidth, this._normalHeight, leftRatio, thumbHeight, this._normalX, this._normalY);
             };
 
+            this.WirePinoutWindow();
+
             this.Closed += (_, _) =>
             {
+                this.LetGoOfPinoutWindow();
                 this.ClearTemporaryCapturedOscilloscopeImage();
                 this._loadCts?.Cancel();
                 this._pinBufferCts?.Cancel();
@@ -653,13 +665,15 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Handles panning setup with right clicks. Left clicks clear zoom and jump to first thumbnail.
+        // Handles panning setup with the right or the middle button - the Schematics tab's way, CRT's one way (owner
+        // request, 2026-11-06: "the same pan functionality as present in the 'Schematics' tab"; PanGesture - the right
+        // button alone until then). Left clicks clear zoom and jump to first thumbnail.
         // ###########################################################################################
         private void OnMainImageClickAreaPointerPressed(object? sender, PointerPressedEventArgs e)
         {
             var pointer = e.GetCurrentPoint(this.MainImageClickArea);
 
-            if (pointer.Properties.IsRightButtonPressed)
+            if (PanGesture.IsPanPress(pointer.Properties))
             {
                 this._isPanningImage = true;
                 this._panStartPoint = e.GetPosition(this.MainImageClickArea);
@@ -693,13 +707,14 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Handles panning setup with right clicks. Left clicks clear zoom and jump to first thumbnail.
+        // Handles panning setup with the right or the middle button (PanGesture, as above). Left clicks clear zoom and
+        // jump to first thumbnail.
         // ###########################################################################################
         private void OnMainImageContainerPointerPressed(object? sender, PointerPressedEventArgs e)
         {
             var pointer = e.GetCurrentPoint(this.MainImageContainer);
 
-            if (pointer.Properties.IsRightButtonPressed)
+            if (PanGesture.IsPanPress(pointer.Properties))
             {
                 this._isPanningImage = true;
                 this._panStartPoint = e.GetPosition(this.MainImageContainer);
@@ -955,7 +970,7 @@ namespace CRT
             // item.FullPath may resolve under the board's draft folder rather than DataRoot (a file
             // attached only in a local draft) - item.SourceRoot names whichever root it actually came
             // from, so ExternalTargetLauncher's containment check is applied against the right one.
-            ExternalTargetLauncher.TryOpen(item.FullPath, item.SourceRoot);
+            ExternalTargetLauncher.OpenOrSay(item.FullPath, item.SourceRoot);
         }
 
         // ###########################################################################################
@@ -975,7 +990,7 @@ namespace CRT
         // ###########################################################################################
         private void OpenExternalTarget(string target)
         {
-            ExternalTargetLauncher.TryOpen(target, this._dataRoot);
+            ExternalTargetLauncher.OpenOrSay(target, this._dataRoot);
         }
 
         // ###########################################################################################
@@ -1050,8 +1065,11 @@ namespace CRT
             string? note = item?.Note;
             bool show = !string.IsNullOrWhiteSpace(note);
             this.ImageNoteSection.IsVisible = show;
+
+            // Formatted as it was typed - bold, italic, bullets (RichNote, 2026-11-07) - in a box only read, so it can be
+            // selected and copied as before.
             if (show)
-                this.InfoNote.Text = note!.Trim();
+                this.InfoNote.Markup = RichNote.TrimMarkup(note);
 
             // What a scope baseline was measured under (CRT 4.0) - beside its note - and, for any
             // baseline, how the board's were measured: its "Scope measurements" files (2026-10-26).
@@ -1454,7 +1472,64 @@ namespace CRT
             List<ComponentPopupReplacement> replacements = ComponentPopupContent.ReplacementsOf(this._allReplacements, this._boardLabel, this._localRegion);
             this.ReplacementsSection.IsVisible = replacements.Count > 0;
             this.InfoReplacementsItemsControl.ItemsSource = replacements;
+
+            this.ShowResistorBands(entry);
+            this.FollowPinoutDetachment();
         }
+
+        // ###########################################################################################
+        // A single resistor's color bands under the pinout, drawn from its value, and the value in words - "560 Ohms 5%"
+        // - with its power rating when typed (owner request, 2026-11-07; ResistorColorCode decides, and hides it for
+        // anything it cannot say).
+        // ###########################################################################################
+        private void ShowResistorBands(ComponentEntry? entry)
+        {
+            IReadOnlyList<ResistorColorCode.ColorBand>? bands = entry is null ? null : ResistorColorCode.BandsOf(entry);
+
+            this.ResistorSection.IsVisible = bands is not null;
+
+            if (bands is null || !ResistorColorCode.TryRead(entry!.TechnicalNameOrValue, out ResistorColorCode.Reading? reading))
+            {
+                this.InfoResistorDrawing.Bands = [];
+                this.InfoResistorColorsPanel.Children.Clear();
+                return;
+            }
+
+            this.InfoResistorDrawing.Bands = bands;
+            this.InfoResistorValueText.Text = ResistorColorCode.ValueText(reading!);
+            this.InfoResistorPowerText.Text = reading!.Power.Length > 0 ? "Power rating: " + reading.Power : string.Empty;
+            this.InfoResistorPowerText.IsVisible = reading.Power.Length > 0;
+
+            this.InfoResistorColorsPanel.Children.Clear();
+
+            IReadOnlyList<string> names = ResistorColorCode.ColorNames(bands);
+
+            for (int i = 0; i < bands.Count; i++)
+            {
+                var line = new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 6 };
+
+                line.Children.Add(new Border
+                {
+                    Width = 12,
+                    Height = 12,
+                    CornerRadius = new CornerRadius(2),
+                    BorderThickness = new Thickness(1),
+                    BorderBrush = new SolidColorBrush(Color.FromArgb(0x66, 0, 0, 0)),
+                    Background = new SolidColorBrush(Color.Parse(ResistorColorCode.ColorsOf(bands[i].Color).Fill)),
+                    VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
+                });
+
+                line.Children.Add(new TextBlock { Text = names[i], FontSize = 12, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center });
+                this.InfoResistorColorsPanel.Children.Add(line);
+            }
+        }
+
+        // The band colors listed under the resistor's value, in words - for the tests.
+        internal IReadOnlyList<string> ResistorColorsShownForTests =>
+            this.InfoResistorColorsPanel.Children
+                .OfType<StackPanel>()
+                .Select(line => line.Children.OfType<TextBlock>().First().Text ?? string.Empty)
+                .ToList();
 
         // ###########################################################################################
         // THE PIN OF THE IMAGE SHOWN IS LIT, on the drawing and in the list beside it (owner request,

@@ -173,6 +173,12 @@ namespace CRT
                     return;
                 }
 
+                // The files a published board names may have arrived since it was checked (TabDrafts.Problems.cs).
+                if (syncResult.ChangedCount > 0)
+                {
+                    this.TabDrafts.CheckPublishedBoardAgain();
+                }
+
                 if (syncResult.MainExcelChanged)
                 {
                     this.RefreshHardwareAndBoardSelectionsAfterMainExcelSync();
@@ -295,13 +301,20 @@ namespace CRT
                     return;
                 }
 
-                this.BeginDataSyncProgress();
+                // The splash's half of this check - the main file and the board files - counts too.
+                this.BeginDataSyncProgress(failedAlready: DataManager.FailedDownloadsAtLaunch);
                 this.StartDataSyncStatusIconSpin();
                 started = true;
 
                 int changed = await this.SyncRemainingFilesAsync();
 
                 this.FinishDataCheck(changed, atLaunch: true);
+
+                // The files a published board names may have arrived since it was checked (TabDrafts.Problems.cs).
+                if (changed > 0)
+                {
+                    this.TabDrafts.CheckPublishedBoardAgain();
+                }
 
                 if (UserSettings.AllowDeletionOfOrphanAndNonUsedFiles)
                 {
@@ -466,7 +479,7 @@ namespace CRT
             }
             catch (Exception ex)
             {
-                Logger.Critical($"Installing the update failed unexpectedly: [{ex.Message}]");
+                Logger.Critical($"Installing the update failed unexpectedly: [{ex.Message}]", alreadyShown: true);
                 this.RestoreUpdateBannerAfterFailedInstall();
             }
         }

@@ -59,7 +59,7 @@ public sealed class KiCadComponentTableTests
             ],
         };
 
-        Dictionary<string, int> counts = KiCadComponentTable.CountsByView(root);
+        Dictionary<string, int> counts = BoardKiCadFacts.CountsByView(root);
 
         Assert.Equal(2, counts["board - pcb top"]);
         Assert.Equal(2, counts["Board - PCB Bottom"]);
@@ -73,7 +73,7 @@ public sealed class KiCadComponentTableTests
         // hand" until then, for what a sheet's alignment now marks).
         Assert.Equal(KiCadComponentTable.Of(root).Count + 1, BoardKiCadFacts.Of(root).Markable);
 
-        Assert.Empty(KiCadComponentTable.CountsByView(null));
+        Assert.Empty(BoardKiCadFacts.CountsByView(null));
         Assert.Empty(KiCadComponentTable.OnlyInSchematic(null));
     }
 

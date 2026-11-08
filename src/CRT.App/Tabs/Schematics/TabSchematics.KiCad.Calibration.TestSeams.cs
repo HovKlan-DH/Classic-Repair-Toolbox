@@ -42,4 +42,13 @@ public partial class TabSchematics
 
     internal void ReleaseKiCadTraceCalibrationPointerCaptureForTests() =>
         this.ReleaseKiCadTraceCalibrationPointerCapture();
+
+    // The box's four edges, as stored - mirror-inverted ordering included.
+    internal (double Left, double Top, double Right, double Bottom) KiCadCalibrationBoxForTests =>
+        (this.thisKiCadCalibrationImageLeft, this.thisKiCadCalibrationImageTop, this.thisKiCadCalibrationImageRight, this.thisKiCadCalibrationImageBottom);
+
+    // The settle, now, as its timer would run it (2026-11-06) - a test does not wait for a dispatcher timer.
+    internal void SettleKiCadCalibrationOverlayForTests() => this.SettleKiCadCalibrationOverlay();
+
+    internal bool IsKiCadCalibrationSettlePendingForTests => this.thisKiCadCalibrationSettleTimer?.IsEnabled == true;
 }

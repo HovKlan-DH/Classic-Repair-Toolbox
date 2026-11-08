@@ -29,7 +29,8 @@ namespace CRT
         public string SummaryText { get; set; } = string.Empty;
     }
 
-    public sealed class WorklogAttachmentRow : System.ComponentModel.INotifyPropertyChanged
+    // A row ListRowDrag can move - the device form's photos (2026-11-06); the worklog editor drags its own.
+    public sealed class WorklogAttachmentRow : System.ComponentModel.INotifyPropertyChanged, IDraggableRow
     {
         public int Id { get; set; }
         public string FileName { get; set; } = string.Empty;
@@ -42,19 +43,59 @@ namespace CRT
         public string DisplayFileName { get; set; } = string.Empty;
 
         // ###########################################################################################
-        // Thumbnail for a photo row, decoded once when the row is built rather than by a binding
-        // converter, so a file that has gone missing or will not decode simply leaves this null and
-        // the row still lists its name and comment. Always null for file rows, which show no image.
+        // Thumbnail for a photo row, decoded once rather than by a binding converter, so a file that
+        // has gone missing or will not decode simply leaves this null and the row still lists its name
+        // and comment. Always null for file rows, which show no image. The worklog editor decodes it as
+        // the row is built; the device form off the UI thread, setting it once read (IsThumbnailPending).
         // ###########################################################################################
-        public Avalonia.Media.Imaging.Bitmap? Thumbnail { get; set; }
+        public Avalonia.Media.Imaging.Bitmap? Thumbnail
+        {
+            get => this.thisThumbnail;
+            set
+            {
+                if (ReferenceEquals(this.thisThumbnail, value))
+                {
+                    return;
+                }
+
+                this.thisThumbnail = value;
+                this.PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(this.Thumbnail)));
+                this.PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(this.HasThumbnail)));
+                this.PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(this.HasNoThumbnail)));
+            }
+        }
+
+        private Avalonia.Media.Imaging.Bitmap? thisThumbnail;
 
         public bool HasThumbnail => this.Thumbnail != null;
 
         // ###########################################################################################
         // Shown in place of the thumbnail when the image is unavailable, so a broken photo row reads
-        // as broken instead of as a blank square.
+        // as broken instead of as a blank square - never while it is still being read.
         // ###########################################################################################
-        public bool HasNoThumbnail => this.Thumbnail == null;
+        public bool HasNoThumbnail => this.Thumbnail == null && !this.thisIsThumbnailPending;
+
+        // ###########################################################################################
+        // True while the thumbnail is still being read off the UI thread (the device form, code review
+        // 2026-11-08) - neither the picture nor the "missing" mark is shown meanwhile.
+        // ###########################################################################################
+        public bool IsThumbnailPending
+        {
+            get => this.thisIsThumbnailPending;
+            set
+            {
+                if (this.thisIsThumbnailPending == value)
+                {
+                    return;
+                }
+
+                this.thisIsThumbnailPending = value;
+                this.PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(this.IsThumbnailPending)));
+                this.PropertyChanged?.Invoke(this, new System.ComponentModel.PropertyChangedEventArgs(nameof(this.HasNoThumbnail)));
+            }
+        }
+
+        private bool thisIsThumbnailPending;
 
         // ###########################################################################################
         // Hides the comment line entirely when there is none, keeping rows compact - a photo is

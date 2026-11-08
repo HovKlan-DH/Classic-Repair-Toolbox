@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:CRT"
+             xmlns:theme="clr-namespace:Handlers.Theming;assembly=Classic-Repair-Toolbox"
              x:Class="CRT.TabResources">
 
 	<UserControl.Styles>
@@ -118,12 +119,19 @@
 											                     Margin="8,4,8,4"
 											                     VerticalAlignment="Top"
 											                     TextWrapping="Wrap" />
-											<Button Grid.Column="1"
-											        Classes="LinkButton"
-											        Margin="8,4,8,4"
-											        Command="{Binding OpenCommand}">
-												<TextBlock Text="{Binding Name}" />
-											</Button>
+											<StackPanel Grid.Column="1" Margin="8,4,8,4" Spacing="2">
+												<Button Classes="LinkButton"
+												        Command="{Binding OpenCommand}">
+													<TextBlock Text="{Binding Name}" />
+												</Button>
+												<!-- What it is about (owner request, 2026-11-06), its web addresses clickable - typed in a plain box, so read as typed (PlainLinkText). -->
+												<TextBlock theme:TextLinkRenderer.PlainLinkText="{Binding Note}"
+												           IsVisible="{Binding HasNote}"
+												           Foreground="{DynamicResource Table_Fg}"
+												           Opacity="0.8"
+												           FontSize="12"
+												           TextWrapping="Wrap" />
+											</StackPanel>
 										</Grid>
 									</Border>
 								</DataTemplate>
@@ -198,12 +206,19 @@
 											                     Margin="8,4,8,4"
 											                     VerticalAlignment="Top"
 											                     TextWrapping="Wrap" />
-											<Button Grid.Column="1"
-											        Classes="LinkButton"
-											        Margin="8,4,8,4"
-											        Command="{Binding OpenCommand}">
-												<TextBlock Text="{Binding Name}" />
-											</Button>
+											<StackPanel Grid.Column="1" Margin="8,4,8,4" Spacing="2">
+												<Button Classes="LinkButton"
+												        Command="{Binding OpenCommand}">
+													<TextBlock Text="{Binding Name}" />
+												</Button>
+												<!-- What it is about (owner request, 2026-11-06), its web addresses clickable - typed in a plain box, so read as typed (PlainLinkText). -->
+												<TextBlock theme:TextLinkRenderer.PlainLinkText="{Binding Note}"
+												           IsVisible="{Binding HasNote}"
+												           Foreground="{DynamicResource Table_Fg}"
+												           Opacity="0.8"
+												           FontSize="12"
+												           TextWrapping="Wrap" />
+											</StackPanel>
 										</Grid>
 									</Border>
 								</DataTemplate>

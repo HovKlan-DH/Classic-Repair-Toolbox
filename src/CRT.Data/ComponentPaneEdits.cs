@@ -95,7 +95,7 @@ namespace Handlers.DataHandling
         }
 
         // A note of several lines as it is kept: trimmed, each line ended by "\n" alone, whatever the
-        // clipboard brought.
+        // clipboard brought. A replacement part's - plain text, typed in a plain box.
         public static string NormalisedNote(string? value) =>
             (value ?? string.Empty).Replace("\r\n", "\n").Replace('\r', '\n').Trim();
 
@@ -577,7 +577,9 @@ namespace Handlers.DataHandling
                     Name = row.Name?.Trim() ?? string.Empty,
                     ExpectedOscilloscopeReading = row.ExpectedOscilloscopeReading?.Trim() ?? string.Empty,
                     File = row.File?.Trim() ?? string.Empty,
-                    Note = ComponentPaneEdits.NormalisedNote(row.Note),
+                    // Markup, typed in a formatted box: its first line's indent says whether it is a bullet and how deep,
+                    // so it is trimmed as notes are, never Trim() (RichNote.NormalisedMarkup; code review, 2026-11-08).
+                    Note = RichNote.NormalisedMarkup(row.Note),
                     TimeDiv = row.TimeDiv?.Trim() ?? string.Empty,
                     VoltsDiv = row.VoltsDiv?.Trim() ?? string.Empty,
                     TriggerLevelVolts = row.TriggerLevelVolts?.Trim() ?? string.Empty,
@@ -697,7 +699,7 @@ namespace Handlers.DataHandling
                 row.Name?.Trim(),
                 row.ExpectedOscilloscopeReading?.Trim(),
                 row.File?.Trim(),
-                ComponentPaneEdits.NormalisedNote(row.Note),
+                RichNote.NormalisedMarkup(row.Note),
                 row.TimeDiv?.Trim(),
                 row.VoltsDiv?.Trim(),
                 row.TriggerLevelVolts?.Trim(),

@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Handlers.DataHandling;
+using Handlers.Geometry;
 
 namespace CRT;
 
@@ -27,8 +28,9 @@ namespace CRT;
 // ###########################################################################################
 public partial class TabSchematics
 {
-    // The one-time tip, and what the mode hint says while traces are drawn.
-    internal const string PanHint = "Drag with the right or middle mouse button to move the picture, and scroll to zoom.";
+    // The one-time tip - CRT's one way of moving a picture (PanGesture, 2026-11-06) - and what the mode hint says while
+    // traces are drawn.
+    internal const string PanHint = PanGesture.Hint;
 
     internal const string DrawTraceHint =
         "Drag on the picture to draw a trace, or drag a trace's points. Right-click a trace to remove it. Escape stops.";
@@ -114,7 +116,8 @@ public partial class TabSchematics
     // ###########################################################################################
     private bool TryBeginPan(PointerPressedEventArgs e, PointerPoint pointer, Point point)
     {
-        if (!pointer.Properties.IsRightButtonPressed && !pointer.Properties.IsMiddleButtonPressed)
+        // The right or the middle button - CRT's one rule for it, the photo viewer's and the previews' too.
+        if (!PanGesture.IsPanPress(pointer.Properties))
         {
             return false;
         }

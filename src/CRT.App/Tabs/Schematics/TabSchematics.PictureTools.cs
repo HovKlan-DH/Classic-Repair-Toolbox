@@ -178,6 +178,7 @@ public partial class TabSchematics
     private void FollowPictureTool()
     {
         this.FollowToolsInDrawTrace();
+        this.FollowAligningInWorklogOverlay();
 
         PictureTool? onNow = this.thisIsLabelEditorMode ? PictureTool.MarkComponents
             : this.thisIsKiCadTraceCalibrationMode ? PictureTool.AlignKiCad

@@ -81,10 +81,14 @@ the models people have added. To add yours:
    started from, kept in a file of your own that the data check never puts back.
 3. Connect to your scope, then go through the commands with your scope's programming manual open.
    **Try it** beside each command sends it and shows the scope's answer under it; a box is saved as
-   you leave it.
-4. **Run full test suite** tries every command in turn.
-5. **Submit this model** sends it to the administrator, who publishes it for everybody. You are mailed
-   either way.
+   you leave it. While CRT waits for the answer the line under the box counts down the seconds left.
+   The command's box is framed green when the scope took it and red when it did not. A scope that
+   does not answer at all loses its connection - and if that was the **Identify** command, which
+   connecting sends, automatic connecting pauses until you correct it and press
+   **Connect to oscilloscope**, so the scope is not sent it again every few seconds.
+4. **Run full test suite** tries every command in turn, framing each box green or red the same way.
+5. **Submit this model for everybody**, the panel at the bottom, sends it to the administrator with
+   its **Submit** button, who publishes it for everybody. You are mailed either way.
 
 Your scope needs a network (LAN) port that takes SCPI commands - not every scope has one. A port
 that only works with the scope maker's own PC software, or a scope with only USB, cannot be used.

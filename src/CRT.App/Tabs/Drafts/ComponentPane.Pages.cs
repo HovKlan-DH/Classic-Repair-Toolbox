@@ -36,8 +36,9 @@ namespace CRT
     //     its box is left, never on a pause in typing - every row of the component moves with it.
     //   - WHAT SUBMIT WOULD REFUSE, MARKED WHERE IT IS AND ON ITS ENTRY: no category; a pin the case does not
     //     have; a baseline lacking its signal name or image; a link's address that is no web address.
-    //   - THE TEMPORARY TOOL making pinouts of oscilloscope baselines (BaselinePinMigration - gone before
-    //     CRT 4.0 goes live, with this section).
+    //
+    // The temporary buttons making pinouts of scope baselines and KiCad data went on 2026-11-06 (owner
+    // request): the data tree's conversion makes every board's pinouts now (ConversionPinouts).
     //
     // Part of the ComponentPane partial class - see ComponentPane.axaml.cs for the file map.
     // ###########################################################################################
@@ -457,7 +458,6 @@ namespace CRT
                 this.BoardLabelBox.Text = this.thisLabelShown;
                 this.TitleText.Text = ComponentPaneWording.Title(row);
                 this.ShowActions(session.Content.Board);
-                this.ShowMigrationOffer(session.Content.Board);
             }
             finally
             {
@@ -540,100 +540,6 @@ namespace CRT
             foreach (ComponentPaneBaselineRow row in this.thisBaselines)
             {
                 row.UseCaseThatRefuses(BoardDataChecks.PackageRefusing(components, this.thisLabel, row.Region, row.Pin));
-            }
-        }
-
-        // ---- TEMPORARY: pinouts made of scope baselines --------------------------------------------------
-        // *** REMOVED BEFORE CRT 4.0 GOES LIVE - see BaselinePinMigration, whose test fails a release. ***
-
-        private void ShowMigrationOffer(BoardData board)
-        {
-            this.MigrationNoteText.Text = ComponentPaneWording.MigrationNote;
-            this.MigrationPanel.IsVisible = board.ComponentImages.Any(ComponentImageKinds.IsScopeBaseline) ||
-                                            this.thisSession?.ListedFiles.Values.Any(DraftFiles.IsKiCad) == true;
-            this.MigrateComponentButton.IsEnabled = BaselinePinMigration.CanRun(board, this.thisLabel);
-        }
-
-        private void OnMigrateComponentClick(object? sender, RoutedEventArgs e) => this.MigrateComponent();
-
-        private async void OnMigrateBoardClick(object? sender, RoutedEventArgs e)
-        {
-            try
-            {
-                await this.MigrateBoardAsync();
-            }
-            catch (Exception ex)
-            {
-                // Nothing may leave an async void handler: App lets such an exception end CRT.
-                Logger.Critical($"Making the board's pinouts failed - [{ex}]");
-            }
-        }
-
-        // Reads the board's KiCad data for the whole board's pinouts - the host's, off the UI thread.
-        internal Func<Task<KiCadPinoutSource?>>? ReadKiCadForPinouts { get; set; }
-
-        internal void MigrateComponent()
-        {
-            if (this.thisSession is not { } session || this.thisLabel.Length == 0)
-            {
-                return;
-            }
-
-            this.CommitHeld();
-            this.ShowMessage(null);
-
-            string label = this.thisLabel;
-
-            bool changed = session.Apply(
-                DraftStepWording.PinsFromBaselines(label),
-                content => BaselinePinMigration.Apply(content.Board, label) is BoardData board && !ReferenceEquals(board, content.Board)
-                    ? content with { Board = board }
-                    : null);
-
-            if (changed)
-            {
-                this.ContentChanged?.Invoke(this, EventArgs.Empty);
-            }
-            else
-            {
-                this.ShowMessage(ComponentPaneWording.MigrationNothing);
-            }
-        }
-
-        internal async Task MigrateBoardAsync()
-        {
-            if (this.thisSession is not { } session)
-            {
-                return;
-            }
-
-            this.CommitHeld();
-
-            KiCadPinoutSource? kiCad = this.ReadKiCadForPinouts is { } read ? await read() : null;
-
-            // Off the UI thread and under CRT's "please wait" (code review, 2026-11-04): on a large KiCad board
-            // going over every component froze the window with nothing on screen saying why.
-            BoardData before = session.Content.Board;
-
-            (BoardData made, int components) = await BusyOverlay.RunLocalAsync<(BoardData, int)>(this, CrtWaitWording.MigrationMakingPinouts, () => Task.Run(() =>
-            {
-                BoardData result = BaselinePinMigration.ApplyToBoard(before, out int count, kiCad);
-
-                return (result, count);
-            }));
-
-            // Worked out again only for a draft that moved meanwhile - what was held is handed over as this applies.
-            bool changed = components > 0 && session.Apply(
-                DraftStepWording.PinsFromBaselinesOfBoard(components),
-                content => (ReferenceEquals(content.Board, before) ? made : BaselinePinMigration.ApplyToBoard(content.Board, out _, kiCad)) is BoardData board && !ReferenceEquals(board, content.Board)
-                    ? content with { Board = board }
-                    : null);
-
-            this.ShowMessage(changed ? ComponentPaneWording.MigratedBoard(components) : ComponentPaneWording.MigrationNothing);
-
-            if (changed)
-            {
-                this.ContentChanged?.Invoke(this, EventArgs.Empty);
             }
         }
     }

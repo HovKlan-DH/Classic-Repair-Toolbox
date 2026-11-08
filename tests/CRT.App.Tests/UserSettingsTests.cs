@@ -1186,72 +1186,60 @@ public sealed class UserSettingsTests : IDisposable
         Assert.False(UserSettings.IsUserThemeColorResourceKey("schematics_tracepalette_color1"));
     }
 
-    // --------------------------------------------------------- the detailed log (contributor mode until slice 6)
-
+    // ###########################################################################################
+    // *** WHAT CRT 3.X GOES BY IS STORED AS IT WAS (the settings file is shared with it). *** "Write a detailed log" went
+    // (owner request, 2026-11-07), and so did the check of every board at launch it switched on - the Contribute tab says a
+    // published board's own errors and warnings now - but CRT 3.x, reading the same file, still turns contributor mode on
+    // by "contributorMode", and by the two older settings it came from. All three are written back as they were found,
+    // the older pair migrated into it once and kept in step with it.
+    // ###########################################################################################
     [Fact]
-    public void The_detailed_log_defaults_to_off()
+    public void Contributor_mode_once_on_stays_stored_under_its_name_with_the_settings_it_came_from()
     {
-        this.LoadSettings("{}");
+        string path = this.LoadSettings("""{"contributorMode": true}""");
 
-        Assert.False(UserSettings.DetailedLog);
+        UserSettings.Region = "NTSC";
+
+        JsonNode json = ReadJson(path);
+        Assert.True(json["contributorMode"]!.GetValue<bool>());
+        Assert.True(json["validateDataOnLaunch"]!.GetValue<bool>());
+        Assert.True(json["debugLogging"]!.GetValue<bool>());
     }
 
-    // ###########################################################################################
-    // Contributor mode went (CRT 4.0 step 2, slice 6) and left what it switched on besides its menu -
-    // the log's debug lines and the data check at launch - as "Write a detailed log", under the name
-    // already STORED: whoever had the mode on keeps the detailed log, and it is written back so.
-    // ###########################################################################################
     [Fact]
-    public void Contributor_mode_once_on_is_the_detailed_log_and_stays_stored_under_its_name()
+    public void Legacy_settings_are_migrated_into_contributor_mode_for_CRT_3()
     {
-        this.LoadSettings("""{"contributorMode": true}""");
-        Assert.True(UserSettings.DetailedLog);
-        Assert.True(UserSettings.ValidateDataOnLaunch);
+        // Before contributor mode existed, the pair of validate-on-launch + debug-logging was
+        // what a contributor turned on. Those users keep their setup after upgrading.
+        string path = this.LoadSettings("""{"validateDataOnLaunch": true, "debugLogging": true}""");
 
-        string path = this.LoadSettings("{}");
-        UserSettings.DetailedLog = true;
+        UserSettings.Region = "NTSC";
 
         Assert.True(ReadJson(path)["contributorMode"]!.GetValue<bool>());
     }
 
     [Fact]
-    public void Legacy_settings_are_migrated_into_the_detailed_log()
+    public void Only_one_legacy_flag_does_not_turn_contributor_mode_on()
     {
-        // Before contributor mode existed, the pair of validate-on-launch + debug-logging was
-        // what a contributor turned on. Those users keep their setup after upgrading.
-        this.LoadSettings("""{"validateDataOnLaunch": true, "debugLogging": true}""");
+        string path = this.LoadSettings("""{"validateDataOnLaunch": true, "debugLogging": false}""");
 
-        Assert.True(UserSettings.DetailedLog);
-    }
+        UserSettings.Region = "NTSC";
 
-    [Fact]
-    public void Only_one_legacy_flag_does_not_turn_the_detailed_log_on()
-    {
-        this.LoadSettings("""{"validateDataOnLaunch": true, "debugLogging": false}""");
-
-        Assert.False(UserSettings.DetailedLog);
+        Assert.Null(ReadJson(path)["contributorMode"]);
+        Assert.False(ReadJson(path)["validateDataOnLaunch"]!.GetValue<bool>());
     }
 
     [Fact]
     public void An_explicit_value_is_never_overridden_by_migration()
     {
-        this.LoadSettings("""
+        string path = this.LoadSettings("""
         {"contributorMode": false, "validateDataOnLaunch": true, "debugLogging": true}
         """);
 
-        Assert.False(UserSettings.DetailedLog);
-    }
+        UserSettings.Region = "NTSC";
 
-    [Fact]
-    public void The_detailed_log_drives_debug_logging()
-    {
-        this.LoadSettings("""{"contributorMode": true}""");
-
-        Assert.True(Logger.IsDebugEnabled);
-
-        this.LoadSettings("""{"contributorMode": false}""");
-
-        Assert.False(Logger.IsDebugEnabled);
+        Assert.False(ReadJson(path)["contributorMode"]!.GetValue<bool>());
+        Assert.False(ReadJson(path)["validateDataOnLaunch"]!.GetValue<bool>());
     }
 
     // Two per-board settings were never read by anything ("contributorModeByBoard" and
@@ -1324,10 +1312,12 @@ public sealed class UserSettingsTests : IDisposable
     [Theory]
     [InlineData("AllBoards", "AllBoards")]
     [InlineData("allboards", "AllBoards")]     // matched case-insensitively...
+    [InlineData("CurrentHardware", "CurrentHardware")]   // the hardware shown's (2026-11-06)
+    [InlineData("currenthardware", "CurrentHardware")]
     [InlineData("CurrentBoard", "CurrentBoard")]
     [InlineData("All Boards", "CurrentBoard")] // ...but a space is NOT the same token
     [InlineData("nonsense", "CurrentBoard")]   // anything unrecognised falls back to CurrentBoard
-    public void The_workbooks_scope_is_normalised_to_one_of_two_tokens(string input, string expected)
+    public void The_workbooks_scope_is_normalised_to_one_of_three_tokens(string input, string expected)
     {
         this.LoadSettings("{}");
 

@@ -490,7 +490,6 @@ namespace CRT
                 this.RegionText.Text = ComponentPaneWording.RegionLine(this.thisRowRegion);
                 this.RegionText.IsVisible = this.RegionText.Text.Length > 0;
                 this.ShowRegionChoices(board);
-                this.ShowMigrationOffer(board);
             }
             finally
             {
@@ -1088,7 +1087,11 @@ namespace CRT
         // ###########################################################################################
         private async Task<DraftWorkbookEditOutcome> SaveSessionAsync(DraftSession session)
         {
-            while (this.thisSaveInFlight is { } running)
+            // *** A FINISHED SAVE IS FINISHED, ITS OWN CONTINUATION RUN OR NOT (owner report, 2026-11-06: CRT
+            // froze for good, a note typed and the "Resources" tab clicked). *** That continuation clears the
+            // field - posted at the priority the save began under, the timer's low one; a save asked for from
+            // a click comes first, and awaiting a finished task returns at once: it looped for ever here.
+            while (this.thisSaveInFlight is { IsCompleted: false } running)
             {
                 await running;
             }
@@ -1292,8 +1295,12 @@ namespace CRT
             {
                 this.Set(ref this.thisUrl, value ?? string.Empty);
                 this.Raise(nameof(this.UrlNotWeb));
+                this.Raise(nameof(this.CanOpen));
             }
         }
+
+        // "Open link" is on while the address is one a browser can be sent to (LinkTarget) - a board link's rule.
+        public bool CanOpen => LinkTarget.For(this.thisUrl) is not null;
 
         // An address the checks refuse, marked on its box (ComponentPaneBoardLinkRow says why).
         public bool UrlNotWeb => BoardDataChecks.IsRefusedLink(this.thisUrl);

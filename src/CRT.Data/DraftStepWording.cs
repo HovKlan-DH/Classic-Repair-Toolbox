@@ -37,12 +37,6 @@ namespace Handlers.DataHandling
 
         public const string CategoriesOrdered = "Order of the categories";
 
-        // The temporary tool that makes pinouts of oscilloscope baselines (BaselinePinMigration).
-        public static string PinsFromBaselines(string label) => $"Pins of [{label}] from its oscilloscope baselines";
-
-        public static string PinsFromBaselinesOfBoard(int components) =>
-            components == 1 ? "Pins of 1 component from its oscilloscope baselines" : $"Pins of {components.ToString(CultureInfo.InvariantCulture)} components from their oscilloscope baselines";
-
         // A new board's components from its KiCad data, all in one go (step 3) - how many.
         public static string ComponentsFromKiCad(int count) =>
             count == 1 ? "1 component added from KiCad" : $"{count.ToString(System.Globalization.CultureInfo.InvariantCulture)} components added from KiCad";

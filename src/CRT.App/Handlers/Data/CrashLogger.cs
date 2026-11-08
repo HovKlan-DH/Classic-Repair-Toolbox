@@ -185,7 +185,7 @@ namespace Handlers.DataHandling
 
             try
             {
-                Logger.Critical(line);
+                Logger.Critical(line, alreadyShown: true);
             }
             catch
             {

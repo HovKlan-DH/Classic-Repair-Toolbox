@@ -377,13 +377,18 @@ public partial class TabSchematics
     // ###########################################################################################
     // Returns true when the supplied pad belongs to a selected or hovered component and should
     // receive the special primary-pin highlight.
+    //
+    // `isMarkPin1Enabled` is IsBoardMarkPin1OnSelectedComponentEnabled, asked ONCE per rebuild by the
+    // caller (2026-11-06): asked here it resolved the picture's KiCad view and read the board's setting
+    // for every pad of every net drawn - some 3,000 times a rebuild on 250469.
     // ###########################################################################################
     private bool ShouldUseSelectedComponentPin1Highlight(
+        bool isMarkPin1Enabled,
         KiCadPcbFootprint footprint,
         KiCadPcbPad pad,
         string requiredLayer)
     {
-        if (!this.IsBoardMarkPin1OnSelectedComponentEnabled())
+        if (!isMarkPin1Enabled)
         {
             return false;
         }
@@ -517,6 +522,28 @@ public partial class TabSchematics
         var primitives = new List<KiCadOverlayPrimitive>();
         var firstPinBrush = this.ResolveThemeBrush("Schematics_FirstPin", new SolidColorBrush(Colors.Orange));
 
+        // Asked once for the whole rebuild, not per pad (ShouldUseSelectedComponentPin1Highlight).
+        bool isMarkPin1Enabled = this.IsBoardMarkPin1OnSelectedComponentEnabled();
+
+        // ###########################################################################################
+        // One 1.2 px outline pen per brush for the pads and vias of this rebuild (2026-11-06), where
+        // every pad and via had a new Pen of its own - the same brush and thickness, so the same
+        // outline: some 3,000 Avalonia objects made per rebuild on 250469, and as many pens for the
+        // compositor to take in at the next frame. Nothing changes a pen once a primitive holds it.
+        // ###########################################################################################
+        var outlinePenByBrush = new Dictionary<IBrush, Pen>(ReferenceEqualityComparer.Instance);
+
+        Pen OutlinePen(IBrush brush)
+        {
+            if (!outlinePenByBrush.TryGetValue(brush, out Pen? pen))
+            {
+                pen = new Pen(brush, 1.2);
+                outlinePenByBrush[brush] = pen;
+            }
+
+            return pen;
+        }
+
         // Everything a cached net depends on beyond its own appearance. Built by
         // KiCadOverlayCacheKeys so the field list can be tested: a missing field here does not fail a
         // build, it draws stale copper.
@@ -586,7 +613,7 @@ public partial class TabSchematics
                 Math.Max(2.0, width),
                 Math.Max(2.0, height));
 
-            var pen = new Pen(padBrush, 1.2);
+            var pen = OutlinePen(padBrush);
 
             // The rect above is built axis-aligned from the pad's own width and height; the pad's
             // rotation is what turns it the right way round on the board. Without this a 90-degree
@@ -888,7 +915,7 @@ public partial class TabSchematics
                         center.Y - (Math.Max(2.0, diameter) / 2.0),
                         Math.Max(2.0, diameter),
                         Math.Max(2.0, diameter)),
-                    Pen = new Pen(primaryBrush, 1.2),
+                    Pen = OutlinePen(primaryBrush),
                     Fill = primaryBrush
                 });
             }
@@ -901,6 +928,7 @@ public partial class TabSchematics
                 }
 
                 bool isSelectedComponentPin1 = this.ShouldUseSelectedComponentPin1Highlight(
+                    isMarkPin1Enabled,
                     padNode.Footprint,
                     padNode.Pad,
                     primaryLayer);
@@ -1001,7 +1029,6 @@ public partial class TabSchematics
             TraceColours.SheetBlankHighlight);
 
         Color overlayColor = traceColours.ThisSide;
-        double translatedOpacity = traceColours.ThisSideOpacity;
         string? activeHoveredKiCadNetName = this.GetActiveHoveredKiCadNetName();
 
         var primitives = new List<KiCadOverlayPrimitive>();

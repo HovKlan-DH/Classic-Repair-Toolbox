@@ -363,12 +363,22 @@ namespace CRT
             this.AppendOutputLine("Debug", "---");
             this.AppendOutputLine("Debug", GetPaletteDescription(palette));
 
+            // ###########################################################################################
+            // *** A COMMAND THAT ANSWERS NOTHING IS FRAMED BY THE SCOPE'S "LAST ERROR", NOT BY ITS BYTES GOING OUT (code
+            // review, 2026-11-07). *** A Set with a typo the scope silently refused was framed green by the suite, while
+            // "Try it" framed the same box red. Such a command waits for its palette's "Last error" (each one asks it after
+            // "Finished"): an error the scope kept is red, as "Try it" says (ScopeCommandTrial.IsAnError); none is green. A
+            // palette that never asks is left as sent - green, all CRT knows.
+            // ###########################################################################################
+            var waitingForLastError = new List<ScopeCommand>();
+
             foreach (var command in ScopeCommandPaletteDefinitions.GetCommands(palette))
             {
                 string commandText = ScopeCommandResolver.GetCommandText(selectedOscilloscope, command);
 
                 if (string.IsNullOrWhiteSpace(commandText))
                 {
+                    this.NoteSuiteCommand(command, worked: false);
                     throw new InvalidOperationException($"No SCPI command text is defined for {command}");
                 }
 
@@ -376,25 +386,56 @@ namespace CRT
 
                 if (string.IsNullOrWhiteSpace(effectiveCommandText))
                 {
+                    this.NoteSuiteCommand(command, worked: false);
                     throw new InvalidOperationException($"No test value is available for {command}");
                 }
 
                 this.AppendOutputLine("Debug", $"SCPI >> {effectiveCommandText}");
 
-                if (ScopeCommandResolver.ExpectsTextResponse(command))
+                // Each command's box in the model editor framed as it goes, while the full suite runs (NoteSuiteCommand).
+                try
                 {
-                    string response = await scopeClient.QueryLineAsync(effectiveCommandText, cancellationToken).ConfigureAwait(false);
-                    string loggedResponse = command == ScopeCommand.Identify
-                        ? ScopeFormatting.MaskIdentifyResponseSerial(response)
-                        : response;
+                    if (ScopeCommandResolver.ExpectsTextResponse(command))
+                    {
+                        string response = await scopeClient.QueryLineAsync(effectiveCommandText, cancellationToken).ConfigureAwait(false);
+                        string loggedResponse = command == ScopeCommand.Identify
+                            ? ScopeFormatting.MaskIdentifyResponseSerial(response)
+                            : response;
 
-                    this.AppendOutputLine("Debug", $"SCPI << {loggedResponse}");
-                    this.ProcessTextResponse(command, response);
+                        this.AppendOutputLine("Debug", $"SCPI << {loggedResponse}");
+                        this.ProcessTextResponse(command, response);
+
+                        if (command == ScopeCommand.DrainErrorQueue)
+                        {
+                            bool taken = !ScopeCommandTrial.IsAnError(response);
+
+                            foreach (ScopeCommand sent in waitingForLastError)
+                            {
+                                this.NoteSuiteCommand(sent, worked: taken);
+                            }
+
+                            waitingForLastError.Clear();
+                        }
+                    }
+                    else
+                    {
+                        await scopeClient.SendAsync(effectiveCommandText, cancellationToken).ConfigureAwait(false);
+                        waitingForLastError.Add(command);
+                        continue;
+                    }
                 }
-                else
+                catch
                 {
-                    await scopeClient.SendAsync(effectiveCommandText, cancellationToken).ConfigureAwait(false);
+                    this.NoteSuiteCommand(command, worked: false);
+                    throw;
                 }
+
+                this.NoteSuiteCommand(command, worked: true);
+            }
+
+            foreach (ScopeCommand sent in waitingForLastError)
+            {
+                this.NoteSuiteCommand(sent, worked: true);
             }
 
             this.AppendPaletteCompletionInfo(palette);

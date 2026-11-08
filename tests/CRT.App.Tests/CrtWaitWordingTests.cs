@@ -40,7 +40,6 @@ public sealed class CrtWaitWordingTests
             CrtWaitWording.MarkingFromKiCad,
             CrtWaitWording.MatchingPictures,
             CrtWaitWording.ReadingDroppedFiles,
-            CrtWaitWording.AddingDevicePhotos,
             CrtWaitWording.DeletingDevice,
             CrtWaitWording.ConnectingOscilloscope,
             CrtWaitWording.DownloadingUpdate,

@@ -145,7 +145,16 @@ namespace Handlers.DataHandling
         public sealed record SheetDefinition(
             string SheetName,
             IReadOnlyList<string> ColumnOrder,
-            IReadOnlyList<string> RequiredHeaders);
+            IReadOnlyList<string> RequiredHeaders,
+            IReadOnlyList<string>? NoteColumns = null)
+        {
+            // ###########################################################################################
+            // Whether `column` holds a note with formatting - its row's property is [RichNoteMarkup] (owner decision,
+            // 2026-11-08) - so the table compares its cells as BoardDataDiffer compares the property
+            // (BoardDataDiffer.ComparableText). BoardWorkbookSchemaTests holds the two together.
+            // ###########################################################################################
+            public bool IsNoteColumn(string column) => this.NoteColumns?.Contains(column) == true;
+        }
 
         public static readonly SheetDefinition BoardSchematics = new(
             BoardWorkbookSchema.SheetBoardSchematics,
@@ -215,7 +224,8 @@ namespace Handlers.DataHandling
                 BoardWorkbookSchema.ColPin,
                 BoardWorkbookSchema.ColName,
                 BoardWorkbookSchema.ColFile
-            ]);
+            ],
+            [BoardWorkbookSchema.ColNote]);
 
         public static readonly SheetDefinition ComponentPins = new(
             BoardWorkbookSchema.SheetComponentPins,
@@ -259,13 +269,15 @@ namespace Handlers.DataHandling
             ],
             [BoardWorkbookSchema.ColBoardLabel, BoardWorkbookSchema.ColName, BoardWorkbookSchema.ColUrl]);
 
+        // The board's files and links end in a Note - what each is about (owner request, 2026-11-06).
         public static readonly SheetDefinition BoardLocalFiles = new(
             BoardWorkbookSchema.SheetBoardLocalFiles,
             [
                 BoardWorkbookSchema.ColCategory,
                 BoardWorkbookSchema.ColName,
                 BoardWorkbookSchema.ColFile,
-                BoardWorkbookSchema.ColRegion
+                BoardWorkbookSchema.ColRegion,
+                BoardWorkbookSchema.ColNote
             ],
             [BoardWorkbookSchema.ColCategory, BoardWorkbookSchema.ColName, BoardWorkbookSchema.ColFile]);
 
@@ -275,7 +287,8 @@ namespace Handlers.DataHandling
                 BoardWorkbookSchema.ColCategory,
                 BoardWorkbookSchema.ColName,
                 BoardWorkbookSchema.ColUrl,
-                BoardWorkbookSchema.ColRegion
+                BoardWorkbookSchema.ColRegion,
+                BoardWorkbookSchema.ColNote
             ],
             [BoardWorkbookSchema.ColCategory, BoardWorkbookSchema.ColName, BoardWorkbookSchema.ColUrl]);
 
@@ -424,7 +437,8 @@ namespace Handlers.DataHandling
                     (BoardWorkbookSchema.ColCategory, entry.Category),
                     (BoardWorkbookSchema.ColName, entry.Name),
                     (BoardWorkbookSchema.ColFile, entry.File),
-                    (BoardWorkbookSchema.ColRegion, entry.Region)))];
+                    (BoardWorkbookSchema.ColRegion, entry.Region),
+                    (BoardWorkbookSchema.ColNote, entry.Note)))];
             }
 
             if (sheet.SheetName == BoardWorkbookSchema.SheetBoardLinks)
@@ -433,7 +447,8 @@ namespace Handlers.DataHandling
                     (BoardWorkbookSchema.ColCategory, entry.Category),
                     (BoardWorkbookSchema.ColName, entry.Name),
                     (BoardWorkbookSchema.ColUrl, entry.Url),
-                    (BoardWorkbookSchema.ColRegion, entry.Region)))];
+                    (BoardWorkbookSchema.ColRegion, entry.Region),
+                    (BoardWorkbookSchema.ColNote, entry.Note)))];
             }
 
             if (sheet.SheetName == BoardWorkbookSchema.SheetCredits)
@@ -584,7 +599,8 @@ namespace Handlers.DataHandling
                 Category = Val(r, BoardWorkbookSchema.ColCategory),
                 Name = Val(r, BoardWorkbookSchema.ColName),
                 File = Val(r, BoardWorkbookSchema.ColFile),
-                Region = Val(r, BoardWorkbookSchema.ColRegion)
+                Region = Val(r, BoardWorkbookSchema.ColRegion),
+                Note = Val(r, BoardWorkbookSchema.ColNote)
             }).ToList();
 
         public static List<BoardLinkEntry> MapBoardLinks(IEnumerable<IReadOnlyDictionary<string, string>> rows)
@@ -593,7 +609,8 @@ namespace Handlers.DataHandling
                 Category = Val(r, BoardWorkbookSchema.ColCategory),
                 Name = Val(r, BoardWorkbookSchema.ColName),
                 Url = Val(r, BoardWorkbookSchema.ColUrl),
-                Region = Val(r, BoardWorkbookSchema.ColRegion)
+                Region = Val(r, BoardWorkbookSchema.ColRegion),
+                Note = Val(r, BoardWorkbookSchema.ColNote)
             }).ToList();
 
         public static List<CreditEntry> MapCredits(IEnumerable<IReadOnlyDictionary<string, string>> rows)

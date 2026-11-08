@@ -95,28 +95,13 @@
 					<RowDefinition Height="Auto" />
 				</Grid.RowDefinitions>
 
-				<!-- The device worked on (CRT 4.0 step 4, Main.Devices.cs): above Hardware, as picking one
-				     selects its board and its repair. Shown while the worklog is on and the user has a
-				     device; it shows the device the workbook in the worklog bar is on. -->
-				<StackPanel x:Name="DevicePickerPanel"
-							Grid.Row="0"
-							IsVisible="False">
-					<TextBlock x:Name="DevicePickerHeadingText"
-							   FontSize="11"
-							   Foreground="{DynamicResource Fg}" />
-					<ComboBox x:Name="DevicePickerComboBox"
-							  HorizontalAlignment="Stretch"
-							  Margin="0,8,0,0"
-							  SelectionChanged="OnDevicePickerSelectionChanged" />
-				</StackPanel>
+				<!-- Row 0 held the device picker until 2026-11-06 - it is the worklog bar's first drop-down now
+				     (owner request: "I would like a device selector as the first drop-down"). -->
 
 				<!-- Hardware, Board and Category selectors -->
 				<Grid Grid.Row="1"
 					  Margin="0,8,0,0">
 					<Grid.RowDefinitions>
-						<RowDefinition Height="Auto" />
-						<RowDefinition Height="Auto" />
-						<RowDefinition Height="Auto" />
 						<RowDefinition Height="Auto" />
 						<RowDefinition Height="Auto" />
 						<RowDefinition Height="Auto" />
@@ -202,100 +187,112 @@
 							  x:Name="BoardComboBox"
 							  HorizontalAlignment="Stretch"
 							  Margin="0,8,0,0" />
-					<TextBlock Grid.Row="4"
-							   Text="Category"
-							   FontSize="11"
-							   Foreground="{DynamicResource Fg}"
-							   Margin="0,8,0,0" />
-					<ListBox Grid.Row="5"
-							 x:Name="CategoryFilterListBox"
-							 Classes="SideList"
-							 SelectionMode="Multiple,Toggle"
-							 Margin="0,8,0,0"
-							 BorderThickness="1"
-							 CornerRadius="4"
-							 ClipToBounds="True"
-							 Padding="0"
-							 ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
-					<ListBox Grid.Row="5"
-							 x:Name="ContributeCategoryListBox"
-							 Classes="SideList"
-							 IsVisible="False"
-							 SelectionMode="Multiple,Toggle"
-							 Margin="0,8,0,0"
-							 BorderThickness="1"
-							 CornerRadius="4"
-							 ClipToBounds="True"
-							 Padding="0"
-							 ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
-
-					<!-- "With issues" is the Contribute tab's alone, there only while a component has an issue (owner
-					     requests, 2026-11-04; Main hands it over as the tab is shown, TabDrafts.Problems.cs owns it). The
-					     size and the click on the whole row are the "Labels visible" panel's, the box after its text as
-					     asked. Its margin takes back what it is taller than the word beside it, so the list stands in one
-					     place on every tab. -->
-					<Grid Grid.Row="6" ColumnDefinitions="Auto,*" Margin="0,8,0,0">
-						<TextBlock Text="Component"
+					<!-- The category and component lists - and, on the "My Devices" tab, that tab's "My devices" in their
+					     place (owner requests, 2026-11-06: "When in this tab, I have no use of those data", the workbooks
+					     back in the tab and "keep the 'My devices' in the left-side panel"; Main.DeviceList.cs). -->
+					<Grid x:Name="ComponentListsGrid"
+						  Grid.Row="4"
+						  RowDefinitions="Auto,Auto,Auto,*">
+						<TextBlock Grid.Row="0"
+								   Text="Category"
 								   FontSize="11"
-								   VerticalAlignment="Center"
-								   Foreground="{DynamicResource Fg}" />
-						<StackPanel Grid.Column="1"
-									x:Name="ComponentsWithIssuesRow"
-									Orientation="Horizontal"
-									Spacing="2"
-									Margin="8,-4,0,-4"
-									HorizontalAlignment="Right"
-									VerticalAlignment="Center"
-									Background="Transparent"
-									Cursor="Hand"
-									IsVisible="{Binding #ComponentsWithIssuesCheckBox.IsVisible}"
-									ToolTip.Tip="List only the components with an error or a warning"
-									PointerPressed="OnComponentsWithIssuesRowClicked">
-							<TextBlock Text="With issues"
+								   Foreground="{DynamicResource Fg}"
+								   Margin="0,8,0,0" />
+						<ListBox Grid.Row="1"
+								 x:Name="CategoryFilterListBox"
+								 Classes="SideList"
+								 SelectionMode="Multiple,Toggle"
+								 Margin="0,8,0,0"
+								 BorderThickness="1"
+								 CornerRadius="4"
+								 ClipToBounds="True"
+								 Padding="0"
+								 ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+						<ListBox Grid.Row="1"
+								 x:Name="ContributeCategoryListBox"
+								 Classes="SideList"
+								 IsVisible="False"
+								 SelectionMode="Multiple,Toggle"
+								 Margin="0,8,0,0"
+								 BorderThickness="1"
+								 CornerRadius="4"
+								 ClipToBounds="True"
+								 Padding="0"
+								 ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+
+						<!-- "With issues" is the Contribute tab's alone, there only while a component has an issue (owner
+						     requests, 2026-11-04; Main hands it over as the tab is shown, TabDrafts.Problems.cs owns it). The
+						     size and the click on the whole row are the "Labels visible" panel's, the box after its text as
+						     asked. Its margin takes back what it is taller than the word beside it, so the list stands in one
+						     place on every tab. -->
+						<Grid Grid.Row="2" ColumnDefinitions="Auto,*" Margin="0,8,0,0">
+							<TextBlock Text="Component"
 									   FontSize="11"
 									   VerticalAlignment="Center"
-									   Foreground="{DynamicResource Fg}"
-									   IsHitTestVisible="False" />
-							<Viewbox Width="20" Height="20" IsHitTestVisible="False">
-								<CheckBox x:Name="ComponentsWithIssuesCheckBox"
-										  MinHeight="0"
-										  Margin="0"
-										  Padding="0"
-										  CornerRadius="2"
-										  IsChecked="False"
-										  IsHitTestVisible="False"
-										  IsVisible="False" />
-							</Viewbox>
-						</StackPanel>
+									   Foreground="{DynamicResource Fg}" />
+							<StackPanel Grid.Column="1"
+										x:Name="ComponentsWithIssuesRow"
+										Orientation="Horizontal"
+										Spacing="2"
+										Margin="8,-4,0,-4"
+										HorizontalAlignment="Right"
+										VerticalAlignment="Center"
+										Background="Transparent"
+										Cursor="Hand"
+										IsVisible="{Binding #ComponentsWithIssuesCheckBox.IsVisible}"
+										ToolTip.Tip="List only the components with an error or a warning"
+										PointerPressed="OnComponentsWithIssuesRowClicked">
+								<TextBlock Text="With issues"
+										   FontSize="11"
+										   VerticalAlignment="Center"
+										   Foreground="{DynamicResource Fg}"
+										   IsHitTestVisible="False" />
+								<Viewbox Width="20" Height="20" IsHitTestVisible="False">
+									<CheckBox x:Name="ComponentsWithIssuesCheckBox"
+											  MinHeight="0"
+											  Margin="0"
+											  Padding="0"
+											  CornerRadius="2"
+											  IsChecked="False"
+											  IsHitTestVisible="False"
+											  IsVisible="False" />
+								</Viewbox>
+							</StackPanel>
+						</Grid>
+						<ListBox Grid.Row="3"
+								 x:Name="ComponentFilterListBox"
+								 Classes="SideList ComponentRows"
+								 ItemTemplate="{StaticResource ComponentRowTemplate}"
+								 AutoScrollToSelectedItem="False"
+								 SelectionMode="Multiple,Toggle"
+								 Margin="0,8,0,0"
+								 BorderThickness="1"
+								 CornerRadius="4"
+								 ClipToBounds="True"
+								 Padding="0"
+								 ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+						<ListBox Grid.Row="3"
+								 x:Name="ContributeComponentListBox"
+								 Classes="SideList ComponentRows"
+								 ItemTemplate="{StaticResource ComponentRowTemplate}"
+								 IsVisible="False"
+								 SelectionMode="Single"
+								 Margin="0,8,0,0"
+								 BorderThickness="1"
+								 CornerRadius="4"
+								 ClipToBounds="True"
+								 Padding="0"
+								 ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
 					</Grid>
-					<ListBox Grid.Row="7"
-							 x:Name="ComponentFilterListBox"
-							 Classes="SideList ComponentRows"
-							 ItemTemplate="{StaticResource ComponentRowTemplate}"
-							 AutoScrollToSelectedItem="False"
-							 SelectionMode="Multiple,Toggle"
-							 Margin="0,8,0,0"
-							 BorderThickness="1"
-							 CornerRadius="4"
-							 ClipToBounds="True"
-							 Padding="0"
-							 ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
-					<ListBox Grid.Row="7"
-							 x:Name="ContributeComponentListBox"
-							 Classes="SideList ComponentRows"
-							 ItemTemplate="{StaticResource ComponentRowTemplate}"
-							 IsVisible="False"
-							 SelectionMode="Single"
-							 Margin="0,8,0,0"
-							 BorderThickness="1"
-							 CornerRadius="4"
-							 ClipToBounds="True"
-							 Padding="0"
-							 ScrollViewer.HorizontalScrollBarVisibility="Disabled" />
+
+					<Decorator x:Name="DeviceListHost"
+							   Grid.Row="4"
+							   Margin="0,8,0,0"
+							   IsVisible="False" />
 				</Grid>
 
-				<!-- Action Controls -->
-				<StackPanel Grid.Row="2" Margin="0,12,0,0" Spacing="4">
+				<!-- Action Controls - the component lists', so hidden with them on the "My Devices" tab -->
+				<StackPanel x:Name="ComponentActionsPanel" Grid.Row="2" Margin="0,12,0,0" Spacing="4">
 					<TextBox x:Name="ComponentSearchTextBox"
 							 FontSize="12"
 							 MinHeight="0"
@@ -410,73 +407,18 @@
 						BorderBrush="{DynamicResource Schematics_Panels_Border}"
 						BorderThickness="0,0,0,1"
 						Padding="14,8">
-					<Grid ColumnDefinitions="Auto,*">
-						<StackPanel Grid.Column="0"
+					<!-- THE BAR IS TWO DROP-DOWNS AND ITS BUTTONS (owner requests, 2026-11-06: "a device selector as
+					     the first drop-down, and then it will show all workbooks for this device in the other 'Workbook'
+					     selector", each line ending in its status; "remove the highlighted text in the top-bar, to
+					     reduce what is shown"; "Create new workbook" was cut off at the window's edge). The buttons are
+					     docked on the right, so they always show; the drop-downs share what is left, the workbook's
+					     twice the device's, each up to its MaxWidth and shrinking with the window, their text cut short
+					     before a button is. Main.Devices.cs fills both. -->
+					<DockPanel>
+						<StackPanel DockPanel.Dock="Right"
 									Orientation="Horizontal"
-									Spacing="12"
-									VerticalAlignment="Center">
-							<TextBlock Text="Workbook"
-									   FontSize="12"
-									   Foreground="{DynamicResource Schematics_Panels_Fg}"
-									   VerticalAlignment="Center" />
-							<TextBlock x:Name="WorklogNoJobText"
-									   Text="No repairs recorded for this board"
-									   FontSize="12"
-									   Foreground="{DynamicResource Schematics_Panels_Fg}"
-									   VerticalAlignment="Center" />
-							<!-- Lets ANY workbook - any board, not just the one on screen - be picked directly
-							     from the bar: selecting one that belongs to a different board first switches
-							     HardwareComboBox/BoardComboBox to it (OnWorklogJobBoxSelectionChanged), then
-							     calls Main.ActivateWorkbook, exactly what clicking a card on the Workbooks tab
-							     does for a same-board workbook. ItemsSource is WorklogManager.GetAllWorkbooks();
-							     the item template (built in code-behind, see Initialize) renders
-							     "#{Id} | {Title} (hardware/board)" - a short folder-derived label
-							     (HardwareBoardEntry.ShortHardwareBoardLabel), not the full Excel-sheet names,
-							     since those run too long once several boards' workbooks share one dropdown -
-							     so workbooks from other boards are not mistaken for ones on the board
-							     currently on screen. -->
-							<ComboBox x:Name="WorklogJobBox"
-									  IsVisible="False"
-									  FontSize="12"
-									  VerticalAlignment="Center"
-									  SelectionChanged="OnWorklogJobBoxSelectionChanged" />
-							<StackPanel x:Name="WorklogJobStatusPanel"
-										Orientation="Horizontal"
-										Spacing="5"
-										IsVisible="False"
-										VerticalAlignment="Center">
-								<!-- The workbook's Open/Closed status uses the SAME pill as a worklog entry's
-								     own state (see TabSchematics.axaml and WorklogEntryEditorWindow.axaml):
-								     one dot-plus-label pill, 10px corner radius, coloured by the shared
-								     Worklog_Status_Open/Worklog_Status_Closed brushes. Both axes read
-								     "Open"/"Closed", so they must look the same wherever they appear -
-								     a different shape here would suggest a different kind of thing. -->
-								<Border x:Name="WorklogJobStatusPill"
-										VerticalAlignment="Center"
-										Background="{DynamicResource Form_Bg}"
-										BorderBrush="{DynamicResource Form_Border}"
-										BorderThickness="1"
-										CornerRadius="10"
-										Padding="10,1">
-									<StackPanel Orientation="Horizontal" Spacing="5">
-										<TextBlock x:Name="WorklogJobStatusDot" FontFamily="{DynamicResource FontAwesomeSolid}" FontSize="11" VerticalAlignment="Center" />
-										<TextBlock x:Name="WorklogJobStatusPillText"
-												   FontSize="12"
-												   Foreground="{DynamicResource Schematics_Panels_Fg}"
-												   VerticalAlignment="Center" />
-									</StackPanel>
-								</Border>
-								<TextBlock x:Name="WorklogJobStatusText"
-										   FontSize="12"
-										   Foreground="{DynamicResource Schematics_Panels_Fg}"
-										   VerticalAlignment="Center" />
-							</StackPanel>
-						</StackPanel>
-
-						<StackPanel Grid.Column="1"
-									Orientation="Horizontal"
-									Spacing="8"
-									HorizontalAlignment="Right"
+									Spacing="6"
+									Margin="16,0,0,0"
 									VerticalAlignment="Center">
 							<StackPanel x:Name="WorklogShowEntriesPanel"
 										Orientation="Horizontal"
@@ -511,14 +453,63 @@
 									FontSize="11"
 									Padding="10,4"
 									Click="OnWorklogAddEntryClick" />
+							<!-- "Add workbook" ("Create new workbook" until 2026-11-06), then "Add device" last (owner
+							     request: "show the 'Add device' as the last button, of the 3 buttons"). A device is added
+							     from the bar with no workbook needed. -->
 							<Button x:Name="WorklogCreateWorkbookButton"
 									Classes="Accept"
-									Content="Create new workbook"
+									Content="Add workbook"
 									FontSize="11"
 									Padding="10,4"
 									Click="OnWorklogCreateWorkbookClick" />
+							<Button x:Name="WorklogAddDeviceButton"
+									Classes="Accept"
+									Content="Add device"
+									FontSize="11"
+									Padding="10,4"
+									Click="OnWorklogAddDeviceClick" />
 						</StackPanel>
-					</Grid>
+
+						<!-- Each drop-down as wide as the line it shows; short of room, a short one keeps its words whole and the
+						     longer is cut short (owner request, 2026-11-06: "have the two drop-downs resize, so it will show as much as
+						     the text in the drop-downs as possible" - fixed shares until then). BarPickersPanel; clipped to its place. -->
+						<local:BarPickersPanel x:Name="WorklogPickersPanel"
+											   VerticalAlignment="Center">
+							<local:BarPickersPanel.Styles>
+								<!-- A line of either list as wide as the list, so its badge stands at its end. -->
+								<Style Selector="ComboBox.BarPicker ComboBoxItem">
+									<Setter Property="HorizontalContentAlignment" Value="Stretch" />
+								</Style>
+							</local:BarPickersPanel.Styles>
+
+							<TextBlock x:Name="DevicePickerHeadingText"
+									   FontSize="12"
+									   Margin="0,0,8,0"
+									   Foreground="{DynamicResource Schematics_Panels_Fg}"
+									   VerticalAlignment="Center" />
+							<!-- "Show workbooks for all devices" first, then every device, each with how many workbooks it has and its
+							     status - what the "Workbook" drop-down lists (Main.Devices.cs). Greyed out with no device. -->
+							<ComboBox x:Name="DevicePickerComboBox"
+									  Classes="BarPicker"
+									  FontSize="12"
+									  HorizontalContentAlignment="Stretch"
+									  VerticalAlignment="Center"
+									  SelectionChanged="OnDevicePickerSelectionChanged" />
+							<TextBlock Text="Workbook"
+									   FontSize="12"
+									   Margin="16,0,8,0"
+									   Foreground="{DynamicResource Schematics_Panels_Fg}"
+									   VerticalAlignment="Center" />
+							<!-- Every workbook, or the device's - on any board, one on another board than the one shown naming it,
+							     and picking it switches the drop-downs to it (OnWorklogJobBoxSelectionChanged). Greyed out with none. -->
+							<ComboBox x:Name="WorklogJobBox"
+									  Classes="BarPicker"
+									  FontSize="12"
+									  HorizontalContentAlignment="Stretch"
+									  VerticalAlignment="Center"
+									  SelectionChanged="OnWorklogJobBoxSelectionChanged" />
+						</local:BarPickersPanel>
+					</DockPanel>
 				</Border>
 
 				<TabControl x:Name="MainTabControl" Grid.Row="1" Padding="0">
@@ -535,11 +526,13 @@
 						<local:TabResources x:Name="TabResources" />
 					</TabItem>
 
-					<!-- The Workbooks tab is hidden unless "Enable Worklog" is ticked in Configuration.
+					<!-- "My Devices" ("Workbooks" until 2026-11-06 - owner request: "Can we try and rename the
+					     'Workbooks' tab to 'My Devices' - I want to see if this is better"; the code keeps the
+					     Workbooks names). Hidden unless "Enable Worklog" is ticked in Configuration.
 					     IsVisible starts False so a launch with the worklog off never flashes the tab;
 					     ApplyWorklogBarVisibility sets the real value during startup and again whenever
 					     the setting is toggled, alongside the worklog bar's own visibility. -->
-					<TabItem x:Name="WorkbooksTabItem" Header="Workbooks" IsVisible="False">
+					<TabItem x:Name="WorkbooksTabItem" Header="My Devices" IsVisible="False">
 						<local:TabWorkbooks x:Name="TabWorkbooks" />
 					</TabItem>
 
@@ -621,11 +614,11 @@
 						<local:TabConfiguration x:Name="TabConfiguration" />
 					</TabItem>
 
-					<TabItem Header="Feedback" IsVisible="True">
+					<TabItem x:Name="FeedbackTabItem" Header="Feedback" IsVisible="True">
 						<local:TabFeedback x:Name="TabFeedback" />
 					</TabItem>
 
-					<TabItem Header="About">
+					<TabItem x:Name="AboutTabItem" Header="About">
 						<local:TabAbout x:Name="TabAbout" />
 					</TabItem>
 
@@ -696,6 +689,81 @@
 							HorizontalAlignment="Right"
 							VerticalAlignment="Bottom"
 							Spacing="8">
+
+					<!-- Something went wrong - a button whose work failed, a board or a file that could not be read or
+					     saved (Main.Problems.cs, ProblemsLog): what, and how many since the card was closed. Stays until
+					     closed; "Show details" opens "Errors and warnings". -->
+					<Border x:Name="ProblemBanner"
+							Classes="NoticeCard"
+							IsVisible="False">
+						<Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+							<TextBlock x:Name="ProblemBannerText"
+									   VerticalAlignment="Center"
+									   Foreground="{DynamicResource Main_Banner_Fg}"
+									   FontSize="12"
+									   TextWrapping="Wrap" />
+
+							<Button x:Name="ProblemBannerDismissButton"
+									Grid.Column="1"
+									Classes="BannerDismissButton"
+									Content="✕"
+									VerticalAlignment="Top"
+									Margin="8,0,0,0"
+									FontSize="11"
+									Padding="6,3"
+									Click="OnProblemBannerDismiss" />
+
+							<StackPanel Grid.Row="1"
+										Grid.ColumnSpan="2"
+										Orientation="Horizontal"
+										HorizontalAlignment="Right">
+								<Button x:Name="ProblemBannerDetailsButton"
+										Classes="BannerDismissButton"
+										Content="Show details"
+										Margin="0,8,0,0"
+										FontSize="11"
+										Padding="6,3"
+										Click="OnProblemBannerDetailsClick" />
+							</StackPanel>
+						</Grid>
+					</Border>
+
+					<!-- CRT closed by itself the last time it ran: said once, at the next launch (Main.Problems.cs,
+					     CrashReports). Stays until closed; "Show details" has the report. -->
+					<Border x:Name="LastCrashBanner"
+							Classes="NoticeCard"
+							IsVisible="False">
+						<Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+							<TextBlock x:Name="LastCrashBannerText"
+									   VerticalAlignment="Center"
+									   Foreground="{DynamicResource Main_Banner_Fg}"
+									   FontSize="12"
+									   TextWrapping="Wrap" />
+
+							<Button x:Name="LastCrashBannerDismissButton"
+									Grid.Column="1"
+									Classes="BannerDismissButton"
+									Content="✕"
+									VerticalAlignment="Top"
+									Margin="8,0,0,0"
+									FontSize="11"
+									Padding="6,3"
+									Click="OnLastCrashBannerDismiss" />
+
+							<StackPanel Grid.Row="1"
+										Grid.ColumnSpan="2"
+										Orientation="Horizontal"
+										HorizontalAlignment="Right">
+								<Button x:Name="LastCrashBannerDetailsButton"
+										Classes="BannerDismissButton"
+										Content="Show details"
+										Margin="0,8,0,0"
+										FontSize="11"
+										Padding="6,3"
+										Click="OnProblemBannerDetailsClick" />
+							</StackPanel>
+						</Grid>
+					</Border>
 
 					<!-- The settings file could not be read, so CRT started on defaults - and where the
 					     unreadable file was kept (Main.SettingsNotice.cs). Stays until closed. -->

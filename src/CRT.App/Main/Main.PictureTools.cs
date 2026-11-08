@@ -237,7 +237,7 @@ namespace CRT
             try
             {
                 this.SwitchToContributeTab();
-                await this.TabDrafts.OpenComponentAsync(boardLabel);
+                await this.TabDrafts.EditComponentAsync(boardLabel);
             }
             catch (Exception ex)
             {

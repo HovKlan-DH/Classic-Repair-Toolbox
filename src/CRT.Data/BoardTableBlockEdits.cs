@@ -5,9 +5,10 @@ using System.Globalization;
 namespace Handlers.DataHandling
 {
     // ###########################################################################################
-    // WHAT A PASTE, A FILL DOWN OR A REPLACE DID, AND HOW THE TABLE SAYS SO (CRT 4.0, 2026-10-25 -
-    // the plan's step 0: "the table view gains block copy and paste, fill down, and find &
-    // replace"). The rules are BoardTableSheet.PasteBlock / PasteIntoCells / FillDown and
+    // WHAT A PASTE OR A REPLACE DID, AND HOW THE TABLE SAYS SO (CRT 4.0, 2026-10-25 - the plan's
+    // step 0: "the table view gains block copy and paste, fill down, and find & replace"; fill down
+    // went on 2026-11-07, owner request: "I do not understand what "Fill down" does ... please remove
+    // this functionality entirely"). The rules are BoardTableSheet.PasteBlock / PasteIntoCells and
     // BoardTableDocument.ReplaceAll; the sentences are here, in one place, so the Drafts tab and the
     // Maintainer tab say the same and the words are tested.
     //
@@ -116,35 +117,34 @@ namespace Handlers.DataHandling
 
         public const string PasteOnDeletedRows = "The selected cells are all on red rows, which have been deleted, so nothing was pasted. Ctrl+Z brings a row back if you deleted it.";
 
-        public const string FillOnDeletedRows = "The cells to fill are all on red rows, which have been deleted, so nothing was filled. Ctrl+Z brings a row back if you deleted it.";
-
-        public static string Filled(int changed) => changed == 0
-            ? "Nothing to fill - the cells already hold the value above them."
-            : $"Filled {Count(changed, "cell")} with the value at the top. {BoardTableEditWording.UndoHint}";
-
-        public const string NothingAbove = "There is no row above to fill from. Select several rows to fill the top one's values down.";
-
         // ###########################################################################################
-        // A replace: how often, or that nothing on the sheets searched contains the text. `everySheet`
-        // says which sheets were searched - the one on screen, or all of them.
+        // A replace on the sheet shown: how often, or that nothing it shows contains the text. On the sheet shown only
+        // since 2026-11-07 (owner request: 'remove the checkbox for "On every sheet" as this will get too complicated').
         // ###########################################################################################
-        public static string Replaced(BoardTableReplaceResult result, string find, bool everySheet)
+        public static string Replaced(BoardTableReplaceResult result, string find)
         {
             ArgumentNullException.ThrowIfNull(result);
 
-            if (result.Cells == 0)
-            {
-                return everySheet
-                    ? $"No row shown on any sheet contains [{find}]."
-                    : $"No row shown on this sheet contains [{find}].";
-            }
-
-            string where = everySheet && result.Sheets > 1 ? $" on {Number(result.Sheets)} sheets" : string.Empty;
-
-            return $"Replaced [{find}] {Count(result.Occurrences, "time")} in {Count(result.Cells, "cell")}{where}. {BoardTableEditWording.UndoHint}";
+            return result.Cells == 0
+                ? $"No row shown on this sheet contains [{find}]."
+                : $"Replaced [{find}] {Count(result.Occurrences, "time")} in {Count(result.Cells, "cell")}. {BoardTableEditWording.UndoHint}";
         }
 
         public const string NothingToFind = "Type the text to find first.";
+
+        // ###########################################################################################
+        // The replace bar's "Columns" choice (owner request, 2026-11-07: "restrict replacement to specific columns, and not
+        // necessarily all"): its button says how many of the columns shown it looks in, and a replace with none ticked
+        // says why nothing was replaced.
+        // ###########################################################################################
+        public static string ColumnsChoice(int ticked, int shown) =>
+            ticked >= shown ? "Columns: All"
+            : ticked <= 0 ? "Columns: None"
+            : $"Columns: {Number(ticked)} of {Number(shown)}";
+
+        public const string NoColumnsTicked = "No column is ticked under \"Columns\", so nothing would be replaced. Tick the columns to replace in.";
+
+        public const string ColumnsChoiceTip = "Pick the columns of this sheet to find and replace in - the table shows and marks only what is found in those";
 
         private static bool AnythingLeftOut(BoardTablePasteResult result) =>
             result.HeadingsLeftOut || result.ColumnsLeftOut > 0 || result.RowsLeftOut > 0 || result.RowsAdded > 0;

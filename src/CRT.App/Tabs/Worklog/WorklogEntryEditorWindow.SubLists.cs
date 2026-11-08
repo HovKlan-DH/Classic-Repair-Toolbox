@@ -6,6 +6,7 @@ using Handlers.DataHandling;
 using System;
 using System.Globalization;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace CRT
 {
@@ -47,7 +48,7 @@ namespace CRT
                 if (result == null)
                     return;
 
-                int nextId = this.thisEntry.Links.Count == 0 ? 1 : this.thisEntry.Links.Max(l => l.Id) + 1;
+                int nextId = RecordIds.Next(this.thisEntry.Links.Select(l => l.Id));
                 this.thisEntry.Links.Add(new WorklogLinkRecord { Id = nextId, Headline = result.Value.Headline, Url = result.Value.Url });
 
                 // A new row landing in a folded list would look like nothing happened, so adding always
@@ -81,9 +82,16 @@ namespace CRT
         {
             if (sender is Border { Tag: string url } && !string.IsNullOrWhiteSpace(url))
             {
-                ExternalTargetLauncher.TryOpen(url);
+                this.OpenLink(url);
             }
         }
+
+        // A link as typed, opened by LinkTarget's rule - "www.c64-wiki.com" too, as the exported PDF opens it (code review,
+        // 2026-11-08).
+        internal void OpenLink(string url) => ExternalTargetLauncher.OpenLinkOrSay(url, this.OpenLinkOverrideForTests);
+
+        // Handed the address that would be opened, a test stands in for opening it. Null in the app.
+        internal Action<string>? OpenLinkOverrideForTests { get; set; }
 
         private async void OnEditLinkClick(object? sender, RoutedEventArgs e)
         {
@@ -169,23 +177,56 @@ namespace CRT
             // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
             try
             {
-                var dialog = new WorklogAddCommentWindow();
-                var result = await dialog.ShowDialog<string?>(this);
-                if (string.IsNullOrWhiteSpace(result))
-                    return;
-
-                int nextId = this.thisEntry.Comments.Count == 0 ? 1 : this.thisEntry.Comments.Max(c => c.Id) + 1;
-                this.thisEntry.Comments.Add(new WorklogCommentRecord { Id = nextId, Text = result.Trim(), Date = DateTime.Now });
-
-                this.EnsureListSectionExpanded("EditorCommentsHeader");
-                this.RefreshCommentRows();
-                this.PersistEntrySilently();
+                await this.AddCommentAsync();
             }
             catch (Exception ex)
             {
                 Logger.Critical($"OnAddCommentClick failed - [{ex}]");
             }
         }
+
+        internal async Task AddCommentAsync()
+        {
+            if (await this.AskCommentAsync(null) is not { } text)
+                return;
+
+            int nextId = RecordIds.Next(this.thisEntry.Comments.Select(c => c.Id));
+            this.thisEntry.Comments.Add(new WorklogCommentRecord { Id = nextId, Text = text, Date = DateTime.Now });
+
+            this.EnsureListSectionExpanded("EditorCommentsHeader");
+            this.RefreshCommentRows();
+            this.PersistEntrySilently();
+        }
+
+        // ###########################################################################################
+        // The "Add comment" window - on `text` to change it - and what it closes with: the comment's markup, trimmed by
+        // RichNote.TrimMarkup, never Trim() (code review, 2026-11-08: a second Trim() here took a first line's bullet
+        // indent off again, after the window had kept it) - or null, cancelled or nothing typed.
+        // ###########################################################################################
+        private async Task<string?> AskCommentAsync(string? text)
+        {
+            string? answered;
+
+            if (this.AskCommentOverrideForTests is { } ask)
+            {
+                answered = await ask(text);
+            }
+            else
+            {
+                var dialog = new WorklogAddCommentWindow();
+
+                if (text is not null)
+                    dialog.InitializeForEdit(text);
+
+                answered = await dialog.ShowDialog<string?>(this);
+            }
+
+            return RichNote.TrimMarkup(answered) is { Length: > 0 } trimmed ? trimmed : null;
+        }
+
+        // Stands in for the "Add comment" window in a test, which cannot show a dialog - handed the comment being
+        // changed (null: a new one), it answers as the window would. Null in the app.
+        internal Func<string?, Task<string?>>? AskCommentOverrideForTests { get; set; }
 
         private void OnDeleteCommentClick(object? sender, RoutedEventArgs e)
         {
@@ -207,27 +248,27 @@ namespace CRT
             // so an exception after an await reached App's handler and ended CRT. Logged, and CRT goes on.
             try
             {
-                if (sender is not Border { Tag: int id })
-                    return;
-
-                var comment = this.thisEntry.Comments.FirstOrDefault(c => c.Id == id);
-                if (comment == null)
-                    return;
-
-                var dialog = new WorklogAddCommentWindow();
-                dialog.InitializeForEdit(comment.Text);
-                var result = await dialog.ShowDialog<string?>(this);
-                if (string.IsNullOrWhiteSpace(result))
-                    return;
-
-                comment.Text = result.Trim();
-                this.RefreshCommentRows();
-                this.PersistEntrySilently();
+                if (sender is Border { Tag: int id })
+                    await this.EditCommentAsync(id);
             }
             catch (Exception ex)
             {
                 Logger.Critical($"OnCommentRowPointerPressed failed - [{ex}]");
             }
+        }
+
+        internal async Task EditCommentAsync(int commentId)
+        {
+            var comment = this.thisEntry.Comments.FirstOrDefault(c => c.Id == commentId);
+            if (comment == null)
+                return;
+
+            if (await this.AskCommentAsync(comment.Text) is not { } text)
+                return;
+
+            comment.Text = text;
+            this.RefreshCommentRows();
+            this.PersistEntrySilently();
         }
 
         // ###########################################################################################
@@ -318,7 +359,7 @@ namespace CRT
                 if (result == null)
                     return;
 
-                int nextId = this.thisEntry.WorkDoneItems.Count == 0 ? 1 : this.thisEntry.WorkDoneItems.Max(w => w.Id) + 1;
+                int nextId = RecordIds.Next(this.thisEntry.WorkDoneItems.Select(w => w.Id));
                 this.thisEntry.WorkDoneItems.Add(new WorklogWorkDoneRecord
                 {
                     Id = nextId,

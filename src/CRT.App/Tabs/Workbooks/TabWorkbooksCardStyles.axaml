@@ -1,0 +1,39 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+	<!-- ###########################################################################################
+	     THE "My Devices" TAB'S CARDS AND MUTED TEXT, in a file of their own (2026-11-06): the tab's list of devices
+	     and workbooks stands in Main's left panel while the tab is shown (owner request: "I want the 'My devices'
+	     list and the 'Workbooks' list to show in the left-side panel"), out of the tab, where a style of the tab no
+	     longer reaches it. So the tab and that list both include these (TabWorkbooks.axaml), and the cards look
+	     the same wherever they stand.
+	     ########################################################################################### -->
+
+	<!-- A workbook card in the list. The cards themselves are built in the code-behind (see BuildWorkbookCard),
+	     which adds this class to each one. .Selected is the currently activated workbook - a tinted fill,
+	     applied/removed by SelectWorkbook. A device's card and a repair's row on a device's page take it too. -->
+	<Style Selector="Border.WorkbooksJobCard">
+		<Setter Property="Background" Value="{DynamicResource Form_Bg}" />
+		<Setter Property="BorderBrush" Value="{DynamicResource Button_Border}" />
+		<Setter Property="BorderThickness" Value="1" />
+		<Setter Property="Padding" Value="7" />
+		<Setter Property="Cursor" Value="Hand" />
+	</Style>
+
+	<Style Selector="Border.WorkbooksJobCard.Selected">
+		<Setter Property="Background" Value="{DynamicResource Workbooks_SelectedCard_Bg}" />
+		<Setter Property="BorderBrush" Value="{DynamicResource Form_Border}" />
+	</Style>
+
+	<Style Selector="TextBlock.WorkbooksMuted">
+		<Setter Property="FontSize" Value="10" />
+		<Setter Property="Foreground" Value="{DynamicResource Workbooks_Muted_Fg}" />
+		<Setter Property="VerticalAlignment" Value="Center" />
+	</Style>
+
+	<Style Selector="TextBlock.WorkbooksFaint">
+		<Setter Property="FontSize" Value="10" />
+		<Setter Property="Foreground" Value="{DynamicResource Workbooks_Faint_Fg}" />
+		<Setter Property="VerticalAlignment" Value="Center" />
+	</Style>
+</Styles>

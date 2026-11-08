@@ -34,7 +34,10 @@ namespace CRT
         //   Main.BoardSelection.cs    - hardware/board drop-downs, board loading, catalogue visibility
         //   Main.SchematicsWindows.cs - detached thumbnails window, fullscreen schematics window
         //   Main.Worklog.cs           - worklog bar, workbook activation, worklog entry mode
-        //   Main.Devices.cs           - the device picker above Hardware, and the bar naming a repair's device
+        //   Main.Devices.cs           - the worklog bar's two drop-downs: the device, and its workbooks
+        //   Main.DeviceList.cs        - the "My Devices" tab's "My devices" in the left panel while it is shown
+        //   BarPickersPanel.cs        - (a class of its own) those drop-downs side by side, each as wide as its text
+        //   BarPickerLinePanel.cs     - (a class of its own) a line of those drop-downs, its badge at the end
         //   Main.ComponentPopup.cs    - component filter/search, component info popup, blink, region
         //   Main.ContributeLists.cs   - the Contribute tab's own lists on the far left, its selector
         //   Main.DataSyncStatus.cs    - sync settings reactions, sync status icon, background cleanup
@@ -57,6 +60,8 @@ namespace CRT
         //                               machine's worklogs and settings that name it follow
         //   Main.SettingsNotice.cs    - "your settings could not be read": started on defaults, and
         //                               where the unreadable file was kept
+        //   Main.Problems.cs          - "Something went wrong" (every error nothing else on screen says) and
+        //                               "CRT closed unexpectedly" (the last crash, once); "Errors and warnings"
         //   Main.PictureTools.cs      - "Mark components" and "Align KiCad" from the Contribute tab, on
         //                               the Schematics tab and back, "Back to Contribute" after "Show
         //                               on board", and "Edit component" from a component's popup
@@ -242,7 +247,6 @@ namespace CRT
         private readonly TaskCompletionSource<bool> thisBackgroundStartupSyncCompletionSource =
             new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        private Task? thisBackgroundDataValidationTask;
         private bool thisHasScheduledOrphanAndUnusedFileCleanup;
         public Main()
         {
@@ -252,6 +256,9 @@ namespace CRT
             this.WirePictureTools();
             this.TabOverview.Initialize(this);
             this.TabWorkbooks.Initialize(this);
+
+            // The tab's "My devices" stands in the left panel while it is shown (Main.DeviceList.cs).
+            this.PlaceDeviceList();
             this.TabDrafts.Initialize(this);
             this.TabConfiguration.Initialize(this);
             this.TabMaintainer.UseRememberedChoices(
@@ -373,29 +380,8 @@ namespace CRT
             this.ComponentFilterListBox.SelectionChanged += this.OnComponentFilterSelectionChanged;
             this.WireContributeLists();
 
-            // Renders each workbook as "#{Id} | {Title} (hardware/board)", e.g. "#3 | Black screen
-            // (C64/250469)", a repair on one of the user's devices "#3 | Breadbin #2 - Black screen
-            // (C64/250469)" (WorkbookPickerText, Main.Devices.cs). The board is the short
-            // folder-derived label from FormatBoardKeyForDisplay, not the
-            // full Excel-sheet names ("Commodore 64" / "250469 (short board)"), which read fine as a
-            // combo box's own dedicated row but ran too long once several workbooks from different
-            // boards sit side by side in one dropdown. The board suffix itself is what the plain-text
-            // box never needed - it only ever showed the current board's own workbooks - but the
-            // picker now lists EVERY workbook on every board (see RefreshWorklogBar), so two workbooks
-            // that happen to share a title are otherwise indistinguishable. Built here in code rather
-            // than as an inline XAML DataTemplate bound to a formatted property, since WorkbookRecord
-            // is a plain JSON-backed model (see WorklogManager.cs) with no display-formatting concept
-            // of its own.
-            this.WorklogJobBox.ItemTemplate = new FuncDataTemplate<WorkbookRecord>(
-                (workbook, _) => new TextBlock
-                {
-                    Text = workbook == null
-                        ? string.Empty
-                        : WorkbookPickerText(workbook, this.DeviceNameOf(workbook)),
-                    FontSize = 12,
-                });
-
-            // The device picker above Hardware (Main.Devices.cs).
+            // The worklog bar's two drop-downs - the device and its workbooks, each line ending in its status
+            // (Main.Devices.cs).
             this.WireDevicePicker();
 
             var versionString = AppConfig.AppDisplayVersionString;
@@ -445,6 +431,7 @@ namespace CRT
 
             UserSettings.CheckDataOnLaunchChanged += this.OnCheckDataOnLaunchSettingChanged;
             UserSettings.WorkbooksScopeChanged += this.OnWorkbooksScopeSettingChanged;
+            UserSettings.DeviceSortingChanged += this.OnWorkbooksScopeSettingChanged;
             UserSettings.WorklogCurrencyChanged += this.OnWorklogCurrencySettingChanged;
             this.UpdateDataSyncStatusIcon();
         }
@@ -489,6 +476,9 @@ namespace CRT
                 // before anything else (Main.SettingsNotice.cs).
                 this.ShowSettingsUnreadableNoticeIfNeeded();
                 this.ShowReceiptsUnreadableNoticeIfNeeded();
+
+                // What went wrong from here on - and before, at launch - and a crash last time (Main.Problems.cs).
+                await this.StartSayingProblemsAsync();
 
                 if (DataManager.DataUpdateRequiresAppUpdate)
                 {
@@ -674,11 +664,6 @@ namespace CRT
             this.PositionChanged += this.OnWindowPositionChanged;
             this.SizeChanged += this.OnWindowSizeChanged;
 
-            if (UserSettings.ValidateDataOnLaunch)
-            {
-                this.thisBackgroundDataValidationTask = StartBackgroundDataValidationAsync();
-            }
-
             this.thisWindowOpenedCompletionSource.TrySetResult(true);
             this.ScheduleOrphanAndUnusedFileCleanupIfEnabled();
 
@@ -746,7 +731,7 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Shows or hides the permanent worklog bar above the tabs AND the "Workbooks" tab to match
+        // Shows or hides the permanent worklog bar above the tabs AND the "My Devices" tab to match
         // the "Enable Worklog" configuration setting - and, when switching the feature off, tears
         // down everything the feature had put on the schematic.
         //
@@ -786,9 +771,7 @@ namespace CRT
             this.TabSchematicsControl.SetShowWorklogEntriesList(false, 0);
             this._worklogShowEntriesWorkbookId = 0;
 
-            // The device picker is the worklog's too.
-            this.DevicePickerPanel.IsVisible = false;
-
+            // The device picker is in the bar, and goes with it.
             this.MoveSelectionOffHiddenTab(this.WorkbooksTabItem);
         }
 
@@ -1122,13 +1105,16 @@ namespace CRT
 
             // Do not steal focus if we are on tabs that utilize text inputs
             var selectedTab = this.MainTabControl?.SelectedItem as TabItem;
-            string? tabHeader = selectedTab?.Header?.ToString();
 
-            // The Workbooks tab has its own priority focus ("Find a previous repair"),
+            // The "My Devices" tab (TabWorkbooks) has its own priority focus ("Find a previous repair"),
             // set on tab entry by OnMainTabControlSelectionChanged - see FocusSearchBox's
             // comment for why the global steal has to back off here, not just once but on
-            // every pointer release while this tab is showing.
-            if (tabHeader == "Feedback" || tabHeader == "Configuration" || tabHeader == "Workbooks")
+            // every pointer release while this tab is showing. Every tab is asked by its TabItem, never
+            // its header: "Workbooks" was renamed (2026-11-06), and "Feedback" and "Configuration" were
+            // still compared as text (code review, 2026-11-08).
+            if (ReferenceEquals(selectedTab, this.FeedbackTabItem) ||
+                ReferenceEquals(selectedTab, this.ConfigurationTabItem) ||
+                ReferenceEquals(selectedTab, this.WorkbooksTabItem))
             {
                 return false;
             }
@@ -1279,6 +1265,7 @@ namespace CRT
         {
             UserSettings.CheckDataOnLaunchChanged -= this.OnCheckDataOnLaunchSettingChanged;
             UserSettings.WorkbooksScopeChanged -= this.OnWorkbooksScopeSettingChanged;
+            UserSettings.DeviceSortingChanged -= this.OnWorkbooksScopeSettingChanged;
             UserSettings.WorklogCurrencyChanged -= this.OnWorklogCurrencySettingChanged;
             this.StopAppUpdateRequiredChecks();
 
@@ -1343,10 +1330,7 @@ namespace CRT
         // ###########################################################################################
         private static void OpenUrl(string url)
         {
-            if (!ExternalTargetLauncher.TryOpen(url))
-            {
-                Logger.Warning($"Rejected external target from main window: [{url}]");
-            }
+            ExternalTargetLauncher.OpenOrSay(url);
         }
     }
 }

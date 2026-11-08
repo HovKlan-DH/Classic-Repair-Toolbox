@@ -453,6 +453,10 @@ namespace CRT
         public override void Initialize()
         {
             AvaloniaXamlLoader.Load(this);
+
+            // Shift+Delete cuts in every text box (owner report, 2026-11-07) - see TextEditingKeys. Here, not in the
+            // static constructor: the platform's keys exist once the platform is set up, before Initialize.
+            Handlers.Theming.TextEditingKeys.UseShiftDeleteCut(this.PlatformSettings?.HotkeyConfiguration);
         }
 
         // ###########################################################################################

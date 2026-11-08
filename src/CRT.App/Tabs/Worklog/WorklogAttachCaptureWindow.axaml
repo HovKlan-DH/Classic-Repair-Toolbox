@@ -1,5 +1,6 @@
 ﻿<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:CRT"
         x:Class="CRT.WorklogAttachCaptureWindow"
         Title="Attach image to worklog"
         Width="460"
@@ -68,7 +69,7 @@
 		     is open and the order actually matters. -->
 
 		<TextBlock Text="Comment" Margin="0,10,0,0" />
-		<TextBox x:Name="CommentTextBox"
+		<local:RichNoteTextBox x:Name="CommentTextBox"
 				 AcceptsReturn="True"
 				 TextWrapping="Wrap"
 				 Height="70"

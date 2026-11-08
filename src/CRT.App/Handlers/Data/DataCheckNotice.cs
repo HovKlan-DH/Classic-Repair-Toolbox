@@ -23,9 +23,30 @@ namespace Handlers.DataHandling
         // finish (no data folder, or no manifest). `atLaunch` is the check CRT runs by itself at
         // launch; otherwise somebody started it, from the sync icon or the Configuration tab.
         // ###########################################################################################
-        public static DataCheckNotice After(int changedCount, bool atLaunch, string sourceLabel)
+        //
+        // *** A FILE THAT COULD NOT BE DOWNLOADED IS SAID, NEVER "ALL UP TO DATE" (owner request, 2026-11-07: every error
+        // and warning in the UI). *** `failedCount` files the check gave up on - a server error, a checksum that did not
+        // match, a download that stopped moving: the data on this computer is behind on those, so the card stays, saying
+        // how many, beside what did arrive. Which ones, and why, is in "Errors and warnings" (ProblemsLog - each failure
+        // is logged as it happens).
+        // ###########################################################################################
+        public static DataCheckNotice After(int changedCount, bool atLaunch, string sourceLabel, int failedCount = 0)
         {
             string updated = atLaunch ? "updated in background" : "updated";
+
+            if (changedCount >= 0 && failedCount > 0)
+            {
+                string failed = failedCount == 1
+                    ? $"[1] file could not be downloaded from the {sourceLabel}"
+                    : $"[{failedCount}] files could not be downloaded from the {sourceLabel}";
+
+                return changedCount switch
+                {
+                    0 => new($"{failed} - the data on this computer may be behind. \"Show errors and warnings\" in the \"Configuration\" tab says which", OffersRefresh: false, GoesByItself: false),
+                    1 => new($"[1] file {updated} and {failed} - please refresh board", OffersRefresh: true, GoesByItself: false),
+                    _ => new($"[{changedCount}] files {updated} and {failed} - please refresh board", OffersRefresh: true, GoesByItself: false),
+                };
+            }
 
             return changedCount switch
             {

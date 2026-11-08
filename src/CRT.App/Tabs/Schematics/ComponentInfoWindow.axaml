@@ -10,19 +10,6 @@
         MinHeight="260">
 
 	<Window.Styles>
-		<!-- A pin of the list, under the pointer: a click on it goes to its images (owner request, 2026-11-01). -->
-		<Style Selector="Border.PopupPinRow">
-			<Setter Property="Background" Value="Transparent" />
-			<Setter Property="Cursor" Value="Hand" />
-		</Style>
-		<Style Selector="Border.PopupPinRow:pointerover">
-			<Setter Property="Background" Value="{DynamicResource Form_Selected_Hover_Bg}" />
-		</Style>
-		<!-- The pin of the image shown (owner request, 2026-11-02) - as the drawing beside it lights it. -->
-		<Style Selector="Border.PopupPinRow.viewed">
-			<Setter Property="Background" Value="{DynamicResource Form_Selected_Bg}" />
-		</Style>
-
 		<!-- Region toggle buttons -->
 		<Style Selector="Button.RegionToggle.active">
 			<Setter Property="BorderThickness" Value="2" />
@@ -542,12 +529,11 @@
 									   FontSize="10"
 									   FontWeight="SemiBold"
 									   Foreground="{DynamicResource Fg}" />
-							<TextBox Grid.Row="1"
-									 x:Name="InfoNote"
-									 IsReadOnly="True"
-									 AcceptsReturn="False"
-									 TextWrapping="Wrap"
-									 FontSize="12" />
+							<!-- Formatted as typed (RichNoteTextBox, 2026-11-07), only read - its format row hidden. -->
+							<local:RichNoteTextBox Grid.Row="1"
+												   x:Name="InfoNote"
+												   IsReadOnly="True"
+												   FontSize="12" />
 						</Grid>
 					</StackPanel>
 
@@ -594,6 +580,21 @@
 								IsVisible="False"
 								Spacing="4"
 								Margin="0,8,0,0">
+						<!-- The section's own styles, so they go with it into a window of its own (ComponentInfoWindow.Pinout.cs). -->
+						<StackPanel.Styles>
+							<!-- A pin of the list, under the pointer: a click on it goes to its images (owner request, 2026-11-01). -->
+							<Style Selector="Border.PopupPinRow">
+								<Setter Property="Background" Value="Transparent" />
+								<Setter Property="Cursor" Value="Hand" />
+							</Style>
+							<Style Selector="Border.PopupPinRow:pointerover">
+								<Setter Property="Background" Value="{DynamicResource Form_Selected_Hover_Bg}" />
+							</Style>
+							<!-- The pin of the image shown (owner request, 2026-11-02) - as the drawing beside it lights it. -->
+							<Style Selector="Border.PopupPinRow.viewed">
+								<Setter Property="Background" Value="{DynamicResource Form_Selected_Bg}" />
+							</Style>
+						</StackPanel.Styles>
 						<TextBlock Text="Pinout"
 								   FontSize="10"
 								   FontWeight="SemiBold"
@@ -657,6 +658,44 @@
 							</ItemsControl>
 						</StackPanel>
 						</Grid>
+					</StackPanel>
+
+					<!-- A single resistor's color bands, drawn from the value typed for it, and that value in words (owner
+					     request, 2026-11-07: "automatically create such an image and show it under the pinout info in
+					     component info popup"; ResistorColorCode, ResistorBandsDrawing). Hidden for anything else, a
+					     resistor pack included, and for a value the bands cannot say. -->
+					<StackPanel x:Name="ResistorSection"
+								IsVisible="False"
+								Spacing="4"
+								Margin="0,8,0,0">
+						<TextBlock Text="Color bands"
+								   FontSize="10"
+								   FontWeight="SemiBold"
+								   Foreground="{DynamicResource Fg}" />
+						<local:ResistorBandsDrawing x:Name="InfoResistorDrawing"
+													HorizontalAlignment="Left"
+													Margin="0,4,0,0" />
+						<TextBlock Text="Resistor value:"
+								   FontSize="12"
+								   Margin="0,6,0,0"
+								   Foreground="{DynamicResource Fg}" />
+						<TextBlock x:Name="InfoResistorValueText"
+								   FontSize="15"
+								   FontWeight="Bold"
+								   Foreground="{DynamicResource Fg}" />
+						<TextBlock x:Name="InfoResistorPowerText"
+								   FontSize="11"
+								   Opacity="0.75"
+								   IsVisible="False"
+								   Foreground="{DynamicResource Fg}" />
+						<!-- Each band's color in words, first to last, the tolerance's too (owner request, 2026-11-07:
+						     "Colors: Grey, Red, Red, Gold") - a swatch of the band's color before each name
+						     (ShowResistorBands fills it). -->
+						<TextBlock Text="Colors:"
+								   FontSize="12"
+								   Margin="0,6,0,0"
+								   Foreground="{DynamicResource Fg}" />
+						<StackPanel x:Name="InfoResistorColorsPanel" Spacing="2" Margin="8,0,0,0" />
 					</StackPanel>
 
 					<!-- Replacement parts (CRT 4.0, hidden without any). -->

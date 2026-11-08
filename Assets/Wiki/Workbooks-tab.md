@@ -4,11 +4,13 @@ Record what you find on a board and what you did about it - and share the finish
 
 ---
 
+It all lives in the "My Devices" tab, and in the bar above the tabs.
+
 * [Getting started](Workbooks-Getting-started) - turn it on and record your first repair
 * [Daily use](Workbooks-Daily-use) - the worklog bar, the editor, marking areas on a schematic
 * [Browsing and search](Workbooks-Browsing-and-search) - find an older repair, and read the totals
 * [Export and your data](Workbooks-Export-and-data) - PDF/ZIP export, where files are stored, deleting
-* [Devices](Workbooks-Devices) - your own machines, each with its repairs, changes and photos
+* [Devices](Workbooks-Devices) - your own machines, each with its workbooks, comments and photos
 
 ## The two words
 
@@ -45,7 +47,7 @@ So closing the last worklog closes the workbook, and adding a new worklog reopen
 
 While a workbook is Open, it is shown as **started** on the date it began. Once it is Closed, it is shown as **ended** on the day the last outstanding worklog was closed. Reopening and closing it again updates that date; the start date never changes.
 
-This reads the same everywhere the workbook appears - the bar above the tabs, its card in the workbook list, and the header of an exported PDF.
+This reads the same everywhere the workbook appears - its card in the workbook list, and the header of an exported PDF.
 
 A workbook closed by an older version of the application has no ending date recorded, so it keeps showing its start date.
 

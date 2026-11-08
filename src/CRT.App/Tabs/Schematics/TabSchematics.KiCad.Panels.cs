@@ -67,11 +67,7 @@ public partial class TabSchematics
 
         if (boardData == null || root == null || root.Pcb.Count == 0)
         {
-            if (UserSettings.DetailedLog)
-            {
-                Logger.Warning("Important signals debug: panel rebuild aborted because board data or KiCad PCB data is unavailable");
-            }
-
+            Logger.Debug("Important signals: panel rebuild aborted because board data or KiCad PCB data is unavailable");
             return;
         }
 
@@ -95,25 +91,12 @@ public partial class TabSchematics
 
         var normalizedNameByAnyKnownName = KiCadNetNames.Resolver(nets.Select(net => (net.Name, net.NormalizedName)));
 
-        bool isDetailedLog = UserSettings.DetailedLog;
+        // Written always, as debug lines, since "Write a detailed log" went (owner request, 2026-11-07) - the counts, and
+        // each row that finds no net; never every net's name, hundreds per board shown.
+        Logger.Debug(
+            $"Important signals: [{boardData.KiCadImportantSignals.Count}] rows, [{knownNetNames.Count}] KiCad net names, " +
+            $"[{normalizedNameByAnyKnownName.Count}] name mappings, [{KiCadNetNames.NormalizedNames(nets).Count}] normalized nets");
 
-        if (isDetailedLog)
-        {
-            Logger.Debug($"Important signals debug: Excel rows loaded [{boardData.KiCadImportantSignals.Count}]");
-            Logger.Debug($"Important signals debug: loaded [{knownNetNames.Count}] raw KiCad net names");
-            Logger.Debug($"Important signals debug: built [{normalizedNameByAnyKnownName.Count}] KiCad net name mappings");
-
-            var normalizedNetNames = KiCadNetNames.NormalizedNames(nets);
-
-            Logger.Debug($"Important signals debug: loaded [{normalizedNetNames.Count}] normalized KiCad net names");
-
-            foreach (string normalizedNetName in normalizedNetNames)
-            {
-                Logger.Debug($"Important signals debug: normalized KiCad net name [{normalizedNetName}]");
-            }
-        }
-
-        var excelRowCountByDisplayName = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var seenResolvedDisplayNameToNetPairs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var duplicateResolvedDisplayNameToNetPairs = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -129,36 +112,15 @@ public partial class TabSchematics
             if (string.IsNullOrWhiteSpace(displayName) || string.IsNullOrWhiteSpace(kiCadNetName))
             {
                 invalidRowCount++;
-
-                if (isDetailedLog)
-                {
-                    Logger.Warning(
-                        $"Important signals debug: skipped invalid Excel row with DisplayName=[{displayName}] KiCadNetName=[{kiCadNetName}]");
-                }
-
+                Logger.Debug($"Important signals: skipped a row with DisplayName=[{displayName}] KiCadNetName=[{kiCadNetName}]");
                 continue;
-            }
-
-            if (excelRowCountByDisplayName.TryGetValue(displayName, out int currentDisplayNameCount))
-            {
-                excelRowCountByDisplayName[displayName] = currentDisplayNameCount + 1;
-            }
-            else
-            {
-                excelRowCountByDisplayName[displayName] = 1;
             }
 
             if (!normalizedNameByAnyKnownName.TryGetValue(kiCadNetName, out string? normalizedNetName) ||
                 string.IsNullOrWhiteSpace(normalizedNetName))
             {
                 unresolvedRowCount++;
-
-                if (isDetailedLog)
-                {
-                    Logger.Warning(
-                        $"Important signals debug: Excel KiCad net name [{kiCadNetName}] for display name [{displayName}] did not match any loaded KiCad net name");
-                }
-
+                Logger.Debug($"Important signals: KiCad net name [{kiCadNetName}] of [{displayName}] matches no KiCad net of the board");
                 continue;
             }
 
@@ -174,46 +136,19 @@ public partial class TabSchematics
             if (!seenResolvedDisplayNameToNetPairs.Add(resolvedPairKey))
             {
                 duplicateResolvedDisplayNameToNetPairs.Add(resolvedPairKey);
-
-                if (isDetailedLog)
-                {
-                    Logger.Warning(
-                        $"Important signals debug: duplicate resolved mapping detected for display name [{displayName}] -> normalized net [{normalizedNetName}]");
-                }
+                Logger.Debug($"Important signals: [{displayName}] -> [{normalizedNetName}] is listed twice");
             }
 
             netNames.Add(normalizedNetName);
             resolvedRowCount++;
         }
 
-        if (isDetailedLog)
-        {
-            foreach (var duplicateDisplayName in excelRowCountByDisplayName
-                         .Where(entry => entry.Value > 1)
-                         .OrderBy(entry => entry.Key, StringComparer.OrdinalIgnoreCase))
-            {
-                int resolvedNetCount = this.thisImportantSignalNetNamesByDisplayName.TryGetValue(duplicateDisplayName.Key, out var resolvedNetNames)
-                    ? resolvedNetNames.Count
-                    : 0;
-
-                Logger.Debug(
-                    $"Important signals debug: display name [{duplicateDisplayName.Key}] appears in [{duplicateDisplayName.Value}] Excel rows and resolves to [{resolvedNetCount}] unique KiCad nets");
-            }
-
-            Logger.Debug($"Important signals debug: invalid Excel rows skipped [{invalidRowCount}]");
-            Logger.Debug($"Important signals debug: unresolved Excel rows [{unresolvedRowCount}]");
-            Logger.Debug($"Important signals debug: resolved Excel rows [{resolvedRowCount}]");
-            Logger.Debug($"Important signals debug: duplicate resolved mappings [{duplicateResolvedDisplayNameToNetPairs.Count}]");
-            Logger.Debug($"Important signals debug: resolved display groups [{this.thisImportantSignalDisplayNames.Count}]");
-        }
+        Logger.Debug(
+            $"Important signals: [{resolvedRowCount}] rows found their net, [{unresolvedRowCount}] found none, [{invalidRowCount}] skipped, " +
+            $"[{duplicateResolvedDisplayNameToNetPairs.Count}] listed twice, [{this.thisImportantSignalDisplayNames.Count}] signals shown");
 
         if (this.thisImportantSignalDisplayNames.Count == 0)
         {
-            if (isDetailedLog)
-            {
-                Logger.Warning("Important signals debug: no Excel signal rows could be resolved to loaded KiCad net names");
-            }
-
             return;
         }
 
@@ -236,16 +171,6 @@ public partial class TabSchematics
         this.ImportantSignalsListBox.ItemsSource = items;
         this.ImportantSignalsPanel.IsVisible = true;
         this.UpdateImportantSignalsClearButtonState(true);
-
-        if (isDetailedLog)
-        {
-            Logger.Debug($"Important signals debug: built [{items.Count}] visible important signal groups");
-
-            foreach (var item in items)
-            {
-                Logger.Debug($"Important signals debug: display name [{item.DisplayName}] -> [{item.ToolTipText}]");
-            }
-        }
     }
 
     // ###########################################################################################

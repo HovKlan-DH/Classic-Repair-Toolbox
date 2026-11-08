@@ -87,6 +87,10 @@ namespace Handlers.DataHandling
     // folder of the newest generation the main workbook does not list, an oscilloscope row with
     // values but no model name.
     //
+    // *** IT ADDS ONE THING: EACH BOARD'S PINOUTS (owner decision, 2026-11-06). *** An Excel tree has
+    // none; the converted board gets the pins its scope baselines and its KiCad data say (WithPinouts,
+    // ConversionPinouts), so every conversion - release day's too - makes them again.
+    //
     // *** IT ONLY READS THE SOURCE, AND WRITES ONLY INTO ITS OWN KIND OF FOLDER. *** Write refuses
     // a target inside the source (or the source inside it), and a non-empty target that is not a
     // tree this converter wrote. Into its own tree it writes exactly the plan: files already there
@@ -514,6 +518,8 @@ namespace Handlers.DataHandling
                 return null;
             }
 
+            data = DataTreeConversion.WithPinouts(data, Path.Combine(root, DataTreeConversion.Native(DataTreeConversion.FolderOf(workbook!)), DataTreeUsage.KiCadFolderName), boardId, notes);
+
             var content = new BoardContent(
                 data,
                 BoardComponentHighlightStorage.LoadAllKiCadCalibrations(workbookPath),
@@ -559,6 +565,35 @@ namespace Handlers.DataHandling
                 Cite(kiCadFile);
 
             return problems.Count > problemsBefore ? null : new BoardRead(boardId, workbook!, content, cited);
+        }
+
+        // ###########################################################################################
+        // THE BOARD WITH ITS PINOUTS MADE (owner decision, 2026-11-06: "Conversion adds them"): of its scope
+        // baselines, and of its KiCad data where the board has a "KiCad data" folder the loaders read -
+        // ConversionPinouts, what "Create pinouts for the whole board" did on the "Pinout" page until that
+        // day. An Excel tree has no pinouts, so every one comes from here, made again by every run - release
+        // day's conversion included. What came of it is a note; KiCad files that could not be read are a
+        // note too, not a problem: the board then gets its baselines' pins, and nothing of the source is
+        // lost by that, which is what a problem means here.
+        // ###########################################################################################
+        private static BoardData WithPinouts(BoardData data, string kiCadFolder, string boardId, List<string> notes)
+        {
+            KiCadPinoutSource? kiCad = null;
+
+            if (Directory.Exists(kiCadFolder))
+            {
+                kiCad = ConversionPinouts.KiCadOfAsync(kiCadFolder).GetAwaiter().GetResult();
+
+                if (kiCad is null && KiCadRawFileScanner.Scan(kiCadFolder).Count > 0)
+                    notes.Add($"Board [{boardId}]: its KiCad data could not be read, so its pinouts are made of its scope baselines alone.");
+            }
+
+            BoardData made = ConversionPinouts.ApplyToBoard(data, out int components, kiCad);
+
+            if (components > 0)
+                notes.Add($"Board [{boardId}]: pinouts made for {components} component(s), of its scope baselines{(kiCad is null ? string.Empty : " and its KiCad data")}.");
+
+            return made;
         }
 
         // ###########################################################################################

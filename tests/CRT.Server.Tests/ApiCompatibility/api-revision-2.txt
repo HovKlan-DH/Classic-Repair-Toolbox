@@ -291,12 +291,14 @@ answer BoardTableAnswer | .rows object
 answer BoardTableAnswer | .rows.boardLinks array of object
 answer BoardTableAnswer | .rows.boardLinks[].category string
 answer BoardTableAnswer | .rows.boardLinks[].name string
+answer BoardTableAnswer | .rows.boardLinks[].note string
 answer BoardTableAnswer | .rows.boardLinks[].region string
 answer BoardTableAnswer | .rows.boardLinks[].url string
 answer BoardTableAnswer | .rows.boardLocalFiles array of object
 answer BoardTableAnswer | .rows.boardLocalFiles[].category string
 answer BoardTableAnswer | .rows.boardLocalFiles[].file string
 answer BoardTableAnswer | .rows.boardLocalFiles[].name string
+answer BoardTableAnswer | .rows.boardLocalFiles[].note string
 answer BoardTableAnswer | .rows.boardLocalFiles[].region string
 answer BoardTableAnswer | .rows.componentHighlights array of object
 answer BoardTableAnswer | .rows.componentHighlights[].boardLabel string
@@ -583,12 +585,14 @@ answer ReviewTableData | .published object
 answer ReviewTableData | .published.boardLinks array of object
 answer ReviewTableData | .published.boardLinks[].category string
 answer ReviewTableData | .published.boardLinks[].name string
+answer ReviewTableData | .published.boardLinks[].note string
 answer ReviewTableData | .published.boardLinks[].region string
 answer ReviewTableData | .published.boardLinks[].url string
 answer ReviewTableData | .published.boardLocalFiles array of object
 answer ReviewTableData | .published.boardLocalFiles[].category string
 answer ReviewTableData | .published.boardLocalFiles[].file string
 answer ReviewTableData | .published.boardLocalFiles[].name string
+answer ReviewTableData | .published.boardLocalFiles[].note string
 answer ReviewTableData | .published.boardLocalFiles[].region string
 answer ReviewTableData | .published.componentHighlights array of object
 answer ReviewTableData | .published.componentHighlights[].boardLabel string
@@ -675,12 +679,14 @@ answer ReviewTableData | .submitted object
 answer ReviewTableData | .submitted.boardLinks array of object
 answer ReviewTableData | .submitted.boardLinks[].category string
 answer ReviewTableData | .submitted.boardLinks[].name string
+answer ReviewTableData | .submitted.boardLinks[].note string
 answer ReviewTableData | .submitted.boardLinks[].region string
 answer ReviewTableData | .submitted.boardLinks[].url string
 answer ReviewTableData | .submitted.boardLocalFiles array of object
 answer ReviewTableData | .submitted.boardLocalFiles[].category string
 answer ReviewTableData | .submitted.boardLocalFiles[].file string
 answer ReviewTableData | .submitted.boardLocalFiles[].name string
+answer ReviewTableData | .submitted.boardLocalFiles[].note string
 answer ReviewTableData | .submitted.boardLocalFiles[].region string
 answer ReviewTableData | .submitted.componentHighlights array of object
 answer ReviewTableData | .submitted.componentHighlights[].boardLabel string
@@ -903,12 +909,14 @@ answer SubmissionDetailAnswer | .manifest.rows object
 answer SubmissionDetailAnswer | .manifest.rows.boardLinks array of object
 answer SubmissionDetailAnswer | .manifest.rows.boardLinks[].category string
 answer SubmissionDetailAnswer | .manifest.rows.boardLinks[].name string
+answer SubmissionDetailAnswer | .manifest.rows.boardLinks[].note string
 answer SubmissionDetailAnswer | .manifest.rows.boardLinks[].region string
 answer SubmissionDetailAnswer | .manifest.rows.boardLinks[].url string
 answer SubmissionDetailAnswer | .manifest.rows.boardLocalFiles array of object
 answer SubmissionDetailAnswer | .manifest.rows.boardLocalFiles[].category string
 answer SubmissionDetailAnswer | .manifest.rows.boardLocalFiles[].file string
 answer SubmissionDetailAnswer | .manifest.rows.boardLocalFiles[].name string
+answer SubmissionDetailAnswer | .manifest.rows.boardLocalFiles[].note string
 answer SubmissionDetailAnswer | .manifest.rows.boardLocalFiles[].region string
 answer SubmissionDetailAnswer | .manifest.rows.componentHighlights array of object
 answer SubmissionDetailAnswer | .manifest.rows.componentHighlights[].boardLabel string
@@ -1142,12 +1150,14 @@ body POST /api/review/boards/edit | .rows object
 body POST /api/review/boards/edit | .rows.boardLinks array of object
 body POST /api/review/boards/edit | .rows.boardLinks[].category string
 body POST /api/review/boards/edit | .rows.boardLinks[].name string
+body POST /api/review/boards/edit | .rows.boardLinks[].note string
 body POST /api/review/boards/edit | .rows.boardLinks[].region string
 body POST /api/review/boards/edit | .rows.boardLinks[].url string
 body POST /api/review/boards/edit | .rows.boardLocalFiles array of object
 body POST /api/review/boards/edit | .rows.boardLocalFiles[].category string
 body POST /api/review/boards/edit | .rows.boardLocalFiles[].file string
 body POST /api/review/boards/edit | .rows.boardLocalFiles[].name string
+body POST /api/review/boards/edit | .rows.boardLocalFiles[].note string
 body POST /api/review/boards/edit | .rows.boardLocalFiles[].region string
 body POST /api/review/boards/edit | .rows.componentHighlights array of object
 body POST /api/review/boards/edit | .rows.componentHighlights[].boardLabel string
@@ -1239,12 +1249,14 @@ body POST /api/review/boards/edit/check | .rows object
 body POST /api/review/boards/edit/check | .rows.boardLinks array of object
 body POST /api/review/boards/edit/check | .rows.boardLinks[].category string
 body POST /api/review/boards/edit/check | .rows.boardLinks[].name string
+body POST /api/review/boards/edit/check | .rows.boardLinks[].note string
 body POST /api/review/boards/edit/check | .rows.boardLinks[].region string
 body POST /api/review/boards/edit/check | .rows.boardLinks[].url string
 body POST /api/review/boards/edit/check | .rows.boardLocalFiles array of object
 body POST /api/review/boards/edit/check | .rows.boardLocalFiles[].category string
 body POST /api/review/boards/edit/check | .rows.boardLocalFiles[].file string
 body POST /api/review/boards/edit/check | .rows.boardLocalFiles[].name string
+body POST /api/review/boards/edit/check | .rows.boardLocalFiles[].note string
 body POST /api/review/boards/edit/check | .rows.boardLocalFiles[].region string
 body POST /api/review/boards/edit/check | .rows.componentHighlights array of object
 body POST /api/review/boards/edit/check | .rows.componentHighlights[].boardLabel string
@@ -1359,12 +1371,14 @@ body POST /api/review/submissions/{submissionId:long}/amend | .rows object
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.boardLinks array of object
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.boardLinks[].category string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.boardLinks[].name string
+body POST /api/review/submissions/{submissionId:long}/amend | .rows.boardLinks[].note string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.boardLinks[].region string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.boardLinks[].url string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.boardLocalFiles array of object
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.boardLocalFiles[].category string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.boardLocalFiles[].file string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.boardLocalFiles[].name string
+body POST /api/review/submissions/{submissionId:long}/amend | .rows.boardLocalFiles[].note string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.boardLocalFiles[].region string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentHighlights array of object
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.componentHighlights[].boardLabel string
@@ -1482,12 +1496,14 @@ body POST /api/submissions | .rows object
 body POST /api/submissions | .rows.boardLinks array of object
 body POST /api/submissions | .rows.boardLinks[].category string
 body POST /api/submissions | .rows.boardLinks[].name string
+body POST /api/submissions | .rows.boardLinks[].note string
 body POST /api/submissions | .rows.boardLinks[].region string
 body POST /api/submissions | .rows.boardLinks[].url string
 body POST /api/submissions | .rows.boardLocalFiles array of object
 body POST /api/submissions | .rows.boardLocalFiles[].category string
 body POST /api/submissions | .rows.boardLocalFiles[].file string
 body POST /api/submissions | .rows.boardLocalFiles[].name string
+body POST /api/submissions | .rows.boardLocalFiles[].note string
 body POST /api/submissions | .rows.boardLocalFiles[].region string
 body POST /api/submissions | .rows.componentHighlights array of object
 body POST /api/submissions | .rows.componentHighlights[].boardLabel string

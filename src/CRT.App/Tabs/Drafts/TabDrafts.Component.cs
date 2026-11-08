@@ -60,7 +60,6 @@ namespace CRT
             this.ComponentPane.FindAlsoTargets = this.FindAlsoTargetsAsync;
             this.ComponentPane.ApplyToOtherBoards = this.ApplyToOtherBoardsAsync;
             this.ComponentPane.ComponentShown += (_, label) => this.RunGuarded(() => this.LoadKiCadPinsAsync(label), "Reading the KiCad pins");
-            this.ComponentPane.ReadKiCadForPinouts = this.ReadKiCadForPinoutsAsync;
             this.ComponentPane.KiCadViewsWanted += (_, ask) => this.RunGuarded(() => this.LoadKiCadViewsAsync(ask), "Reading the KiCad views");
             this.ComponentPane.ShowNetRequested += (_, net) => this.RunGuarded(() => this.ShowNetOnBoardAsync(net), "Show on board");
             this.ComponentPane.ReadPreviewTraces = this.PreviewTracesAsync;
@@ -95,33 +94,6 @@ namespace CRT
                     : [];
 
             this.ComponentPane.UseKiCadPins(session, label, pins, ask);
-        }
-
-        // ###########################################################################################
-        // *** REMOVED BEFORE CRT 4.0 GOES LIVE, with BaselinePinMigration. *** What the board's KiCad data
-        // has for "Create pinouts for the whole board" - each component's pins and guessed package. Null
-        // without any, and the baselines alone are used.
-        // ###########################################################################################
-        private async Task<KiCadPinoutSource?> ReadKiCadForPinoutsAsync()
-        {
-            if (this.ComponentPane.Session is not { } session)
-            {
-                return null;
-            }
-
-            string identity = session.ExcelDataFile;
-
-            return await BusyOverlay.RunLocalAsync<KiCadPinoutSource?>(this, CrtWaitWording.ReadingKiCad, async () =>
-            {
-                if (await TabDrafts.ReadBoardKiCadAsync(DataManager.DataRoot, DraftFolderLayout.GetBoardFolder(session.DraftsRoot, identity), identity, "the board's pinouts") is not { } root)
-                {
-                    return null;
-                }
-
-                List<KiCadBoardComponent> components = await Task.Run(() => KiCadComponentTable.Of(root));
-
-                return new KiCadPinoutSource(components, label => KiCadPinTable.PinsOf(root, label));
-            });
         }
 
         // ###########################################################################################
@@ -579,6 +551,17 @@ namespace CRT
                 (session, published, publishedBoardFile) => this.ComponentPane.Show(session, label, this.thisCurrentRegion, published, publishedBoardFile)));
 
         // ###########################################################################################
+        // "Edit component" on a popup: the component on its "Basics" page, whichever page the pane was on (owner request,
+        // 2026-11-07: "it should go to the "Basics" menu for that component") - the entry shown selected.
+        // ###########################################################################################
+        internal async Task EditComponentAsync(string label)
+        {
+            this.ComponentPane.ShowPage(ComponentPage.Basics);
+            await this.OpenComponentAsync(label);
+            this.ShowNavSelection();
+        }
+
+        // ###########################################################################################
         // "Add component" (slice 3c): the pane's form for a new one - named there and added to the draft
         // as one step - on the board shown, its draft made first when it has none.
         // ###########################################################################################
@@ -665,7 +648,7 @@ namespace CRT
                     : root.Project.Views.Select(view => view.DisplayName?.Trim() ?? string.Empty).Where(view => view.Length > 0).ToList();
                 // Not read: not known - never "no side of the board", which would hide what a card offers.
                 boardSides = root is null ? null : BoardKiCadFacts.BoardViewsOf(root);
-                viewComponents = root is null ? null : await Task.Run(() => KiCadComponentTable.CountsByView(root));
+                viewComponents = root is null ? null : await Task.Run(() => BoardKiCadFacts.CountsByView(root));
                 viewFootprints = root is null ? null : await Task.Run(() => KiCadFootprintMarks.ViewFootprints(root));
             }
 

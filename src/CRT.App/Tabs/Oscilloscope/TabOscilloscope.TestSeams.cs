@@ -37,6 +37,19 @@ namespace CRT
         // As if "Connect to oscilloscope" had gone through - the flag alone, no socket is opened.
         internal void MarkSessionEstablishedForTests() => this.thisHasEstablishedOscilloscopeSession = true;
 
+        // ###########################################################################################
+        // As if "Connect to oscilloscope" had gone through with `client` - a fake answering as a scope would - the scope
+        // reachable, automatic connect as `autoConnect` says, so "Try it" runs its whole way, session handling included.
+        // ###########################################################################################
+        internal void UseConnectedClientForTests(IScopeClient client, bool autoConnect = false)
+        {
+            this.thisConnectedScopeClient = client;
+            this.thisHasEstablishedOscilloscopeSession = true;
+            this.thisHasSeenEstablishedOscilloscopeSession = true;
+            this.thisLastOscilloscopeConnectionState = true;
+            this.thisShouldAutoReconnectEstablishedOscilloscopeSession = autoConnect;
+        }
+
         internal bool IsSessionEstablishedForTests => this.thisHasEstablishedOscilloscopeSession;
 
         // ###########################################################################################
@@ -49,6 +62,21 @@ namespace CRT
             ScopeCommandPalette palette,
             CancellationToken cancellationToken = default) =>
             this.ExecutePaletteAsync(scopeClient, oscilloscope, palette, cancellationToken);
+
+        // The same, as a step of "Run full test suite" - its commands' boxes framed as it goes (NoteSuiteCommand).
+        internal async Task ExecutePaletteAsSuiteForTestsAsync(IScopeClient scopeClient, OscilloscopeEntry oscilloscope, ScopeCommandPalette palette)
+        {
+            this.thisMarkingSuite = true;
+
+            try
+            {
+                await this.ExecutePaletteAsync(scopeClient, oscilloscope, palette, CancellationToken.None);
+            }
+            finally
+            {
+                this.thisMarkingSuite = false;
+            }
+        }
 
         // Every line AppendOutputLine produced since recording was switched on, in order, and never
         // drained.

@@ -273,7 +273,7 @@ namespace Handlers.DataHandling
                 .ToList();
 
             List<BoardLocalFileEntry> boardFiles = board.BoardLocalFiles
-                .Select(row => Cites(row.File) ? new BoardLocalFileEntry { Category = row.Category, Name = row.Name, File = newName, Region = row.Region } : row)
+                .Select(row => Cites(row.File) ? new BoardLocalFileEntry { Category = row.Category, Name = row.Name, File = newName, Region = row.Region, Note = row.Note } : row)
                 .ToList();
 
             return board

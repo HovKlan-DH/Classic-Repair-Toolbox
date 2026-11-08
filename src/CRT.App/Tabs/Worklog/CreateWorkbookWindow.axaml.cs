@@ -200,7 +200,7 @@ namespace CRT
             this.Title = "Edit workbook";
             this.WorkbookIdPreviewText.Text = $"#{workbook.Id}";
             this.TitleTextBox.Text = workbook.Title;
-            this.NoteTextBox.Text = workbook.Note;
+            this.NoteTextBox.Markup = workbook.Note;
             this.CreateButton.Content = "Update workbook";
 
             // TitleTextBox.Text above already fires OnTitleTextChanged (the control is part of the
@@ -268,7 +268,7 @@ namespace CRT
 
             this.TitleValidationText.IsVisible = false;
 
-            string note = this.NoteTextBox.Text?.Trim() ?? string.Empty;
+            string note = RichNote.TrimMarkup(this.NoteTextBox.Markup);
 
             if (this.thisEditingWorkbook != null)
             {

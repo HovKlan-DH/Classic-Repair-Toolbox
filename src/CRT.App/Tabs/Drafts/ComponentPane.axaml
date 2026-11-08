@@ -189,18 +189,6 @@
 								Margin="0,0,6,4"
 								ToolTip.Tip="Open the popup this component gets when it is pointed at on the board - as your draft has it now, which is what will be published"
 								Click="OnPreviewPopupClick" />
-						<!-- One component back as published - one step, so Undo brings the changes back. -->
-						<Button x:Name="UndoChangesButton"
-								Classes="Danger"
-								IsVisible="False"
-								Margin="0,0,6,4"
-								ToolTip.Tip="Put this component back as it is published - every change your draft makes to it. &quot;Undo&quot; brings them back."
-								Click="OnUndoChangesClick" />
-						<!-- The component taken off the board - one step, so Undo brings it back. -->
-						<Button x:Name="DeleteComponentButton"
-								Classes="Danger"
-								Margin="0,0,6,4"
-								Click="OnDeleteComponentClick" />
 					</WrapPanel>
 				</StackPanel>
 
@@ -459,32 +447,30 @@
 							</Grid>
 						</StackPanel>
 					</Grid>
+
+					<!-- What throws the component's work away, on "Basics" alone and under "Short description" (owner
+					     request, 2026-11-07: "only when in "Basics" I want to see the two red buttons ... below the "Short
+					     description"") - each one step, so "Undo" brings it back. -->
+					<WrapPanel x:Name="BasicsDangerPanel" Orientation="Horizontal" Margin="0,12,0,0">
+						<!-- One component back as published. -->
+						<Button x:Name="UndoChangesButton"
+								Classes="Danger"
+								IsVisible="False"
+								Margin="0,0,6,4"
+								ToolTip.Tip="Put this component back as it is published - every change your draft makes to it. &quot;Undo&quot; brings them back."
+								Click="OnUndoChangesClick" />
+						<!-- The component taken off the board. -->
+						<Button x:Name="DeleteComponentButton"
+								Classes="Danger"
+								Margin="0,0,6,4"
+								Click="OnDeleteComponentClick" />
+					</WrapPanel>
 				</StackPanel>
 
 				<!-- ==== Pinout ==== -->
 				<StackPanel x:Name="PinoutSection">
 					<TextBlock Classes="PaneIntro"
 							   Text="The case and what each pin is for. Pick the case, and CRT draws it from above, notch at the top." />
-
-					<!-- *** TEMPORARY - REMOVED BEFORE CRT 4.0 GOES LIVE (BaselinePinMigration). *** -->
-					<Border x:Name="MigrationPanel" Classes="Notice" IsVisible="False" Margin="0,0,0,8">
-						<Grid ColumnDefinitions="Auto,*">
-							<TextBlock Grid.Column="0" Classes="NoticeIcon" Text="&#xf05a;" />
-							<StackPanel Grid.Column="1" Spacing="6">
-								<TextBlock x:Name="MigrationNoteText" Classes="NoticeText" />
-								<WrapPanel Orientation="Horizontal" ItemSpacing="6" LineSpacing="6">
-									<Button x:Name="MigrateComponentButton"
-											Classes="Accept"
-											Content="Create pinout from oscilloscope baselines"
-											Click="OnMigrateComponentClick" />
-									<Button x:Name="MigrateBoardButton"
-											Classes="Accept"
-											Content="Create pinouts for the whole board"
-											Click="OnMigrateBoardClick" />
-								</WrapPanel>
-							</StackPanel>
-						</Grid>
-					</Border>
 
 					<!-- One set of pins for every region, or a set of each's own (2026-11-01). -->
 					<CheckBox x:Name="PinsRegionalCheck"
@@ -706,8 +692,9 @@
 											<TextBlock Classes="FieldLabel" Text="Machine state" />
 											<TextBox Text="{Binding MachineState, Mode=TwoWay}" Watermark="At the READY prompt, running a game" />
 											<TextBlock Classes="FieldLabel" Text="Note" />
-											<!-- Several lines, always open as such (owner request, 2026-11-01). -->
-											<TextBox Text="{Binding Note, Mode=TwoWay}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="80" />
+											<!-- Several lines, always open as such (owner request, 2026-11-01) - and formatted as typed
+											     (owner request, 2026-11-07; RichNoteTextBox, the note stored as its markup). -->
+											<local:RichNoteTextBox Markup="{Binding Note, Mode=TwoWay}" MinHeight="80" />
 
 											<!-- What it applies to, on a board with regions - its last field (owner request, 2026-11-01). -->
 											<StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6,0,0" IsVisible="{Binding ShowsAppliesTo}">
@@ -728,6 +715,11 @@
 														Tag="{Binding}"
 														ToolTip.Tip="Pick another image for this baseline"
 														Click="OnChangeBaselineScreenshotClick" />
+												<!-- Owner request, 2026-11-07. -->
+												<Button Content="Reveal"
+														Tag="{Binding}"
+														ToolTip.Tip="Show this file selected in your file manager (Explorer, Finder or your Linux file manager). A file kept in your draft carries a name made of its checksum there."
+														Click="OnRevealFileClick" />
 												<Button Classes="Danger"
 														Content="Remove"
 														Tag="{Binding}"
@@ -860,8 +852,9 @@
 											<TextBlock Classes="FieldLabel" Text="Name" />
 											<TextBox Text="{Binding Name, Mode=TwoWay}" Watermark="Top, Pinout, Markings" />
 											<TextBlock Classes="FieldLabel" Text="Note" />
-											<!-- Several lines, open as such while empty too (owner request, 2026-11-01). -->
-											<TextBox Text="{Binding Note, Mode=TwoWay}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="80" />
+											<!-- Several lines, open as such while empty too (owner request, 2026-11-01) - and formatted
+											     as typed (owner request, 2026-11-07; RichNoteTextBox, the note stored as its markup). -->
+											<local:RichNoteTextBox Markup="{Binding Note, Mode=TwoWay}" MinHeight="80" />
 											<!-- What it applies to, on a board with regions - its last field (owner request, 2026-11-01). -->
 											<StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6,0,0" IsVisible="{Binding ShowsAppliesTo}">
 												<TextBlock Classes="FieldLabel" Text="Applies to" VerticalAlignment="Center" Margin="0" />
@@ -885,6 +878,11 @@
 														Tag="{Binding}"
 														ToolTip.Tip="Pick another file for this picture"
 														Click="OnChangePictureClick" />
+												<!-- Owner request, 2026-11-07. -->
+												<Button Content="Reveal"
+														Tag="{Binding}"
+														ToolTip.Tip="Show this file selected in your file manager (Explorer, Finder or your Linux file manager). A file kept in your draft carries a name made of its checksum there."
+														Click="OnRevealFileClick" />
 												<Button Classes="Danger"
 														Content="Remove"
 														Tag="{Binding}"
@@ -917,7 +915,9 @@
 							<DataTemplate x:DataType="local:ComponentPaneReplacementRow">
 								<Border Classes="PaneEntry">
 									<Grid ColumnDefinitions="*,8,160,8,Auto" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
-										<TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Part number" />
+										<!-- "Replacement part", not "Part number" (owner request, 2026-11-06): it may as well be a
+										     technical number or a friendly name. The stored column keeps its name. -->
+										<TextBlock Grid.Row="0" Grid.Column="0" Classes="FieldLabel" Text="Replacement part" />
 										<TextBox Grid.Row="1" Grid.Column="0" Text="{Binding PartNumber, Mode=TwoWay}" />
 										<TextBlock Grid.Row="0" Grid.Column="2" Classes="FieldLabel" Text="Kind" />
 										<ComboBox Grid.Row="1" Grid.Column="2"
@@ -966,10 +966,10 @@
 
 					<TextBlock x:Name="NoFilesText" Classes="EmptyLine" Text="No files yet." />
 
+					<!-- No "File" column (owner request, 2026-11-07: "there is no need to see this path") - "Open file"
+					     and "Reveal" show the file itself. -->
 					<Grid x:Name="FilesHeading">
 						<Grid.ColumnDefinitions>
-							<ColumnDefinition Width="*" />
-							<ColumnDefinition Width="8" />
 							<ColumnDefinition Width="*" />
 							<ColumnDefinition Width="8" />
 							<ColumnDefinition Width="Auto" SharedSizeGroup="FileRegion" />
@@ -977,8 +977,7 @@
 							<ColumnDefinition Width="Auto" SharedSizeGroup="FileButtons" />
 						</Grid.ColumnDefinitions>
 						<TextBlock Grid.Column="0" Classes="FieldLabel" Text="Name" />
-						<TextBlock Grid.Column="2" Classes="FieldLabel" Text="File" />
-						<TextBlock x:Name="FilesAppliesToHeading" Grid.Column="4" Classes="FieldLabel" Text="Applies to" IsVisible="False" />
+						<TextBlock x:Name="FilesAppliesToHeading" Grid.Column="2" Classes="FieldLabel" Text="Applies to" IsVisible="False" />
 					</Grid>
 
 					<ItemsControl x:Name="FilesItemsControl">
@@ -1006,26 +1005,29 @@
 										<Grid.ColumnDefinitions>
 											<ColumnDefinition Width="*" />
 											<ColumnDefinition Width="8" />
-											<ColumnDefinition Width="*" />
-											<ColumnDefinition Width="8" />
 											<ColumnDefinition Width="Auto" SharedSizeGroup="FileRegion" />
 											<ColumnDefinition Width="8" />
 											<ColumnDefinition Width="Auto" SharedSizeGroup="FileButtons" />
 										</Grid.ColumnDefinitions>
 										<TextBox Grid.Column="0" Text="{Binding Name, Mode=TwoWay}" Watermark="Datasheet" />
-										<TextBlock Grid.Column="2"
-												   Text="{Binding File}"
-												   VerticalAlignment="Center"
-												   FontSize="11"
-												   Opacity="0.75"
-												   TextTrimming="CharacterEllipsis" />
 										<!-- What it applies to, on a board with regions (owner request, 2026-11-02). -->
-										<ComboBox Grid.Column="4"
+										<ComboBox Grid.Column="2"
 												  MinWidth="130"
 												  IsVisible="{Binding ShowsAppliesTo}"
 												  ItemsSource="{Binding AppliesToChoices}"
 												  SelectedItem="{Binding AppliesTo, Mode=TwoWay}" />
-										<StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="6">
+										<StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6">
+											<!-- As on "Board: Files" (owner request, 2026-11-07). -->
+											<Button Content="Open file"
+													Tag="{Binding}"
+													IsEnabled="{Binding HasFile}"
+													ToolTip.Tip="Open this file to look at it"
+													Click="OnOpenComponentFileClick" />
+											<Button Content="Reveal"
+													Tag="{Binding}"
+													IsEnabled="{Binding HasFile}"
+													ToolTip.Tip="Show this file selected in your file manager (Explorer, Finder or your Linux file manager). A file kept in your draft carries a name made of its checksum there."
+													Click="OnRevealFileClick" />
 											<Button Content="Change file"
 													Tag="{Binding}"
 													ToolTip.Tip="Pick another file for this entry"
@@ -1117,6 +1119,12 @@
 												  ItemsSource="{Binding AppliesToChoices}"
 												  SelectedItem="{Binding AppliesTo, Mode=TwoWay}" />
 										<StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="6">
+											<!-- As on "Board: Links" (owner request, 2026-11-07). -->
+											<Button Content="Open link"
+													Tag="{Binding}"
+													IsEnabled="{Binding CanOpen}"
+													ToolTip.Tip="Open this page in your web browser"
+													Click="OnOpenComponentLinkClick" />
 											<Button Classes="Danger"
 													Content="Remove"
 													Tag="{Binding}"
@@ -1308,7 +1316,7 @@
 																	  IsZoomable="True"
 																	  SharperWanted="{Binding WantSharper}" />
 											</Border>
-											<TextBlock Classes="EmptyLine" Text="Ctrl+scroll to zoom, drag to move, double-click to see it whole." />
+											<TextBlock Classes="EmptyLine" TextWrapping="Wrap" Text="Ctrl+scroll to zoom, drag with the right or middle mouse button to move, double-click to see it whole." />
 
 											<TextBlock Classes="FieldLabel" Text="As its thumbnail" />
 											<Border Width="160"
@@ -1546,11 +1554,11 @@
 
 						<TextBlock x:Name="NoBoardFilesText" Classes="EmptyLine" Text="No files yet." />
 
+						<!-- No "File" column (owner request, 2026-11-07: "just remove the "File" coumn, as there is no
+						     need for showing that") - "Open file" and "Reveal" show the file. -->
 						<Grid x:Name="BoardFilesHeadings">
 							<Grid.ColumnDefinitions>
 								<ColumnDefinition Width="160" />
-								<ColumnDefinition Width="8" />
-								<ColumnDefinition Width="*" />
 								<ColumnDefinition Width="8" />
 								<ColumnDefinition Width="*" />
 								<ColumnDefinition Width="8" />
@@ -1560,8 +1568,7 @@
 							</Grid.ColumnDefinitions>
 							<TextBlock Grid.Column="0" Classes="FieldLabel" Text="Category" />
 							<TextBlock Grid.Column="2" Classes="FieldLabel" Text="Name" />
-							<TextBlock Grid.Column="4" Classes="FieldLabel" Text="File" />
-							<TextBlock x:Name="BoardFilesAppliesToHeading" Grid.Column="6" Classes="FieldLabel" Text="Applies to" IsVisible="False" />
+							<TextBlock x:Name="BoardFilesAppliesToHeading" Grid.Column="4" Classes="FieldLabel" Text="Applies to" IsVisible="False" />
 						</Grid>
 
 						<ItemsControl x:Name="BoardFilesItemsControl">
@@ -1586,12 +1593,10 @@
 													VerticalAlignment="Center"
 													Margin="0,0,0,4" />
 										</Panel>
-										<StackPanel Margin="0,0,0,4" IsVisible="{Binding IsNotDropPlaceholder}">
-											<Grid RowDefinitions="Auto,Auto">
+										<StackPanel Margin="0,0,0,14" IsVisible="{Binding IsNotDropPlaceholder}">
+											<Grid RowDefinitions="Auto,Auto,Auto">
 												<Grid.ColumnDefinitions>
 													<ColumnDefinition Width="160" />
-													<ColumnDefinition Width="8" />
-													<ColumnDefinition Width="*" />
 													<ColumnDefinition Width="8" />
 													<ColumnDefinition Width="*" />
 													<ColumnDefinition Width="8" />
@@ -1609,20 +1614,15 @@
 												<TextBox Grid.Column="2" Text="{Binding Name, Mode=TwoWay}" Watermark="Service manual" Classes.Missing="{Binding NameMissing}" />
 												<TextBlock Grid.Row="1" Grid.Column="0" Classes="Required" IsVisible="{Binding CategoryMissing}" />
 												<TextBlock Grid.Row="1" Grid.Column="2" Classes="Required" IsVisible="{Binding NameMissing}" />
-												<TextBlock Grid.Row="1" Grid.Column="4" Classes="Required" IsVisible="{Binding FileMissing}" />
-												<TextBlock Grid.Column="4"
-														   Text="{Binding File}"
-														   VerticalAlignment="Center"
-														   FontSize="11"
-														   Opacity="0.75"
-														   TextTrimming="CharacterEllipsis" />
+												<!-- With no file column, a row with no file says so under its buttons. -->
+												<TextBlock Grid.Row="1" Grid.Column="6" Classes="Required" Text="No file picked - required before submitting" IsVisible="{Binding FileMissing}" />
 												<!-- What it applies to, on a board with regions (owner request, 2026-11-02). -->
-												<ComboBox Grid.Column="6"
+												<ComboBox Grid.Column="4"
 														  MinWidth="130"
 														  IsVisible="{Binding ShowsAppliesTo}"
 														  ItemsSource="{Binding AppliesToChoices}"
 														  SelectedItem="{Binding AppliesTo, Mode=TwoWay}" />
-												<StackPanel Grid.Column="8" Orientation="Horizontal" Spacing="6">
+												<StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="6">
 													<!-- The file opened with the program the system has for it (owner request,
 													     2026-10-29: "a possibility to open the file so I can view it"). -->
 													<Button Content="Open file"
@@ -1630,6 +1630,12 @@
 															IsEnabled="{Binding HasFile}"
 															ToolTip.Tip="Open this file to look at it"
 															Click="OnOpenBoardFileClick" />
+													<!-- Owner request, 2026-11-07. -->
+													<Button Content="Reveal"
+															Tag="{Binding}"
+															IsEnabled="{Binding HasFile}"
+															ToolTip.Tip="Show this file selected in your file manager (Explorer, Finder or your Linux file manager). A file kept in your draft carries a name made of its checksum there."
+															Click="OnRevealFileClick" />
 													<Button Content="Change file"
 															Tag="{Binding}"
 															ToolTip.Tip="Pick another file for this entry"
@@ -1645,6 +1651,16 @@
 														<TextBlock Text="&#xf338;" />
 													</Border>
 												</StackPanel>
+												<!-- What the file is about, several lines (owner request, 2026-11-06) - the "Resources"
+												     tab shows it under the file. -->
+												<TextBox Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="7"
+														 Classes="BoardRowNote"
+														 Margin="0,4,0,0"
+														 Text="{Binding Note, Mode=TwoWay}"
+														 AcceptsReturn="True"
+														 TextWrapping="Wrap"
+														 MinHeight="48"
+														 Watermark="Note - what this file is about, shown in the &quot;Resources&quot; tab" />
 											</Grid>
 										</StackPanel>
 									</Grid>
@@ -1739,8 +1755,8 @@
 													VerticalAlignment="Center"
 													Margin="0,0,0,4" />
 										</Panel>
-										<StackPanel Margin="0,0,0,4" IsVisible="{Binding IsNotDropPlaceholder}">
-											<Grid RowDefinitions="Auto,Auto">
+										<StackPanel Margin="0,0,0,14" IsVisible="{Binding IsNotDropPlaceholder}">
+											<Grid RowDefinitions="Auto,Auto,Auto">
 												<Grid.ColumnDefinitions>
 													<ColumnDefinition Width="160" />
 													<ColumnDefinition Width="8" />
@@ -1789,6 +1805,16 @@
 														<TextBlock Text="&#xf338;" />
 													</Border>
 												</StackPanel>
+												<!-- What the link is about, several lines (owner request, 2026-11-06) - the "Resources"
+												     tab shows it under the link. -->
+												<TextBox Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="7"
+														 Classes="BoardRowNote"
+														 Margin="0,4,0,0"
+														 Text="{Binding Note, Mode=TwoWay}"
+														 AcceptsReturn="True"
+														 TextWrapping="Wrap"
+														 MinHeight="48"
+														 Watermark="Note - what this link is about, shown in the &quot;Resources&quot; tab" />
 											</Grid>
 										</StackPanel>
 									</Grid>

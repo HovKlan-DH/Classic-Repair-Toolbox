@@ -397,12 +397,8 @@ public sealed class IcTestCatalogueShippedDataTests
                 Assert.True(events.Count <= 8, $"{where}: {events.Count} pins change at once");
 
                 ChipInSocket? settled = null;
-                foreach (IReadOnlyList<PinEvent> order in Orders(events))
+                foreach (ChipInSocket chip in EveryOrder(at, events))
                 {
-                    ChipInSocket chip = at.Clone();
-                    foreach (PinEvent e in order)
-                        chip.Play(e);
-
                     Assert.True(chip.State >= 0, $"{where} ({vector}): relies on behaviour the datasheet leaves undefined");
                     Assert.True(settled is null || chip.State == settled.State,
                         $"{where} ({vector}): the state depends on the order the T48 changes the pins in");
@@ -434,21 +430,41 @@ public sealed class IcTestCatalogueShippedDataTests
         }
     }
 
-    // Every order of a short list.
-    private static IEnumerable<IReadOnlyList<T>> Orders<T>(IReadOnlyList<T> items)
+    // ###########################################################################################
+    // *** EVERY CHIP THE EVENTS CAN LEAVE BEHIND, WHATEVER ORDER THEY COME IN - each reached once. *** Each event is one
+    // pin's (EventsOf), and leaves that pin at one level, so after any set of them the socket is the same whatever their
+    // order: what tells two orders apart is the chip's state alone. So every order is followed as the states it reaches
+    // with each set of events done - one chip per (state, set) - and what is handed back is the same set of chips every
+    // order of the events would have finished in. The orders one by one were 8! for a vector changing eight pins, each
+    // played from the start: eleven seconds for the 74LS373 alone (2026-11-07).
+    // ###########################################################################################
+    private static IEnumerable<ChipInSocket> EveryOrder(ChipInSocket start, IReadOnlyList<PinEvent> events)
     {
-        if (items.Count <= 1)
+        Assert.True(events.Select(e => e.Pin).Distinct(StringComparer.Ordinal).Count() == events.Count, "an event per pin");
+
+        var reached = new Dictionary<(int State, int Done), ChipInSocket> { [(start.State, 0)] = start.Clone() };
+
+        for (int step = 0; step < events.Count; step++)
         {
-            yield return items;
-            yield break;
+            var next = new Dictionary<(int State, int Done), ChipInSocket>();
+
+            foreach (((int _, int done), ChipInSocket chip) in reached)
+            {
+                for (int k = 0; k < events.Count; k++)
+                {
+                    if ((done & (1 << k)) != 0)
+                        continue;
+
+                    ChipInSocket after = chip.Clone();
+                    after.Play(events[k]);
+                    next.TryAdd((after.State, done | (1 << k)), after);
+                }
+            }
+
+            reached = next;
         }
 
-        for (int k = 0; k < items.Count; k++)
-        {
-            var rest = items.Where((_, j) => j != k).ToList();
-            foreach (IReadOnlyList<T> tail in Orders(rest))
-                yield return new[] { items[k] }.Concat(tail).ToList();
-        }
+        return reached.Values;
     }
 
     private static (IcTestEntry Entry, LogicIcModel Model) EntryAndModel(string id)

@@ -57,6 +57,20 @@ public class FontAwesomeAssetTests
 
         // The drag handle of the Contribute tab's files, links, credits and important signals (2026-10-30)
         new object[] { SolidPath, 0xF338, "up-down (drag a row)" },
+
+        // The changelog's alerts on the About tab (MarkdownRenderer.AlertIcon, 2026-11-06)
+        new object[] { SolidPath, 0xF05A, "circle-info (Note)" },
+        new object[] { SolidPath, 0xF0EB, "lightbulb (Tip)" },
+        new object[] { SolidPath, 0xF075, "comment (Important)" },
+        new object[] { SolidPath, 0xF071, "triangle-exclamation (Warning)" },
+        new object[] { SolidPath, 0xF06A, "circle-exclamation (Caution)" },
+
+        // The format row of a formatted note box (RichNoteTheme.axaml, 2026-11-07)
+        new object[] { SolidPath, 0xF032, "bold" },
+        new object[] { SolidPath, 0xF033, "italic" },
+        new object[] { SolidPath, 0xF0CD, "underline" },
+        new object[] { SolidPath, 0xF0CC, "strikethrough" },
+        new object[] { SolidPath, 0xF0CA, "list-ul (bullets)" },
     };
 
     // A codepoint that is absent from the face renders as a blank box, silently. The Free Regular
@@ -229,6 +243,16 @@ public class FontAwesomeAssetTests
             [0xF160] = 416, // sort-down
             [0xF161] = 416, // sort-up
             [0xF338] = 448, // up-down             (arrows-up-down, U+F07D, reaches 480 - not used)
+            [0xF05A] = 448, // circle-info
+            [0xF0EB] = 448, // lightbulb           (reaches 16 below the descent - padded in MarkdownRenderer)
+            [0xF075] = 448, // comment             (message, U+F27A, reaches 32 below the descent - not used)
+            [0xF071] = 448, // triangle-exclamation
+            [0xF06A] = 448, // circle-exclamation
+            [0xF032] = 416, // bold                (the formatted note box's row, 2026-11-07)
+            [0xF033] = 416, // italic
+            [0xF0CD] = 448, // underline           (reaches 64 below the baseline, inside the descent)
+            [0xF0CC] = 416, // strikethrough
+            [0xF0CA] = 400, // list-ul
 
             // Regular
             [0xF15C] = 448, // file-lines

@@ -92,6 +92,23 @@ namespace Handlers.Theming
         public static string? GetLinkText(TextBlock block) =>
             block.GetValue(LinkTextProperty);
 
+        // ###########################################################################################
+        // *** LinkText FOR TEXT TYPED WITH NO FORMATTING: its links and search marks, and every character as typed (code
+        // review, 2026-11-07). *** LinkText reads a note's formatting (RichNote) - right for what a RichNoteTextBox wrote,
+        // wrong for a note typed into a plain box: the "Resources" tab's board file and link notes showed "use __only__ with
+        // rev A" underlined with its underscores gone, and a line starting "- " as a bullet, which the box it was typed into
+        // never showed.
+        // ###########################################################################################
+        public static readonly AttachedProperty<string?> PlainLinkTextProperty =
+            AvaloniaProperty.RegisterAttached<TextBlock, string?>(
+                "PlainLinkText", typeof(TextLinkRenderer));
+
+        public static void SetPlainLinkText(TextBlock block, string? value) =>
+            block.SetValue(PlainLinkTextProperty, value);
+
+        public static string? GetPlainLinkText(TextBlock block) =>
+            block.GetValue(PlainLinkTextProperty);
+
         static TextLinkRenderer()
         {
             // Re-render whenever the bound value changes - a template recycles its containers, so the
@@ -108,6 +125,16 @@ namespace Handlers.Theming
                     // DataTemplate output with no other route back to it. See TrackBlock.
                     TrackBlock(block);
                     Apply(block, args.NewValue.GetValueOrDefault());
+                }
+            }));
+
+            // The same for text with no formatting of its own.
+            PlainLinkTextProperty.Changed.Subscribe(new AnonymousObserver<AvaloniaPropertyChangedEventArgs<string?>>(args =>
+            {
+                if (args.Sender is TextBlock block)
+                {
+                    TrackBlock(block);
+                    ApplyPlain(block, args.NewValue.GetValueOrDefault());
                 }
             }));
 
@@ -264,6 +291,13 @@ namespace Handlers.Theming
                     continue;
                 }
 
+                string? plainLinkText = block.GetValue(PlainLinkTextProperty);
+                if (plainLinkText != null)
+                {
+                    ApplyPlain(block, plainLinkText);
+                    continue;
+                }
+
                 string? highlightText = block.GetValue(HighlightTextProperty);
                 if (highlightText != null)
                 {
@@ -393,6 +427,12 @@ namespace Handlers.Theming
             ApplySegments(block, text, SplitForActiveQuery(text));
         }
 
+        // The same for text typed with no formatting (PlainLinkTextProperty): every character as it is.
+        public static void ApplyPlain(TextBlock block, string? text)
+        {
+            ApplySegments(block, text, SplitForActiveQuery(text), readsFormatting: false);
+        }
+
         // ###########################################################################################
         // Sets a block's content from PRE-SPLIT segments - the search-highlighting split - with links
         // applied on top of them.
@@ -403,12 +443,14 @@ namespace Handlers.Theming
         // after the other: every run carries both markings, and the text still comes out whole.
         //
         // Pass segments: null when there is no search active - the whole text is then one
-        // non-matching segment, which is the plain Apply case.
+        // non-matching segment, which is the plain Apply case. `readsFormatting`: false for text typed
+        // with none (ApplyPlain) - every character drawn as it is.
         // ###########################################################################################
         public static void ApplySegments(
             TextBlock block,
             string? text,
-            IReadOnlyList<(string Text, bool IsMatch)>? segments)
+            IReadOnlyList<(string Text, bool IsMatch)>? segments,
+            bool readsFormatting = true)
         {
             if (block == null)
             {
@@ -419,6 +461,26 @@ namespace Handlers.Theming
             block.SetValue(LinkSpansProperty, null);
 
             string value = text ?? string.Empty;
+
+            // ###########################################################################################
+            // A NOTE WITH FORMATTING (owner request, 2026-11-07; RichNote): drawn as its plain text, each run in its style,
+            // bullets as their glyphs. The search marks were split from the text as stored, so they are worked out again on
+            // the plain text by the query that made them - every caller splitting by its own query hands the same query in
+            // as the active one (TabWorkbooks), and the search looks in the plain text too (WorklogSearchIndex).
+            //
+            // *** WHENEVER A SEARCH IS IN EFFECT, NOT ONLY WHEN THE MARKUP HELD A MATCH (code review, 2026-11-07). *** A
+            // phrase crossing a mark - "PSU died" in "the **PSU** died" - is in the plain text the search found the note by,
+            // not in the markup: split on the markup, it marked nothing, and the note was listed with no word marked.
+            // ###########################################################################################
+            IReadOnlyList<RichNoteStyle>? styles = null;
+
+            if (readsFormatting && RichNote.Parse(value) is var note &&
+                (!string.Equals(note.Text, value, StringComparison.Ordinal) || note.IsFormatted))
+            {
+                value = note.Text;
+                segments = segments is null ? null : SplitForActiveQuery(value);
+                styles = note.Styles.Any(style => style != RichNoteStyle.None) ? note.Styles : null;
+            }
 
             // MergeRuns walks the segments by LENGTH against the text's own offsets, so segments
             // that do not concatenate back to exactly this text would put its search-hit flag on the
@@ -459,7 +521,7 @@ namespace Handlers.Theming
                 }
             }
 
-            if (!hasLink && !hasHighlight)
+            if (!hasLink && !hasHighlight && styles is null)
             {
                 // Nothing to mark - the cheap path, and the one almost every block takes.
                 block.Text = value;
@@ -475,33 +537,72 @@ namespace Handlers.Theming
             var hitBackground = ThemeResources.ResolveBrush("Workbooks_SearchHit_Bg", Brushes.Yellow);
             var hitForeground = ThemeResources.ResolveBrush("Workbooks_SearchHit_Fg", Brushes.Black);
 
-            foreach (var (runText, isLink, isMatch) in MergeRuns(value, linkSpans, segments))
+            int position = 0;
+
+            foreach (var (mergedText, isLink, isMatch) in MergeRuns(value, linkSpans, segments))
             {
-                var run = new Run(runText);
-
-                if (isMatch)
+                // A merged run cut again where the note's style changes - each piece one style.
+                foreach ((string runText, RichNoteStyle style) in SplitByStyle(mergedText, position, styles))
                 {
-                    run.Background = hitBackground;
-                    run.Foreground = hitForeground;
-                }
+                    var run = new Run(runText);
 
-                if (isLink)
-                {
-                    run.TextDecorations = TextDecorations.Underline;
+                    if (isMatch)
+                    {
+                        run.Background = hitBackground;
+                        run.Foreground = hitForeground;
+                    }
+
+                    if ((style & RichNoteStyle.Bold) != 0)
+                    {
+                        run.FontWeight = FontWeight.Bold;
+                    }
+
+                    if ((style & RichNoteStyle.Italic) != 0)
+                    {
+                        run.FontStyle = FontStyle.Italic;
+                    }
+
+                    // A link is underlined, whatever its style; a style's own lines come with it.
+                    run.TextDecorations = RichNoteTextPresenter.DecorationsOf(isLink ? style | RichNoteStyle.Underline : style);
 
                     // A search hit inside a link keeps the hit's foreground: the wash is what tells
                     // the user WHY the record matched, and the underline already says it is a link.
-                    if (!isMatch)
+                    if (isLink && !isMatch)
                     {
                         run.Foreground = linkForeground;
                     }
+
+                    block.Inlines!.Add(run);
                 }
 
-                block.Inlines!.Add(run);
+                position += mergedText.Length;
             }
 
             block.SetValue(LinkSpansProperty, hasLink ? linkSpans : null);
             EnsureHandler(block, hasLink);
+        }
+
+        // ###########################################################################################
+        // `text`, standing at `start` in the note, in pieces of one style each - the whole of it in no style without any.
+        // ###########################################################################################
+        private static IEnumerable<(string Text, RichNoteStyle Style)> SplitByStyle(string text, int start, IReadOnlyList<RichNoteStyle>? styles)
+        {
+            if (styles is null)
+            {
+                yield return (text, RichNoteStyle.None);
+                yield break;
+            }
+
+            int from = 0;
+
+            for (int index = 1; index <= text.Length; index++)
+            {
+                if (index == text.Length || styles[start + index] != styles[start + from])
+                {
+                    yield return (text[from..index], styles[start + from]);
+                    from = index;
+                }
+            }
         }
 
         // ###########################################################################################
@@ -692,7 +793,7 @@ namespace Handlers.Theming
             // firing would open a window on top of the browser.
             e.Handled = true;
 
-            ExternalTargetLauncher.TryOpen(url);
+            ExternalTargetLauncher.OpenOrSay(url);
         }
 
         // ###########################################################################################
@@ -756,8 +857,11 @@ namespace Handlers.Theming
         // no further right than the line's own width - trailing whitespace included, so a link that
         // ends a line stays clickable right up to where it visually ends, matching what IsInside did
         // for the first line before this replaced it.
+        //
+        // Internal: the About tab's changelog (MarkdownRenderer) finds its links under the pointer
+        // by the same rule, its text wrapping just the same.
         // ###########################################################################################
-        private static bool IsPointOverAnyLine(TextLayout layout, Point point)
+        internal static bool IsPointOverAnyLine(TextLayout layout, Point point)
         {
             if (point.X < 0)
             {

@@ -454,13 +454,25 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                         </StackPanel>
                     </Button>
 
-                    <!-- The administrator's oscilloscope models waiting (Account > "Oscilloscope models"). -->
+                    <!-- "Management", the administrator's alone (owner request, 2026-11-07: 'a new tab named
+                         "Management" (shown before "Account") - it should only be visible by me ... so its tab should
+                         show a "lock" icon. Then move all the menu items from "Account" into there'): shown only while
+                         the server says this account is one (SetAdministrator), its padlock after its name - and the
+                         oscilloscope models waiting badged here, on the screen that holds them. -->
+                    <Button x:Name="ManagementModeButton" Classes="ScreenTab" Click="OnModeClick" IsVisible="False">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Classes="ScreenTabLabel" Text="{x:Static data:MaintainerScreenWording.Management}" VerticalAlignment="Center" />
+                            <TextBlock Classes="AdminLock" Text="&#xf023;" VerticalAlignment="Center" />
+                            <Border x:Name="ManagementBadge" Classes="ModeBadge Attention" IsVisible="False">
+                                <TextBlock x:Name="ManagementBadgeText" />
+                            </Border>
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Every maintainer's: "My account" and "Server version". -->
                     <Button x:Name="AccountModeButton" Classes="ScreenTab" Click="OnModeClick">
                         <StackPanel Orientation="Horizontal" Spacing="6">
                             <TextBlock Classes="ScreenTabLabel" Text="{x:Static data:MaintainerScreenWording.Account}" VerticalAlignment="Center" />
-                            <Border x:Name="AccountBadge" Classes="ModeBadge Attention" IsVisible="False">
-                                <TextBlock x:Name="AccountBadgeText" />
-                            </Border>
                         </StackPanel>
                     </Button>
                 </WrapPanel>
@@ -535,14 +547,9 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                     </DockPanel>
 
                     <!--
-                    ACCOUNT (TabMaintainer.Account.cs): "My account" and "Server version" for every
-                    maintainer, then the administrator's own entries - each with the class AdminOnly,
-                    taken OUT of the list for everybody else (ShowAdministratorEntries - not
-                    IsVisible, which the list's panel sets back to true), and each marked with the
-                    padlock after its name (owner request, 2026-10-04; App.axaml's AdminLock style,
-                    CRT's one padlock for anything only the administrator can use). It was "Admin", the administrator's
-                    alone, until then. Maintainers are set here again since 2026-10-04 (owner
-                    request) - they were on the Boards screen from 2026-09-27.
+                    ACCOUNT (TabMaintainer.Account.cs): "My account" and "Server version" - every maintainer's. The
+                    administrator's own entries stood here too, each padlocked, until 2026-11-07: they are the
+                    "Management" screen's now (below), whose tab carries the one padlock.
                     -->
                     <!-- The Account screen's one message line, above its list as the other screens'
                          are (code review, 2026-10-13: a failure in CRT itself, HandlerGuard). Shown
@@ -577,92 +584,92 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                                 <TextBlock Text="What is deployed, and the API revision it and this CRT speak" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
                             </StackPanel>
                         </ListBoxItem>
+                    </ListBox>
+                    </DockPanel>
 
-                        <!-- ===== The administrator's own, each AdminOnly and padlocked ===== -->
+                    <!--
+                    MANAGEMENT (TabMaintainer.Account.cs): the administrator's own entries (owner request, 2026-11-07:
+                    'move all the menu items from "Account" into there, which are the ones that can only be viewed
+                    by me, and then no need to have a "lock" icon on each individual menu item, as it is now in a tab
+                    only accessible to me'). Its tab is shown only to an administrator (SetAdministrator); the server
+                    refuses everybody else at every one of these routes anyway. An entry with something waiting says
+                    so in a badge (owner request, the same day: "nothing indicates which menu I should choose") -
+                    the oscilloscope models sent in.
+                    -->
+                    <DockPanel IsVisible="{Binding #ManagementList.IsVisible}">
+                    <TextBlock DockPanel.Dock="Top"
+                               x:Name="ManagementListMessageText"
+                               TextWrapping="Wrap"
+                               IsVisible="False"
+                               Margin="0,0,0,8" />
 
-                        <ListBoxItem x:Name="MaintainersItem" Classes="ListEntry AdminOnly">
+                    <ListBox x:Name="ManagementList"
+                             IsVisible="False"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             SelectionChanged="OnManagementSelectionChanged">
+
+                        <ListBoxItem x:Name="MaintainersItem" Classes="ListEntry">
                             <StackPanel Spacing="1">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <TextBlock Text="Maintainers" FontSize="13" />
-                                    <TextBlock Classes="AdminLock" Text="&#xf023;" />
-                                </StackPanel>
+                                <TextBlock Text="Maintainers" FontSize="13" />
                                 <TextBlock Text="Who maintains each board - add, invite or remove" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
                             </StackPanel>
                         </ListBoxItem>
 
-                        <!-- The order of CRT's drop-down lists, in BETA and the stable source
-                             (owner request, 2026-10-04). -->
-                        <ListBoxItem x:Name="BoardOrderItem" Classes="ListEntry AdminOnly">
+                        <!-- The order of CRT's drop-down lists, in BETA and the stable source (owner request, 2026-10-04). -->
+                        <ListBoxItem x:Name="BoardOrderItem" Classes="ListEntry">
                             <StackPanel Spacing="1">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <TextBlock Text="Order of boards" FontSize="13" />
-                                    <TextBlock Classes="AdminLock" Text="&#xf023;" />
-                                </StackPanel>
+                                <TextBlock Text="Order of boards" FontSize="13" />
                                 <TextBlock Text="The order of CRT's drop-down lists, in BETA and the stable source" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
                             </StackPanel>
                         </ListBoxItem>
 
-                        <ListBoxItem x:Name="UnusedFilesItem" Classes="ListEntry AdminOnly">
+                        <ListBoxItem x:Name="UnusedFilesItem" Classes="ListEntry">
                             <StackPanel Spacing="1">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <TextBlock Text="Unused files" FontSize="13" />
-                                    <TextBlock Classes="AdminLock" Text="&#xf023;" />
-                                </StackPanel>
+                                <TextBlock Text="Unused files" FontSize="13" />
                                 <TextBlock Text="Files no board uses, in the BETA or the stable data" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
                             </StackPanel>
                         </ListBoxItem>
 
-                        <ListBoxItem x:Name="RebuildManifestsItem" Classes="ListEntry AdminOnly">
+                        <ListBoxItem x:Name="RebuildManifestsItem" Classes="ListEntry">
                             <StackPanel Spacing="1">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <TextBlock Text="Rebuild checksum manifests" FontSize="13" />
-                                    <TextBlock Classes="AdminLock" Text="&#xf023;" />
-                                </StackPanel>
+                                <TextBlock Text="Rebuild checksum manifests" FontSize="13" />
                                 <TextBlock Text="After data files were changed on the server by hand" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
                             </StackPanel>
                         </ListBoxItem>
 
                         <!-- Deleting a board completely (owner request, 2026-10-03). -->
-                        <ListBoxItem x:Name="DeleteBoardItem" Classes="ListEntry AdminOnly">
+                        <ListBoxItem x:Name="DeleteBoardItem" Classes="ListEntry">
                             <StackPanel Spacing="1">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <TextBlock Text="Delete a board" FontSize="13" />
-                                    <TextBlock Classes="AdminLock" Text="&#xf023;" />
-                                </StackPanel>
+                                <TextBlock Text="Delete a board" FontSize="13" />
                                 <TextBlock Text="From the BETA and the stable data and the database, for good" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
                             </StackPanel>
                         </ListBoxItem>
 
                         <!-- Which CRT versions call which route (owner request, 2026-10-04). -->
-                        <ListBoxItem x:Name="ApiUsageItem" Classes="ListEntry AdminOnly">
+                        <ListBoxItem x:Name="ApiUsageItem" Classes="ListEntry">
                             <StackPanel Spacing="1">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <TextBlock Text="API usage" FontSize="13" />
-                                    <TextBlock Classes="AdminLock" Text="&#xf023;" />
-                                </StackPanel>
+                                <TextBlock Text="API usage" FontSize="13" />
                                 <TextBlock Text="Which CRT versions still call each route of the server" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
                             </StackPanel>
                         </ListBoxItem>
 
-                        <!-- Oscilloscope models sent in from CRT (CRT 4.0 step 5, 2026-10-29). -->
-                        <ListBoxItem x:Name="OscilloscopeModelsItem" Classes="ListEntry AdminOnly">
+                        <ListBoxItem x:Name="OscilloscopeModelsItem" Classes="ListEntry">
                             <StackPanel Spacing="1">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <TextBlock Text="Oscilloscope models" FontSize="13" />
-                                    <TextBlock Classes="AdminLock" Text="&#xf023;" />
+                                    <TextBlock Text="Oscilloscope models" FontSize="13" VerticalAlignment="Center" />
+                                    <!-- How many wait for a decision - the screen's tab counts them too. -->
+                                    <Border x:Name="OscilloscopeModelsEntryBadge" Classes="ModeBadge Attention" IsVisible="False">
+                                        <TextBlock x:Name="OscilloscopeModelsEntryBadgeText" />
+                                    </Border>
                                 </StackPanel>
                                 <TextBlock Text="Models sent in from CRT, to publish for everybody or turn down" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
                             </StackPanel>
                         </ListBoxItem>
 
-                        <!-- Resetting the contribution data for going live (owner request,
-                             2026-10-04). Last: it is used once, and it deletes the most. -->
-                        <ListBoxItem x:Name="ResetDataItem" Classes="ListEntry AdminOnly">
+                        <!-- Resetting the contribution data for going live (owner request, 2026-10-04). Last: it is used once, and it deletes the most. -->
+                        <ListBoxItem x:Name="ResetDataItem" Classes="ListEntry">
                             <StackPanel Spacing="1">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <TextBlock Text="Reset contribution data" FontSize="13" />
-                                    <TextBlock Classes="AdminLock" Text="&#xf023;" />
-                                </StackPanel>
+                                <TextBlock Text="Reset contribution data" FontSize="13" />
                                 <TextBlock Text="For going live: every submission, account, maintainer and the history, for good" FontSize="11" Opacity="0.7" TextWrapping="Wrap" />
                             </StackPanel>
                         </ListBoxItem>

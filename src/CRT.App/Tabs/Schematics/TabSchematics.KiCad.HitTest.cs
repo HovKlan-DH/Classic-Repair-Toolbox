@@ -467,7 +467,18 @@ public partial class TabSchematics
 
         this.thisIsInteractiveCadTraceHoverShiftPressed = isShiftPressed;
         this.RefreshKiCadHoverPadUi();
-        this.RefreshKiCadOverlay();
+
+        // ###########################################################################################
+        // Not while aligning (2026-11-06): nothing is hovered then (UpdateSchematicsHoverUi lets go of
+        // the hovered net, pad and component), so Shift changes nothing drawn - and Shift is how the
+        // alignment's box is widened by a key. Every Shift pressed and let go of rebuilt the whole
+        // overlay at the box's new place, the very rebuild the keys no longer make. Ending the
+        // alignment rebuilds it anyway.
+        // ###########################################################################################
+        if (!this.thisIsKiCadTraceCalibrationMode)
+        {
+            this.RefreshKiCadOverlay();
+        }
     }
 
     // ###########################################################################################

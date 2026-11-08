@@ -58,7 +58,7 @@ namespace Handlers.DataHandling
             }
             catch (Exception ex)
             {
-                Logger.Warning($"Failed to load drafts: [{ex.Message}] - using defaults");
+                Logger.Critical($"Failed to load drafts: [{ex.Message}] - using defaults");
                 _draftsRoot = string.Empty;
             }
         }
@@ -291,7 +291,7 @@ namespace Handlers.DataHandling
             }
             catch (Exception ex)
             {
-                Logger.Warning($"Failed to enumerate draft-only boards under [{_draftsRoot}] - [{ex.Message}]");
+                Logger.Critical($"Failed to enumerate draft-only boards under [{_draftsRoot}] - [{ex.Message}]");
             }
 
             return result;
@@ -362,9 +362,12 @@ namespace Handlers.DataHandling
 
             foreach (DraftFolderImportOutcome outcome in outcomes)
             {
+                // An error once per folder for the run, a debug line at every load of the list after - at launch and at
+                // every data check (code review, 2026-11-08: said at each, the "Something went wrong" card came back as
+                // soon as it was closed, counting up; UnreadableFiles, as for a damaged workbook).
                 if (!outcome.Imported)
                 {
-                    Logger.Warning($"Folder [{outcome.BoardFolder}] in the drafts folder was not taken in as a draft - {outcome.Reason}");
+                    UnreadableFiles.Report(outcome.BoardFolder, $"Folder [{outcome.BoardFolder}] in the drafts folder was not taken in as a draft - {outcome.Reason}");
                     continue;
                 }
 
@@ -400,7 +403,8 @@ namespace Handlers.DataHandling
                     }
                     else
                     {
-                        Logger.Warning($"The CRT 3 draft in [{folder}] could not be converted yet - {result.Failure} - tried again at the next start");
+                        // Once per folder for the run, as a folder not taken in is (ImportHandPlacedFolders).
+                        UnreadableFiles.Report(folder, $"The CRT 3 draft in [{folder}] could not be converted yet - {result.Failure} - tried again at the next start");
                     }
 
                     foreach (string note in result.Notes)
@@ -423,7 +427,7 @@ namespace Handlers.DataHandling
             }
             catch (Exception ex)
             {
-                Logger.Warning($"Taking over what CRT 3 left in the drafts folder failed - [{ex.Message}]");
+                Logger.Critical($"Taking over what CRT 3 left in the drafts folder failed - [{ex.Message}]");
             }
         }
 

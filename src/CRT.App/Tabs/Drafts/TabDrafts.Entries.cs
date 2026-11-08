@@ -412,16 +412,20 @@ namespace CRT
         // ###########################################################################################
         // While a pill or a search narrows the table, the entries it would show nothing of are off - as
         // the tab of such a sheet went (BoardTableDocument.SheetsShown). The entry open always stays.
+        //
+        // So are the entries that are no sheet ("Overview", "Name", "Regions", "KiCad: Files", "Categories" - owner request,
+        // 2026-11-07: "it should also disable the non-table menu entries, as it does not search in those"): neither a pill nor
+        // the search looks in them, so they hold nothing it found.
         // ###########################################################################################
         private void ShowTableEntriesEnabled()
         {
             Func<string, BoardTableSheetPart, bool>? shows = this.IsTableOpen ? this.TableEditor.WhatShows() : null;
+            bool filtered = shows is not null && this.TableEditor.IsFilteredByPillsOrSearch;
 
             foreach ((Button button, ContributeEntry entry) in this.NavEntries())
             {
                 button.IsEnabled = shows is null ||
-                                   ContributeEntries.TableOf(entry) is not { } table ||
-                                   shows(table.Sheet, table.Part);
+                                   (ContributeEntries.TableOf(entry) is { } table ? shows(table.Sheet, table.Part) : !filtered);
             }
         }
 

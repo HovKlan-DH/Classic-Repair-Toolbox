@@ -209,6 +209,24 @@
 						<Style Selector="TextBlock.TrialReply.failed">
 							<Setter Property="Foreground" Value="{DynamicResource Text_Fail_Fg}" />
 						</Style>
+						<!-- Waiting for the scope's answer, counting down (owner report, 2026-11-07). -->
+						<Style Selector="TextBlock.TrialReply.waiting">
+							<Setter Property="Foreground" Value="{DynamicResource Text_Warning_Fg}" />
+						</Style>
+
+						<!-- A command's box framed by how its last test went - "Try it", or its step of "Run full test
+						     suite" - green for through, red for not (owner request, 2026-11-07: "it need to be visualized per
+						     task ... have the entire input field border in red (and green if OK)"): at rest, under the
+						     pointer and with the keyboard in it, as a required box's red frame is. A change to the box
+						     takes the frame away - it said nothing of the command now there. -->
+						<Style Selector="TextBox.TrialPassed /template/ Border#PART_BorderElement">
+							<Setter Property="BorderBrush" Value="{DynamicResource Text_Success_Fg}" />
+							<Setter Property="BorderThickness" Value="2" />
+						</Style>
+						<Style Selector="TextBox.TrialFailed /template/ Border#PART_BorderElement">
+							<Setter Property="BorderBrush" Value="{DynamicResource Text_Fail_Fg}" />
+							<Setter Property="BorderThickness" Value="2" />
+						</Style>
 					</Border.Styles>
 
 					<Grid RowDefinitions="Auto,*">
@@ -311,12 +329,6 @@
 												FontSize="12"
 												Padding="8,4"
 												Click="OnRunFullTestSuiteClick" />
-										<Button x:Name="SubmitModelButton"
-												Classes="Accept"
-												Content="Submit this model"
-												FontSize="12"
-												Padding="8,4"
-												Click="OnSubmitModelClick" />
 										<Button x:Name="DeleteModelButton"
 												Classes="Danger"
 												Content="Delete model"
@@ -331,9 +343,12 @@
 											   IsVisible="False" />
 
 									<!-- "Submit this model" (TabOscilloscope.ModelSubmit.cs): sent in for
-									     everybody, to the administrator's queue. -->
+									     everybody, to the administrator's queue. ALWAYS SHOWN under the model's
+									     buttons, its "Submit" in it (owner request, 2026-11-07: "it is not at all clear,
+									     that when you press the button 'Submit this model', that it will then add a new
+									     panel below ... please always do show this panel and have the 'Submit' button
+									     inside of that panel"). -->
 									<Border x:Name="SubmitModelPanel"
-											IsVisible="False"
 											Margin="0,10,0,0"
 											Padding="12"
 											BorderThickness="1"
@@ -341,7 +356,7 @@
 											BorderBrush="{DynamicResource Panel_Border}">
 										<StackPanel Spacing="2">
 											<TextBlock Classes="ModelHeading"
-													   Text="Send this model in for everybody" />
+													   Text="Submit this model for everybody" />
 											<TextBlock x:Name="SubmitModelIntroText"
 													   Classes="ModelIntro" />
 											<TextBlock x:Name="SubmitModelSuiteText"
@@ -374,15 +389,10 @@
 														Spacing="6">
 												<Button x:Name="SendModelButton"
 														Classes="Accept"
-														Content="Send"
+														Content="Submit"
 														FontSize="12"
 														Padding="8,4"
 														Click="OnSendModelClick" />
-												<Button x:Name="CancelSendModelButton"
-														Content="Cancel"
-														FontSize="12"
-														Padding="8,4"
-														Click="OnCancelSendModelClick" />
 											</StackPanel>
 										</StackPanel>
 									</Border>

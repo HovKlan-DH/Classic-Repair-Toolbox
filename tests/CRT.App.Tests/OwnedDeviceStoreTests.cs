@@ -42,8 +42,10 @@ public sealed class OwnedDeviceStoreTests : IDisposable
         return path;
     }
 
+    // A device added with no status is "Unknown" (owner request, 2026-11-06: "Instead have a status of
+    // 'Unknown'", the first offered - "Working" until then), and with no condition no stars.
     [Fact]
-    public void A_device_added_is_its_own_folder_and_reads_back_trimmed_and_Working()
+    public void A_device_added_is_its_own_folder_and_reads_back_trimmed_and_Unknown()
     {
         OwnedDeviceRecord device = Add();
 
@@ -51,9 +53,193 @@ public sealed class OwnedDeviceStoreTests : IDisposable
         Assert.True(File.Exists(Path.Combine(this.thisRoot, "device_1", "index.json")));
 
         OwnedDeviceRecord read = Assert.Single(OwnedDeviceStore.GetAll());
-        Assert.Equal(("Breadbin #2", Board, "PAL", "CA123456", "Flea market"), (read.Name, read.BoardKey, read.Region, read.SerialNumber, read.Origin));
-        Assert.Equal(OwnedDeviceStatus.Working, read.Status);
+        Assert.Equal(("Breadbin #2", Board, "PAL", "CA123456", "Flea market"), (read.Name, read.BoardKey, read.Region, read.SerialNumber, read.Description));
+        Assert.Equal(OwnedDeviceStatus.Unknown, read.Status);
+        Assert.Equal(0, read.Condition);
+        Assert.Empty(read.Comments);
         Assert.Equal(DateTime.Now.Date, read.CreatedDate);
+    }
+
+    // ###########################################################################################
+    // The description is STORED under its first name, "origin" (a name already stored keeps its spelling):
+    // a device an earlier pre-release wrote reads its "Where it came from" as its description, and its
+    // missing condition and comments as none.
+    // ###########################################################################################
+    [Fact]
+    public void The_description_is_stored_as_origin_and_an_earlier_device_reads_with_no_stars_or_comments()
+    {
+        OwnedDeviceRecord device = Add();
+        string index = Path.Combine(this.thisRoot, "device_1", "index.json");
+
+        using (var written = JsonDocument.Parse(File.ReadAllText(index)))
+        {
+            Assert.Equal("Flea market", written.RootElement.GetProperty("origin").GetString());
+            Assert.False(written.RootElement.TryGetProperty("description", out _));
+        }
+
+        File.WriteAllText(index, $$"""{ "id": {{device.Id}}, "name": "Old one", "origin": "A friend", "status": "Not mine any more", "condition": 9 }""");
+
+        OwnedDeviceRecord read = OwnedDeviceStore.Get(device.Id)!;
+        Assert.Equal(("A friend", "Not mine any more", 5), (read.Description, read.Status, read.Condition));
+        Assert.Empty(read.Comments);
+        Assert.Empty(read.Photos);
+    }
+
+    // ###########################################################################################
+    // Its condition, 0 to 5 stars (owner request, 2026-11-06) - saved as the form holds it, anything past
+    // either end taken to it; a star clicked sets that many, the one set clicked again none.
+    // ###########################################################################################
+    [Fact]
+    public void The_condition_is_saved_within_0_to_5_stars()
+    {
+        OwnedDeviceRecord device = Add();
+
+        Assert.Equal(4, OwnedDeviceStore.Update(device.Id, Details() with { Condition = 4 })!.Condition);
+        Assert.Equal(5, OwnedDeviceStore.Update(device.Id, Details() with { Condition = 12 })!.Condition);
+        Assert.Equal(0, OwnedDeviceStore.Update(device.Id, Details() with { Condition = -1 })!.Condition);
+
+        Assert.Equal(3, OwnedDeviceCondition.AfterClick(0, 3));
+        Assert.Equal(5, OwnedDeviceCondition.AfterClick(3, 5));
+        Assert.Equal(0, OwnedDeviceCondition.AfterClick(3, 3));
+        Assert.Equal(1, OwnedDeviceCondition.AfterClick(3, 1));
+    }
+
+    // ###########################################################################################
+    // A device's comments (owner request, 2026-11-06: "Comments", as a worklog has them) - added, changed
+    // and deleted one at a time, each saved at once (owner decision: "At once, as a worklog does"), ids the
+    // device's own, never a blank one; a new device takes those the form held for it in its first write.
+    // ###########################################################################################
+    [Fact]
+    public void Comments_are_added_changed_and_deleted_one_at_a_time()
+    {
+        OwnedDeviceRecord device = Add();
+        var when = new DateTime(2026, 11, 6, 10, 15, 0);
+
+        Assert.Null(OwnedDeviceStore.AddComment(device.Id, "   ", when));
+        Assert.Equal([1], OwnedDeviceStore.AddComment(device.Id, " Recapped ", when)!.Comments.Select(comment => comment.Id));
+        OwnedDeviceRecord two = OwnedDeviceStore.AddComment(device.Id, "New PLA fitted", when.AddDays(1))!;
+
+        Assert.Equal([("Recapped", when), ("New PLA fitted", when.AddDays(1))], two.Comments.Select(comment => (comment.Text, comment.Date)));
+
+        Assert.Equal("PSU recapped", OwnedDeviceStore.UpdateComment(device.Id, 1, " PSU recapped ")!.Comments[0].Text);
+        Assert.Null(OwnedDeviceStore.UpdateComment(device.Id, 9, "Nothing there"));
+        Assert.Null(OwnedDeviceStore.UpdateComment(device.Id, 1, "  "));
+
+        Assert.Equal([2], OwnedDeviceStore.RemoveComment(device.Id, 1)!.Comments.Select(comment => comment.Id));
+        Assert.Null(OwnedDeviceStore.RemoveComment(device.Id, 1));
+
+        // Ids are the device's own, one past the highest.
+        Assert.Equal([2, 3], OwnedDeviceStore.AddComment(device.Id, "Case cleaned", when)!.Comments.Select(comment => comment.Id));
+
+        OwnedDeviceRecord added = OwnedDeviceStore.Create(
+            Details(name: "Plus/4"),
+            [new WorklogCommentRecord { Id = 7, Text = " Bought ", Date = when }, new WorklogCommentRecord { Id = 8, Text = " ", Date = when }])!;
+        Assert.Equal([(1, "Bought", when)], OwnedDeviceStore.Get(added.Id)!.Comments.Select(comment => (comment.Id, comment.Text, comment.Date)));
+    }
+
+    // ###########################################################################################
+    // Its links of interest (owner request, 2026-11-06: "the same 'Links of interest' for the device") - a headline and
+    // an address, added, changed and deleted one at a time, ids the device's own; no address is no link; a new device
+    // takes those the form held for it in its first write.
+    // ###########################################################################################
+    [Fact]
+    public void Links_are_added_changed_and_deleted_one_at_a_time()
+    {
+        OwnedDeviceRecord device = Add();
+
+        Assert.Null(OwnedDeviceStore.AddLink(device.Id, "Nothing", "  "));
+        Assert.Equal([(1, "Service manual", "https://zimmers.net")],
+            OwnedDeviceStore.AddLink(device.Id, " Service manual ", " https://zimmers.net ")!.Links.Select(link => (link.Id, link.Headline, link.Url)));
+        Assert.Equal(2, OwnedDeviceStore.AddLink(device.Id, "", "www.lemon64.com")!.Links.Count);
+
+        Assert.Equal("Manual", OwnedDeviceStore.UpdateLink(device.Id, 1, "Manual", "https://zimmers.net/c64")!.Links[0].Headline);
+        Assert.Null(OwnedDeviceStore.UpdateLink(device.Id, 9, "x", "https://x.org"));
+        Assert.Null(OwnedDeviceStore.UpdateLink(device.Id, 1, "x", ""));
+
+        Assert.Equal([2], OwnedDeviceStore.RemoveLink(device.Id, 1)!.Links.Select(link => link.Id));
+        Assert.Null(OwnedDeviceStore.RemoveLink(device.Id, 1));
+
+        OwnedDeviceRecord added = OwnedDeviceStore.Create(
+            Details(name: "Plus/4"),
+            comments: null,
+            links: [new WorklogLinkRecord { Id = 5, Headline = " Wiki ", Url = " https://c64-wiki.com " }, new WorklogLinkRecord { Id = 6, Url = " " }])!;
+        Assert.Equal([(1, "Wiki", "https://c64-wiki.com")], OwnedDeviceStore.Get(added.Id)!.Links.Select(link => (link.Id, link.Headline, link.Url)));
+    }
+
+    // ###########################################################################################
+    // The photos put in another order (owner request, 2026-11-06: "rearrange the photos, just like it is possible to do
+    // in the worklogs") - each its place; an id it has not passed over, one left out after those named.
+    // ###########################################################################################
+    [Fact]
+    public void The_photos_are_put_in_the_order_given()
+    {
+        OwnedDeviceRecord device = Add();
+        OwnedDeviceStore.AddPhotos(device.Id,
+        [
+            new OwnedDevicePhotoSource(this.Picture("a", "one.jpg"), string.Empty),
+            new OwnedDevicePhotoSource(this.Picture("a", "two.jpg"), string.Empty),
+            new OwnedDevicePhotoSource(this.Picture("a", "three.jpg"), string.Empty),
+        ]);
+
+        List<string> Ordered() => OwnedDeviceStore.Get(device.Id)!.Photos
+            .OrderBy(photo => photo.DisplayOrder).ThenBy(photo => photo.Id).Select(photo => photo.FileName).ToList();
+
+        Assert.Equal(["one.jpg", "two.jpg", "three.jpg"], Ordered());
+
+        Assert.NotNull(OwnedDeviceStore.SetPhotoOrder(device.Id, [3, 1, 2]));
+        Assert.Equal(["three.jpg", "one.jpg", "two.jpg"], Ordered());
+
+        Assert.NotNull(OwnedDeviceStore.SetPhotoOrder(device.Id, [2, 99]));
+        Assert.Equal(["two.jpg", "three.jpg", "one.jpg"], Ordered());
+    }
+
+    // ###########################################################################################
+    // A DEVICE WITH WORKBOOKS KEEPS ITS BOARD (owner decision, 2026-11-06, asked: "Locked while it has workbooks" - a
+    // workbook is associated only to a device of its own board): the rest of the form is saved, a board handed in is
+    // not taken; with none, it is.
+    // ###########################################################################################
+    [Fact]
+    public void A_device_with_workbooks_keeps_its_board_and_one_without_takes_another()
+    {
+        OwnedDeviceRecord device = Add();
+        OwnedDeviceRecord bare = Add("Plus/4");
+        WorklogManager.CreateWorkbook(Board, "No video", "", device.Id);
+
+        OwnedDeviceRecord kept = OwnedDeviceStore.Update(device.Id, Details(name: "Renamed", board: "Commodore 64|250425"))!;
+        Assert.Equal(("Renamed", Board), (kept.Name, kept.BoardKey));
+
+        Assert.Equal("Commodore 64|250425", OwnedDeviceStore.Update(bare.Id, Details(name: "Plus/4", board: "Commodore 64|250425"))!.BoardKey);
+    }
+
+    // ###########################################################################################
+    // A photo carries its comment, as a worklog's does; a photo changed keeps its place - its comment, and
+    // its picture when another is picked: copied in under a name of its own, the old file deleted only
+    // once the device no longer names it.
+    // ###########################################################################################
+    [Fact]
+    public void A_photo_carries_its_comment_and_is_changed_in_place()
+    {
+        OwnedDeviceRecord device = Add();
+
+        WorklogAttachmentRecord photo = Assert.Single(OwnedDeviceStore.AddPhotos(
+            device.Id,
+            [new OwnedDevicePhotoSource(this.Picture("a", "front.jpg"), " Before cleaning ")]));
+        Assert.Equal("Before cleaning", photo.Comment);
+        string oldPath = OwnedDeviceStore.PhotoPath(device.Id, "front.jpg")!;
+
+        Assert.True(OwnedDeviceStore.UpdatePhoto(device.Id, photo.Id, replacement: null, " After cleaning "));
+        Assert.Equal(("front.jpg", "After cleaning"), OwnedDeviceStore.Get(device.Id)!.Photos.Select(each => (each.FileName, each.Comment)).Single());
+
+        Assert.True(OwnedDeviceStore.UpdatePhoto(device.Id, photo.Id, this.Picture("b", "after.png"), "After"));
+        WorklogAttachmentRecord changed = Assert.Single(OwnedDeviceStore.Get(device.Id)!.Photos);
+        Assert.Equal((photo.Id, "after.png", "After"), (changed.Id, changed.FileName, changed.Comment));
+        Assert.False(File.Exists(oldPath));
+        Assert.NotNull(OwnedDeviceStore.PhotoPath(device.Id, "after.png"));
+
+        // No picture is no change - and a photo not there neither.
+        Assert.False(OwnedDeviceStore.UpdatePhoto(device.Id, photo.Id, this.Picture("c", "notes.txt"), "x"));
+        Assert.False(OwnedDeviceStore.UpdatePhoto(device.Id, 99, null, "x"));
+        Assert.Equal("After", Assert.Single(OwnedDeviceStore.Get(device.Id)!.Photos).Comment);
     }
 
     [Fact]
@@ -157,51 +343,143 @@ public sealed class OwnedDeviceStoreTests : IDisposable
     }
 
     // ###########################################################################################
-    // The plan: "A machine whose board is swapped records it as a change." The other fields are
-    // simply saved; nothing is recorded for them.
+    // "Edit device" saves the form's fields - a board swapped is simply the new board. Nothing is
+    // recorded beside them (owner request, 2026-11-06: "remove the 'Changes made to it', as this is
+    // exactly what the workbooks will cover").
     // ###########################################################################################
     [Fact]
-    public void A_board_swapped_is_recorded_as_a_change_of_the_device()
+    public void Edit_saves_the_forms_fields_and_records_nothing_beside_them()
     {
         OwnedDeviceRecord device = Add();
 
         OwnedDeviceRecord updated = OwnedDeviceStore.Update(device.Id, Details(name: "Breadbin #2 (NTSC)", board: "Commodore 64|250425", status: "faulty"))!;
 
         Assert.Equal(("Breadbin #2 (NTSC)", "Commodore 64|250425", OwnedDeviceStatus.Faulty), (updated.Name, updated.BoardKey, updated.Status));
-        OwnedDeviceChangeRecord change = Assert.Single(updated.Changes);
-        Assert.Equal("Board changed from Commodore 64 - 250407 to Commodore 64 - 250425", change.Text);
 
-        // The same board again: nothing more recorded.
-        OwnedDeviceStore.Update(device.Id, Details(name: "Breadbin #2", board: "commodore 64|250425"));
-        Assert.Single(OwnedDeviceStore.Get(device.Id)!.Changes);
+        using var written = JsonDocument.Parse(File.ReadAllText(Path.Combine(this.thisRoot, "device_1", "index.json")));
+        Assert.False(written.RootElement.TryGetProperty("changes", out _));
     }
 
+    // A device with no name is no device: the edit is refused and the device stays as it was.
     [Fact]
-    public void Changes_are_added_with_their_date_and_removed_and_a_blank_one_is_nothing()
+    public void An_edit_with_no_name_is_refused()
     {
         OwnedDeviceRecord device = Add();
 
-        Assert.Null(OwnedDeviceStore.AddChange(device.Id, DateTime.Now, "   "));
-
-        OwnedDeviceChangeRecord rom = OwnedDeviceStore.AddChange(device.Id, new DateTime(2025, 6, 14, 15, 30, 0), " JiffyDOS ROM fitted ")!;
-        OwnedDeviceChangeRecord psu = OwnedDeviceStore.AddChange(device.Id, new DateTime(2026, 1, 2), "New power supply")!;
-
-        Assert.Equal((1, 2), (rom.Id, psu.Id));
-        Assert.Equal(new DateTime(2025, 6, 14), OwnedDeviceStore.Get(device.Id)!.Changes[0].Date);
-        Assert.Equal("JiffyDOS ROM fitted", OwnedDeviceStore.Get(device.Id)!.Changes[0].Text);
-
-        Assert.NotNull(OwnedDeviceStore.RemoveChange(device.Id, rom.Id));
-        Assert.Equal(["New power supply"], OwnedDeviceStore.Get(device.Id)!.Changes.Select(change => change.Text));
+        Assert.Null(OwnedDeviceStore.Update(device.Id, Details(name: "  ")));
+        Assert.Equal("Breadbin #2", OwnedDeviceStore.Get(device.Id)!.Name);
     }
 
+    // ###########################################################################################
+    // The changes an earlier CRT 4.0 pre-release recorded on a device - a list it no longer shows -
+    // stay in its file, exactly as they were, through every write: nothing the user typed is thrown
+    // away (OwnedDeviceRecord.Unknown).
+    // ###########################################################################################
     [Fact]
-    public void Notes_are_saved_trimmed()
+    public void Changes_an_earlier_CRT_recorded_stay_in_the_file_untouched()
     {
         OwnedDeviceRecord device = Add();
+        string index = Path.Combine(this.thisRoot, "device_1", "index.json");
+        const string changes =
+            "[ { \"id\": 1, \"date\": \"2025-06-14T00:00:00\", \"text\": \"JiffyDOS ROM fitted\" }, " +
+            "{ \"id\": 2, \"date\": \"2026-01-02T00:00:00\", \"text\": \"Board changed from Commodore 64 - 250407 to Commodore 64 - 250425\" } ]";
+        File.WriteAllText(index, File.ReadAllText(index).TrimEnd().TrimEnd('}') + ", \"changes\": " + changes + " }");
 
-        OwnedDeviceStore.SetNotes(device.Id, "  Recapped in 2024.  ");
+        OwnedDeviceStore.Update(device.Id, Details(name: "Breadbin #2", board: "Commodore 64|250425"));
+        OwnedDeviceStore.AddPhotos(device.Id, [new OwnedDevicePhotoSource(this.Picture("a", "front.jpg"), string.Empty)]);
 
-        Assert.Equal("Recapped in 2024.", OwnedDeviceStore.Get(device.Id)!.Notes);
+        using var written = JsonDocument.Parse(File.ReadAllText(index));
+        Assert.True(System.Text.Json.Nodes.JsonNode.DeepEquals(
+            System.Text.Json.Nodes.JsonNode.Parse(changes),
+            System.Text.Json.Nodes.JsonNode.Parse(written.RootElement.GetProperty("changes").GetRawText())));
+    }
+
+    // The description keeps the lines it was typed in - only its ends are trimmed.
+    [Fact]
+    public void The_description_keeps_its_lines()
+    {
+        OwnedDeviceRecord device = OwnedDeviceStore.Create(new OwnedDeviceDetails(
+            "Breadbin #2", Board, "", "", "  A flea market in Odense\nCame with its box\n  ", ""))!;
+
+        Assert.Equal("A flea market in Odense\nCame with its box", OwnedDeviceStore.Get(device.Id)!.Description);
+    }
+
+    // ###########################################################################################
+    // *** A NOTE'S FIRST LINE KEEPS THE INDENT THAT SAYS WHAT IT IS (code review, 2026-11-08). *** Trimmed whole, a
+    // description, a comment or a photo's comment whose first line is a bullet nested once - "  - recapped" - came back
+    // a bullet of the first level, and one starting with three spaces and "- " (no bullet at that indent) became one.
+    // Blank lines around the note and white space at its end still go (RichNote.TrimMarkup).
+    // ###########################################################################################
+    [Fact]
+    public void A_notes_first_line_keeps_the_indent_that_says_what_it_is()
+    {
+        OwnedDeviceRecord device = OwnedDeviceStore.Create(new OwnedDeviceDetails(
+            "Breadbin #2", Board, "", "", "\n  - recapped\n- RAM\n  ", ""))!;
+
+        Assert.Equal("  - recapped\n- RAM", OwnedDeviceStore.Get(device.Id)!.Description);
+
+        OwnedDeviceStore.AddComment(device.Id, "   - not a bullet\n", new DateTime(2026, 11, 8, 10, 0, 0));
+        Assert.Equal("   - not a bullet", Assert.Single(OwnedDeviceStore.Get(device.Id)!.Comments).Text);
+
+        OwnedDeviceStore.AddPhotos(device.Id, [new OwnedDevicePhotoSource(this.Picture("a", "front.jpg"), "  - the front\n")]);
+        Assert.Equal("  - the front", Assert.Single(OwnedDeviceStore.Get(device.Id)!.Photos).Comment);
+    }
+
+    // ###########################################################################################
+    // A device's notes - the page's own box until 2026-11-07 (owner request: 'Remove the "Notes" as we now have the
+    // "Description"') - are FOLDED INTO ITS DESCRIPTION as it is read, a blank line between, so nothing typed there is
+    // lost; the next write writes them as the description, and "notes" no more.
+    // ###########################################################################################
+    [Fact]
+    public void Notes_a_device_had_are_read_as_its_description_and_written_as_it()
+    {
+        OwnedDeviceRecord device = OwnedDeviceStore.Create(new OwnedDeviceDetails("Breadbin #2", Board, "", "", "A flea market", ""))!;
+        string index = Path.Combine(this.thisRoot, "device_1", "index.json");
+        File.WriteAllText(index, File.ReadAllText(index).TrimEnd().TrimEnd('}') + ", \"notes\": \"  Recapped in 2024.  \" }");
+
+        Assert.Equal("A flea market\n\nRecapped in 2024.", OwnedDeviceStore.Get(device.Id)!.Description);
+
+        OwnedDeviceStore.AddComment(device.Id, "SID replaced", new DateTime(2026, 11, 7, 10, 0, 0));
+
+        using var written = JsonDocument.Parse(File.ReadAllText(index));
+        Assert.Equal("A flea market\n\nRecapped in 2024.", written.RootElement.GetProperty("origin").GetString());
+        Assert.False(written.RootElement.TryGetProperty("notes", out _));
+        Assert.Equal("A flea market\n\nRecapped in 2024.", OwnedDeviceStore.Get(device.Id)!.Description);
+    }
+
+    [Theory]
+    [InlineData("A flea market", null, "A flea market")]
+    [InlineData("A flea market", "   ", "A flea market")]
+    [InlineData("", "Recapped", "Recapped")]
+    [InlineData("  ", " Recapped ", "Recapped")]
+    [InlineData("A flea market\n", "Recapped\nNew PSU", "A flea market\n\nRecapped\nNew PSU")]
+    public void Notes_are_folded_under_the_description_with_a_blank_line_between(string description, string? notes, string expected)
+    {
+        Assert.Equal(expected, OwnedDeviceStore.FoldNotes(description, notes));
+    }
+
+    // ###########################################################################################
+    // SORTED BY HAND (owner request, 2026-11-07: "Sort manually in list (drag up/down)") - each device's place is
+    // written where it moved, and a new device comes last: after the last placed, or unplaced while none is.
+    // ###########################################################################################
+    [Fact]
+    public void The_order_by_hand_is_written_where_it_moved_and_a_new_device_comes_last()
+    {
+        OwnedDeviceRecord first = Add();
+        OwnedDeviceRecord second = OwnedDeviceStore.Create(Details(name: "Plus/4"))!;
+        Assert.Equal(0, second.DisplayOrder);
+
+        Assert.True(OwnedDeviceStore.SetOrder([second.Id, first.Id]));
+
+        Assert.Equal(1, OwnedDeviceStore.Get(second.Id)!.DisplayOrder);
+        Assert.Equal(2, OwnedDeviceStore.Get(first.Id)!.DisplayOrder);
+
+        OwnedDeviceRecord third = OwnedDeviceStore.Create(Details(name: "C16"))!;
+        Assert.Equal(3, third.DisplayOrder);
+
+        Assert.Equal(
+            ["Plus/4", "Breadbin #2", "C16"],
+            OwnedDeviceSorting.Sort(OwnedDeviceStore.GetAll(), OwnedDeviceSorting.Manual, key => (key, string.Empty)).Select(device => device.Name));
     }
 
     // ###########################################################################################
@@ -215,7 +493,9 @@ public sealed class OwnedDeviceStoreTests : IDisposable
 
         IReadOnlyList<WorklogAttachmentRecord> added = OwnedDeviceStore.AddPhotos(
             device.Id,
-            [this.Picture("a", "front.jpg"), this.Picture("b", "front.jpg"), this.Picture("a", "notes.txt"), this.Picture("a", "._front.jpg")]);
+            new[] { this.Picture("a", "front.jpg"), this.Picture("b", "front.jpg"), this.Picture("a", "notes.txt"), this.Picture("a", "._front.jpg") }
+                .Select(path => new OwnedDevicePhotoSource(path, string.Empty))
+                .ToList());
 
         Assert.Equal(["front.jpg", "front (2).jpg"], added.Select(photo => photo.FileName));
         Assert.Equal([1, 2], added.Select(photo => photo.Id));
@@ -242,14 +522,14 @@ public sealed class OwnedDeviceStoreTests : IDisposable
     }
 
     // ###########################################################################################
-    // A device deleted takes its folder - photos, notes, changes - and leaves its repairs, which are
+    // A device deleted takes its folder - photos and notes - and leaves its repairs, which are
     // workbooks of their own and from then on read as on no device.
     // ###########################################################################################
     [Fact]
     public void Deleting_a_device_leaves_its_repairs_on_no_device()
     {
         OwnedDeviceRecord device = Add();
-        OwnedDeviceStore.AddPhotos(device.Id, [this.Picture("a", "front.jpg")]);
+        OwnedDeviceStore.AddPhotos(device.Id, [new OwnedDevicePhotoSource(this.Picture("a", "front.jpg"), string.Empty)]);
         WorkbookRecord repair = WorklogManager.CreateWorkbook(Board, "No video", "", device.Id)!;
 
         Assert.True(OwnedDeviceStore.Delete(device.Id));
@@ -269,16 +549,28 @@ public sealed class OwnedDeviceStoreTests : IDisposable
         string json = File.ReadAllText(index).TrimEnd().TrimEnd('}') + ", \"caseColour\": \"beige\" }";
         File.WriteAllText(index, json);
 
-        OwnedDeviceStore.SetNotes(device.Id, "Recapped");
+        OwnedDeviceStore.AddComment(device.Id, "Recapped", new DateTime(2026, 11, 7, 10, 0, 0));
 
         using var written = JsonDocument.Parse(File.ReadAllText(index));
         Assert.Equal("beige", written.RootElement.GetProperty("caseColour").GetString());
     }
 
+    // ###########################################################################################
+    // "Unknown" first, "Not mine any more" no longer offered (owner request, 2026-11-06: "this is different
+    // data as I see it") - a device an earlier pre-release stored it on keeps it, as any word this CRT does
+    // not know; a blank one is "Unknown".
+    // ###########################################################################################
+    [Fact]
+    public void The_statuses_offered_start_with_Unknown_and_have_no_Not_mine_any_more()
+    {
+        Assert.Equal(["Unknown", "Working", "Faulty", "In repair", "For parts"], OwnedDeviceStatus.All);
+    }
+
     [Theory]
-    [InlineData("", "Working")]
+    [InlineData("", "Unknown")]
+    [InlineData(" unknown ", "Unknown")]
     [InlineData("  in REPAIR ", "In repair")]
-    [InlineData("not mine any more", "Not mine any more")]
+    [InlineData("Not mine any more", "Not mine any more")]
     [InlineData("Lent to a friend", "Lent to a friend")]
     public void A_status_reads_as_its_known_word_and_an_unknown_one_is_kept(string stored, string read)
     {
@@ -291,6 +583,7 @@ public sealed class OwnedDeviceStoreTests : IDisposable
     [InlineData("Faulty", "Text_Fail_Fg")]
     [InlineData("In repair", "Text_Warning_Fg")]
     [InlineData("For parts", "Workbooks_Muted_Fg")]
+    [InlineData("Unknown", "Workbooks_Muted_Fg")]
     [InlineData("Lent to a friend", "Workbooks_Muted_Fg")]
     public void A_status_has_its_colour(string status, string key)
     {

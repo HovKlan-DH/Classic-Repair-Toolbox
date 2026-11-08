@@ -46,6 +46,23 @@ namespace CRT.Server.Tests
             Assert.DoesNotContain("CRT Maintainer", message.Body, StringComparison.Ordinal);
         }
 
+        // ###########################################################################################
+        // *** AN OSCILLOSCOPE MODEL SENT IN IS DECIDED ON THE "MANAGEMENT" SCREEN, AND THE ADMINISTRATORS' MAIL SAYS SO
+        // (code review, 2026-11-08). *** The entry moved from "Account" to the administrator's own "Management" screen
+        // (2026-11-07), and this mail still sent them to "Account" > "Oscilloscope models", which lists no such entry.
+        // ###########################################################################################
+        [Fact]
+        public void The_mail_for_a_model_sent_in_names_the_Management_screen()
+        {
+            EmailMessage message = EmailTemplates.OscilloscopeModelWaiting("anna@example.com", "Rigol DS1054Z", 7, "Works here.", fullTestSuitePassed: true);
+
+            Assert.Contains(
+                global::Handlers.DataHandling.MaintainerScreenWording.ManagementQuoted + " > \"Oscilloscope models\"",
+                message.Body,
+                StringComparison.Ordinal);
+            Assert.DoesNotContain(global::Handlers.DataHandling.MaintainerScreenWording.AccountQuoted + " >", message.Body, StringComparison.Ordinal);
+        }
+
         [Fact]
         public void The_waiting_mail_says_so_when_the_contributor_gave_no_description()
         {

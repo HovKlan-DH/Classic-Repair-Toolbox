@@ -234,6 +234,10 @@ namespace Handlers.DataHandling
             [JsonPropertyName("region"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
             public string? Region { get; set; }
 
+            // What the file is about (2026-11-06) - written only when filled, so a board without notes keeps its bytes.
+            [JsonPropertyName("note"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+            public string? Note { get; set; }
+
             [JsonExtensionData] public Dictionary<string, JsonElement>? Unknown { get; set; }
         }
 
@@ -245,6 +249,10 @@ namespace Handlers.DataHandling
 
             [JsonPropertyName("region"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
             public string? Region { get; set; }
+
+            // What the link is about (2026-11-06) - written only when filled.
+            [JsonPropertyName("note"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+            public string? Note { get; set; }
 
             [JsonExtensionData] public Dictionary<string, JsonElement>? Unknown { get; set; }
         }

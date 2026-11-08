@@ -270,6 +270,28 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         public static async Task InitializeAsync(string[] args)
         {
+            int failedBefore = OnlineServices.FailedDownloads;
+
+            try
+            {
+                await DataManager.InitializeCoreAsync(args);
+            }
+            finally
+            {
+                // What the launch's data check, which goes on after the window opens, counts from (Main.BeginDataSyncProgress).
+                DataManager.FailedDownloadsAtLaunch = OnlineServices.FailedDownloads - failedBefore;
+            }
+        }
+
+        // ###########################################################################################
+        // The downloads the splash gave up on - the main file and the board files, the first half of the launch's data
+        // check, whose card counts them with its own (code review, 2026-11-07: they were left out, and the card said "up
+        // to date" over a board file that never came).
+        // ###########################################################################################
+        internal static int FailedDownloadsAtLaunch { get; private set; }
+
+        private static async Task InitializeCoreAsync(string[] args)
+        {
             Logger.Info(args.Length > 0
                 ? $"Commandline parameters: [{string.Join(" ", args)}]"
                 : "No commandline parameters given");
@@ -729,7 +751,7 @@ namespace Handlers.DataHandling
 
             if (string.IsNullOrEmpty(ResolvedMainExcelFileName))
             {
-                Logger.Warning("No compatible main data file matched the current application version");
+                Logger.Critical("No compatible main data file matched the current application version");
                 DataManager.NoPublishedScopeModels();
                 return;
             }
@@ -738,7 +760,7 @@ namespace Handlers.DataHandling
 
             if (!File.Exists(excelPath))
             {
-                Logger.Warning($"Main data file not found - [{excelPath}]");
+                Logger.Critical($"Main data file not found - [{excelPath}]");
                 DataManager.NoPublishedScopeModels();
                 return;
             }
@@ -759,7 +781,7 @@ namespace Handlers.DataHandling
             }
             catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException)
             {
-                Logger.Warning($"Failed to load main data file - [{ex.Message}]");
+                Logger.Critical($"Failed to load main data file - [{ex.Message}]");
                 DataManager.NoPublishedScopeModels();
                 return;
             }

@@ -252,18 +252,32 @@ namespace CRT
                 string dataRoot = DataManager.DataRoot;
                 string draftFolder = DraftFolderLayout.GetBoardFolder(draftsRoot, identity);
 
-                // The draft's errors and warnings, as the table's checks find them on what it holds now -
-                // a board with no draft has none to say. They go with the very board they ran on.
-                (BoardContent? content, List<string> files, BoardProblemsRead problems, int creditsToOffer) = await Task.Run(() =>
+                // The draft's errors and warnings, as the table's checks find them on what it holds now - and a board
+                // with no draft, its published board's (owner decision, 2026-11-07: the launch check's findings "should
+                // show just like any other error or warning in the "Contribute" tab"), the very check its badges wait for
+                // (PublishedProblemsOf; code review, 2026-11-08: a second one ran beside it). They go with the very board
+                // they ran on.
+                Task<BoardProblemsRead>? publishedCheck = session is null && !entry.IsDraftOnly ? this.PublishedProblemsOf(entry) : null;
+
+                (BoardContent? content, List<string> files, BoardProblemsRead? ofDraft, int creditsToOffer) = await Task.Run(() =>
                 {
                     BoardContent? read = session?.Content ?? TabDrafts.PublishedContentOf(published);
-                    IReadOnlyList<BoardDataProblem> found = session is null || read is null ? [] : DraftStatusReader.ProblemsOf(read.Board, dataRoot, draftFolder);
+
+                    BoardProblemsRead? found = null;
+
+                    if (session is not null && read is not null)
+                    {
+                        IReadOnlyList<BoardDataProblem> problemsOfDraft = DraftStatusReader.ProblemsOf(read.Board, dataRoot, draftFolder);
+                        found = new BoardProblemsRead(BoardProblemCounts.Of(problemsOfDraft), problemsOfDraft, read.Board);
+                    }
 
                     return (read,
                             TabDrafts.KiCadFileNamesOf(draftsRoot, identity, listed, published),
-                            new BoardProblemsRead(BoardProblemCounts.Of(found), found, read?.Board),
+                            found,
                             session is null ? 0 : TabDrafts.NewBoardCreditsToOffer(entry, session));
                 });
+
+                BoardProblemsRead problems = ofDraft ?? (publishedCheck is null ? BoardProblemsRead.None : await publishedCheck);
 
                 if (ask != this.thisReadinessAsk)
                 {

@@ -304,21 +304,27 @@
 							Padding="8,8">
 						<StackPanel Spacing="6">
 
-							<Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
-								<TextBlock Grid.Column="0"
-										   Text="Global settings"
-										   FontSize="11"
-										   VerticalAlignment="Center"
-										   FontWeight="Bold"
-										   Foreground="{DynamicResource Schematics_Panels_Fg}" />
-								<Button x:Name="ToggleGlobalSettingsPanelButton"
-										Grid.Column="1"
-										Content="Collapse"
-										FontSize="9"
-										Padding="6,2"
-										HorizontalAlignment="Right"
-										VerticalAlignment="Top" />
-							</Grid>
+							<!-- The headline and the room around it expand and collapse as "Collapse" does (owner request,
+							     2026-11-06), the panel's padding included - hence the margin it takes back. -->
+							<Border x:Name="GlobalSettingsHeader"
+									Background="Transparent" Cursor="Hand" Margin="-8,-8,-8,-6" Padding="8,8,8,6"
+									PointerPressed="OnPanelHeaderPressed">
+								<Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+									<TextBlock Grid.Column="0"
+											   Text="Global settings"
+											   FontSize="11"
+											   VerticalAlignment="Center"
+											   FontWeight="Bold"
+											   Foreground="{DynamicResource Schematics_Panels_Fg}" />
+									<Button x:Name="ToggleGlobalSettingsPanelButton"
+											Grid.Column="1"
+											Content="Collapse"
+											FontSize="9"
+											Padding="6,2"
+											HorizontalAlignment="Right"
+											VerticalAlignment="Top" />
+								</Grid>
+							</Border>
 
 							<StackPanel x:Name="GlobalSettingsListPanel" Spacing="4">
 
@@ -520,21 +526,25 @@
 							CornerRadius="4"
 							Padding="8,8">
 						<StackPanel Spacing="6">
-							<Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
-								<TextBlock Grid.Column="0"
-										   Text="Labels visible"
-										   FontSize="11"
-										   VerticalAlignment="Center"
-										   FontWeight="Bold"
-										   Foreground="{DynamicResource Schematics_Panels_Fg}" />
-								<Button x:Name="ToggleLabelsPanelButton"
-										Grid.Column="1"
-										Content="Collapse"
-										FontSize="9"
-										Padding="6,2"
-										HorizontalAlignment="Right"
-										VerticalAlignment="Top" />
-							</Grid>
+							<Border x:Name="LabelsPanelHeader"
+									Background="Transparent" Cursor="Hand" Margin="-8,-8,-8,-6" Padding="8,8,8,6"
+									PointerPressed="OnPanelHeaderPressed">
+								<Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+									<TextBlock Grid.Column="0"
+											   Text="Labels visible"
+											   FontSize="11"
+											   VerticalAlignment="Center"
+											   FontWeight="Bold"
+											   Foreground="{DynamicResource Schematics_Panels_Fg}" />
+									<Button x:Name="ToggleLabelsPanelButton"
+											Grid.Column="1"
+											Content="Collapse"
+											FontSize="9"
+											Padding="6,2"
+											HorizontalAlignment="Right"
+											VerticalAlignment="Top" />
+								</Grid>
+							</Border>
 
 							<StackPanel x:Name="LabelsListPanel" Spacing="4">
 								<StackPanel Orientation="Horizontal" Spacing="6" Background="Transparent" Cursor="Hand" PointerPressed="OnLabelBoardRowClicked">
@@ -581,22 +591,26 @@
 							Padding="8,8"
 							IsVisible="False">
 						<StackPanel Spacing="6">
-							<Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
-								<TextBlock x:Name="ImportantSignalsHeaderTextBlock"
-									   Grid.Column="0"
-									   Text="Important KiCad signals"
-									   FontSize="11"
-									   VerticalAlignment="Center"
-									   FontWeight="Bold"
-									   Foreground="{DynamicResource Schematics_Panels_Fg}" />
-								<Button x:Name="ToggleImportantSignalsPanelButton"
-										Grid.Column="1"
-										Content="Collapse"
-										FontSize="9"
-										Padding="6,2"
-										HorizontalAlignment="Right"
-										VerticalAlignment="Top" />
-							</Grid>
+							<Border x:Name="ImportantSignalsPanelHeader"
+									Background="Transparent" Cursor="Hand" Margin="-8,-8,-8,-6" Padding="8,8,8,6"
+									PointerPressed="OnPanelHeaderPressed">
+								<Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+									<TextBlock x:Name="ImportantSignalsHeaderTextBlock"
+										   Grid.Column="0"
+										   Text="Important KiCad signals"
+										   FontSize="11"
+										   VerticalAlignment="Center"
+										   FontWeight="Bold"
+										   Foreground="{DynamicResource Schematics_Panels_Fg}" />
+									<Button x:Name="ToggleImportantSignalsPanelButton"
+											Grid.Column="1"
+											Content="Collapse"
+											FontSize="9"
+											Padding="6,2"
+											HorizontalAlignment="Right"
+											VerticalAlignment="Top" />
+								</Grid>
+							</Border>
 
 							<StackPanel x:Name="ImportantSignalsListPanel" Spacing="6">
 								<ListBox x:Name="ImportantSignalsListBox"

@@ -50,6 +50,9 @@ namespace CRT
         // ###########################################################################################
         private ShownRowList? thisShownRows;
 
+        // The rows the grid shows now - for the tests.
+        internal IReadOnlyList<BoardTableRow> RowsShownForTests => this.thisShownRows?.ToList() ?? [];
+
         // ###########################################################################################
         // The row the cursor is on, which stays shown until the cursor leaves it, whatever is typed in
         // it (BoardTableRowFilter's header). A pick or a search keeps nothing (ApplyViewFilter).

@@ -14,8 +14,9 @@ namespace ClassicRepairToolbox.Tests;
 // are all buttons (a ComboBox among them counts as one) and at least two of them Buttons. Its Spacing or
 // ItemSpacing is the gap - or, with neither set and every button spaced by its own margin, the right
 // margin is. Two buttons sharing a line in a Grid, columns 0 and 2, have a column of the gap between
-// them. Segmented view switches (Segment), the Maintainer tab's screen tabs (ScreenTab) and buttons
-// drawn as links (LearnMore, *Link) are no row of buttons.
+// them. Segmented view switches (Segment), the Maintainer tab's screen tabs (ScreenTab), buttons
+// drawn as links (LearnMore, *Link) and a formatted note box's row of small icons (FormatTool,
+// RichNoteTheme.axaml, 2026-11-07) are no row of buttons.
 // ###########################################################################################
 public sealed class ButtonSpacingTests
 {
@@ -80,6 +81,7 @@ public sealed class ButtonSpacingTests
     [InlineData("""<StackPanel Orientation="Horizontal" Spacing="0"><Button Classes="Segment First" /><Button Classes="Segment" /></StackPanel>""")]
     [InlineData("""<StackPanel Orientation="Horizontal" Spacing="10"><Button Classes="WorklogHeaderLink" /><Button Classes="WorklogHeaderLink" /></StackPanel>""")]
     [InlineData("""<WrapPanel ItemSpacing="4"><Button Classes="ScreenTab" /><Button Classes="ScreenTab" /></WrapPanel>""")]
+    [InlineData("""<StackPanel Orientation="Horizontal" Spacing="2"><Button Classes="FormatTool" /><Button Classes="FormatTool" /></StackPanel>""")]
     public void A_row_with_the_gap_or_no_row_at_all_passes(string markup)
     {
         Assert.DoesNotContain(ButtonSpacingTests.Check(ButtonSpacingTests.Wrapped(markup)), found => found.Problem is not null);
@@ -151,7 +153,7 @@ public sealed class ButtonSpacingTests
     private static bool IsNoRowButton(XElement button) =>
         (button.Attribute("Classes")?.Value ?? string.Empty)
             .Split(' ', StringSplitOptions.RemoveEmptyEntries)
-            .Any(name => name is "Segment" or "ScreenTab" or "LearnMore" || name.EndsWith("Link", StringComparison.Ordinal));
+            .Any(name => name is "Segment" or "ScreenTab" or "LearnMore" or "FormatTool" || name.EndsWith("Link", StringComparison.Ordinal));
 
     private static string Wrapped(string markup) =>
         $"""<UserControl xmlns="https://github.com/avaloniaui">{markup}</UserControl>""";

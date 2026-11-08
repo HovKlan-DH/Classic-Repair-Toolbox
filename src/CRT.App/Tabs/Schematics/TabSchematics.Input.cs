@@ -768,14 +768,7 @@ public partial class TabSchematics
 
         if (this.thisIsKiCadTraceCalibrationMode)
         {
-            if (e.Key == Key.Escape)
-            {
-                this.CancelKiCadTraceCalibrationMode();
-                e.Handled = true;
-                return;
-            }
-
-            if (this.ApplyKiCadTraceCalibrationKeyboardStep(e.Key, e.KeyModifiers))
+            if (this.TakeKiCadCalibrationKey(e.Key, e.KeyModifiers))
             {
                 e.Handled = true;
             }
@@ -845,6 +838,32 @@ public partial class TabSchematics
         {
             e.Handled = true;
         }
+    }
+
+    // ###########################################################################################
+    // A key while aligning KiCad: Escape cancels, the arrow keys move, widen or narrow the box
+    // (KiCadCalibrationGeometry.TryApplyKeyboardStep) - true when the key did something.
+    //
+    // The tab's own key handler asks it for a key pressed inside the tab; Main asks it for one
+    // pressed anywhere else in its window (2026-11-06, owner report: "it seems not always to react
+    // when I use the keys for fine-tuning" - the keys reached the box only while the keyboard was in
+    // this tab, and a press on the component list, a drop-down or a tab header took it elsewhere;
+    // Main.OnMainKeyDownCloseSinglePopup says which keys and when).
+    // ###########################################################################################
+    internal bool TakeKiCadCalibrationKey(Key key, KeyModifiers modifiers)
+    {
+        if (!this.thisIsKiCadTraceCalibrationMode)
+        {
+            return false;
+        }
+
+        if (key == Key.Escape)
+        {
+            this.CancelKiCadTraceCalibrationMode();
+            return true;
+        }
+
+        return this.ApplyKiCadTraceCalibrationKeyboardStep(key, modifiers);
     }
 
     // ###########################################################################################

@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:data="clr-namespace:Handlers.DataHandling;assembly=CRT.Data"
+             xmlns:local="clr-namespace:CRT"
              x:Class="CRT.BoardTableEditor">
 
 	<UserControl.Styles>
@@ -30,6 +31,11 @@
 		</Style>
 		<Style Selector="TabControl#SheetTabs TabItem.SheetGroup.First">
 			<Setter Property="Margin" Value="0" />
+		</Style>
+		<!-- A heading starting a line stands in the headings' column (SheetTabsPanel; owner request, 2026-11-06),
+		     its tabs set off from it. -->
+		<Style Selector="TabControl#SheetTabs TabItem.SheetGroup.StartsLine">
+			<Setter Property="Padding" Value="0,4,16,4" />
 		</Style>
 		<Style Selector="TabControl#SheetTabs TabItem.SheetGroup:disabled /template/ Border#PART_SelectedPipe">
 			<Setter Property="IsVisible" Value="False" />
@@ -253,6 +259,16 @@
 			<Setter Property="Fill" Value="{DynamicResource BoardTable_Selection_Fill}" />
 		</Style>
 
+		<!-- *** AND AN EDGE OF ITS OWN ROUND EACH (owner report, 2026-11-07: navigating the table, "it seems to miss some
+		     dividers in the "Board label" column"). *** The veil is about as light as the grid's grey line, so between two
+		     selected cells the line all but vanished - a block of selected cells read as one cell with no borders. A
+		     darker blue edge round each keeps every cell in sight. Not on the current cell, whose dashed red frame says it. -->
+		<Style Selector="DataGrid#TableGrid.SeveralSelected DataGridCell:selected:not(:current) /template/ Rectangle#CurrencyVisual">
+			<Setter Property="Stroke" Value="{DynamicResource BoardTable_Selection_Edge}" />
+			<Setter Property="StrokeThickness" Value="1" />
+			<Setter Property="StrokeDashArray" Value="{x:Null}" />
+		</Style>
+
 		<!-- The grid's selection overlay: its outline (the second solid frame) and the fill handle
 		     - Excel's drag-to-fill square, which writes a whole run of cells in one gesture that
 		     this table was never built or tested for. Hidden, and the handle made unclickable. -->
@@ -362,10 +378,18 @@
 
 	<Grid RowDefinitions="Auto,Auto,Auto,*">
 
+		<!-- The groups' lines - "Board" and "KiCad", then "Components" - never broken wherever the width ran
+		     out (SheetTabsPanel; owner request, 2026-11-06: "hard to overview"). -->
 		<TabControl Grid.Row="0"
 					x:Name="SheetTabs"
 					Padding="0"
-					Margin="0,0,0,6" />
+					Margin="0,0,0,6">
+			<TabControl.ItemsPanel>
+				<ItemsPanelTemplate>
+					<local:SheetTabsPanel />
+				</ItemsPanelTemplate>
+			</TabControl.ItemsPanel>
+		</TabControl>
 
 		<!-- THE TOOLBAR WRAPS rather than running off the edge (2026-09-26). In the Maintainer
 		     tab the table sits in the submission panel beside the queue, and at the window's
@@ -417,13 +441,6 @@
 							Content="Delete row"
 							ToolTip.Tip="Remove the selected rows - Shift+click or Ctrl+click to select several. A published row stays visible in red, where it was. Ctrl+Z undoes it."
 							Click="OnDeleteRowClick" />
-					<!-- Fill down (CRT 4.0, 2026-10-25): a spreadsheet's Ctrl+D, so the table does what
-					     Excel was used for (BoardTableEditor.BlockEdits.cs). Plain: it edits cells, as
-					     typing does. -->
-					<Button x:Name="FillDownButton"
-							Content="Fill down"
-							ToolTip.Tip="Copy the top selected cell of each column into the selected cells below it - or, with one row selected, the row above into it (Ctrl+D). Ctrl+Z undoes it."
-							Click="OnFillDownClick" />
 					<!-- No Move up / Move down buttons (removed by the project owner, 2026-09-24): a row is
 					     moved by dragging its grip at the far left, or with Alt+Up / Alt+Down. -->
 				</StackPanel>
@@ -538,15 +555,19 @@
 
 		<StackPanel Grid.Row="2">
 			<!-- THE REPLACE BAR (CRT 4.0, 2026-10-25): every occurrence of a text, capitals ignored,
-			     in the rows the table shows - on this sheet, or on every sheet. One undo step
-			     (BoardTableDocument.ReplaceAll; BoardTableEditor.BlockEdits.cs). Opens with one plain
-			     sentence saying what it is for, as every 4.0 section does. -->
+			     in the rows the table shows on this sheet. One undo step (BoardTableDocument.ReplaceAll;
+			     BoardTableEditor.BlockEdits.cs). Opens with one plain sentence saying what it is for, as every
+			     4.0 section does. Since 2026-11-07 (owner request) "Find" FILTERS AND MARKS as the search box
+			     does, the text as typed (BoardTableSearch.Literal), and what "Replace with" holds is drawn in
+			     its place in another color - the cells as they will read; "Replace all" says how many places it
+			     will replace; the search box is off while the bar is open, "On every sheet" went and "Close" is
+			     "Cancel". -->
 			<Border x:Name="ReplaceBar" IsVisible="False" Margin="0,0,0,6">
 				<StackPanel Spacing="4">
 					<TextBlock TextWrapping="Wrap"
 							   FontSize="11"
 							   Opacity="0.8"
-							   Text="Replaces a piece of text in every cell of the rows the table shows, ignoring capitals. Ctrl+Z undoes it." />
+							   Text="Shows the rows of this sheet holding the text as you type it - in the columns ticked under &quot;Columns&quot; - ignoring capitals, and the replacement drawn where it will go. Ctrl+Z undoes a replace." />
 					<WrapPanel Orientation="Horizontal" ItemSpacing="12" LineSpacing="6">
 						<StackPanel Orientation="Horizontal" Spacing="6">
 							<TextBlock Text="Find" VerticalAlignment="Center" />
@@ -556,17 +577,56 @@
 							<TextBlock Text="Replace with" VerticalAlignment="Center" />
 							<TextBox x:Name="ReplaceWithBox" Width="220" FontSize="11" />
 						</StackPanel>
-						<CheckBox x:Name="ReplaceEverySheetBox"
-								  Content="On every sheet"
-								  VerticalAlignment="Center"
-								  ToolTip.Tip="Replace on every sheet of the table, not only on the one shown" />
+						<!-- The columns it finds and replaces in (owner request, 2026-11-07) - every column shown at first,
+						     kept per sheet while CRT runs; the count and the rows shown follow the ticks. -->
+						<DropDownButton x:Name="ReplaceColumnsButton"
+										Content="Columns: All"
+										VerticalAlignment="Center">
+							<DropDownButton.Flyout>
+								<Flyout Placement="BottomEdgeAlignedLeft">
+									<StackPanel Spacing="6" MinWidth="220">
+										<!-- "Unselect all" so ONE column can be ticked on its own (owner request, 2026-11-07). -->
+										<StackPanel Orientation="Horizontal" Spacing="6">
+											<Button x:Name="ReplaceEveryColumnButton"
+													Content="Every column"
+													Click="OnReplaceEveryColumnClick" />
+											<Button x:Name="ReplaceNoColumnButton"
+													Content="Unselect all"
+													Click="OnReplaceNoColumnClick" />
+										</StackPanel>
+										<ScrollViewer MaxHeight="360">
+											<StackPanel x:Name="ReplaceColumnsPanel" Spacing="2" />
+										</ScrollViewer>
+									</StackPanel>
+								</Flyout>
+							</DropDownButton.Flyout>
+						</DropDownButton>
+						<!-- Its count: the places it will replace (BoardTableDocument.CountReplacements). -->
 						<Button x:Name="ReplaceAllButton"
 								Classes="Accept"
-								Content="Replace all"
 								VerticalAlignment="Center"
-								Click="OnReplaceAllClick" />
-						<Button x:Name="CloseReplaceButton"
-								Content="Close"
+								Click="OnReplaceAllClick">
+							<StackPanel Orientation="Horizontal" Spacing="6">
+								<TextBlock Text="Replace all" VerticalAlignment="Center" />
+								<Border x:Name="ReplaceCountBadge"
+										CornerRadius="8"
+										Padding="6,0"
+										MinWidth="18"
+										BorderThickness="1"
+										BorderBrush="White"
+										Background="#33FFFFFF"
+										VerticalAlignment="Center">
+									<TextBlock x:Name="ReplaceCountText"
+											   Text="0"
+											   FontSize="11"
+											   FontWeight="Bold"
+											   Foreground="White"
+											   HorizontalAlignment="Center" />
+								</Border>
+							</StackPanel>
+						</Button>
+						<Button x:Name="CancelReplaceButton"
+								Content="Cancel"
 								VerticalAlignment="Center"
 								Click="OnCloseReplaceClick" />
 					</WrapPanel>

@@ -7,7 +7,7 @@ using Handlers.DataHandling;
 namespace Handlers.MaintainerHandling
 {
     // ###########################################################################################
-    // "Account" > RESET CONTRIBUTION DATA (owner request, 2026-10-04: "When I go-live
+    // "Management" > RESET CONTRIBUTION DATA ("Account" until 2026-11-07) (owner request, 2026-10-04: "When I go-live
     // with this, it should not have old data visible, so it should be deleted. Of course the real
     // sources of BETA and stable must not be touched, but all contributor and maintainer data should
     // go away"). Every word DataResetView shows, and the one rule it applies: the button works only

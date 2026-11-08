@@ -11,6 +11,7 @@ using Handlers.DataHandling;
 using Handlers.Theming;
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -20,20 +21,37 @@ namespace CRT
     // ###########################################################################################
     // "MY DEVICES" ON THE WORKBOOKS TAB (CRT 4.0 step 4 - the plan: "Your own machines, each with
     // its repairs"; called a Device wherever a person reads it). The computers the user owns are
-    // listed above the workbooks, every one whatever board is shown; a click shows the device's
-    // PAGE in place of the workbook:
+    // listed - in Main's left panel while the tab is shown (ShowDevicesIn), as the Configuration tab's
+    // scope has them (MyDevicesScope), each card with its status and how many workbooks it has, the
+    // count last (owner request, 2026-11-06: "Just as in the 'Device' drop-down list").
     //
-    //   - what it is - name, status, hardware and board, region, serial number, where it came from -
-    //     with "Edit device" and "Delete device" (its repairs stay, on no device);
-    //   - its REPAIRS - the workbooks naming it, on any board - with their worklogs' time and cost
-    //     added up (OwnedDeviceRepairs), each opening its workbook, and "New repair", which creates
-    //     one on the device's board and opens it;
-    //   - the CHANGES made to it outside a repair, with a line to add one (a board swapped in "Edit
-    //     device" is recorded there by itself);
-    //   - its NOTES (saved when the box is left) and PHOTOS.
+    // A CARD CLICKED PICKS THE DEVICE - the worklog bar's "Device" drop-down with it, one choice
+    // (UserSettings.WorklogBarDeviceId; owner request, 2026-11-06: "it will only show the workbooks for
+    // this device in the 2 workbooks lists") - so the workbook list holds only its workbooks, and CRT
+    // works only in them (Main.PickDevice); "Clear" at the list's foot lets go of it. A workbook
+    // clicked picks the device it is on ("I want that device selected in both the drop-down and in the
+    // 'My devices' panel"), or all devices for one on none. The card marked is the device picked.
+    //
+    // The device picked has its PAGE in place of the workbook once its card is clicked - ONLY READ (owner
+    // request, 2026-11-07: "it should not allow for direct edits or 'Add X' ... the user should go to the
+    // 'Edit device' button"), each part shown only while it holds something:
+    //
+    //   - what it is - name, status, condition in stars, hardware and board, region, serial number,
+    //     and its description in the lines it was typed in - with "Edit device" and "Delete device"
+    //     (its repairs stay, on no device);
+    //   - "WORKBOOKS ASSOCIATED TO THIS DEVICE" - the workbooks naming it, on any board - with their
+    //     worklogs' time and cost added up (OwnedDeviceRepairs), each opening its workbook; with none,
+    //     a line saying so ("New repair" went on 2026-11-07 - "Add workbook" above the tabs starts one);
+    //   - its LINKS OF INTEREST and COMMENTS, and its PHOTOS, a photo clicked opened to zoom in. Its
+    //     notes went the same day - its description says it (OwnedDeviceStore.FoldNotes).
+    //
+    // There is no list of changes made to it (owner request, 2026-11-06: "this is exactly what the
+    // workbooks will cover"). The worklog bar's "Add device" adds one on any hardware and board - no
+    // workbook needed - and picks it, its page open.
     //
     // A workbook card clicked, or a repair opened, brings the workbook back. Under a workbook's
-    // title "On my device" puts it on a device with its board, or takes it off - existing workbooks
+    // title "Associate workbook to device" ("On my device" until 2026-11-06) puts it on a device with
+    // its board, or takes it off - existing workbooks
     // stay as they are until someone does (the plan: "Nothing is forced").
     //
     // Everything is read and written through OwnedDeviceStore and WorklogManager; the rules are
@@ -53,25 +71,14 @@ namespace CRT
         private bool thisApplyingWorkbookDevice;
 
         // ###########################################################################################
-        // WHOSE NOTES THE NOTES BOX HOLDS - null while it holds none (code review, 2026-10-28). A
-        // device card is a plain border, and clicking one takes no focus from the box: the next
-        // device's page kept the first one's typed notes (the box was not refilled under the caret),
-        // and leaving the box saved them as the SECOND device's. They are saved to the device they
-        // were typed for, before the box shows another's.
-        // ###########################################################################################
-        private int? thisNotesDeviceId;
-
-        // ###########################################################################################
         // WHAT A REFRESH NEED NOT DO AGAIN while a device's page is open (code review, 2026-10-28 -
         // each search keystroke and worklog save re-read every workbook and decoded every photo):
         //   - every workbook, read ONCE per refresh pass (null: not read yet this pass);
         //   - each photo decoded once, kept by its path, length and write time - a photo replaced is a
-        //     new one; never disposed by hand (one still drawn takes the render thread down);
+        //     new one (DevicePhotoThumbnails, the device form's too);
         //   - the board pane behind the page, rebuilt only once the page goes.
         // ###########################################################################################
         private List<WorkbookRecord>? thisAllWorkbooksThisPass;
-
-        private readonly Dictionary<string, Task<Bitmap?>> thisDevicePhotos = new(StringComparer.OrdinalIgnoreCase);
 
         private bool thisBoardPreviewsWaitForPage;
 
@@ -84,9 +91,7 @@ namespace CRT
             return !this.thisBoardPreviewsWaitForPage;
         }
 
-        // Stand-ins for the windows and the picker the device screens open - null in the app.
-        internal Func<Task<IReadOnlyList<string>>>? PickDevicePhotosOverrideForTests { get; set; }
-
+        // Stand-ins for the windows the device screens open - null in the app.
         internal Func<OwnedDeviceRecord, int, Task<bool>>? ConfirmDeleteDeviceOverrideForTests { get; set; }
 
         internal int? SelectedDeviceIdForTests => this.thisSelectedDeviceId;
@@ -94,9 +99,20 @@ namespace CRT
         internal bool IsDevicePageShown => this.DevicePageScroller?.IsVisible == true;
 
         // ###########################################################################################
-        // "My devices" drawn - every device a card, the one whose page is shown marked - from the
-        // devices the caller read (Main.RefreshWorklogBar's), else read again. A device that has gone
-        // (deleted elsewhere) takes its page with it.
+        // The device picked - the worklog bar's "Device" drop-down's, saved and checked by Main before the
+        // tab is drawn (OwnedDeviceRepairs.BarFilter) - while it is a device the last refresh read; null
+        // for all devices.
+        // ###########################################################################################
+        internal int? PickedDeviceId =>
+            UserSettings.WorklogBarDeviceId is { } id && this.thisDevices.Any(device => device.Id == id) ? id : null;
+
+        // ###########################################################################################
+        // "My devices" drawn - a card for each device the Configuration tab's scope lists (owner request,
+        // 2026-11-06: "Show all devices", "... for selected hardware", "... for selected board";
+        // MyDevicesScope), the one whose page is shown marked - from the devices the caller read
+        // (Main.RefreshWorklogBar's), else read again. Every device is kept for the page and the
+        // lookups; only the cards follow the scope. A device that has gone (deleted elsewhere) takes
+        // its page with it. With none listed the list says why: none at all, or none in the scope.
         // ###########################################################################################
         private void RefreshDeviceList(List<OwnedDeviceRecord>? devices = null)
         {
@@ -107,21 +123,54 @@ namespace CRT
 
             this.thisDevices = devices ?? OwnedDeviceStore.GetAll();
 
-            if (this.thisSelectedDeviceId is { } shown && this.thisDevices.All(device => device.Id != shown))
+            // A device's page is the device picked's: a device gone, or another picked - in the bar, by a
+            // workbook clicked, by "Clear" - takes the page with it.
+            if (this.thisSelectedDeviceId is { } shown && this.PickedDeviceId != shown)
             {
                 this.thisSelectedDeviceId = null;
             }
 
-            this.DeviceListPanel.Children.Clear();
+            string boardShown = this.BoardKeyOverrideForTests ?? this.MainWindow?.GetCurrentBoardKey() ?? string.Empty;
 
-            foreach (OwnedDeviceRecord device in this.thisDevices)
+            // In the order "Sorting of devices" asks for (owner request, 2026-11-07; OwnedDeviceSorting).
+            List<OwnedDeviceRecord> inScope = SortDevices(this.thisDevices
+                .Where(device => MyDevicesScope.Holds(Scope, device.BoardKey, boardShown)));
+
+            // "Find a previous repair" searches the devices too (owner request, 2026-11-06: "searching a serial/unique in
+            // the filter in 'My Devices' should filter and highlight info in this list also") - WorklogSearchIndex.ForDevice.
+            List<OwnedDeviceRecord> listed = this.thisSearchQuery.IsEmpty
+                ? inScope
+                : inScope.Where(device => this.thisSearchQuery.Matches(WorklogSearchIndex.ForDevice(device, BoardTextOf(device.BoardKey)))).ToList();
+
+            int? picked = this.PickedDeviceId;
+            bool byHand = UserSettings.DeviceSorting == OwnedDeviceSorting.Manual;
+
+            // Changed in place: the drag holds the very collection (ListRowDrag), and a drag in progress is let go of
+            // first, so no card is left drawn as a gap.
+            this.thisDeviceDrag?.Reset();
+            this.thisDeviceCards.Clear();
+
+            foreach (OwnedDeviceRecord device in listed)
             {
-                this.DeviceListPanel.Children.Add(this.BuildDeviceCard(device, device.Id == this.thisSelectedDeviceId));
+                this.thisDeviceCards.Add(this.BuildDeviceCard(
+                    device,
+                    OwnedDeviceRepairs.Of(device.Id, this.AllWorkbooksThisPass).Count,
+                    device.Id == picked,
+                    byHand));
             }
 
             this.DeviceListHeadingText.Text = OwnedDeviceWording.ListHeading;
-            this.NoDevicesText.Text = OwnedDeviceWording.NoDevicesYet;
-            this.NoDevicesText.IsVisible = this.thisDevices.Count == 0;
+
+            // How many are listed, in a badge after the headline (owner request, 2026-11-07).
+            this.DeviceCountHost.Child = WorklogInfoPillBuilder.BuildCountPill(listed.Count, fontSize: 10);
+            this.NoDevicesText.Text = this.thisDevices.Count == 0
+                ? OwnedDeviceWording.NoDevicesYet
+                : inScope.Count > 0 ? OwnedDeviceWording.NoDevicesMatch : OwnedDeviceWording.NoDevicesInScope(Scope);
+            this.NoDevicesText.IsVisible = listed.Count == 0;
+
+            // "Clear" stays in sight, greyed out with nothing to let go of.
+            this.ClearDeviceButton.Content = OwnedDeviceWording.ClearChoice;
+            this.ClearDeviceButton.IsEnabled = picked is not null || this.thisSelectedDeviceId is not null;
         }
 
         // ###########################################################################################
@@ -136,13 +185,6 @@ namespace CRT
             }
 
             OwnedDeviceRecord? device = this.thisDevices.FirstOrDefault(each => each.Id == this.thisSelectedDeviceId);
-
-            // The page going: the notes typed on it saved first, to the device they were typed for.
-            if (device is null)
-            {
-                this.SaveDeviceNotes();
-                this.thisNotesDeviceId = null;
-            }
 
             this.DevicePageScroller.IsVisible = device is not null;
             this.WorkbookViewGrid.IsVisible = device is null;
@@ -166,13 +208,39 @@ namespace CRT
             }
         }
 
-        // A device card clicked: its page, in place of the workbook.
+        // ###########################################################################################
+        // A device card clicked: the device PICKED - the bar's "Device" drop-down with it, its workbooks only,
+        // its repair worked on (Main.PickDevice) - and its page in place of the workbook. A tab built on its
+        // own, as a test builds it, picks it itself.
+        // ###########################################################################################
         internal void SelectDevice(int deviceId)
         {
-            // What "Add photos" said was of the device shown before.
-            if (this.thisSelectedDeviceId != deviceId)
+            // The device picked already: its page again, the workbook worked in left as it is - a workbook of it
+            // clicked since is not swapped for the repair a pick works on.
+            if (this.PickedDeviceId == deviceId)
             {
-                this.ShowDevicePhotosNote(null);
+                this.ShowDevicePage(deviceId);
+                return;
+            }
+
+            if (this.MainWindow is { } main && this.thisDevices.FirstOrDefault(device => device.Id == deviceId) is { } picked)
+            {
+                main.PickDevice(picked, showPage: true);
+                return;
+            }
+
+            UserSettings.WorklogBarDeviceId = deviceId;
+            this.ShowDevicePage(deviceId);
+            this.RefreshWorkbooks();
+        }
+
+        // The device's page in place of the workbook - the device picked's (Main.PickDevice).
+        internal void ShowDevicePage(int deviceId)
+        {
+            // What "Add device" said of its photos is of that device alone.
+            if (this.thisPhotosNote is { } said && said.DeviceId != deviceId)
+            {
+                this.thisPhotosNote = null;
             }
 
             this.thisSelectedDeviceId = deviceId;
@@ -180,41 +248,100 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // One card in "My devices": the name with its status, the board under it.
+        // "Clear" under "My devices" (owner request, 2026-11-06: "clicking that will unselect the device and by
+        // then show all again"): no device picked, the workbook back in place of a device's page.
         // ###########################################################################################
-        private Border BuildDeviceCard(OwnedDeviceRecord device, bool isSelected)
+        private void OnClearDeviceClick(object? sender, RoutedEventArgs e) => this.ClearDevicePick();
+
+        internal void ClearDevicePick()
         {
-            var name = new TextBlock
+            this.thisSelectedDeviceId = null;
+
+            if (this.MainWindow is { } main)
             {
-                Text = device.Name,
-                FontSize = 11,
-                FontWeight = FontWeight.Bold,
-                TextWrapping = TextWrapping.Wrap,
-                VerticalAlignment = VerticalAlignment.Center,
+                main.ClearDevicePick();
+                return;
+            }
+
+            UserSettings.WorklogBarDeviceId = null;
+            this.RefreshWorkbooks();
+        }
+
+        // ###########################################################################################
+        // One card in "My devices" (owner requests, 2026-11-06 and 2026-11-07): its lines on the left - the name, its
+        // serial number or unique identifier when it has one, its hardware and board - and its badges on the right, a
+        // line each from the top - its status, how many workbooks it has (an outlined badge, as the bar's "Device"
+        // drop-down counts them), and its condition in stars when it has any. With no serial the board moves up a
+        // line ("it should not show a blank line - then instead move up the hardware/board"), and the stars, the third
+        // badge, keep a line of their own. What the search found is marked on every line.
+        //
+        // Sorted by hand, a handle at the card's right edge drags it (ListRowDrag) - a press on the handle is the
+        // drag's, never the card's pick, which draws the list again.
+        // ###########################################################################################
+        private DeviceListCard BuildDeviceCard(OwnedDeviceRecord device, int workbookCount, bool isSelected, bool byHand)
+        {
+            var lines = new List<Control>
+            {
+                this.BuildHighlightedTextBlock(device.Name, 11, TextWrapping.Wrap, block =>
+                {
+                    block.FontWeight = FontWeight.Bold;
+                    block.VerticalAlignment = VerticalAlignment.Center;
+                }),
             };
 
-            Border status = WorklogInfoPillBuilder.BuildDeviceStatusPill(device.Status, fontSize: 10);
-            status.HorizontalAlignment = HorizontalAlignment.Right;
+            string serial = device.SerialNumber.Trim();
 
-            var header = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
-            Grid.SetColumn(status, 1);
-            header.Children.Add(name);
-            header.Children.Add(status);
-
-            var board = new TextBlock
+            if (serial.Length > 0)
             {
-                Text = BoardTextOf(device.BoardKey),
-                FontSize = 10,
-                TextWrapping = TextWrapping.Wrap,
+                lines.Add(this.BuildHighlightedTextBlock(serial, 10, TextWrapping.Wrap, block =>
+                {
+                    block.VerticalAlignment = VerticalAlignment.Center;
+                    block.Classes.Add("WorkbooksMuted");
+                }));
+            }
+
+            lines.Add(this.BuildHighlightedTextBlock(BoardTextOf(device.BoardKey), 10, TextWrapping.Wrap, block =>
+                block.Classes.Add("WorkbooksMuted")));
+
+            var badges = new List<Control>
+            {
+                WorklogInfoPillBuilder.BuildDeviceStatusPill(device.Status, fontSize: 10),
+                WorklogInfoPillBuilder.BuildCountPill(workbookCount, fontSize: 10),
             };
-            board.Classes.Add("WorkbooksMuted");
 
-            var body = new StackPanel { Spacing = 3 };
-            body.Children.Add(header);
-            body.Children.Add(board);
+            if (OwnedDeviceCondition.Within(device.Condition) > 0)
+            {
+                StackPanel stars = ConditionStars.Build(device.Condition, size: 11);
+                ToolTip.SetTip(stars, OwnedDeviceWording.ConditionLine(device.Condition));
+                badges.Add(stars);
+            }
 
-            var card = new Border { Tag = device, Child = body };
-            card.Classes.Add("WorkbooksJobCard");
+            var body = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto"), RowSpacing = 3 };
+
+            for (int row = 0; row < Math.Max(lines.Count, badges.Count); row++)
+            {
+                body.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+
+                if (row < lines.Count)
+                {
+                    Grid.SetRow(lines[row], row);
+                    body.Children.Add(lines[row]);
+                }
+
+                if (row < badges.Count)
+                {
+                    Control badge = badges[row];
+                    badge.HorizontalAlignment = HorizontalAlignment.Right;
+                    badge.VerticalAlignment = VerticalAlignment.Center;
+                    badge.Margin = new Thickness(4, 0, 0, 0);
+                    Grid.SetRow(badge, row);
+                    Grid.SetColumn(badge, 1);
+                    body.Children.Add(badge);
+                }
+            }
+
+            Control content = byHand ? this.WithDragHandle(body) : body;
+            var card = new DeviceListCard(device, content);
 
             if (isSelected)
             {
@@ -224,6 +351,100 @@ namespace CRT
             card.PointerPressed += (_, _) => this.SelectDevice(device.Id);
             return card;
         }
+
+        // The card's lines with the drag handle at their right - Font Awesome's up-down, as every row CRT moves - under
+        // the north/south cursor (owner request, 2026-11-07: "the icon for up/down should show the north/south icon when
+        // hovering"), the shared one the board pane's previews take while they can be moved.
+        private Grid WithDragHandle(Control body)
+        {
+            var handle = new Border
+            {
+                Width = 18,
+                Margin = new Thickness(4, 0, -3, 0),
+                Background = Brushes.Transparent,
+                Cursor = TabWorkbooks.PreviewDragCursor,
+                VerticalAlignment = VerticalAlignment.Stretch,
+                Child = new TextBlock
+                {
+                    Text = "",
+                    FontFamily = ThemeResources.ResolveFontAwesomeSolid(),
+                    FontSize = 12,
+                    Opacity = 0.6,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                },
+            };
+
+            handle.Classes.Add("DeviceDragHandle");
+            ToolTip.SetTip(handle, OwnedDeviceWording.DragDeviceTip);
+
+            handle.PointerPressed += (sender, e) =>
+            {
+                this.thisDeviceDrag?.Press(sender, e);
+                e.Handled = true;
+            };
+
+            var grid = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+            Grid.SetColumn(handle, 1);
+            grid.Children.Add(body);
+            grid.Children.Add(handle);
+            return grid;
+        }
+
+        // ###########################################################################################
+        // The list's cards, the very collection its items are and its drag moves (ListRowDrag) - set up once, from the
+        // constructor. The drag's host is the list's own area, an ancestor of the list wherever it stands - in Main's
+        // left panel or, in a tab built on its own, above the workbooks.
+        // ###########################################################################################
+        private readonly ObservableCollection<DeviceListCard> thisDeviceCards = new();
+
+        private ListRowDrag<DeviceListCard>? thisDeviceDrag;
+
+        private void WireDeviceList()
+        {
+            if (this.DeviceListPanel == null || this.DeviceListArea == null)
+            {
+                return;
+            }
+
+            this.DeviceListPanel.ItemsSource = this.thisDeviceCards;
+            this.thisDeviceDrag = new ListRowDrag<DeviceListCard>(
+                this.DeviceListArea,
+                this.DeviceListPanel,
+                this.DeviceListScroller,
+                this.thisDeviceCards,
+                (_, _, _) => this.SaveDeviceOrderAsListed());
+        }
+
+        // The cards "My devices" shows - for the tests, which read them with the tab never shown.
+        internal IReadOnlyList<DeviceListCard> DeviceCardsForTests => this.thisDeviceCards;
+
+        internal ListRowDrag<DeviceListCard>? DeviceDragForTests => this.thisDeviceDrag;
+
+        // ###########################################################################################
+        // A card dropped: the order as the list now shows it, kept - the devices not listed (another board's under
+        // the scope, or one the search left out) keeping their places (OwnedDeviceSorting.Reordered) - then every list
+        // drawn again in it, the bar's "Device" drop-down too.
+        // ###########################################################################################
+        private void SaveDeviceOrderAsListed()
+        {
+            List<int> all = OwnedDeviceSorting.Sort(this.thisDevices, OwnedDeviceSorting.Manual, Main.FormatBoardKeyAsFullNames)
+                .Select(device => device.Id)
+                .ToList();
+
+            List<int> order = OwnedDeviceSorting.Reordered(all, this.thisDeviceCards.Select(card => card.Device.Id).ToList());
+
+            if (!OwnedDeviceStore.SetOrder(order))
+            {
+                Logger.Warning("The order of the devices could not be written in full - see above");
+            }
+
+            this.RefreshAfterDeviceChange();
+        }
+
+        // The devices in the order "Sorting of devices" asks for - the bar's drop-down's too (Main.FillBarPickers).
+        internal static List<OwnedDeviceRecord> SortDevices(IEnumerable<OwnedDeviceRecord> devices) =>
+            OwnedDeviceSorting.Sort(devices, UserSettings.DeviceSorting, Main.FormatBoardKeyAsFullNames);
 
         // A board key as the two drop-downs name it - "Commodore 64 - 250407 (long board)".
         private static string BoardTextOf(string boardKey)
@@ -243,13 +464,120 @@ namespace CRT
             this.DeviceNameText.Text = device.Name;
             this.DeviceStatusHost.Child = WorklogInfoPillBuilder.BuildDeviceStatusPill(device.Status, fontSize: 11);
 
+            StackPanel stars = ConditionStars.Build(device.Condition, size: 17);
+            ToolTip.SetTip(stars, OwnedDeviceWording.ConditionLine(device.Condition));
+            this.DeviceConditionHost.Child = stars;
+
             this.DeviceDetailText.Text = OwnedDeviceWording.DetailLine(device, BoardTextOf(device.BoardKey));
-            this.DeviceOriginText.Text = OwnedDeviceWording.OriginLine(device.Origin);
-            this.DeviceOriginText.IsVisible = this.DeviceOriginText.Text.Length > 0;
+
+            string description = OwnedDeviceWording.DescriptionText(device.Description);
+            TextLinkRenderer.SetLinkText(this.DeviceDescriptionText, description);
+            this.DeviceDescriptionText.IsVisible = description.Length > 0;
 
             this.FillDeviceRepairs(device);
-            this.FillDeviceChanges(device);
+            this.FillDeviceLinks(device);
+            this.FillDeviceComments(device);
             this.FillDevicePhotos(device);
+        }
+
+        // ###########################################################################################
+        // Its links of interest, as the worklog editor lists them - a row each, its headline, the row clicked opening
+        // the address (ExternalTargetLauncher, the one way out of CRT). Added and changed in "Edit device".
+        // ###########################################################################################
+        private void FillDeviceLinks(OwnedDeviceRecord device)
+        {
+            List<WorklogLinkRecord> links = device.Links.Where(link => !string.IsNullOrWhiteSpace(link.Url)).ToList();
+
+            // A headline only over something (owner request, 2026-11-07).
+            this.DeviceLinksSection.IsVisible = links.Count > 0;
+            this.DeviceLinksHeadingText.Text = OwnedDeviceWording.LinksHeading(links.Count);
+
+            this.DeviceLinksPanel.Children.Clear();
+
+            foreach (WorklogLinkRecord link in links)
+            {
+                string headline = string.IsNullOrWhiteSpace(link.Headline) ? link.Url.Trim() : link.Headline.Trim();
+                var row = new Border
+                {
+                    Tag = link,
+                    Background = ThemeResources.ResolveBrush("Form_Bg", Brushes.Transparent),
+                    BorderBrush = ThemeResources.ResolveBrush("Form_Border", Brushes.Gray),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(3),
+                    Padding = new Thickness(8, 6),
+                    Cursor = new Cursor(StandardCursorType.Hand),
+                    Child = new TextBlock
+                    {
+                        Text = headline,
+                        FontSize = 12,
+                        FontWeight = FontWeight.SemiBold,
+                        TextTrimming = TextTrimming.CharacterEllipsis,
+                        Foreground = ThemeResources.ResolveBrush("Link_Fg", Brushes.SteelBlue),
+                        TextDecorations = TextDecorations.Underline,
+                    },
+                };
+
+                ToolTip.SetTip(row, link.Url.Trim());
+                string url = link.Url.Trim();
+                row.PointerPressed += (_, e) =>
+                {
+                    if (e.GetCurrentPoint(row).Properties.IsLeftButtonPressed)
+                    {
+                        this.OpenDeviceLink(url);
+                    }
+                };
+
+                this.DeviceLinksPanel.Children.Add(row);
+            }
+        }
+
+        // A link clicked - handed the address that would be opened, a test stands in for opening it.
+        internal Action<string>? OpenLinkOverrideForTests { get; set; }
+
+        // As typed, opened by LinkTarget's rule - "www.c64-wiki.com" too (code review, 2026-11-08).
+        private void OpenDeviceLink(string url) => ExternalTargetLauncher.OpenLinkOrSay(url, this.OpenLinkOverrideForTests);
+
+        // ###########################################################################################
+        // Its comments, newest first as the worklog editor lists them, each dated - read only here; "Edit
+        // device" adds, changes and deletes them (owner request, 2026-11-06).
+        // ###########################################################################################
+        private void FillDeviceComments(OwnedDeviceRecord device)
+        {
+            List<WorklogCommentRecord> comments = device.Comments
+                .Where(comment => !string.IsNullOrWhiteSpace(comment.Text))
+                .OrderByDescending(comment => comment.Date)
+                .ThenByDescending(comment => comment.Id)
+                .ToList();
+
+            this.DeviceCommentsSection.IsVisible = comments.Count > 0;
+            this.DeviceCommentsHeadingText.Text = OwnedDeviceWording.CommentsHeading(comments.Count);
+
+            this.DeviceCommentsPanel.Children.Clear();
+
+            foreach (WorklogCommentRecord comment in comments)
+            {
+                var date = new TextBlock { Text = OwnedDeviceWording.CommentDate(comment.Date), FontSize = 10 };
+                date.Classes.Add("WorkbooksMuted");
+
+                var text = new TextBlock { FontSize = 11, TextWrapping = TextWrapping.Wrap };
+                // Markup: trimmed so its first line keeps the indent that says what it is (code review, 2026-11-08).
+                TextLinkRenderer.SetLinkText(text, RichNote.TrimMarkup(comment.Text));
+
+                var body = new StackPanel { Spacing = 1 };
+                body.Children.Add(date);
+                body.Children.Add(text);
+
+                this.DeviceCommentsPanel.Children.Add(new Border
+                {
+                    Tag = comment,
+                    Background = ThemeResources.ResolveBrush("Form_Bg", Brushes.Transparent),
+                    BorderBrush = ThemeResources.ResolveBrush("Form_Border", Brushes.Gray),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(3),
+                    Padding = new Thickness(8, 6),
+                    Child = body,
+                });
+            }
         }
 
         private void FillDeviceRepairs(OwnedDeviceRecord device)
@@ -263,7 +591,6 @@ namespace CRT
 
             this.NoDeviceRepairsText.Text = OwnedDeviceWording.NoRepairsYet;
             this.NoDeviceRepairsText.IsVisible = repairs.Count == 0;
-            this.NewRepairButton.IsEnabled = device.BoardKey.Trim().Length > 0;
 
             this.DeviceRepairsPanel.Children.Clear();
 
@@ -327,140 +654,105 @@ namespace CRT
             this.ShowDeviceAgain();
         }
 
-        private void FillDeviceChanges(OwnedDeviceRecord device)
-        {
-            this.DeviceChangesHeadingText.Text = OwnedDeviceWording.ChangesHeading(device.Changes.Count);
-            this.NoDeviceChangesText.Text = OwnedDeviceWording.NoChangesYet;
-            this.NoDeviceChangesText.IsVisible = device.Changes.Count == 0;
-
-            this.ChangeDatePicker.SelectedDate ??= DateTime.Now.Date;
-
-            this.DeviceChangesPanel.Children.Clear();
-
-            foreach (OwnedDeviceChangeRecord change in device.Changes.OrderBy(change => change.Date).ThenBy(change => change.Id))
-            {
-                var date = new TextBlock { Text = OwnedDeviceWording.ChangeDate(change.Date), FontSize = 11, VerticalAlignment = VerticalAlignment.Center };
-                date.Classes.Add("WorkbooksMuted");
-
-                var text = new TextBlock { Text = change.Text, FontSize = 11, TextWrapping = TextWrapping.Wrap, VerticalAlignment = VerticalAlignment.Center };
-
-                var remove = new Button { Content = "Remove", FontSize = 10, Padding = new Thickness(6, 1), Tag = change };
-                remove.Classes.Add("Danger");
-                remove.Click += (_, _) => this.RemoveDeviceChange(change.Id);
-
-                var row = new Grid { ColumnDefinitions = new ColumnDefinitions("80,8,*,8,Auto") };
-                Grid.SetColumn(text, 2);
-                Grid.SetColumn(remove, 4);
-                row.Children.Add(date);
-                row.Children.Add(text);
-                row.Children.Add(remove);
-
-                this.DeviceChangesPanel.Children.Add(row);
-            }
-        }
-
+        // ###########################################################################################
+        // Its photos, in their order, EACH IN A PANEL OF ITS OWN WITH ITS COMMENT UNDER IT (owner request, 2026-11-06: "I
+        // want each photo to have its own panel and with its text displayed below") - a photo clicked opened whole, to
+        // zoom in with the wheel. Added, removed and ordered in "Edit device" only (owner request, 2026-11-07: the page
+        // is only read); the section shown only with photos - or with photos "Add device" could not copy in to say.
+        // ###########################################################################################
         private void FillDevicePhotos(OwnedDeviceRecord device)
         {
             this.DevicePhotosHeadingText.Text = OwnedDeviceWording.PhotosHeading(device.Photos.Count);
 
-            // Another device's notes in the box: saved to THEIR device, then this one's shown. This
-            // device's own: never refilled under the caret - a refresh would throw the typing away.
-            if (this.thisNotesDeviceId != device.Id)
-            {
-                this.SaveDeviceNotes();
-                this.DeviceNotesTextBox.Text = device.Notes;
-                this.thisNotesDeviceId = device.Id;
-            }
-            else if (!this.DeviceNotesTextBox.IsFocused)
-            {
-                this.DeviceNotesTextBox.Text = device.Notes;
-            }
-
-            this.NoDevicePhotosText.Text = OwnedDeviceWording.NoPhotosYet;
-            this.NoDevicePhotosText.IsVisible = device.Photos.Count == 0;
+            string? note = this.thisPhotosNote is { } said && said.DeviceId == device.Id ? said.Text : null;
+            this.DevicePhotosNoteText.Text = note ?? string.Empty;
+            this.DevicePhotosNoteText.IsVisible = note is not null;
+            this.DevicePhotosSection.IsVisible = device.Photos.Count > 0 || note is not null;
 
             this.DevicePhotosPanel.Children.Clear();
 
             foreach (WorklogAttachmentRecord photo in device.Photos.OrderBy(photo => photo.DisplayOrder).ThenBy(photo => photo.Id))
             {
-                var image = new Image { Width = 160, Height = 120, Stretch = Stretch.Uniform };
-                this.ShowDevicePhoto(image, OwnedDeviceStore.PhotoPath(device.Id, photo.FileName));
-
-                var remove = new Button { Content = "Remove", FontSize = 10, Padding = new Thickness(6, 1), HorizontalAlignment = HorizontalAlignment.Right, Tag = photo };
-                remove.Classes.Add("Danger");
-                int deviceId = device.Id;
-                remove.Click += (_, _) => this.RemoveDevicePhoto(deviceId, photo.Id);
-
-                var tile = new StackPanel { Spacing = 3, Tag = photo };
-                tile.Children.Add(new Border
+                var image = new Image { Width = 160, Height = 120, Stretch = Stretch.Uniform, Cursor = new Cursor(StandardCursorType.Hand) };
+                ToolTip.SetTip(image, "Click to view");
+                string? path = OwnedDeviceStore.PhotoPath(device.Id, photo.FileName);
+                ShowDevicePhoto(image, path);
+                image.PointerPressed += (_, e) =>
                 {
-                    BorderBrush = ThemeResources.ResolveBrush("Workbooks_Separator", Brushes.Gray),
-                    BorderThickness = new Thickness(1),
-                    Child = image,
-                });
-                tile.Children.Add(remove);
+                    if (e.GetCurrentPoint(image).Properties.IsLeftButtonPressed)
+                    {
+                        e.Handled = true;
+                        this.ViewDevicePhoto(photo, path);
+                    }
+                };
 
-                this.DevicePhotosPanel.Children.Add(tile);
+                var comment = new TextBlock
+                {
+                    FontSize = 11,
+                    TextWrapping = TextWrapping.Wrap,
+                    Width = 160,
+                    IsVisible = !string.IsNullOrWhiteSpace(photo.Comment),
+                };
+                TextLinkRenderer.SetLinkText(comment, RichNote.TrimMarkup(photo.Comment));
+
+                var body = new StackPanel { Spacing = 5 };
+                body.Children.Add(image);
+                body.Children.Add(comment);
+
+                this.DevicePhotosPanel.Children.Add(new Border
+                {
+                    Tag = photo,
+                    Background = ThemeResources.ResolveBrush("Form_Bg", Brushes.Transparent),
+                    BorderBrush = ThemeResources.ResolveBrush("Form_Border", Brushes.Gray),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(3),
+                    Padding = new Thickness(6),
+                    Child = body,
+                });
             }
         }
 
         // ###########################################################################################
-        // A photo decoded small OFF the UI thread and shown once read - ONCE per photo, kept by where it
-        // lies, its length and its write time (thisDevicePhotos); never disposed by hand (one still
-        // drawn takes the render thread down). A photo that cannot be read leaves its frame empty.
+        // A photo decoded small OFF the UI thread and shown once read - ONCE per photo, the read the device
+        // form shares (DevicePhotoThumbnails). A photo that cannot be read leaves its frame empty.
         // ###########################################################################################
-        private void ShowDevicePhoto(Image image, string? path)
+        private static void ShowDevicePhoto(Image image, string? path)
         {
-            if (path is null)
+            Task<Bitmap?> reading = DevicePhotoThumbnails.Read(path);
+
+            if (reading.IsCompletedSuccessfully)
             {
+                image.Source = reading.Result;
                 return;
             }
 
-            string key;
-
-            try
-            {
-                var file = new FileInfo(path);
-                key = $"{path}|{file.Length}|{file.LastWriteTimeUtc.Ticks}";
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                return;
-            }
-
-            if (!this.thisDevicePhotos.TryGetValue(key, out Task<Bitmap?>? load))
-            {
-                load = Task.Run(() => DecodeDevicePhoto(path));
-                this.thisDevicePhotos[key] = load;
-            }
-
-            if (load.IsCompletedSuccessfully)
-            {
-                image.Source = load.Result;
-                return;
-            }
-
-            _ = load.ContinueWith(
+            _ = reading.ContinueWith(
                 done => Dispatcher.UIThread.Post(() => image.Source = done.Result),
                 TaskContinuationOptions.OnlyOnRanToCompletion);
         }
 
-        private static Bitmap? DecodeDevicePhoto(string path)
+        // Stands in for showing the photo viewer in a test, which cannot show a dialog. Null in the app.
+        internal Action<WorklogPhotoViewerWindow>? ShowPhotoViewerOverrideForTests { get; set; }
+
+        // ###########################################################################################
+        // A photo of the device opened whole - the worklog's own viewer, which zooms with the wheel (owner
+        // request, 2026-11-06: "when I click a photo in here and in the worklog, that I then can zoom
+        // in/out with scrollwheel").
+        // ###########################################################################################
+        private void ViewDevicePhoto(WorklogAttachmentRecord photo, string? path)
         {
-            try
+            var viewer = new WorklogPhotoViewerWindow();
+            viewer.Initialize(photo.FileName, photo.Comment ?? string.Empty, path);
+
+            if (this.ShowPhotoViewerOverrideForTests is { } show)
             {
-                using FileStream stream = File.OpenRead(path);
-                return Bitmap.DecodeToWidth(stream, 320);
+                show(viewer);
             }
-            catch (Exception ex)
+            else if (this.DeviceFormOwner is { } owner)
             {
-                Logger.Warning($"Could not show a device photo: [{path}] [{ex.Message}]");
-                return null;
+                _ = viewer.ShowDialog(owner);
             }
         }
-
-        // How many photos have been decoded since the tab was built - for the tests.
-        internal int DevicePhotosDecodedForTests => this.thisDevicePhotos.Count;
 
         // ---- what the page's buttons do ------------------------------------------------------
 
@@ -483,53 +775,114 @@ namespace CRT
         // The boards a device can be on - DataManager's, or a test's.
         internal IReadOnlyList<HardwareBoardEntry>? BoardsOverrideForTests { get; set; }
 
-        private async void OnAddDeviceClick(object? sender, RoutedEventArgs e)
+        // Whether a board comes in PAL and NTSC, which the device form asks of the board picked - null:
+        // the board as CRT views it (OwnedDeviceWindow.BoardHasRegionsAsViewedAsync). A test's stand-in.
+        internal Func<string, Task<bool>>? BoardHasRegionsOverrideForTests { get; set; }
+
+        // Stands in for showing the device form in a test, which cannot show a dialog: handed the form as
+        // the tab filled it in, it closes it as a user would - with the record saved, or null. Null in
+        // the app.
+        internal Func<OwnedDeviceWindow, Task<OwnedDeviceRecord?>>? ShowDeviceFormOverrideForTests { get; set; }
+
+        // ###########################################################################################
+        // "Add device" - the worklog bar's (Main.AddDeviceFromBarAsync; the one above "My devices" went on
+        // 2026-11-06, owner request: "no need for it"): the form on ANY hardware and board, the board shown
+        // preselected - no workbook needed, as no workbook is made (owner request, 2026-11-06: "it is
+        // not logical that I need to create a workbook to create a new device") - and the device
+        // added picked, as a card clicked is, its page open. True when a device was added.
+        // ###########################################################################################
+        internal async Task<bool> AddDeviceAsync()
         {
-            // Nothing may leave an async void handler: App lets such an exception end CRT.
-            try
-            {
-                if (TopLevel.GetTopLevel(this) is not Window owner)
-                {
-                    return;
-                }
+            var dialog = new OwnedDeviceWindow();
+            dialog.Initialize(
+                this.BoardsForDevices,
+                this.BoardKeyOverrideForTests ?? this.MainWindow?.GetCurrentBoardKey(),
+                boardHasRegions: this.BoardHasRegionsOverrideForTests);
 
-                var dialog = new OwnedDeviceWindow();
-                dialog.Initialize(this.BoardsForDevices, this.BoardKeyOverrideForTests ?? this.MainWindow?.GetCurrentBoardKey());
-
-                if (await dialog.ShowDialog<OwnedDeviceRecord?>(owner) is { } added)
-                {
-                    this.thisSelectedDeviceId = added.Id;
-                    this.RefreshAfterDeviceChange();
-                }
-            }
-            catch (Exception ex)
+            if (await this.ShowDeviceFormAsync(dialog) is not { } added)
             {
-                Logger.Critical($"Adding a device failed - [{ex}]");
+                return false;
             }
+
+            // A photo picked in the form that could not be copied in as it was added is said on its page - noted
+            // BEFORE the page is drawn, which draws it (code review, 2026-11-08).
+            if (dialog.PhotosNotAdded > 0)
+            {
+                this.ShowDevicePhotosNote(added.Id, OwnedDeviceWording.PhotosAdded(dialog.PhotosAdded, dialog.PhotosNotAdded));
+            }
+
+            // Picked, as a card clicked is - its page open, on its own board.
+            if (this.MainWindow is { } main)
+            {
+                main.PickDevice(added, showPage: true);
+            }
+            else
+            {
+                UserSettings.WorklogBarDeviceId = added.Id;
+                this.ShowDevicePage(added.Id);
+                this.RefreshWorkbooks();
+            }
+
+            return true;
         }
 
         private async void OnEditDeviceClick(object? sender, RoutedEventArgs e)
         {
             try
             {
-                if (TopLevel.GetTopLevel(this) is not Window owner || this.SelectedDevice is not { } device)
-                {
-                    return;
-                }
-
-                var dialog = new OwnedDeviceWindow();
-                dialog.InitializeForEdit(device, this.BoardsForDevices);
-
-                if (await dialog.ShowDialog<OwnedDeviceRecord?>(owner) is not null)
-                {
-                    this.RefreshAfterDeviceChange();
-                }
+                await this.EditSelectedDeviceAsync();
             }
             catch (Exception ex)
             {
                 Logger.Critical($"Editing a device failed - [{ex}]");
             }
         }
+
+        // "Edit device": the form on the device whose page is shown, then the page as it was saved.
+        internal async Task EditSelectedDeviceAsync()
+        {
+            if (this.SelectedDevice is not { } device)
+            {
+                return;
+            }
+
+            // With workbooks, its hardware and board are locked (owner decision, 2026-11-06: "Locked while it has workbooks").
+            var dialog = new OwnedDeviceWindow();
+            dialog.InitializeForEdit(
+                device,
+                this.BoardsForDevices,
+                this.BoardHasRegionsOverrideForTests,
+                OwnedDeviceRepairs.Of(device.Id, WorklogManager.GetAllWorkbooks()).Count);
+
+            // Its comments and photos are saved as they change (owner decision, 2026-11-06: "At once, as a
+            // worklog does"), so the form called off may have changed it too.
+            if (await this.ShowDeviceFormAsync(dialog) is not null || dialog.ChangedOnDisk)
+            {
+                this.RefreshAfterDeviceChange();
+            }
+        }
+
+        // The device form shown over CRT, closing with the record saved - null when cancelled, or with
+        // no window to show it over.
+        private async Task<OwnedDeviceRecord?> ShowDeviceFormAsync(OwnedDeviceWindow dialog)
+        {
+            if (this.ShowDeviceFormOverrideForTests is { } show)
+            {
+                return await show(dialog);
+            }
+
+            return this.DeviceFormOwner is { } owner
+                ? await dialog.ShowDialog<OwnedDeviceRecord?>(owner)
+                : null;
+        }
+
+        // ###########################################################################################
+        // The window the device form opens over: the one this tab is in - or, while another tab is shown,
+        // CRT's own. The worklog bar's "Add device" asks from any tab, and a tab not shown is out of the
+        // window's visual tree, so it had no window to show the form over and nothing happened (owner
+        // report, 2026-11-06: "clicking the 'Add device' in the top-bar result in nothing").
+        // ###########################################################################################
+        private Window? DeviceFormOwner => TopLevel.GetTopLevel(this) as Window ?? this.MainWindow;
 
         private async void OnDeleteDeviceClick(object? sender, RoutedEventArgs e)
         {
@@ -600,72 +953,9 @@ namespace CRT
             this.thisSelectedDeviceId is { } id ? OwnedDeviceStore.Get(id) : null;
 
         // ###########################################################################################
-        // "New repair": a workbook on the device's board, on the device - "Create new workbook"'s own
-        // form, the device preselected - then opened, its board selected (the plan: "New repair on a
-        // machine creates a workbook for that machine's board, and selects the board").
-        // ###########################################################################################
-        private async void OnNewRepairClick(object? sender, RoutedEventArgs e)
-        {
-            try
-            {
-                if (TopLevel.GetTopLevel(this) is not Window owner || this.MainWindow is not { } main ||
-                    this.SelectedDevice is not { } device || device.BoardKey.Length == 0)
-                {
-                    return;
-                }
-
-                // Main's one way of opening the form - a device added in it is shown however it closes.
-                if (await main.ShowCreateWorkbookAsync(owner, device.BoardKey, device.Id) is { } created)
-                {
-                    this.OpenRepair(created);
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Critical($"Starting a repair on a device failed - [{ex}]");
-            }
-        }
-
-        private void OnAddChangeClick(object? sender, RoutedEventArgs e) => this.AddDeviceChange();
-
-        private void OnChangeTextKeyDown(object? sender, KeyEventArgs e)
-        {
-            if (e.Key == Key.Enter)
-            {
-                this.AddDeviceChange();
-                e.Handled = true;
-            }
-        }
-
-        // What the change line holds, as a change of the device - the line emptied once it is in.
-        internal void AddDeviceChange()
-        {
-            if (this.thisSelectedDeviceId is not { } id || string.IsNullOrWhiteSpace(this.ChangeTextBox.Text))
-            {
-                return;
-            }
-
-            DateTime date = this.ChangeDatePicker.SelectedDate ?? DateTime.Now.Date;
-
-            if (OwnedDeviceStore.AddChange(id, date, this.ChangeTextBox.Text) is not null)
-            {
-                this.ChangeTextBox.Text = string.Empty;
-                this.ShowDeviceAgain();
-            }
-        }
-
-        private void RemoveDeviceChange(int changeId)
-        {
-            if (this.thisSelectedDeviceId is { } id && OwnedDeviceStore.RemoveChange(id, changeId) is not null)
-            {
-                this.ShowDeviceAgain();
-            }
-        }
-
-        // ###########################################################################################
         // The devices read again, then the page drawn - after a change made on the page itself. The
         // page is drawn from the list, so drawing it alone showed the device as it was BEFORE the
-        // change (a change added did not appear).
+        // change (what was just added did not appear).
         // ###########################################################################################
         private void ShowDeviceAgain()
         {
@@ -677,92 +967,20 @@ namespace CRT
             this.ApplyDeviceView();
         }
 
-        // The notes saved as the box is left - only when they changed.
-        private void OnDeviceNotesLostFocus(object? sender, RoutedEventArgs e) => this.SaveDeviceNotes();
+        // ###########################################################################################
+        // What "Add device" said of the photos it could not copy in - on THAT device's page, drawn with it (FillDevicePhotos),
+        // until another device's page is shown (code review, 2026-11-08: set after the page was drawn, inside the photos'
+        // section the page had hidden for a device with no photos, it was never seen).
+        // ###########################################################################################
+        private (int DeviceId, string Text)? thisPhotosNote;
 
-        // The box's notes, to the device they were typed for (thisNotesDeviceId) - only when changed.
-        internal void SaveDeviceNotes()
+        private void ShowDevicePhotosNote(int deviceId, string? text)
         {
-            if (this.thisNotesDeviceId is { } id && OwnedDeviceStore.Get(id) is { } device &&
-                !string.Equals(device.Notes, this.DeviceNotesTextBox.Text?.Trim() ?? string.Empty, StringComparison.Ordinal))
+            this.thisPhotosNote = string.IsNullOrEmpty(text) ? null : (deviceId, text);
+
+            if (this.thisSelectedDeviceId == deviceId && this.SelectedDevice is { } device)
             {
-                OwnedDeviceStore.SetNotes(device.Id, this.DeviceNotesTextBox.Text);
-            }
-        }
-
-        private async void OnAddDevicePhotosClick(object? sender, RoutedEventArgs e)
-        {
-            try
-            {
-                IReadOnlyList<string> picked = await this.PickDevicePhotosAsync();
-
-                if (picked.Count > 0)
-                {
-                    await this.AddDevicePhotosAsync(picked);
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Critical($"Adding photos to a device failed - [{ex}]");
-            }
-        }
-
-        // Copied in off the UI thread under CRT's please-wait - a dozen camera photos from a USB stick
-        // froze the window (code review, 2026-10-28).
-        internal async Task AddDevicePhotosAsync(IReadOnlyList<string> paths)
-        {
-            if (this.thisSelectedDeviceId is not { } id)
-            {
-                return;
-            }
-
-            IReadOnlyList<WorklogAttachmentRecord> added = await BusyOverlay.RunLocalAsync(
-                this,
-                CrtWaitWording.AddingDevicePhotos,
-                () => Task.Run(() => OwnedDeviceStore.AddPhotos(id, paths)));
-
-            if (added.Count > 0)
-            {
-                this.ShowDeviceAgain();
-            }
-
-            // Said either way - what could not be added is no longer left without a word.
-            this.ShowDevicePhotosNote(OwnedDeviceWording.PhotosAdded(added.Count, paths.Count - added.Count));
-        }
-
-        private void ShowDevicePhotosNote(string? text)
-        {
-            this.DevicePhotosNoteText.Text = text ?? string.Empty;
-            this.DevicePhotosNoteText.IsVisible = !string.IsNullOrEmpty(text);
-        }
-
-        private async Task<IReadOnlyList<string>> PickDevicePhotosAsync()
-        {
-            if (this.PickDevicePhotosOverrideForTests is { } pick)
-            {
-                return await pick();
-            }
-
-            if (TopLevel.GetTopLevel(this)?.StorageProvider is not { } storage)
-            {
-                return [];
-            }
-
-            IReadOnlyList<IStorageFile> files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions
-            {
-                Title = "Pick photos of the device",
-                AllowMultiple = true,
-                FileTypeFilter = [ComponentPane.PictureFileType],
-            });
-
-            return files.Select(file => file.TryGetLocalPath()).OfType<string>().ToList();
-        }
-
-        private void RemoveDevicePhoto(int deviceId, int photoId)
-        {
-            if (OwnedDeviceStore.RemovePhoto(deviceId, photoId))
-            {
-                this.ShowDeviceAgain();
+                this.FillDevicePhotos(device);
             }
         }
 
@@ -813,7 +1031,14 @@ namespace CRT
             Dispatcher.UIThread.Post(() => this.PutShownWorkbookOnDevice(choice.Id));
         }
 
+        // ###########################################################################################
         // The workbook shown, put on a device (or on none) - then everything drawn again.
+        //
+        // *** THE DEVICE PICKED FOLLOWS IT (code review, 2026-11-08). *** CRT works only in the device picked's workbooks,
+        // so the workbook moved to another device - or to none - dropped out of the list and the bar, and the device's
+        // other workbook became the one worked in. It takes the pick along as a workbook activated off the device picked
+        // does (OwnedDeviceRepairs.PickFollowing): its new device, or all devices for none.
+        // ###########################################################################################
         internal void PutShownWorkbookOnDevice(int? deviceId)
         {
             if (this.thisHeaderWorkbook is not { } workbook || workbook.OwnedDeviceId == deviceId)
@@ -821,8 +1046,9 @@ namespace CRT
                 return;
             }
 
-            if (WorklogManager.SetWorkbookDevice(workbook.Id, deviceId) is not null)
+            if (WorklogManager.SetWorkbookDevice(workbook.Id, deviceId) is { } moved)
             {
+                UserSettings.WorklogBarDeviceId = OwnedDeviceRepairs.PickFollowing(UserSettings.WorklogBarDeviceId, moved, this.thisDevices);
                 this.RefreshAfterDeviceChange();
             }
         }

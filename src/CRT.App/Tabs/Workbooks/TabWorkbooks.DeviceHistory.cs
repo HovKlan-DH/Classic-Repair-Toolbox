@@ -104,7 +104,7 @@ namespace CRT
             }
             catch (Exception ex)
             {
-                Logger.Warning($"Failed to export the history of device [#{device.Id}] - [{ex.Message}]");
+                Logger.Critical($"Failed to export the history of device [#{device.Id}] - [{ex.Message}]");
             }
             finally
             {

@@ -130,7 +130,11 @@ namespace Handlers.DataHandling
         public string Name { get; init; } = string.Empty;
         public string ExpectedOscilloscopeReading { get; init; } = string.Empty;
         public string File { get; init; } = string.Empty;
+
+        // A note with formatting (RichNote) - written in the component pane's RichNoteTextBox.
+        [RichNoteMarkup]
         public string Note { get; init; } = string.Empty;
+
         public string TimeDiv { get; init; } = string.Empty;
         public string VoltsDiv { get; init; } = string.Empty;
         public string TriggerLevelVolts { get; init; } = string.Empty;
@@ -300,12 +304,15 @@ namespace Handlers.DataHandling
         public ComponentLinkEntry FiledAs(string boardLabel, string region) => new() { BoardLabel = boardLabel, Name = this.Name, Url = this.Url, Region = region };
     }
 
+    // A board's file and a board's link carry a Note of several lines - what the file or link is about
+    // (owner request, 2026-11-06), shown in the "Resources" tab. Not on a component's files and links.
     public class BoardLocalFileEntry
     {
         public string Category { get; init; } = string.Empty;
         public string Name { get; init; } = string.Empty;
         public string File { get; init; } = string.Empty;
         public string Region { get; init; } = string.Empty;
+        public string Note { get; init; } = string.Empty;
     }
 
     public class BoardLinkEntry
@@ -314,6 +321,7 @@ namespace Handlers.DataHandling
         public string Name { get; init; } = string.Empty;
         public string Url { get; init; } = string.Empty;
         public string Region { get; init; } = string.Empty;
+        public string Note { get; init; } = string.Empty;
     }
 
     public class CreditEntry

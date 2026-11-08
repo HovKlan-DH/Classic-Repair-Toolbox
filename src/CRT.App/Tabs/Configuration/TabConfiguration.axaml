@@ -171,6 +171,11 @@
 					  Content="Remember thumbnail window settings per board"
 					  IsEnabled="False" />
 
+			<!-- The pinout - drawing and pins - in a window of its own beside the popup, its size and place one for all
+			     (owner request, 2026-11-07; ComponentInfoWindow.Pinout.cs). -->
+			<CheckBox x:Name="DetachPinoutCheckBox"
+					  Content="Detach pinout image in component info popup" />
+
 			<Border Classes="SectionHeading">
 				<TextBlock Text="Application and data updates" />
 			</Border>
@@ -267,15 +272,17 @@
 			<CheckBox x:Name="EnableMiniproExperimentalDemoModeCheckBox"
                       Content="Enable MiniPro programmer simulated demo mode (only required for CRT development)" />
 
+			<!-- The tab is "My Devices" since 2026-11-06 (owner request, a try - "Workbooks" until then); its
+			     Wiki page keeps its name, as installed CRTs open it. -->
 			<Border Classes="SectionHeading">
-				<TextBlock Text="Workbooks" />
+				<TextBlock Text="My Devices" />
 			</Border>
 
 			<Grid ColumnDefinitions="*,Auto"
 				  ColumnSpacing="4"
 				  HorizontalAlignment="Left">
 				<CheckBox x:Name="EnableWorklogCheckBox"
-						  Content="Enable &quot;Workbooks&quot; tab"
+						  Content="Enable &quot;My Devices&quot; tab"
 						  VerticalAlignment="Center" />
 				<Button x:Name="EnableWorklogHelpButton"
 						Grid.Column="1"
@@ -289,20 +296,45 @@
 				</Button>
 			</Grid>
 
-			<TextBlock Text="Scope in &quot;Workbooks&quot; tab:"
+			<TextBlock Text="Scope in &quot;My Devices&quot; tab:"
                        Margin="0,8,0,0" />
 
 			<!-- Not indented (owner request, 2026-10-02): the radio buttons line up with the label
-			     above them and with every check box in this section. -->
+			     above them and with every check box in this section. Worded by the devices since
+			     2026-11-06, the hardware's in the middle (owner request: "This should now follow devices
+			     and not workbooks"); the workbook list follows the same choice (MyDevicesScope). -->
 			<StackPanel Orientation="Vertical"
 						Spacing="4"
 						Margin="0,4,0,0">
 				<RadioButton x:Name="WorkbooksScopeAllBoardsRadioButton"
 							 GroupName="WorkbooksScope"
-							 Content="Show all workbooks" />
+							 Content="Show all devices" />
+				<RadioButton x:Name="WorkbooksScopeCurrentHardwareRadioButton"
+							 GroupName="WorkbooksScope"
+							 Content="Show only devices for selected hardware" />
 				<RadioButton x:Name="WorkbooksScopeCurrentBoardRadioButton"
 							 GroupName="WorkbooksScope"
-							 Content="Show only workbooks for selected board" />
+							 Content="Show only devices for selected board" />
+			</StackPanel>
+
+			<!-- The order "My devices" and the worklog bar's "Device" drop-down list the devices in (owner request,
+			     2026-11-07; OwnedDeviceSorting) - by name the default. Sorted by hand, each card in "My devices" has a
+			     handle to drag it up or down. -->
+			<TextBlock Text="Sorting of devices in &quot;My devices&quot; list:"
+                       Margin="0,8,0,0" />
+
+			<StackPanel Orientation="Vertical"
+						Spacing="4"
+						Margin="0,4,0,0">
+				<RadioButton x:Name="DeviceSortingByNameRadioButton"
+							 GroupName="DeviceSorting"
+							 Content="Sort automatically by name" />
+				<RadioButton x:Name="DeviceSortingByHardwareBoardNameRadioButton"
+							 GroupName="DeviceSorting"
+							 Content="Sort automatically by hardware/board/name" />
+				<RadioButton x:Name="DeviceSortingManualRadioButton"
+							 GroupName="DeviceSorting"
+							 Content="Sort manually in list (drag up/down)" />
 			</StackPanel>
 
 			<TextBlock Text="Currency used for worklog costs:"
@@ -402,7 +434,7 @@
                     Click="OnOpenDataFolderClick" />
 
 			<Button x:Name="OpenWorkbooksFolderButton"
-                    Content="Open workbooks folder"
+                    Content="Open workbooks and devices folder"
                     Margin="0,6,0,0"
                     HorizontalAlignment="Left"
                     Width="260"
@@ -433,13 +465,19 @@
                     ToolTip.Tip="The log file, the crash log and your settings file - the files to attach when reporting a problem"
                     Click="OnOpenLogsFolderClick" />
 
-			<!-- What "Enable contributor mode" switched on besides its menu (CRT 4.0 step 2, slice 6 - the
-			     mode went): the log's debug lines, and every board's data checked at launch into it.
-			     Kept under the stored name, so whoever had the mode on keeps it (UserSettings.DetailedLog). -->
-			<CheckBox x:Name="DetailedLogCheckBox"
-					  Content="Write a detailed log"
-					  Margin="0,10,0,0"
-					  ToolTip.Tip="More lines in the log file, and every board's data checked when CRT starts, with what is found written into the log - for reporting a problem" />
+			<!-- Every error and warning since CRT started, in plain words, with "Copy all" (owner request, 2026-11-07:
+			     "the end-goal here would be not to be dependent on manually viewing that logfile"; ProblemsWindow). -->
+			<Button x:Name="ShowProblemsButton"
+                    Content="Show errors and warnings"
+                    Margin="0,6,0,0"
+                    HorizontalAlignment="Left"
+                    Width="260"
+                    HorizontalContentAlignment="Center"
+                    ToolTip.Tip="What went wrong while CRT has been running, and what was worth knowing - to read, or copy into the &quot;Feedback&quot; tab"
+                    Click="OnShowProblemsClick" />
+
+			<!-- No "Write a detailed log" (owner request, 2026-11-07: "remove this checkbox and then always write this
+			     detailed logfile") - the log always holds its debug lines (Logger). -->
 		</StackPanel>
 
 		</ScrollViewer>

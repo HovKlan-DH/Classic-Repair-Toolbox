@@ -57,7 +57,7 @@ namespace CRT
             // record on a save or an instant-save, so a user who typed a title and immediately hit
             // Escape has it nowhere else. This is the case the guard most needs to catch.
             if (!string.IsNullOrWhiteSpace(this.EditorTitleTextBox?.Text) ||
-                !string.IsNullOrWhiteSpace(this.EditorDescriptionTextBox?.Text))
+                !string.IsNullOrWhiteSpace(this.EditorDescriptionTextBox?.Markup))
             {
                 return true;
             }

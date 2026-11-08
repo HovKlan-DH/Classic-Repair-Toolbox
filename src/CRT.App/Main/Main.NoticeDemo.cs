@@ -28,7 +28,7 @@ namespace CRT
         // Waits between the demo's steps. Tests run it without waiting.
         internal Func<TimeSpan, Task>? NoticeDemoDelayOverrideForTests { get; set; }
 
-        private const int NoticeDemoSteps = 10;
+        private const int NoticeDemoSteps = 12;
 
         internal async Task PlayNoticeDemoAsync()
         {
@@ -127,6 +127,27 @@ namespace CRT
                 await wait(TimeSpan.FromSeconds(5));
 
                 this.NarrateNoticeDemo(10,
+                    "Something CRT did went wrong - a button's work, a file that could not be read or saved. It says " +
+                    "what, and how many times since it was closed, and stays until you close it.");
+                if (!this.ProblemBanner.IsVisible)
+                {
+                    this.ShowProblem(new LoggedProblem(DateTime.Now, ProblemLevel.Error, "Exporting the workbook failed - [The file is open in another program]"));
+                }
+                await wait(TimeSpan.FromSeconds(5));
+
+                this.NarrateNoticeDemo(11,
+                    "CRT closed unexpectedly the last time it ran - said once, at the next launch. This card stays " +
+                    "until you close it.");
+                if (!this.LastCrashBanner.IsVisible)
+                {
+                    NoticeEmphasis.Show(this.LastCrashBannerText, CrashReports.NoticeOf(new CrashReports.FatalReport(
+                        DateTime.Now.AddHours(-1),
+                        "=== CRASH REPORT ===\nMessage   : Something nobody expected.")));
+                    this.LastCrashBanner.IsVisible = true;
+                }
+                await wait(TimeSpan.FromSeconds(5));
+
+                this.NarrateNoticeDemo(12,
                     "That is all of them. A card that has just appeared lets clicks through for half a second, " +
                     "so a click meant for what was under it is not lost. In a small window the cards keep to the " +
                     "right half. Close the rest with their X.");

@@ -192,6 +192,27 @@ namespace Handlers.Geometry
             transform = Matrix.CreateScale(scaleX, scaleY) * Matrix.CreateTranslation(translateX, translateY);
             return true;
         }
+
+        // How close to 1 a delta's scale must be to count as none: a box moved by a key or a drag has
+        // the same width before and after, but (right + 1) - (left + 1) is not always right - left in
+        // floating point.
+        private const double ScaleTolerance = 1e-9;
+
+        // ###################################################################################
+        // Whether a delta from TryBuildDeltaTransform only MOVES the geometry - the box moved, not
+        // resized nor flipped (2026-11-06).
+        //
+        // Such geometry is drawn exactly as a rebuild at the new calibration would draw it: every
+        // point lands in the same place (the tests above), and nothing else a rebuild works out -
+        // a trace's width, a pad's size and turn, an arc's samples - depends on the offsets, only on
+        // the scales and mirror flags. So after a move there is nothing to rebuild. A scale or a
+        // flip changes widths and turns, and needs a rebuild once the box is let go of.
+        // ###################################################################################
+        public static bool IsTranslationOnly(Matrix delta) =>
+            Math.Abs(delta.M11 - 1.0) <= ScaleTolerance &&
+            Math.Abs(delta.M22 - 1.0) <= ScaleTolerance &&
+            Math.Abs(delta.M12) <= ScaleTolerance &&
+            Math.Abs(delta.M21) <= ScaleTolerance;
     }
 
     // #######################################################################################

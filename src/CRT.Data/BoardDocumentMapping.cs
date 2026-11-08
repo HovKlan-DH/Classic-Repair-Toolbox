@@ -142,6 +142,7 @@ namespace Handlers.DataHandling
                     Name = row.Name,
                     File = Name(row.File),
                     Region = BoardDocumentMapping.WhenGiven(row.Region),
+                    Note = BoardDocumentMapping.WhenGiven(row.Note),
                 }).ToList(),
                 BoardLinks = board.BoardLinks.Select(row => new BoardDocument.BoardLinkRow
                 {
@@ -149,6 +150,7 @@ namespace Handlers.DataHandling
                     Name = row.Name,
                     Url = row.Url,
                     Region = BoardDocumentMapping.WhenGiven(row.Region),
+                    Note = BoardDocumentMapping.WhenGiven(row.Note),
                 }).ToList(),
                 Credits = board.Credits.Select(row => new BoardDocument.CreditRow
                 {
@@ -287,6 +289,7 @@ namespace Handlers.DataHandling
                     Name = row.Name,
                     File = row.File,
                     Region = row.Region ?? string.Empty,
+                    Note = row.Note ?? string.Empty,
                 }).ToList(),
                 BoardLinks = document.BoardLinks.Select(row => new BoardLinkEntry
                 {
@@ -294,6 +297,7 @@ namespace Handlers.DataHandling
                     Name = row.Name,
                     Url = row.Url,
                     Region = row.Region ?? string.Empty,
+                    Note = row.Note ?? string.Empty,
                 }).ToList(),
                 Credits = document.Credits.Select(row => new CreditEntry
                 {

@@ -5,34 +5,41 @@ Where you browse your repairs.
 ---
 
 ```
-┌────────────────────────────────────────────────────────────────────────────────┐
-│ [Find a previous repair - words are ANDed, "use quotes" for a ...]             │
-├───────────────┬────────────────────────────────────────────────────────────────┤
-│ 3 workbooks   │ #3 · Dead C64  [Open]        [Edit workbook] [Delete workbook] │
-│               │ No video after a storm         [Export to PDF] [Export to ZIP] │
-│ ┌───────────┐ │ ▸ 3 worklogs · 2 hours · 160 DKK · 1 open                      │
-│ │#3   [Open]│ ├──────────────────────────┬─────────────────────────────────────┤
-│ │Dead C64   │ │ Power                    │ Video · 1 worklog                   │
-│ │3 worklogs │ │ ┌──────────────────┐     │ ┌─────────────────────────────────┐ │
-│ └───────────┘ │ │       [#1]       │     │ │ VIC socket [#2] [Delete worklog]│ │
-│ ┌───────────┐ │ └──────────────────┘     │ │ Pin 8 lifted                    │ │
-│ │#2 [Closed]│ │ Video                    │ │ [Issue] [Closed]                │ │
-│ │No sound   │ │ ┏━━━━━━━━━━━━━━━━━━┓     │ │ 1 hour and 30 minutes · 160 DKK │ │
-│ └───────────┘ │ ┃ [#2]             ┃     │ └─────────────────────────────────┘ │
-│               │ ┗━━━━━━━━━━━━━━━━━━┛     │                                     │
-└───────────────┴──────────────────────────┴─────────────────────────────────────┘
-        ①                     ②                               ③
+┌─────────────┐┌──────────────────────────────────────────────────────────────────────┐
+│ Hardware    ││ [Find a previous repair - words are ANDed, "use quotes" for a ...]   │
+│ [C64      ] │├───────────────┬──────────────────────────────────────────────────────┤
+│ Board       ││ 3 workbooks   │ #3 · Dead C64  [Open]  [Edit workbook] [Delete ...]  │
+│ [250407   ] ││               │ No video after a storm  [Export to PDF] [Export ...] │
+│ My devices 2││ ┌───────────┐ │ ▸ 3 worklogs · 2 hours · 160 DKK · 1 open            │
+│ ┌─────────┐ ││ │#3   [Open]│ ├────────────────────────┬─────────────────────────────┤
+│ │┌───────┐│ ││ │Dead C64   │ │ Power                  │ Video · 1 worklog           │
+│ ││Brd [F]││ ││ │3 worklogs │ │ ┌──────────────────┐   │ ┌─────────────────────────┐ │
+│ ││CA12  2││ ││ └───────────┘ │ │       [#1]       │   │ │ VIC socket [#2]         │ │
+│ │└───────┘│ ││ ┌───────────┐ │ └──────────────────┘   │ │ Pin 8 lifted            │ │
+│ │┌───────┐│ ││ │#2 [Closed]│ │ Video                  │ │ [Issue] [Closed]        │ │
+│ ││C64C  0││ ││ │No sound   │ │ ┏━━━━━━━━━━━━━━━━━━┓   │ │ 1 hour and 30 minutes   │ │
+│ │└───────┘│ ││ └───────────┘ │ ┃ [#2]             ┃   │ └─────────────────────────┘ │
+│ └─────────┘ ││               │ ┗━━━━━━━━━━━━━━━━━━┛   │                             │
+│   [Clear]   ││   [Clear]     │                        │                             │
+└─────────────┘└───────────────┴────────────────────────┴─────────────────────────────┘
+       Ⓓ               ①                  ②                          ③
 ```
 
-The search box runs across the top of the tab and filters both sides - see "Find a previous repair" below.
+The search box runs across the top of the tab and filters your devices, the workbooks and their worklogs - see "Find a previous repair" below.
+
+## Ⓓ My devices
+
+On the left of the window, below **Hardware** and **Board**, in place of the component lists - the "My Devices" tab has no use for those. It lists your own machines, how many beside its heading. Each card shows the device's name and status, then its serial number (when it has one) with how many workbooks it has, then its hardware and board, with its condition in stars at the end of that line. "Sorting of devices" in "Configuration" puts them in order by name, by hardware, board and name, or by hand - dragged by the handle at each card's right edge.
+
+Click a device to select it: its page opens in place of the workbook, and the workbook list and the bar's **Device** drop-down show only its workbooks. Click another device to select that one instead. **Clear**, under the list, shows every workbook again - see [Devices](Workbooks-Devices).
 
 ## ① Workbook list
 
-One card per repair, newest first. **Click a card** to switch to that workbook - the bar, the board and "Add worklog" all follow it.
+One card per repair, newest first - with a device selected, only that device's. **Click a card** to switch to that workbook - the bar, the board and "Add worklog" all follow it, and the device it is on is selected under "My devices".
 
-Above the workbooks, "My devices" lists your own machines, whatever board is shown; a device's card opens its page in place of the workbook - see [Devices](Workbooks-Devices).
+**Clear**, at the bottom of the list, unselects the workbook: no workbook is worked in on the board, so the bar's **Workbook** drop-down says "No workbook picked" and **Add worklog** is hidden until you click a card or pick one in the bar.
 
-Which workbooks are listed depends on the scope setting in "Configuration": this board only (default), or all boards. With all boards, each card also names its board, and clicking one from another board switches the application to it.
+Which devices and workbooks are listed is the scope setting in "Configuration": the selected board's (default), every board of the selected hardware, or all of them. While the list can hold other boards' workbooks, each card also names its board, and clicking one from another board switches the application to it.
 
 ## ② Board pane
 
@@ -85,7 +92,9 @@ The expanded breakdown below is different on purpose: it keeps every zero, inclu
 
 ## Find a previous repair
 
-The search box across the top of the tab filters everything - the workbook list, the board pane and the worklog list - and highlights what matched.
+The search box across the top of the tab filters everything - your devices under "My devices", the workbook list, the board pane and the worklog list - and highlights what matched.
+
+A device is found by its name, serial number, hardware and board, and by anything typed on it: its description, comments, links and its photos' names and comments. Type a serial number to find the machine it belongs to.
 
 | You type | It finds |
 | --- | --- |
@@ -125,7 +134,7 @@ It does **not** search numbers (hours, cost, dates, id numbers) or the words Ope
 
 Searching never changes which workbook you are writing into.
 
-**The filter stays until you clear it** - use the ✕ at the end of the box. It survives changing board, so with "Show all workbooks" you can search, click a result that lives on another board, and still see the filter and its highlighting once that board has loaded.
+**The filter stays until you clear it** - use the ✕ at the end of the box. It survives changing board, so with **Show all devices** you can search, click a result that lives on another board, and still see the filter and its highlighting once that board has loaded.
 
 **The highlighting follows you into the worklog itself.** Open a worklog while a search is running and the matches are marked in there too - in its comments, work done, link headlines, and the comments on its photos and files. That matters when the match is not in the title: the search can find a worklog by a comment written months ago, and this is what shows you which one it was. The title and description boxes at the top are not marked, because those are editable fields.
 

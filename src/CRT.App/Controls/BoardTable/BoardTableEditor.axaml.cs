@@ -50,8 +50,8 @@ namespace CRT
     //
     // A cell is typed into one at a time, as the project owner asked. Copy and paste work inside a
     // cell being edited (it is an ordinary text box), and on the selection via Ctrl+C / Ctrl+V -
-    // blocks of cells since CRT 4.0, with fill down and find & replace (2026-10-25,
-    // BoardTableEditor.BlockEdits.cs). Several ROWS can be selected and deleted at once (2026-10-02).
+    // blocks of cells since CRT 4.0, with find & replace (2026-10-25, BoardTableEditor.BlockEdits.cs;
+    // fill down went on 2026-11-07). Several ROWS can be selected and deleted at once (2026-10-02).
     // Ctrl+Z and Ctrl+Y undo and redo through the draft's session, or - a document - the model's own
     // history (BoardTableHistory).
     //
@@ -60,7 +60,7 @@ namespace CRT
     // BoardTableEditor.CellColours.cs (each cell's background and tooltip - its state's wash and
     // its problem's corner mark),
     // BoardTableEditor.Selection.cs (several rows selected, "Delete row" on all of them),
-    // BoardTableEditor.BlockEdits.cs (copying and pasting blocks, fill down, the replace bar),
+    // BoardTableEditor.BlockEdits.cs (copying and pasting blocks, the replace bar),
     // BoardTableEditor.Search.cs (the search box, and the search handed to BoardTableCellText),
     // BoardTableEditor.TextWrap.cs (cells that always wrap, columns dragged wider than they size
     // themselves, and a double-click on a heading's edge fitting a column to its text),
@@ -142,7 +142,7 @@ namespace CRT
             this.WireSelection();
             this.WireSearch();
 
-            // Block copy and paste, fill down, find & replace (BoardTableEditor.BlockEdits.cs).
+            // Block copy and paste, find & replace (BoardTableEditor.BlockEdits.cs).
             this.WireBlockEdits();
 
             // Columns dragged wider than they size themselves, and fitted to their text by a
@@ -319,7 +319,9 @@ namespace CRT
             this.ClearSheetTabs();
             this.ShowStatus(string.Empty);
 
-            // A closed table's search goes with it (agreed, 2026-10-02).
+            // A closed table's search goes with it (agreed, 2026-10-02) - and its replace bar (code review, 2026-11-07:
+            // left open, the next table opened under it with "Find" no longer its filter and the search box off).
+            this.LetGoOfReplaceBar();
             this.SearchText = string.Empty;
             this.NoteUnsavedState();
         }
@@ -360,6 +362,7 @@ namespace CRT
             this.UpdateToolbar();
             this.UpdateSearchMarks();
             this.NoteSheetShown();
+            this.FollowSheetInReplaceFind();
         }
 
         // The cell the grid's cursor is on, or null (no cell, or the marker column).
@@ -500,6 +503,37 @@ namespace CRT
             this.TableGrid.Focus();
         }
 
+        // ###########################################################################################
+        // *** HOME AND END GO TO THE ROW'S FIRST AND LAST DATA COLUMN (owner report, 2026-11-07: up/down and home/end
+        // pressed, and the "Board label" column looked wrong; a render showed what the grid does by itself). *** The
+        // grid's Home went to its own first column - the narrow marker column, which no cell of the board is - and left
+        // the table scrolled where End had taken it, so "Board label" stood out of sight with the cursor on a marker.
+        // With Ctrl the first row's first cell and the last row's last, as in Excel. Along the columns SHOWN, as Tab.
+        // ###########################################################################################
+        internal void MoveToRowEnd(bool start, bool wholeTable)
+        {
+            if (this.thisCurrentSheet is null)
+            {
+                return;
+            }
+
+            this.TableGrid.CommitEdit();
+
+            List<BoardTableRow> shown = this.ShownRows();
+            List<int> columns = this.ColumnsShownNow();
+
+            BoardTableRow? row = wholeTable
+                ? (start ? shown.FirstOrDefault() : shown.LastOrDefault())
+                : this.CurrentRow;
+
+            if (row is not null && columns.Count > 0)
+            {
+                this.SelectCell(row, start ? columns[0] : columns[^1]);
+            }
+
+            this.TableGrid.Focus();
+        }
+
         private List<BoardTableRow> ShownRows() =>
             this.thisView?.Cast<BoardTableRow>().ToList() ?? this.thisCurrentSheet?.Rows.ToList() ?? [];
 
@@ -528,7 +562,7 @@ namespace CRT
             this.UpdateToolbar();
         }
 
-        // Ctrl+C, Ctrl+V and Ctrl+D act on the selection - BoardTableEditor.BlockEdits.cs.
+        // Ctrl+C and Ctrl+V act on the selection - BoardTableEditor.BlockEdits.cs.
 
         private async void OnGridKeyDown(object? sender, KeyEventArgs e)
         {
@@ -549,19 +583,19 @@ namespace CRT
                 return;
             }
 
+            // Home and End to the row's first and last data column - never the marker column (MoveToRowEnd).
+            if (e.Key is Key.Home or Key.End && e.KeyModifiers is KeyModifiers.None or KeyModifiers.Control)
+            {
+                e.Handled = true;
+                this.MoveToRowEnd(start: e.Key == Key.Home, wholeTable: e.KeyModifiers == KeyModifiers.Control);
+                return;
+            }
+
             // Alt+Up / Alt+Down move the selected row, the keyboard twin of dragging it.
             if (e.KeyModifiers == KeyModifiers.Alt && e.Key is Key.Up or Key.Down)
             {
                 e.Handled = true;
                 this.MoveCurrentRow(up: e.Key == Key.Up);
-                return;
-            }
-
-            // Ctrl+D fills down, as in a spreadsheet.
-            if (BoardTableEditor.IsCommand(e, Key.D))
-            {
-                e.Handled = true;
-                this.FillDown();
                 return;
             }
 
@@ -848,6 +882,9 @@ namespace CRT
 
         private void OnCellEdited(object? sender, BoardTableCell cell)
         {
+            // What "Replace all" counts has moved (BoardTableEditor.BlockEdits.cs).
+            this.thisContentRevision++;
+
             // The row the cursor is on, worked on among the baselines, stays where its pin can be typed
             // (BoardTableSheetParts) - not every row a "Replace" on every sheet happens to reach.
             if (this.thisPart == BoardTableSheetPart.Baselines && ReferenceEquals(cell.Row, this.CurrentRow))
@@ -894,6 +931,8 @@ namespace CRT
 
         private void OnDocumentChanged(object? sender, EventArgs e)
         {
+            // What "Replace all" counts has moved (BoardTableEditor.BlockEdits.cs).
+            this.thisContentRevision++;
             this.UpdateSheetTabs();
             this.UpdateToolbar();
 
@@ -948,8 +987,13 @@ namespace CRT
                     {
                         var heading = new TabItem { Header = tab.Group, IsEnabled = false, Focusable = false };
 
+                        // The first group and one with a line of its own head a line, in the headings' column
+                        // (SheetTabsPanel; owner request, 2026-11-06).
+                        bool startsLine = group is null || BoardTableTabs.StartsLine(tab.Group);
+
                         heading.Classes.Add("SheetGroup");
-                        heading.Classes.Set("First", group is null);
+                        heading.Classes.Set("First", startsLine);
+                        heading.Classes.Set("StartsLine", startsLine);
                         this.SheetTabs.Items.Add(heading);
 
                         group = tab.Group;
@@ -1230,6 +1274,7 @@ namespace CRT
                     Header = this.thisCurrentSheet.Columns[i],
                     Binding = new Binding($"Cells[{i}].Text") { Mode = BindingMode.TwoWay },
                     DisplayPath = $"Cells[{i}].Text",
+                    ColumnIndex = i,
 
                     // *** EXPLICITLY EDITABLE, or NOTHING can be typed (reported 2026-09-24). ***
                     // Left unset, the grid works out read-only-ness from the binding path, and

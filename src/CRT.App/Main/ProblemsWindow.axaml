@@ -1,0 +1,86 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:data="clr-namespace:Handlers.DataHandling"
+        x:Class="CRT.ProblemsWindow"
+        Title="Errors and warnings"
+        Width="820"
+        Height="560"
+        MinWidth="480"
+        MinHeight="320"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource Bg}"
+        Foreground="{DynamicResource Fg}">
+
+	<!-- What went wrong while CRT has been running, and what was worth knowing (ProblemsLog) - newest first, the whole
+	     line of the one picked under the list. Opened from the "Something went wrong" card and the "Configuration" tab. -->
+	<Window.Styles>
+		<Style Selector="TextBlock.ProblemLevel">
+			<Setter Property="FontWeight" Value="SemiBold" />
+			<Setter Property="Foreground" Value="{DynamicResource Text_Warning_Fg}" />
+		</Style>
+		<Style Selector="TextBlock.ProblemLevel.error">
+			<Setter Property="Foreground" Value="{DynamicResource Text_Fail_Fg}" />
+		</Style>
+	</Window.Styles>
+
+	<Grid Margin="18" RowDefinitions="Auto,Auto,*,Auto,Auto">
+		<TextBlock Text="Errors and warnings" FontSize="16" FontWeight="Bold" Margin="0,0,0,8" />
+
+		<StackPanel Grid.Row="1" Spacing="8" Margin="0,0,0,10">
+			<TextBlock TextWrapping="Wrap"
+					   Text="What went wrong while CRT has been running, and what was worth knowing, newest first. An error is something that did not work; a warning needs nothing done. &quot;Copy all&quot; puts everything on the clipboard - paste it into the &quot;Feedback&quot; tab to send it to the developer." />
+			<CheckBox x:Name="ShowWarningsCheckBox"
+					  Content="Show warnings too"
+					  IsChecked="True"
+					  IsCheckedChanged="OnShowWarningsChanged" />
+		</StackPanel>
+
+		<Border Grid.Row="2" BorderBrush="{DynamicResource Splitter}" BorderThickness="1" CornerRadius="3">
+			<Panel>
+				<TextBlock x:Name="NothingText"
+						   Margin="12"
+						   Opacity="0.75"
+						   TextWrapping="Wrap"
+						   Text="Nothing has gone wrong since CRT started."
+						   IsVisible="False" />
+				<ListBox x:Name="ProblemsList"
+						 Background="Transparent"
+						 SelectionMode="Single"
+						 SelectionChanged="OnProblemSelected">
+					<ListBox.ItemTemplate>
+						<DataTemplate x:DataType="data:LoggedProblem">
+							<Grid ColumnDefinitions="64,70,*">
+								<TextBlock Text="{Binding TimeText}" Opacity="0.75" VerticalAlignment="Top" />
+								<TextBlock Grid.Column="1"
+										   Classes="ProblemLevel"
+										   Classes.error="{Binding IsError}"
+										   Text="{Binding LevelText}"
+										   VerticalAlignment="Top" />
+								<TextBlock Grid.Column="2" Text="{Binding Readable}" TextWrapping="Wrap" />
+							</Grid>
+						</DataTemplate>
+					</ListBox.ItemTemplate>
+				</ListBox>
+			</Panel>
+		</Border>
+
+		<!-- The whole line of the one picked, as the log has it - selectable, to copy a part. -->
+		<TextBox x:Name="DetailsBox"
+				 Grid.Row="3"
+				 Margin="0,8,0,0"
+				 Height="120"
+				 IsReadOnly="True"
+				 TextWrapping="Wrap"
+				 AcceptsReturn="True"
+				 FontSize="11"
+				 Watermark="Pick a line to see all of it"
+				 ScrollViewer.VerticalScrollBarVisibility="Auto" />
+
+		<StackPanel Grid.Row="4" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right" Margin="0,12,0,0">
+			<TextBlock x:Name="CopiedText" VerticalAlignment="Center" Opacity="0.75" Margin="0,0,6,0" />
+			<Button x:Name="CopyAllButton" Content="Copy all" Click="OnCopyAllClick" />
+			<Button Content="Close" Click="OnCloseClick" />
+		</StackPanel>
+	</Grid>
+</Window>

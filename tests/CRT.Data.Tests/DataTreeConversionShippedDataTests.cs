@@ -12,7 +12,8 @@ namespace ClassicRepairToolbox.Tests;
 // every value of every row, every highlight, calibration and rename, and every file a row cites
 // as the same BYTES under the board's own name. It is the proof the release day's conversion of
 // BETA and stable rests on, and it fails the moment a board, a column or a sidecar gains
-// something the conversion would not carry.
+// something the conversion would not carry. What the conversion ADDS - the pinouts of each board's
+// scope baselines and KiCad data (owner decision, 2026-11-06) - may only fill in what was empty.
 // ###########################################################################################
 [Collection("BoardData")]
 public sealed class DataTreeConversionShippedDataTests
@@ -89,7 +90,17 @@ public sealed class DataTreeConversionShippedDataTests
             Assert.Equal(before.BoardName, after.Board.BoardName);
 
             DataTreeConversionShippedDataTests.SameRows(before.Schematics, after.Board.Schematics, who, nameof(BoardSchematicEntry.SchematicImageFile), SameFile);
-            DataTreeConversionShippedDataTests.SameRows(before.Components, after.Board.Components, who, null, SameFile);
+
+            // The other deliberate change: the pinouts the conversion makes (owner decision, 2026-11-06 -
+            // ConversionPinouts). A component's package is filled in only where the workbook had none, and
+            // every pin row the workbook had is there as it was; the rest of every row is the workbook's.
+            DataTreeConversionShippedDataTests.SameRows(before.Components, after.Board.Components, who, null, SameFile, filledIn: nameof(ComponentEntry.Package));
+
+            var pinsAfter = after.Board.ComponentPins.Select(DataTreeConversionShippedDataTests.PinKey).ToHashSet();
+
+            foreach (ComponentPinEntry pin in before.ComponentPins)
+                Assert.True(pinsAfter.Contains(DataTreeConversionShippedDataTests.PinKey(pin)), $"{who}: pin [{DataTreeConversionShippedDataTests.PinKey(pin)}] was lost");
+
             DataTreeConversionShippedDataTests.SameRows(before.ComponentHighlights, after.Board.ComponentHighlights, who, null, SameFile);
             DataTreeConversionShippedDataTests.SameRows(before.ComponentLocalFiles, after.Board.ComponentLocalFiles, who, nameof(ComponentLocalFileEntry.File), SameFile);
             DataTreeConversionShippedDataTests.SameRows(before.ComponentLinks, after.Board.ComponentLinks, who, null, SameFile);
@@ -129,6 +140,38 @@ public sealed class DataTreeConversionShippedDataTests
                 Assert.Equal(file.Size, source.Size);
             }
         }
+    }
+
+    // ###########################################################################################
+    // THE CONVERSION MAKES EVERY SHIPPED BOARD'S PINOUTS (owner decision, 2026-11-06: "populate all boards
+    // having KiCad data with its pinouts", every board's scope baselines too): each board with a scope
+    // baseline gets pins, and each board with KiCad files gets pins for components that have NO baseline -
+    // only its KiCad data can have said those.
+    // ###########################################################################################
+    [Fact]
+    public void The_conversion_makes_the_pinouts_of_every_shipped_board_of_its_baselines_and_its_KiCad_data()
+    {
+        DataTreeConversionPlan plan = DataTreeConversionShippedDataTests.Planned.Value;
+        int withKiCad = 0;
+
+        foreach (ConvertedBoard converted in plan.Boards)
+        {
+            BoardData board = BoardDocumentMapping.ToContent(converted.Document).Board;
+            var pinned = board.ComponentPins.Select(pin => pin.BoardLabel.Trim()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var baselined = board.ComponentImages.Where(ComponentImageKinds.IsScopeBaseline).Select(image => image.BoardLabel.Trim()).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            if (baselined.Count > 0)
+                Assert.True(pinned.Count > 0, $"{converted.BoardId}: scope baselines, and no pins made of them");
+
+            if (converted.Document.Files.Any(file => file.Name.EndsWith(".kicad_pcb", StringComparison.OrdinalIgnoreCase)))
+            {
+                withKiCad++;
+                Assert.True(pinned.Any(label => !baselined.Contains(label)), $"{converted.BoardId}: KiCad data, and no pins made of it");
+                Assert.Contains(plan.Notes, note => note.Contains($"[{converted.BoardId}]: pinouts made", StringComparison.Ordinal) && note.Contains("KiCad data", StringComparison.Ordinal));
+            }
+        }
+
+        Assert.True(withKiCad >= 5, $"Only {withKiCad} shipped boards with KiCad data were found.");
     }
 
     // A board with KiCad data keeps every file of it, under "KiCad data/".
@@ -189,14 +232,18 @@ public sealed class DataTreeConversionShippedDataTests
 
     // ---- helpers ---------------------------------------------------------------------------
 
+    private static string PinKey(ComponentPinEntry pin) => $"{pin.BoardLabel}|{pin.Region}|{pin.Pin}|{pin.Name}|{pin.Direction}";
+
     // Two lists of one row type, equal property by property - by reflection, so a property added
-    // to a row type later is compared too. `fileProperty` is compared as the same bytes instead.
+    // to a row type later is compared too. `fileProperty` is compared as the same bytes instead;
+    // `filledIn` may hold a value after where it was empty before, and only then.
     private static void SameRows<T>(
         List<T> before,
         List<T> after,
         string who,
         string? fileProperty,
-        Action<string, string, string> sameFile)
+        Action<string, string, string> sameFile,
+        string? filledIn = null)
     {
         string type = typeof(T).Name;
 
@@ -213,6 +260,8 @@ public sealed class DataTreeConversionShippedDataTests
 
                 if (property.Name == fileProperty)
                     sameFile((string)a!, (string)b!, $"{type} row {i + 1}");
+                else if (property.Name == filledIn && string.IsNullOrWhiteSpace(a as string))
+                    continue;
                 else
                     Assert.True(Equals(a, b), $"{who}: {type} row {i + 1} {property.Name} was [{a}], is [{b}]");
             }

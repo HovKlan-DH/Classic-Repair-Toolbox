@@ -194,7 +194,7 @@ namespace Handlers.OnlineHandling
             }
             catch (Exception ex)
             {
-                Logger.Critical($"Configured manifest URL is invalid: {ex.Message}");
+                Logger.Critical($"Configured manifest URL is invalid: {ex.Message}", alreadyShown: true);
                 onStatus?.Invoke("Sync failed - see log");
                 return null;
             }
@@ -204,7 +204,7 @@ namespace Handlers.OnlineHandling
             {
                 if (!string.Equals(trustedManifestUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
                 {
-                    Logger.Critical($"Manifest URL must use HTTPS: [{trustedManifestUri}]");
+                    Logger.Critical($"Manifest URL must use HTTPS: [{trustedManifestUri}]", alreadyShown: true);
                     onStatus?.Invoke("Sync failed - see log");
                     return null;
                 }
@@ -214,7 +214,7 @@ namespace Handlers.OnlineHandling
             }
             catch (Exception ex)
             {
-                Logger.Critical($"Failed to fetch checksum manifest: {ex.Message}");
+                Logger.Critical($"Failed to fetch checksum manifest: {ex.Message}", alreadyShown: true);
                 onStatus?.Invoke("Sync failed - see log");
                 return null;
             }
@@ -236,7 +236,7 @@ namespace Handlers.OnlineHandling
             }
             catch (Exception ex)
             {
-                Logger.Critical($"Failed to parse checksum manifest: {ex.Message}");
+                Logger.Critical($"Failed to parse checksum manifest: {ex.Message}", alreadyShown: true);
                 onStatus?.Invoke("Sync failed - see log");
                 return null;
             }
@@ -251,6 +251,15 @@ namespace Handlers.OnlineHandling
         // label:    optional context label used to improve log messages (e.g. "board data files").
         // Returns the number of files that were successfully new or updated.
         // ###########################################################################################
+        // ###########################################################################################
+        // Every data file a sync gave up on since CRT started - what a data check counts across its own run (Main's
+        // FinishDataCheck: the count as it ends less the count as it began), so its card never says "all up to date"
+        // over files that did not arrive.
+        // ###########################################################################################
+        private static int thisFailedDownloads;
+
+        internal static int FailedDownloads => Volatile.Read(ref OnlineServices.thisFailedDownloads);
+
         internal static async Task<int> SyncFilesAsync(
             List<DataFileEntry> manifest,
             string dataRoot,
@@ -341,6 +350,7 @@ namespace Handlers.OnlineHandling
                 else
                 {
                     failedFiles.Add(entry.File);
+                    Interlocked.Increment(ref OnlineServices.thisFailedDownloads);
                 }
             }
 

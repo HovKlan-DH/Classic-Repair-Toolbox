@@ -565,6 +565,49 @@ public sealed class ComponentPaneEditsTests
     }
 
     // ###########################################################################################
+    // *** A PICTURE'S AND A BASELINE'S NOTE IS MARKUP: ITS FIRST LINE KEEPS THE INDENT THAT SAYS WHAT IT IS (code
+    // review, 2026-11-08). *** Trimmed whole, a first line nested once - "  - recapped C14" - was stored a bullet of the
+    // first level, and an edit that changed only that indent compared equal and was no step at all. A replacement part's
+    // note is plain text, trimmed whole as ever.
+    // ###########################################################################################
+    [Fact]
+    public void A_picture_or_baseline_notes_first_line_keeps_its_indent_and_an_indent_alone_is_a_change()
+    {
+        BoardData board = BoardWithImages();
+
+        BoardData nested = ComponentPaneEdits.WithPictures(board, "U8", "PAL",
+        [
+            new ComponentImageEntry { Name = "Top", File = "Component images/U8-Top.png", Note = "\n  - recapped C14\n- U8  \n" },
+            Picture("U8", "Pinout"),
+        ]);
+
+        Assert.Equal("  - recapped C14\n- U8", nested.ComponentImages[0].Note);
+
+        // The indent alone taken away: a change, one step.
+        BoardData outdented = ComponentPaneEdits.WithPictures(nested, "U8", "PAL",
+        [
+            new ComponentImageEntry { Name = "Top", File = "Component images/U8-Top.png", Note = "- recapped C14\n- U8" },
+            Picture("U8", "Pinout"),
+        ]);
+
+        Assert.NotSame(nested, outdented);
+        Assert.Equal("- recapped C14\n- U8", outdented.ComponentImages[0].Note);
+
+        // A baseline's note too.
+        List<ComponentImageEntry> baselines = ComponentPaneEdits.BaselinesOf(board, "U8", "PAL");
+        baselines[0] = new ComponentImageEntry
+        {
+            Pin = baselines[0].Pin,
+            Name = baselines[0].Name,
+            File = baselines[0].File,
+            TimeDiv = baselines[0].TimeDiv,
+            Note = "   - not a bullet",
+        };
+
+        Assert.Equal("   - not a bullet", ComponentPaneEdits.BaselinesOf(ComponentPaneEdits.WithBaselines(board, "U8", "PAL", baselines), "U8", "PAL")[0].Note);
+    }
+
+    // ###########################################################################################
     // A component whose rows are split up already: no row of it goes where the component had none (code
     // review, 2026-11-02). A place freed is the component's own, and one more than it has places for stands
     // right beside its rows - never among another component's.

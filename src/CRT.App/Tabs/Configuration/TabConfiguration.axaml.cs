@@ -45,6 +45,7 @@ namespace CRT
             this.ShowDevelopmentVersionNotificationCheckBox.IsChecked = UserSettings.ShowDevelopmentVersionNotification;
             this.AllowAlphaVersionNotificationCheckBox.IsChecked = UserSettings.AllowAlphaVersionNotification;
             this.MultipleInstancesForComponentPopupCheckBox.IsChecked = UserSettings.MultipleInstancesForComponentPopup;
+            this.DetachPinoutCheckBox.IsChecked = UserSettings.DetachPinoutInComponentPopup;
             this.DetachSchematicsThumbnailsCheckBox.IsChecked = UserSettings.DetachSchematicsThumbnails;
             this.RememberThumbnailWindowSettingsPerBoardCheckBox.IsChecked = UserSettings.RememberThumbnailWindowSettingsPerBoard;
             this.UpdateRememberThumbnailWindowSettingsPerBoardCheckBoxState();
@@ -57,11 +58,16 @@ namespace CRT
             this.EnableMaintainerTabCheckBox.IsChecked = UserSettings.EnableMaintainerTab;
             this.ShowMaintainerTabOnlyWhenWorkWaitingCheckBox.IsChecked = UserSettings.ShowMaintainerTabOnlyWhenWorkWaiting;
             this.ViewOfficialPublishedOnlyCheckBox.IsChecked = UserSettings.ViewOfficialPublishedOnly;
-            this.DetailedLogCheckBox.IsChecked = UserSettings.DetailedLog;
 
-            bool isAllBoardsScope = string.Equals(UserSettings.WorkbooksScope, "AllBoards", StringComparison.Ordinal);
-            this.WorkbooksScopeAllBoardsRadioButton.IsChecked = isAllBoardsScope;
-            this.WorkbooksScopeCurrentBoardRadioButton.IsChecked = !isAllBoardsScope;
+            string scope = UserSettings.WorkbooksScope;
+            this.WorkbooksScopeAllBoardsRadioButton.IsChecked = scope == MyDevicesScope.AllBoards;
+            this.WorkbooksScopeCurrentHardwareRadioButton.IsChecked = scope == MyDevicesScope.CurrentHardware;
+            this.WorkbooksScopeCurrentBoardRadioButton.IsChecked = scope == MyDevicesScope.CurrentBoard;
+
+            string sorting = UserSettings.DeviceSorting;
+            this.DeviceSortingByNameRadioButton.IsChecked = sorting == OwnedDeviceSorting.ByName;
+            this.DeviceSortingByHardwareBoardNameRadioButton.IsChecked = sorting == OwnedDeviceSorting.ByHardwareBoardName;
+            this.DeviceSortingManualRadioButton.IsChecked = sorting == OwnedDeviceSorting.Manual;
 
             this.PopulateWorklogCurrencyComboBox();
 
@@ -82,6 +88,7 @@ namespace CRT
             this.ShowDevelopmentVersionNotificationCheckBox.IsCheckedChanged += this.OnShowDevelopmentVersionNotificationChanged;
             this.AllowAlphaVersionNotificationCheckBox.IsCheckedChanged += this.OnAllowAlphaVersionNotificationChanged;
             this.MultipleInstancesForComponentPopupCheckBox.IsCheckedChanged += this.OnMultipleInstancesForComponentPopupChanged;
+            this.DetachPinoutCheckBox.IsCheckedChanged += (_, _) => UserSettings.DetachPinoutInComponentPopup = this.DetachPinoutCheckBox.IsChecked == true;
             this.DetachSchematicsThumbnailsCheckBox.IsCheckedChanged += this.OnDetachSchematicsThumbnailsChanged;
             this.RememberThumbnailWindowSettingsPerBoardCheckBox.IsCheckedChanged += this.OnRememberThumbnailWindowSettingsPerBoardChanged;
             this.EnableNetworkConnectedOscilloscopeTabCheckBox.IsCheckedChanged += this.OnEnableNetworkConnectedOscilloscopeTabChanged;
@@ -91,11 +98,12 @@ namespace CRT
             this.ShowMaintainerTabOnlyWhenWorkWaitingCheckBox.IsCheckedChanged += this.OnShowMaintainerTabOnlyWhenWorkWaitingChanged;
             this.ViewOfficialPublishedOnlyCheckBox.IsCheckedChanged += this.OnViewOfficialPublishedOnlyChanged;
             this.WorkbooksScopeAllBoardsRadioButton.IsCheckedChanged += this.OnWorkbooksScopeChanged;
+            this.WorkbooksScopeCurrentHardwareRadioButton.IsCheckedChanged += this.OnWorkbooksScopeChanged;
             this.WorkbooksScopeCurrentBoardRadioButton.IsCheckedChanged += this.OnWorkbooksScopeChanged;
+            this.DeviceSortingByNameRadioButton.IsCheckedChanged += this.OnDeviceSortingChanged;
+            this.DeviceSortingByHardwareBoardNameRadioButton.IsCheckedChanged += this.OnDeviceSortingChanged;
+            this.DeviceSortingManualRadioButton.IsCheckedChanged += this.OnDeviceSortingChanged;
             this.WorklogCurrencyComboBox.SelectionChanged += this.OnWorklogCurrencySelectionChanged;
-
-            // The log's debug lines, and the data check at launch (slice 6 - contributor mode's).
-            this.DetailedLogCheckBox.IsCheckedChanged += (_, _) => UserSettings.DetailedLog = this.DetailedLogCheckBox.IsChecked == true;
         }
 
         // ###########################################################################################
@@ -503,10 +511,7 @@ namespace CRT
         {
             string helpUrl = AppConfig.WikiPageUrl(AppConfig.WikiPageWorkbooks);
 
-            if (!ExternalTargetLauncher.TryOpen(helpUrl))
-            {
-                Logger.Warning($"Rejected external target from Configuration tab: [{helpUrl}]");
-            }
+            ExternalTargetLauncher.OpenOrSay(helpUrl);
         }
 
         // ###########################################################################################
@@ -516,10 +521,7 @@ namespace CRT
         {
             string helpUrl = AppConfig.WikiPageUrl(AppConfig.WikiPageMaintainer);
 
-            if (!ExternalTargetLauncher.TryOpen(helpUrl))
-            {
-                Logger.Warning($"Rejected external target from Configuration tab: [{helpUrl}]");
-            }
+            ExternalTargetLauncher.OpenOrSay(helpUrl);
         }
 
         // ###########################################################################################
@@ -574,10 +576,7 @@ namespace CRT
         {
             string helpUrl = AppConfig.WikiPageUrl(AppConfig.WikiPageMiniPro);
 
-            if (!ExternalTargetLauncher.TryOpen(helpUrl))
-            {
-                Logger.Warning($"Rejected external target from Configuration tab: [{helpUrl}]");
-            }
+            ExternalTargetLauncher.OpenOrSay(helpUrl);
         }
 
         // ###########################################################################################
@@ -619,10 +618,7 @@ namespace CRT
         {
             string helpUrl = AppConfig.WikiPageUrl(AppConfig.WikiPageViewOnlineSource);
 
-            if (!ExternalTargetLauncher.TryOpen(helpUrl))
-            {
-                Logger.Warning($"Rejected external target from Configuration tab: [{helpUrl}]");
-            }
+            ExternalTargetLauncher.OpenOrSay(helpUrl);
         }
 
         // ###########################################################################################
@@ -642,8 +638,9 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Persists which scope the Workbooks tab's workbook list uses - every board's workbooks, or
-        // only the currently selected board's - when either radio button is toggled.
+        // Persists which scope the "My Devices" tab's lists use - every device and workbook, the
+        // selected hardware's, or only the currently selected board's (MyDevicesScope) - when a radio
+        // button is toggled.
         //
         // One click raises IsCheckedChanged TWICE, once for the button being unchecked and once for
         // the one being checked, and BOTH see the same post-transition state. So the SENDER is what
@@ -663,12 +660,30 @@ namespace CRT
 
             if (ReferenceEquals(radioButton, this.WorkbooksScopeAllBoardsRadioButton))
             {
-                UserSettings.WorkbooksScope = "AllBoards";
+                UserSettings.WorkbooksScope = MyDevicesScope.AllBoards;
+            }
+            else if (ReferenceEquals(radioButton, this.WorkbooksScopeCurrentHardwareRadioButton))
+            {
+                UserSettings.WorkbooksScope = MyDevicesScope.CurrentHardware;
             }
             else if (ReferenceEquals(radioButton, this.WorkbooksScopeCurrentBoardRadioButton))
             {
-                UserSettings.WorkbooksScope = "CurrentBoard";
+                UserSettings.WorkbooksScope = MyDevicesScope.CurrentBoard;
             }
+        }
+
+        // "Sorting of devices" (owner request, 2026-11-07) - the button just checked writes, as for the scope above.
+        private void OnDeviceSortingChanged(object? sender, RoutedEventArgs e)
+        {
+            if (sender is not RadioButton radioButton || radioButton.IsChecked != true)
+            {
+                return;
+            }
+
+            UserSettings.DeviceSorting =
+                ReferenceEquals(radioButton, this.DeviceSortingManualRadioButton) ? OwnedDeviceSorting.Manual
+                : ReferenceEquals(radioButton, this.DeviceSortingByHardwareBoardNameRadioButton) ? OwnedDeviceSorting.ByHardwareBoardName
+                : OwnedDeviceSorting.ByName;
         }
 
         // ###########################################################################################
@@ -779,6 +794,15 @@ namespace CRT
             catch (Exception ex)
             {
                 Logger.Critical($"OnOpenWorkbooksFolderClick failed - [{ex}]");
+            }
+        }
+
+        // "Errors and warnings" - every one since CRT started (ProblemsWindow; owner request, 2026-11-07).
+        private void OnShowProblemsClick(object? sender, RoutedEventArgs e)
+        {
+            if (TopLevel.GetTopLevel(this) is Window owner)
+            {
+                ProblemsWindow.ShowFor(owner);
             }
         }
 

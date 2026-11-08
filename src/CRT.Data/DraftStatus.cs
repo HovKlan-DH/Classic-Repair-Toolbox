@@ -301,30 +301,93 @@ namespace Handlers.DataHandling
                 return BoardProblemsRead.None;
             }
 
+            return DraftStatusReader.ProblemsCachedOf(status.WorkbookPath, dataRoot, draftBoardFolder, boardIdentity: null);
+        }
+
+        // ###########################################################################################
+        // *** A PUBLISHED BOARD'S OWN ERRORS AND WARNINGS, WHERE NO DRAFT HAS ANY TO SAY (owner decision, 2026-11-07: the
+        // launch check of every board "needs to run for everyone and its findings should show just like any other error or
+        // warning in the "Contribute" tab"). *** The very checks a draft gets (BoardCheckScope.Everything), on the
+        // published board file as downloaded, its files looked for as the launch check looked for them - the downloaded data
+        // by the board's identity - and kept the same way, until the file changes. Worked out for the board SHOWN, never every
+        // board at launch: reading each one took the launch check some ten seconds.
+        // ###########################################################################################
+        public static BoardProblemsRead PublishedProblemsCached(string publishedBoardFile, string dataRoot, string draftBoardFolder, string boardIdentity)
+        {
+            if (string.IsNullOrWhiteSpace(publishedBoardFile) || !File.Exists(publishedBoardFile))
+            {
+                return BoardProblemsRead.None;
+            }
+
+            // One published board's read kept at a time - each holds its whole board, and a draft's own stays as it was.
+            lock (DraftStatusReader.PublishedProblemsLock)
+            {
+                if (DraftStatusReader.LastPublishedProblemsFile is { } earlier &&
+                    !string.Equals(earlier, publishedBoardFile, StringComparison.OrdinalIgnoreCase))
+                {
+                    DraftStatusReader.ProblemCache.TryRemove(earlier, out _);
+                }
+
+                DraftStatusReader.LastPublishedProblemsFile = publishedBoardFile;
+            }
+
+            return DraftStatusReader.ProblemsCachedOf(publishedBoardFile, dataRoot, draftBoardFolder, boardIdentity, published: true);
+        }
+
+        private static readonly object PublishedProblemsLock = new();
+
+        private static string? LastPublishedProblemsFile;
+
+        // Run as a published board's read is about to be kept - for a test to hold it there while another board is asked.
+        internal static Action<string>? BeforePublishedReadIsKeptForTests { get; set; }
+
+        private static BoardProblemsRead ProblemsCachedOf(string boardFile, string dataRoot, string draftBoardFolder, string? boardIdentity, bool published = false)
+        {
             string stamp = string.Join(
                 "|",
-                DraftStatusReader.FileStamp(status.WorkbookPath),
-                DraftStatusReader.FileStamp(BoardComponentHighlightStorage.GetJsonPath(status.WorkbookPath)),
+                DraftStatusReader.FileStamp(boardFile),
+                DraftStatusReader.FileStamp(BoardComponentHighlightStorage.GetJsonPath(boardFile)),
                 dataRoot,
-                draftBoardFolder);
+                draftBoardFolder,
+                boardIdentity ?? string.Empty);
 
-            if (DraftStatusReader.ProblemCache.TryGetValue(status.WorkbookPath, out CachedProblems cached)
+            if (DraftStatusReader.ProblemCache.TryGetValue(boardFile, out CachedProblems cached)
                 && string.Equals(cached.Stamp, stamp, StringComparison.Ordinal)
-                && DraftStatusReader.StillNotFound(cached.NotFound, dataRoot, draftBoardFolder))
+                && DraftStatusReader.StillNotFound(cached.NotFound, dataRoot, draftBoardFolder, boardIdentity))
             {
                 return cached.Read;
             }
 
-            BoardData? draft = BoardReadsByStamp.Read(status.WorkbookPath);
-            var lookup = new RememberingLookup(new DiskFileLookup(dataRoot, draftBoardFolder));
+            BoardData? board = BoardReadsByStamp.Read(boardFile);
+            var lookup = new RememberingLookup(new DiskFileLookup(dataRoot, draftBoardFolder, boardIdentity));
 
-            IReadOnlyList<BoardDataProblem> problems = draft is null
+            IReadOnlyList<BoardDataProblem> problems = board is null
                 ? []
-                : BoardDataChecks.Check(BoardCheckRows.From(draft), lookup, BoardCheckScope.Everything);
+                : BoardDataChecks.Check(BoardCheckRows.From(board), lookup, BoardCheckScope.Everything);
 
-            var read = new BoardProblemsRead(BoardProblemCounts.Of(problems), problems, draft);
+            var read = new BoardProblemsRead(BoardProblemCounts.Of(problems), problems, board);
+            var kept = new CachedProblems(stamp, read, lookup.NotFound);
 
-            DraftStatusReader.ProblemCache[status.WorkbookPath] = new CachedProblems(stamp, read, lookup.NotFound);
+            if (!published)
+            {
+                DraftStatusReader.ProblemCache[boardFile] = kept;
+                return read;
+            }
+
+            DraftStatusReader.BeforePublishedReadIsKeptForTests?.Invoke(boardFile);
+
+            // ###########################################################################################
+            // *** ONLY THE LATEST PUBLISHED BOARD'S READ IS KEPT - decided under the very lock that lets the earlier one go
+            // (code review, 2026-11-08). *** A check still running as another board's began was stored after its eviction,
+            // and stayed for the run - one more whole board for every such race. Its read is handed back all the same.
+            // ###########################################################################################
+            lock (DraftStatusReader.PublishedProblemsLock)
+            {
+                if (string.Equals(DraftStatusReader.LastPublishedProblemsFile, boardFile, StringComparison.OrdinalIgnoreCase))
+                {
+                    DraftStatusReader.ProblemCache[boardFile] = kept;
+                }
+            }
 
             return read;
         }
@@ -360,14 +423,15 @@ namespace Handlers.DataHandling
         private static bool StillNotFound(
             IReadOnlyDictionary<string, BoardFileLookupResult> notFound,
             string dataRoot,
-            string draftBoardFolder)
+            string draftBoardFolder,
+            string? boardIdentity)
         {
             if (notFound.Count == 0)
             {
                 return true;
             }
 
-            var lookup = new DiskFileLookup(dataRoot, draftBoardFolder);
+            var lookup = new DiskFileLookup(dataRoot, draftBoardFolder, boardIdentity);
 
             return notFound.All(item => lookup.Check(item.Key) == item.Value);
         }

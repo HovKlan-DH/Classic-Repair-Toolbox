@@ -239,4 +239,38 @@ public class WorklogSearchIndexTests
         Assert.True(query.Matches(
             WorklogSearchIndex.ForWorkbook(workbook).Concat(WorklogSearchIndex.ForEntry(entry))));
     }
+
+    // ###########################################################################################
+    // A device is searched too (owner request, 2026-11-06: "searching a serial/unique ... so it also covers devices"):
+    // what its card shows - name, serial number, its board as named - and everything typed on it. Its status and
+    // region are picked, not typed, and its condition is a number: none of them.
+    // ###########################################################################################
+    [Fact]
+    public void A_devices_searchable_text_is_its_card_and_what_was_typed_on_it()
+    {
+        var device = new OwnedDeviceRecord
+        {
+            Id = 3,
+            Name = "Breadbin #2",
+            SerialNumber = "CA123456",
+            Description = "From a flea market",
+            Status = OwnedDeviceStatus.Faulty,
+            Region = "PAL",
+            Condition = 4,
+            Comments = [new WorklogCommentRecord { Id = 1, Text = "SID replaced" }],
+            Links = [new WorklogLinkRecord { Id = 1, Headline = "Service manual", Url = "https://zimmers.net" }],
+            Photos = [new WorklogAttachmentRecord { Id = 1, FileName = "front.jpg", Comment = "Before cleaning" }],
+        };
+
+        Assert.Equal(
+            ["Breadbin #2", "CA123456", "Commodore 64 - 250407", "From a flea market", "SID replaced",
+             "Service manual", "https://zimmers.net", "front.jpg", "Before cleaning"],
+            WorklogSearchIndex.ForDevice(device, "Commodore 64 - 250407"));
+
+        Assert.True(WorklogSearchQuery.Parse("ca1234").Matches(WorklogSearchIndex.ForDevice(device, "")));
+        Assert.True(WorklogSearchQuery.Parse("\"commodore 64\" breadbin").Matches(WorklogSearchIndex.ForDevice(device, "Commodore 64 - 250407")));
+        Assert.False(WorklogSearchQuery.Parse("faulty").Matches(WorklogSearchIndex.ForDevice(device, "")));
+        Assert.False(WorklogSearchQuery.Parse("pal").Matches(WorklogSearchIndex.ForDevice(device, "")));
+        Assert.Empty(WorklogSearchIndex.ForDevice(null!, "x"));
+    }
 }

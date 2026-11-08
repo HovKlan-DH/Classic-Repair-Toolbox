@@ -69,7 +69,19 @@ internal sealed class LogicIcModel
         this.Blocks = blocks;
         this.States = states;
         this.Step = step;
+
+        // Asked for by name on every pin of every vector the simulated T48 plays - a walk of the pin-out each time was a
+        // tenth of the IC tests' time. A name standing more than once (GND, NC) is not in it: Pin asks Single, as before.
+        this.thisPinByName = pins.GroupBy(p => p.Name, StringComparer.Ordinal)
+            .Where(group => group.Count() == 1)
+            .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+        this.thisInputs = pins.Where(p => p.Kind == ModelPinKind.Input).ToList();
+        this.thisChipDriven = pins.Where(p => p.Drive is not null).ToList();
     }
+
+    private readonly Dictionary<string, ModelPin> thisPinByName;
+    private readonly List<ModelPin> thisInputs;
+    private readonly List<ModelPin> thisChipDriven;
 
     // The catalogue entry this model checks (its "id", compared without regard to capitals).
     public string Id { get; }
@@ -90,14 +102,15 @@ internal sealed class LogicIcModel
 
     public bool IsSequential => this.Step is not null;
 
-    public IEnumerable<ModelPin> Inputs => this.Pins.Where(p => p.Kind == ModelPinKind.Input);
+    public IEnumerable<ModelPin> Inputs => this.thisInputs;
 
     // The pins the chip can drive: outputs, and pins that are inputs at other times.
-    public IEnumerable<ModelPin> ChipDriven => this.Pins.Where(p => p.Drive is not null);
+    public IEnumerable<ModelPin> ChipDriven => this.thisChipDriven;
 
     public bool SwapsPinRoles => this.Pins.Any(p => p.Kind == ModelPinKind.Bidirectional);
 
-    public ModelPin Pin(string name) => this.Pins.Single(p => p.Name == name);
+    public ModelPin Pin(string name) =>
+        this.thisPinByName.TryGetValue(name, out ModelPin? pin) ? pin : this.Pins.Single(p => p.Name == name);
 
     // What a GOOD chip drives on each pin it can drive, for what the T48 drives (by pin number).
     public Dictionary<int, ChipDrive> Respond(Func<string, bool?> socket, int state = 0) =>

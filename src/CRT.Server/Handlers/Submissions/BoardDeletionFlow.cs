@@ -443,7 +443,7 @@ namespace CRT.Server.Handlers.Submissions
             {
                 this.thisLogger.LogWarning(
                     "{BoardId} was deleted from the {Tree} data but its checksum manifest at [{ManifestPath}] could not be " +
-                    "rebuilt - CRT keeps offering its files until it is (" + MaintainerScreenWording.Account + " > Rebuild checksum manifests).",
+                    "rebuilt - CRT keeps offering its files until it is (" + MaintainerScreenWording.Management + " > Rebuild checksum manifests).",
                     boardId, treeName, manifestPath);
             }
         }

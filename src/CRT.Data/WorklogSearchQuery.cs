@@ -81,6 +81,14 @@ namespace Handlers.DataHandling
         public bool IsEmpty => this.Terms.Count == 0;
 
         // ###########################################################################################
+        // The text AS IT IS, one term - no words ANDed, no quotes, no minus (owner request, 2026-11-07: the board
+        // table's "Replace" finds "the string as-is and do not 'AND' multiple words or exclude with minus"). Spaces
+        // and quotes in it are part of it; empty text is no query.
+        // ###########################################################################################
+        public static WorklogSearchQuery Literal(string? text) =>
+            new(string.IsNullOrEmpty(text) ? [] : [new WorklogSearchTerm(text, isExcluded: false)]);
+
+        // ###########################################################################################
         // Parses a raw query string into terms. Never throws and never returns null: malformed input
         // (a lone "-", an unclosed quote, nothing but spaces) yields the terms it could make sense of,
         // because this runs on every keystroke in a search box - refusing to parse would mean the box

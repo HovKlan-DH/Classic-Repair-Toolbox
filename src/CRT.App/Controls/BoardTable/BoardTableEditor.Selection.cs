@@ -16,7 +16,7 @@ namespace CRT
     // is. "Delete row" then deletes every selected row - BoardTableSheet.DeleteRows, one change and
     // one undo step - and says how many ("Delete 8 rows"). Red rows among them are skipped, already
     // deleted; with only red rows selected the button is greyed out. Dragging a row by its grip
-    // still acts on one row; copy, paste and fill down take the selection since CRT 4.0
+    // still acts on one row; copy and paste take the selection since CRT 4.0
     // (BoardTableEditor.BlockEdits.cs).
     //
     // *** THE DELETE KEY DELETES NO ROW (agreed, 2026-10-02: "No"). *** In Excel it empties cells,

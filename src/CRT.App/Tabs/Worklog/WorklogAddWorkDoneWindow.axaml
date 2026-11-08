@@ -1,5 +1,6 @@
 ﻿<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:CRT"
         x:Class="CRT.WorklogAddWorkDoneWindow"
         Title="Add work done"
         Width="440"
@@ -15,7 +16,7 @@
 		<TextBlock x:Name="HeaderText" Text="Add work done" FontSize="16" FontWeight="Bold" Margin="0,0,0,10" />
 
 		<TextBlock Text="Description" />
-		<TextBox x:Name="DescriptionTextBox"
+		<local:RichNoteTextBox x:Name="DescriptionTextBox"
 				 AcceptsReturn="True"
 				 TextWrapping="Wrap"
 				 Height="80"

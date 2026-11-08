@@ -222,7 +222,7 @@
 
 						<StackPanel Spacing="4">
 							<TextBlock Text="Description" FontWeight="SemiBold" />
-							<TextBox x:Name="EditorDescriptionTextBox"
+							<local:RichNoteTextBox x:Name="EditorDescriptionTextBox"
 									 AcceptsReturn="True"
 									 TextWrapping="Wrap"
 									 Height="90"

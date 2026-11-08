@@ -612,7 +612,7 @@ namespace CRT
 
             this.EditorIdText.Text = $"#{this.thisEntry.Id}";
             this.EditorTitleTextBox.Text = this.thisEntry.Title;
-            this.EditorDescriptionTextBox.Text = this.thisEntry.Description;
+            this.EditorDescriptionTextBox.Markup = this.thisEntry.Description;
             this.EditorLocationSchematicNameText.Text = this.thisEntry.SchematicName;
             this.EditorShowMarkedAreaCheckBox.IsChecked = this.thisEntry.ShowMarkedArea;
 
@@ -956,7 +956,7 @@ namespace CRT
                 this.thisEntry.Title = typedTitle;
             }
 
-            this.thisEntry.Description = this.EditorDescriptionTextBox.Text?.Trim() ?? string.Empty;
+            this.thisEntry.Description = RichNote.TrimMarkup(this.EditorDescriptionTextBox.Markup);
             this.thisEntry.Category = this.thisSelectedCategory;
             this.thisEntry.State = this.thisSelectedState;
             this.thisEntry.ShowMarkedArea = this.EditorShowMarkedAreaCheckBox.IsChecked ?? true;

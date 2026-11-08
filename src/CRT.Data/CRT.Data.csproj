@@ -74,11 +74,14 @@
     <InternalsVisibleTo Include="CRT.Server.Tests" />
 
     <!--
-    CRT.App.Tests needs DraftSession's WhileWritingForTests (code review, 2026-10-26): a draft whose
-    save cannot be made, as the app's own flows meet it - "Also on other boards" must take its step
-    back out of another board's draft then. Nothing else of CRT.Data's internals is meant for it.
+    The App's test projects: the UI tests need DraftSession's WhileWritingForTests (code review,
+    2026-10-26) - a draft whose save cannot be made, as the app's own flows meet it: "Also on other
+    boards" must take its step back out of another board's draft then - and CRT.App.Tests the KiCad
+    loaders, which moved here from CRT.App with their tests left behind (2026-11-06).
     -->
     <InternalsVisibleTo Include="CRT.App.Tests" />
+    <InternalsVisibleTo Include="CRT.App.UiTests" />
+    <InternalsVisibleTo Include="CRT.App.ContributeUiTests" />
 
     <!--
     CRT.Server itself needs BoardDataReader from Phase 5 task 3: computing a change summary for a

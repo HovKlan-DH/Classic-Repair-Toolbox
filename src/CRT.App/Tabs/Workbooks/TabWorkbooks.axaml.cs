@@ -153,19 +153,29 @@ namespace CRT
         private int thisSelectedWorkbookId = -1;
 
         // True when the list is showing workbook cards but none of them belongs to the currently
-        // loaded board, so nothing can be shown on the right-hand side. Only reachable in AllBoards
-        // scope; set by RefreshWorkbooks and read by RefreshBoardPreviews for its empty state.
+        // loaded board, so nothing can be shown on the right-hand side. Only reachable in a scope
+        // listing other boards' workbooks; set by RefreshWorkbooks and read by RefreshBoardPreviews
+        // for its empty state.
         private bool thisHasWorkbooksOnOtherBoardsOnly;
 
         // ###########################################################################################
-        // Whether the left-hand list shows every board's workbooks or only the currently loaded
-        // board's - the Configuration tab's radio group below "Enable Worklog"
-        // (UserSettings.WorkbooksScope). Read fresh on every RefreshWorkbooks rather than cached, so
-        // flipping the setting takes effect on the very next refresh without this tab needing its own
-        // change notification.
+        // Which devices and workbooks the tab lists - every one, the hardware's or only the currently
+        // loaded board's: the Configuration tab's radio group below "Enable Worklog"
+        // (UserSettings.WorkbooksScope, the rule MyDevicesScope). Read fresh on every RefreshWorkbooks
+        // rather than cached, so flipping the setting takes effect on the very next refresh without
+        // this tab needing its own change notification. ListsOtherBoards: the workbook list can hold
+        // another board's workbooks - in every scope but the board shown's.
         // ###########################################################################################
-        private static bool IsAllBoardsScope =>
-            string.Equals(UserSettings.WorkbooksScope, "AllBoards", StringComparison.Ordinal);
+        private static string Scope => UserSettings.WorkbooksScope;
+
+        private static bool ListsOtherBoards => !string.Equals(Scope, MyDevicesScope.CurrentBoard, StringComparison.Ordinal);
+
+        // Whether THIS pass's list can hold other boards' workbooks: the scope's say, or a device picked -
+        // its workbooks are listed on any board (TabWorkbooks.Devices.cs) - and the board shown. Set by
+        // RefreshWorkbooks.
+        private bool thisListsOtherBoards;
+
+        private string thisBoardKeyThisPass = string.Empty;
 
         // The parsed "Find a previous repair" query. Parsed ONCE per keystroke here rather than per
         // record inside the filter loop - a board's worth of workbooks times their entries is a lot
@@ -239,6 +249,8 @@ namespace CRT
                 this.WorkbookHeaderStatusGlyph.Padding = Handlers.Geometry.FontAwesomeGlyphMetrics
                     .GetTopOverflowThicknessForText(this.WorkbookHeaderStatusGlyph.Text, this.WorkbookHeaderStatusGlyph.FontSize);
             }
+
+            this.WireDeviceList();
         }
 
         // ###########################################################################################
@@ -388,6 +400,41 @@ namespace CRT
             this.thisActivateWorkbook = mainWindow.ActivateWorkbookAcrossBoards;
             this.ApplySplitterWidths();
             this.WireSplitterPersistence();
+        }
+
+        // ###########################################################################################
+        // "MY DEVICES" STANDS IN MAIN'S LEFT PANEL (owner requests, 2026-11-06: "when in the 'My Devices' tab, I want
+        // the 'My devices' list ... to show in the left-side panel, where the component category and component list
+        // is", then "please again have [the workbooks] visible where they were previously, but do keep the 'My
+        // devices' in the left-side panel"). Main hands over the place, once, at construction (Main.DeviceList.cs),
+        // and shows it only while this tab is; the line between it and the workbooks goes with it. Everything else
+        // about the list is as it was - its controls are this tab's, filled by this tab's code, named in this tab's
+        // name scope - and its card styles are its own (TabWorkbooksCardStyles.axaml).
+        //
+        // Its heading over it as "Hardware" and "Board" are over theirs, and the list framed as the left panel's
+        // lists are, a line all round, the cards and "Clear" a little in from it.
+        // ###########################################################################################
+        internal void ShowDevicesIn(Decorator place)
+        {
+            if (this.DeviceListArea.Parent is Panel column)
+            {
+                column.Children.Remove(this.DeviceListArea);
+            }
+
+            // The workbook list's line, kept to the theme as its DynamicResource is (code review, 2026-11-07: copied once,
+            // it stayed the old theme's color after a switch of theme).
+            this.DeviceListBorder.Bind(Border.BorderBrushProperty, this.DeviceListBorder.GetResourceObservable("Workbooks_Separator"));
+            this.DeviceListBorder.BorderThickness = new Thickness(1);
+            this.DeviceListBorder.CornerRadius = new CornerRadius(4);
+            this.DeviceListBorder.ClipToBounds = true;
+
+            if (this.DeviceListBorder.Child is Control inside)
+            {
+                inside.Margin = new Thickness(5);
+            }
+
+            this.DeviceListSeparator.IsVisible = false;
+            place.Child = this.DeviceListArea;
         }
 
         // ###########################################################################################
@@ -670,23 +717,30 @@ namespace CRT
             this.thisEntriesReadThisPass.Clear();
             this.thisAllWorkbooksThisPass = allWorkbooks;
 
-            // "My devices" first: the workbook cards below name the device each repair is on.
+            // "My devices" first: the workbook cards below name the device each repair is on, and the device
+            // picked narrows them.
             this.RefreshDeviceList(devices);
 
             string boardKey = this.BoardKeyOverrideForTests ?? this.MainWindow?.GetCurrentBoardKey() ?? string.Empty;
+            int? picked = this.PickedDeviceId;
+            this.thisListsOtherBoards = ListsOtherBoards || picked is not null;
+            this.thisBoardKeyThisPass = boardKey;
 
-            // "Show all workbooks" (UserSettings.WorkbooksScope == "AllBoards") lists every workbook
-            // on every board, not just this one - see the Configuration tab's radio group below
-            // "Enable Worklog". boardWorkbooks, when supplied (Main.RefreshWorklogBar's normal call),
-            // is already scope-aware - the full unfiltered set in AllBoards scope, this board's own
-            // otherwise - so it is used as-is; the fallback here only matters for callers that read
-            // straight off disk (e.g. the search debounce timer, OnAttachedToVisualTree).
-            var workbooks = boardWorkbooks ?? (IsAllBoardsScope
-                ? WorklogManager.GetAllWorkbooks()
-                : WorklogManager.GetWorkbooksForBoard(boardKey));
+            // The device picked's workbooks, on any board (owner request, 2026-11-06: "it will only show the
+            // workbooks for this device"); with none picked, the scope (UserSettings.WorkbooksScope,
+            // MyDevicesScope) lists every board's workbooks, the hardware's, or this board's - see the
+            // Configuration tab's radio group below "Enable Worklog". boardWorkbooks, when supplied
+            // (Main.RefreshWorklogBar's normal call), is already so, so it is used as-is; the fallback here
+            // only matters for callers that read straight off disk (e.g. the search debounce timer,
+            // OnAttachedToVisualTree).
+            var workbooks = boardWorkbooks ?? (picked is { } device
+                ? OwnedDeviceRepairs.Of(device, this.AllWorkbooksThisPass)
+                : ListsOtherBoards
+                    ? WorklogManager.GetAllWorkbooks().Where(workbook => MyDevicesScope.Holds(Scope, workbook.BoardKey, boardKey)).ToList()
+                    : WorklogManager.GetWorkbooksForBoard(boardKey));
 
             // Every board's already, in that scope - a device's page reads no second copy this pass.
-            if (IsAllBoardsScope && this.thisAllWorkbooksThisPass is null)
+            if (picked is null && string.Equals(Scope, MyDevicesScope.AllBoards, StringComparison.Ordinal) && this.thisAllWorkbooksThisPass is null)
             {
                 this.thisAllWorkbooksThisPass = workbooks;
             }
@@ -710,14 +764,14 @@ namespace CRT
             // Typing in it must never silently re-activate a different workbook, or "Add worklog"
             // would start writing into whichever workbook happened to survive the filter.
             //
-            // Resolved from THIS BOARD's own workbooks specifically, even in AllBoards scope where
-            // "workbooks" holds every board's - UserSettings.GetActiveWorkbookId(boardKey) is itself
+            // Resolved from THIS BOARD's own workbooks specifically, even in a scope where
+            // "workbooks" holds other boards' too - UserSettings.GetActiveWorkbookId(boardKey) is itself
             // board-scoped (nothing ever saves a cross-board id under it), and ResolveActiveWorkbook
             // falls back to "workbooks[0]" when nothing is saved, which in the unfiltered list would
             // be whichever board's workbook happens to be globally newest rather than this board's -
             // exactly the mismatch the board pane cannot render (see CurrentBoardDataForPreviews).
             // Same board-filtered input Main.RefreshWorklogBar's own activeWorkbook uses.
-            var workbooksForThisBoard = IsAllBoardsScope
+            var workbooksForThisBoard = this.thisListsOtherBoards
                 ? workbooks.Where(w => string.Equals(w.BoardKey, boardKey, StringComparison.Ordinal)).ToList()
                 : workbooks;
             var active = WorklogManager.ResolveActiveWorkbook(workbooksForThisBoard, UserSettings.GetActiveWorkbookId(boardKey));
@@ -737,20 +791,27 @@ namespace CRT
             // display choice local to this tab, the same kind RefreshBoardPreviews already makes when
             // it picks which schematic to show.
             //
-            // In "Show all workbooks" scope, shownWorkbooks can hold cards for OTHER boards too - but
+            // In a scope listing other boards, shownWorkbooks can hold cards for OTHER boards too - but
             // the board pane can only ever render the CURRENTLY LOADED board's schematics (see
             // CurrentBoardDataForPreviews), so the fallback below is restricted to this board's own
             // workbooks regardless of scope. Picking a different board's card still works - it just
             // goes through SelectWorkbook -> ActivateWorkbookAcrossBoards, which switches the loaded
             // board first - this is only about what shows with no explicit click.
-            var shownWorkbook = active != null && shownWorkbooks.Any(w => w.Id == active.Id)
-                ? active
-                : shownWorkbooks.Where(w => string.Equals(w.BoardKey, boardKey, StringComparison.Ordinal))
-                    .FirstOrDefault();
+            //
+            // None worked in - "Clear" under the list (ClearWorkbookPick) - is none shown: nothing to fall back to.
+            var shownWorkbook = active == null
+                ? null
+                : shownWorkbooks.Any(w => w.Id == active.Id)
+                    ? active
+                    : shownWorkbooks.Where(w => string.Equals(w.BoardKey, boardKey, StringComparison.Ordinal))
+                        .FirstOrDefault();
+
+            // "Clear" lets go of the workbook worked in - greyed out with none.
+            this.ClearWorkbookButton.IsEnabled = active != null;
 
             this.thisSelectedWorkbookId = shownWorkbook?.Id ?? -1;
 
-            // Recorded for the board pane's empty state: in AllBoards scope the list can be showing
+            // Recorded for the board pane's empty state: listing other boards the list can be showing
             // cards while nothing is selectable for THIS board, and a pane that just goes blank
             // there reads as the workbooks having lost their contents. See RefreshBoardPreviews.
             this.thisHasWorkbooksOnOtherBoardsOnly = shownWorkbook == null && shownWorkbooks.Count > 0;
@@ -766,7 +827,7 @@ namespace CRT
             // at all, and saying "no workbooks" for it reads as data loss.
             this.NoWorkbooksText.Text = !this.thisSearchQuery.IsEmpty && workbooks.Count > 0
                 ? "No workbooks or worklogs match your search."
-                : NoWorkbooksDefaultText;
+                : picked is not null ? OwnedDeviceWording.NoWorkbooksOfDevice : NoWorkbooksDefaultText;
 
             foreach (var workbook in shownWorkbooks)
             {
@@ -791,7 +852,7 @@ namespace CRT
         // then may be showing the no-results message instead.
         private const string NoWorkbooksDefaultText =
             "No repairs recorded for this board yet.\n" +
-            "Use \"Create new workbook\" above the tabs to start one.";
+            "Use \"Add workbook\" above the tabs to start one.";
 
         // ###########################################################################################
         // Narrows a board's workbooks to those matching the current search, and records WHICH of each
@@ -960,6 +1021,34 @@ namespace CRT
             this.SelectWorkbook(workbookId, boardKeyOverride);
 
         // ###########################################################################################
+        // "CLEAR" UNDER THE WORKBOOK LIST (owner request, 2026-11-06: 'a similar button named "Clear" ... that will clear
+        // the selection of the workbook'; asked, "No workbook worked in"): no workbook card marked and none worked in on
+        // the board - the bar's "Workbook" drop-down empty, "Add worklog" hidden (Main.ClearWorkbookPick) - and in its
+        // place the device picked's page, or "No workbook selected". A tab built on its own, as a test builds it, saves
+        // it itself.
+        // ###########################################################################################
+        private void OnClearWorkbookClick(object? sender, RoutedEventArgs e) => this.ClearWorkbookPick();
+
+        internal void ClearWorkbookPick()
+        {
+            this.thisSelectedDeviceId = this.PickedDeviceId;
+
+            if (this.MainWindow is { } main)
+            {
+                main.ClearWorkbookPick();
+                return;
+            }
+
+            string boardKey = this.BoardKeyOverrideForTests ?? string.Empty;
+
+            if (boardKey.Length > 0)
+            {
+                UserSettings.SetActiveWorkbookId(boardKey, WorklogManager.NoWorkbookChosen);
+                this.RefreshWorkbooks();
+            }
+        }
+
+        // ###########################################################################################
         // boardKey is the CLICKED CARD's own board key, not necessarily the currently selected
         // board's - in "Show all workbooks" scope a card can belong to a different board, and
         // thisActivateWorkbook (Main.ActivateWorkbookAcrossBoards) switches the app to it before
@@ -972,8 +1061,13 @@ namespace CRT
             if (string.IsNullOrWhiteSpace(boardKey))
                 return;
 
-            // A workbook picked brings the workbook back in place of a device's page.
+            // A workbook picked brings the workbook back in place of a device's page - and picks the device it is
+            // on, the bar's "Device" drop-down and "My devices" with it (owner request, 2026-11-06: "when I in the
+            // 'Workbooks' list selects a workbook associated to a device, then I want that device selected in both
+            // the drop-down and in the 'My devices' panel"); one on no device, all devices.
             this.thisSelectedDeviceId = null;
+            WorkbookRecord? picked = this.AllWorkbooksThisPass.FirstOrDefault(workbook => workbook.Id == workbookId);
+            UserSettings.WorklogBarDeviceId = OwnedDeviceRepairs.DeviceOf(picked, this.thisDevices)?.Id;
 
             this.thisActivateWorkbook?.Invoke(boardKey, workbookId);
 
@@ -1375,11 +1469,14 @@ namespace CRT
                 body.Children.Add(deviceLine);
             }
 
-            // --- Row 4: which board this workbook belongs to, "Show all workbooks" scope only ----
+            // --- Row 4: which board this workbook belongs to, in a scope listing other boards ----
             // Only shown when the list can hold more than one board's cards - in the normal
             // current-board scope every card already belongs to the board on screen, and naming it
             // on each card would just be noise.
-            if (IsAllBoardsScope)
+            // A device's list holds its workbooks on any board, most of them on the one shown: there only
+            // one on another board names it.
+            if (ListsOtherBoards ||
+                (this.thisListsOtherBoards && !string.Equals(workbook.BoardKey, this.thisBoardKeyThisPass, StringComparison.OrdinalIgnoreCase)))
             {
                 // The FULL hardware and board names, on two lines - "Commodore 128" above
                 // "310378 (C128 & C128D)", exactly as the two drop-downs at the top-left name them.

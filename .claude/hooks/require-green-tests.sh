@@ -68,8 +68,18 @@ fi
 # Pull out the parts worth reading: the failing test names, their assertions,
 # any compiler error, and the final tally.
 SUMMARY="$(printf '%s\n' "$OUTPUT" |
-    grep -E 'error [A-Z]+[0-9]+|^[[:space:]]*(Failed|Error Message|Assert|Expected|Actual|Stack Trace)|Failed!|Passed!|Build FAILED' |
+    grep -E 'error [A-Z]+[0-9]+|^[[:space:]]*(Failed|Error Message|Assert|Expected|Actual|Stack Trace)|Failed!|Passed!|Build FAILED|FATAL ERROR' |
     head -40)"
+
+# A test PROCESS that died - xunit v3 runs each test assembly as a child process, and its adapter
+# reports the death as "[FATAL ERROR] Xunit.Sdk.TestPipelineException" - still ends in a "Passed!"
+# line counting only the tests that ran before it. Say so, or the block reads as all green.
+CRASHED=""
+case "$OUTPUT" in
+    *'[FATAL ERROR]'*)
+        CRASHED="A test process DIED (the [FATAL ERROR] line): its \"Passed!\" line counts only the tests that ran before. Its cause is in Windows' Application log, \".NET Runtime\" event 1023 (an \"internal error\", 0x80131506, has hit this machine's .NET processes since 2026-11-02 - the compiler server too - so it may be no test's fault: run the suite again)."
+        ;;
+esac
 
 # A locked output file means the app is running, so the build could not even be
 # attempted. That is not a red suite and must not block a handover - say so and move on.
@@ -90,6 +100,7 @@ fi
     echo
     echo "$SUMMARY"
     echo
+    [ -n "$CRASHED" ] && { echo "$CRASHED"; echo; }
     echo "Fix this before handing back. Per rule 4 of .claude/CLAUDE.md, a failing test is a"
     echo "question, not an obstacle: decide whether the behaviour change was intended. If it was,"
     echo "update the expectation and say so explicitly in your summary. Never edit or weaken an"

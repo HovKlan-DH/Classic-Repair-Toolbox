@@ -33,7 +33,10 @@ namespace Handlers.DataHandling
     // has it (the same bytes) gets the published name; a file the draft REPLACED keeps the name the
     // published board knows it by (found through the draft's base: what was at that path when the
     // draft started); only a file the draft added is named afresh, by BoardFileNames, never taking
-    // a published name. So a converted draft shows the contributor's own changes and nothing else.
+    // a published name. So a converted draft shows the contributor's own changes and nothing else - and so
+    // it has the PINOUTS its published board was converted with (2026-11-06): the tree's conversion makes
+    // every board's (ConversionPinouts), and the draft and its base take them where they have none
+    // (ConversionPinouts.FromPublished), or both would read as every pin removed.
     //
     // *** A DRAFT IS CONVERTED EVEN WHEN SOMETHING IS ODD ABOUT IT. *** Unlike the tree's conversion,
     // which a person can fix before it runs, a user cannot fix a draft before 4.0 starts - and a
@@ -168,12 +171,16 @@ namespace Handlers.DataHandling
             // root - which every path its rows cite is relative to.
             string excelDataFile = $"{boardId}/{Path.GetFileName(workbook)}";
 
+            BoardDocument? published = DraftConversion.ReadPublished(treeContentRoot, boardId, notes);
+            BoardData? publishedBoard = published is null ? null : BoardDocumentMapping.ToContent(published).Board;
+
+            // The pinouts the tree's conversion gave the published board, in the draft as in its base
+            // (ConversionPinouts.FromPublished): without them both would read as every pin removed.
             var content = new BoardContent(
-                data,
+                ConversionPinouts.FromPublished(data, publishedBoard),
                 BoardComponentHighlightStorage.LoadAllKiCadCalibrations(workbook),
                 BoardComponentHighlightStorage.LoadSchematicRenames(workbook));
 
-            BoardDocument? published = DraftConversion.ReadPublished(treeContentRoot, boardId, notes);
             DraftBase? draftBase = DraftBaseStore.LoadFile(Path.Combine(source, DraftFolderLayout.DraftBaseFileName));
 
             var namer = new Namer(boardId, boardIds, published, draftBase, excelDataFile);
@@ -240,7 +247,7 @@ namespace Handlers.DataHandling
             Directory.CreateDirectory(working);
             DraftConversion.WriteText(Path.Combine(working, DataTreeLayout.BoardFileName), DataTreeJson.Write(document));
 
-            if (DraftConversion.BaseDocument(draftBase, excelDataFile, oldDataRoot, source, namer, hashes) is BoardDocument baseDocument)
+            if (DraftConversion.BaseDocument(draftBase, publishedBoard, excelDataFile, oldDataRoot, source, namer, hashes) is BoardDocument baseDocument)
                 DraftConversion.WriteText(Path.Combine(working, DraftFolderLayout.DraftBaseFileName), DataTreeJson.Write(baseDocument));
 
             // The marker names the board by its board file now ("<id>/board.json", the identity the
@@ -263,6 +270,7 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         private static BoardDocument? BaseDocument(
             DraftBase? draftBase,
+            BoardData? publishedBoard,
             string excelDataFile,
             string oldDataRoot,
             string source,
@@ -299,7 +307,7 @@ namespace Handlers.DataHandling
                 files.TryAdd(name, new BoardDocument.StoredFileRow { Name = name, Sha256 = sha, Size = size });
             }
 
-            var content = new BoardContent(draftBase.Board, draftBase.Calibrations, []);
+            var content = new BoardContent(ConversionPinouts.FromPublished(draftBase.Board, publishedBoard), draftBase.Calibrations, []);
 
             BoardDocument document = BoardDocumentMapping.ToDocument(content, namer.BaseNameFor, DraftConversion.Sorted(files.Values));
             document.RevisionDate = string.IsNullOrWhiteSpace(document.RevisionDate) ? draftBase.Revision : document.RevisionDate;

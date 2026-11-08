@@ -174,7 +174,7 @@ namespace CRT
             {
                 // A file the hashing cannot read (UnauthorizedAccessException is not an IOException)
                 // was the known way here; anything else is reported the same way and logged in full.
-                Logger.Critical($"Submitting the draft of [{target.DisplayName}] failed unexpectedly - [{ex}]");
+                Logger.Critical($"Submitting the draft of [{target.DisplayName}] failed unexpectedly - [{ex}]", alreadyShown: true);
                 return new BoardOutcome(target.DisplayName, null, SubmitDraftWindow.UnexpectedMessage(this.thisCreditAdded), SubmitDraftsWording.Unexpected, []);
             }
         }
@@ -211,7 +211,7 @@ namespace CRT
                 }
                 catch (Exception ex)
                 {
-                    Logger.Critical($"Getting the draft of [{offer.DisplayName}] ready to send failed unexpectedly - [{ex}]");
+                    Logger.Critical($"Getting the draft of [{offer.DisplayName}] ready to send failed unexpectedly - [{ex}]", alreadyShown: true);
                     ready = OtherDraftReady.NotSent(SubmitDraftsWording.Unexpected);
                 }
 

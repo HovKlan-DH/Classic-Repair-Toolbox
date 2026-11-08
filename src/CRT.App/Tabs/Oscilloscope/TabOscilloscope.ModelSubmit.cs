@@ -16,14 +16,16 @@ namespace CRT
     // plan: "Submit this model sends it to the administrator's queue on the Maintainer tab, which
     // publishes it into the main file for everybody"; the server's OscilloscopeModelFlows).
     //
-    // A panel under the editor's buttons: the address the outcome is mailed to - the Maintainer tab's
+    // A panel under the editor's buttons, ALWAYS SHOWN with its "Submit" in it (owner request, 2026-11-07: "it is not
+    // at all clear, that when you press the button 'Submit this model', that it will then add a new panel below" - a
+    // button opened it until then): the address the outcome is mailed to - the Maintainer tab's
     // account's while signed in there, read only, the typed one otherwise (ContactAddress, the Submit
     // dialog's and the Feedback tab's one rule) - a name if the user likes, and a message to the
     // administrator. It says whether "Run full test suite" went through on the model AS IT IS NOW
     // (a change since makes it not so); the server is told the same, decides nothing by it.
     //
     // Sent under the window's BusyOverlay; what the model's own rules or the server refuse is said in
-    // the panel, which stays. Sent, the panel goes and the editor says when (UserSettings, so it is
+    // the panel. Sent, its message is emptied and the editor says when (UserSettings, so it is
     // still said after a restart); the outcome comes by mail. Sending again replaces the one still
     // waiting (the server's rule), so a corrected model just goes again.
     // ###########################################################################################
@@ -64,11 +66,14 @@ namespace CRT
         {
             this.thisMaintainerAccount = account;
 
-            if (this.SubmitModelPanel.IsVisible)
+            if (this.IsSubmitPanelShown)
             {
                 this.FillSubmitAddress();
             }
         }
+
+        // The send panel on screen - it is whenever a model of the user's own is open in the editor.
+        internal bool IsSubmitPanelShown => this.ModelEditorBorder.IsVisible && this.EditModelPanel.IsVisible;
 
         // ###########################################################################################
         // The suite went through on `model` (TabOscilloscope.Capture.cs, at the end of a full run) -
@@ -91,7 +96,7 @@ namespace CRT
 
         private void ShowSubmitSuiteLineIfOpen()
         {
-            if (this.SubmitModelPanel.IsVisible)
+            if (this.IsSubmitPanelShown)
             {
                 this.ShowSubmitSuiteLine();
             }
@@ -105,10 +110,7 @@ namespace CRT
 
         internal void NoteSuitePassedForTests(OscilloscopeEntry model) => this.NoteSuitePassed(model);
 
-        private void OnSubmitModelClick(object? sender, RoutedEventArgs e) => this.ShowSubmitPanel();
-
-        private void OnCancelSendModelClick(object? sender, RoutedEventArgs e) => this.SubmitModelPanel.IsVisible = false;
-
+        // The panel filled for the model opened (ShowModelToEdit): its words, the suite's line, the address and the name.
         internal void ShowSubmitPanel()
         {
             if (this.EditedModelRow() is null)
@@ -126,7 +128,6 @@ namespace CRT
             }
 
             this.SubmitModelProblemText.IsVisible = false;
-            this.SubmitModelPanel.IsVisible = true;
         }
 
         // Whether the suite went through on the model as it is now - said again after every change.
@@ -240,7 +241,7 @@ namespace CRT
 
             UserSettings.SetOscilloscopeModelSent(model.Brand, model.SeriesOrModel, DateTimeOffset.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
 
-            this.SubmitModelPanel.IsVisible = false;
+            this.SubmitModelProblemText.IsVisible = false;
             this.SubmitModelMessageTextBox.Text = string.Empty;
             this.ShowModelSent(model, outcome.Answer.Message);
         }

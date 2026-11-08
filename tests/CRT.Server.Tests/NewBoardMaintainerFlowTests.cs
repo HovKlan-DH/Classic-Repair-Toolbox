@@ -144,7 +144,7 @@ namespace CRT.Server.Tests
 
         // MaintainerAssignmentRules' own refusals: an account that cannot review is not put in a pool.
         [Theory]
-        [InlineData(false, false, "anna@example.com created this new board, but that account's address is not verified yet, so it was not made the board's maintainer. Add it under \"Account\", \"Maintainers\", once it is.")]
+        [InlineData(false, false, "anna@example.com created this new board, but that account's address is not verified yet, so it was not made the board's maintainer. Add it under \"Management\", \"Maintainers\", once it is.")]
         [InlineData(true, true, "anna@example.com created this new board, but that account is locked, so it was not made the board's maintainer.")]
         public async Task An_account_that_may_not_maintain_is_left_alone_and_the_approver_is_told(bool verified, bool locked, string expected)
         {

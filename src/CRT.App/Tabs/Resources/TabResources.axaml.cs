@@ -49,14 +49,21 @@ namespace CRT
         // the draft folder, not the data root. Null for a link, and for a file of the data root.
         public string? Root { get; }
 
+        // What the file or link is about, several lines (owner request, 2026-11-06) - shown under its name,
+        // its web addresses clickable as in any text a user typed (TextLinkRenderer). Empty for none.
+        public string Note { get; }
+
+        public bool HasNote => this.Note.Trim().Length > 0;
+
         public ICommand OpenCommand { get; }
 
-        public ResourceItem(string category, string name, string target, string? root = null)
+        public ResourceItem(string category, string name, string target, string? root = null, string? note = null)
         {
             this.Category = category;
             this.Name = name;
             this.Target = target;
             this.Root = root;
+            this.Note = note?.Trim() ?? string.Empty;
             this.OpenCommand = new ActionCommand(this.OpenTarget);
         }
 
@@ -66,7 +73,7 @@ namespace CRT
         // ###########################################################################################
         private void OpenTarget()
         {
-            ExternalTargetLauncher.TryOpen(this.Target, this.Root);
+            ExternalTargetLauncher.OpenOrSay(this.Target, this.Root);
         }
     }
 

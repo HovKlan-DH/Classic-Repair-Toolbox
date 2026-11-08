@@ -33,6 +33,9 @@ public partial class TabSchematics
 {
     private bool thisIsKiCadTraceCalibrationMode;
 
+    // "Align KiCad" is on - Main hands it the keys pressed outside this tab (TakeKiCadCalibrationKey).
+    internal bool IsAligningKiCad => this.thisIsKiCadTraceCalibrationMode;
+
     private double thisKiCadCalibrationImageLeft;
 
     private double thisKiCadCalibrationImageTop;
@@ -103,14 +106,32 @@ public partial class TabSchematics
     //
     // What is left is Avalonia rasterising the primitives themselves: Render reports drawing 5,853
     // of 5,853, because at calibration zoom the whole board is on screen and the viewport cull has
-    // nothing to discard. That is the floor for this approach, and it is NOT worth chasing with
-    // another "cheaper geometry while dragging" attempt - one was tried (dropping zone fills) and
-    // measured as buying nothing, because the primitive count barely moved. Reducing it further
-    // means drawing genuinely fewer traces, which costs the user the alignment feedback that is the
-    // entire point of calibration mode.
+    // nothing to discard. It is NOT worth chasing with "cheaper geometry while dragging" - one was
+    // tried (dropping zone fills) and measured as buying nothing, because the primitive count barely
+    // moved.
     //
-    // These three are only meaningful while a drag is in progress; HasValue on the reference is
-    // what says a drag-time transform is currently possible at all.
+    // *** WHAT WAS STILL SLOW, AND WHAT WAS DONE ABOUT IT (owner report, 2026-11-06: "incredible slow.
+    // It is slow when dragging one of the markers, and it seems not always to react when I use the
+    // keys for fine-tuning"). *** Measured headlessly with real Skia on 250469's top (5,351
+    // primitives) and the Open128's (3,752, 451 nets, 25 KiCad files), on a fast PC:
+    //   - that raster: 35-65 ms a frame, every frame of a drag. The frames are now drawn from a
+    //     picture of the traces, taken once (KiCadOverlayRenderControl.DrawFromSnapshot): 4.5-6.6 ms.
+    //   - every arrow key rebuilt the overlay - 75 ms on 250469, 265 ms on the Open128, as a key's
+    //     whole press 280-400 ms; ten repeats of a held key took 2.4-3.8 s, and Windows folds repeats
+    //     not yet taken into one, which Avalonia raises as one key: presses were lost. A key moves the
+    //     traces by this matrix now (ApplyKiCadTraceCalibrationKeyboardStep): 0.1-0.4 ms, ten repeats
+    //     250-300 ms with the frames.
+    //   - taking hold of the box and letting go of it each rebuilt it (letting go: 58 / 252 ms). Now
+    //     neither does; a box resized or flipped is rebuilt once the input has gone quiet
+    //     (SettleKiCadCalibrationOverlay), a box only moved never - it is drawn exactly as a rebuild
+    //     draws it.
+    //   - a rebuild itself asked the file system for every KiCad file once per net (the runtime cache
+    //     scope's key - GetOrCreateCurrentKiCadRuntimeCacheScope): 261 ms on the Open128, 30 without.
+    //   - the keys reached the box only while the keyboard was in this tab (Main.KeyIsForKiCadAlignment).
+    //
+    // These three say what the geometry on screen was built at - recorded by every build, dropped by
+    // whatever replaces the geometry - and they stay between drags and keys, as the transform does:
+    // HasValue on the reference is what says the geometry can be moved by a matrix at all.
     // ###########################################################################################
     private KiCadCalibrationValues? thisKiCadTraceCalibrationDragReferenceCalibration;
 
@@ -182,10 +203,76 @@ public partial class TabSchematics
             return false;
         }
 
+        // A key held down repeats: from its second press on, the frames come from a picture of the
+        // traces (KiCadOverlayRenderControl.DrawFromSnapshot) - a single press draws them as ever.
+        bool isRepeating = this.thisKiCadCalibrationSettleTimer?.IsEnabled == true;
+
         this.SetKiCadCalibrationBox(updatedBox);
 
-        this.RefreshKiCadOverlay(forceImmediate: true);
+        // ###########################################################################################
+        // *** A KEY MOVES THE TRACES BY A MATRIX, AS A DRAG DOES - IT REBUILDS NOTHING (owner report,
+        // 2026-11-06: "it seems not always to react when I use the keys for fine-tuning"). ***
+        // Every press rebuilt the whole overlay until then: measured on a fast PC, 75 ms on 250469's top
+        // and 265 ms on the Open128's, so a key held down queued its repeats behind rebuilds - and
+        // Windows folds repeats an application has not taken yet into one WM_KEYDOWN, which Avalonia
+        // raises as one key, so presses were lost. A move by a key is a pure translation, drawn exactly as a rebuild
+        // would draw it (KiCadCalibrationTransform.IsTranslationOnly); Shift and Alt resize, and the
+        // overlay is rebuilt once the keys have gone quiet (SettleKiCadCalibrationOverlay).
+        // ###########################################################################################
+        if (this.RefreshKiCadTraceCalibrationDragOverlay() && isRepeating)
+        {
+            this.SchematicsKiCadOverlayCanvas.DrawFromSnapshot();
+        }
+
+        this.ScheduleKiCadCalibrationSettle();
         return true;
+    }
+
+    // ###########################################################################################
+    // The overlay once the box has been let go of and no key has moved it for a moment: the
+    // primitives drawn again instead of a picture of them, and - when the box was resized or
+    // flipped rather than only moved - built again at the box as it now is, so a trace's width and a
+    // pad's size and turn are what a rebuild works out (a matrix scales them along). A box only
+    // moved is drawn exactly as a rebuild would draw it, and is left as it is.
+    //
+    // Waits for the input to go quiet rather than following every key and every release, as a
+    // rebuild costs what the moves no longer do - and not while the box is held.
+    // ###########################################################################################
+    private DispatcherTimer? thisKiCadCalibrationSettleTimer;
+
+    internal static readonly TimeSpan KiCadCalibrationSettleDelay = TimeSpan.FromMilliseconds(400);
+
+    private void ScheduleKiCadCalibrationSettle()
+    {
+        this.thisKiCadCalibrationSettleTimer ??= new DispatcherTimer(
+            KiCadCalibrationSettleDelay,
+            DispatcherPriority.Background,
+            (_, _) => this.SettleKiCadCalibrationOverlay());
+
+        this.thisKiCadCalibrationSettleTimer.Stop();
+        this.thisKiCadCalibrationSettleTimer.Start();
+    }
+
+    private void StopKiCadCalibrationSettle()
+    {
+        this.thisKiCadCalibrationSettleTimer?.Stop();
+    }
+
+    private void SettleKiCadCalibrationOverlay()
+    {
+        this.StopKiCadCalibrationSettle();
+
+        if (!this.thisIsKiCadTraceCalibrationMode || this.thisKiCadTraceCalibrationDragMode != LabelEditorDragMode.None)
+        {
+            return;
+        }
+
+        this.SchematicsKiCadOverlayCanvas.StopDrawingFromSnapshot();
+
+        if (!KiCadCalibrationTransform.IsTranslationOnly(this.SchematicsKiCadOverlayCanvas.OverlayTransform))
+        {
+            this.RefreshKiCadOverlay(forceImmediate: true);
+        }
     }
 
     // ###########################################################################################
@@ -254,6 +341,8 @@ public partial class TabSchematics
 
         // Entering the mode switches the active calibration source, so anything recorded from the
         // previous geometry is stale; the refresh at the end of this method records it afresh.
+        this.StopKiCadCalibrationSettle();
+        this.SchematicsKiCadOverlayCanvas.StopDrawingFromSnapshot();
         this.ClearKiCadTraceCalibrationDragTransform();
 
         this.CheckGlobalShowCalibrationTracesAndPads.IsChecked = true;
@@ -279,6 +368,8 @@ public partial class TabSchematics
     // ###########################################################################################
     private void CancelKiCadTraceCalibrationMode()
     {
+        this.StopKiCadCalibrationSettle();
+        this.SchematicsKiCadOverlayCanvas.StopDrawingFromSnapshot();
         this.ClearKiCadTraceCalibrationDragTransform();
 
         // ESC can arrive with the button still down, mid-drag. Clearing the drag mode below is what
@@ -341,6 +432,9 @@ public partial class TabSchematics
         {
             return;
         }
+
+        // Nothing rebuilt while the box is saved: the mode ends with a rebuild of its own.
+        this.StopKiCadCalibrationSettle();
 
         string schematicName = this.GetCurrentSchematicName();
         string cacheKey = this.MainWindow?.GetCurrentBoardEntry()?.ExcelDataFile?.Trim() ?? string.Empty;
@@ -458,6 +552,8 @@ public partial class TabSchematics
         // ###########################################################################################
         this.MainWindow?.ApplyContributeTabState();
 
+        this.StopKiCadCalibrationSettle();
+        this.SchematicsKiCadOverlayCanvas.StopDrawingFromSnapshot();
         this.ClearKiCadTraceCalibrationDragTransform();
 
         // Same reason as the cancel path: Apply can be reached from the keyboard while a drag is
@@ -643,7 +739,6 @@ public partial class TabSchematics
         // visually distinct from both KiCad copper and the solid worklog-area rectangles; the
         // handles stay solid squares since dashing a mark this small would leave it barely visible.
         var thisHandleBrush = new SolidColorBrush(Colors.IndianRed, 1.0);
-        var thisHandlePen = new Pen(thisHandleBrush, 1.0);
         var thisBorderPen = new Pen(thisHandleBrush, 1.0) { DashStyle = DashStyle.Dash };
 
         var thisHandleCenters = new[]
@@ -699,12 +794,15 @@ public partial class TabSchematics
             }
         }
 
+        // Drawn where it is built, whatever OverlayTransform moves the traces by - it is built at the
+        // box's true place on every move (KiCadOverlayPrimitive.DrawnUntransformed).
         return new KiCadOverlayPrimitive
         {
             Kind = KiCadOverlayPrimitiveKind.Geometry,
             Geometry = thisGeometry,
             Pen = thisBorderPen,
-            Fill = thisHandleBrush
+            Fill = thisHandleBrush,
+            DrawnUntransformed = true
         };
     }
 
@@ -848,10 +946,18 @@ public partial class TabSchematics
         this.thisKiCadCalibrationStartImageRight = this.thisKiCadCalibrationImageRight;
         this.thisKiCadCalibrationStartImageBottom = this.thisKiCadCalibrationImageBottom;
 
-        // One full rebuild at the box's starting position, so the geometry the rest of this drag
-        // transforms is known to exist and is known to match the reference recorded by
-        // NoteKiCadOverlayBuiltCalibration. Every move after this is a matrix update.
-        this.RefreshKiCadOverlay(forceImmediate: true);
+        // The box held: no rebuild waits for it to be let go of meanwhile.
+        this.StopKiCadCalibrationSettle();
+
+        // A rebuild only when there is no geometry to move - nothing recorded by
+        // NoteKiCadOverlayBuiltCalibration. Geometry built at ANY earlier box is as good as geometry
+        // built at this one: every move is a matrix from the calibration it was built at, whatever
+        // that was (2026-11-06 - with keys and drags moving the box by the matrix, a rebuild here is one
+        // at a new calibration: 70 ms on 250469's top on a fast PC, every time the box was taken hold of).
+        if (this.thisKiCadTraceCalibrationDragReferenceCalibration == null)
+        {
+            this.RefreshKiCadOverlay(forceImmediate: true);
+        }
     }
 
     // ###########################################################################################
@@ -878,7 +984,12 @@ public partial class TabSchematics
                 dx,
                 dy));
 
-        this.RefreshKiCadTraceCalibrationDragOverlay();
+        // The frames of the drag drawn from a picture of the traces - taken at the first move, kept
+        // while it fits (KiCadOverlayRenderControl.DrawFromSnapshot).
+        if (this.RefreshKiCadTraceCalibrationDragOverlay())
+        {
+            this.SchematicsKiCadOverlayCanvas.DrawFromSnapshot();
+        }
     }
 
     // ###########################################################################################
@@ -890,17 +1001,20 @@ public partial class TabSchematics
     // rectangles, not thousands of primitives).
     //
     // Falls back to a full rebuild whenever the delta cannot be built - no reference recorded yet,
-    // or a degenerate calibration. Correct output always wins over a fast one.
+    // or a degenerate calibration. Correct output always wins over a fast one. True when the traces
+    // were moved by the matrix - what a picture of them can follow (DrawFromSnapshot), where a
+    // rebuild is new primitives a picture would have to be taken of again.
     // ###########################################################################################
-    private void RefreshKiCadTraceCalibrationDragOverlay()
+    private bool RefreshKiCadTraceCalibrationDragOverlay()
     {
         if (!this.TryApplyKiCadTraceCalibrationDragTransform())
         {
             this.RefreshKiCadOverlay(forceImmediate: true);
-            return;
+            return false;
         }
 
         this.RefreshKiCadCalibrationBoxPrimitiveOnly();
+        return true;
     }
 
     // ###########################################################################################
@@ -998,61 +1112,30 @@ public partial class TabSchematics
             ? primitives.Take(primitives.Count - 1).ToList()
             : new List<KiCadOverlayPrimitive>();
 
-        updatedPrimitives.Add(this.BuildKiCadCalibrationBoxPrimitiveForCurrentOverlayTransform());
+        // Built at the box's true place and drawn untransformed (DrawnUntransformed): the traces under
+        // it are moved by the transform, the box is not moved twice.
+        updatedPrimitives.Add(this.BuildKiCadCalibrationBoxPrimitive());
         this.SchematicsKiCadOverlayCanvas.SetGeometry(updatedPrimitives);
     }
 
     // ###########################################################################################
-    // The calibration box, pre-compensated for whatever overlay transform is currently applied.
+    // Completes the active KiCad calibration drag: the box let go of, the traces drawn sharp again
+    // at once - from the very geometry the drag moved, under the matrix it ended at.
     //
-    // The box shares a canvas with the traces, so it is drawn through the same transform - but the
-    // traces NEED that transform (they were built at the drag's starting calibration) while the box
-    // is built fresh at the box's actual position and needs none. Without this the box would be
-    // shifted twice and would drift away from the pointer as the drag went on.
-    //
-    // Pre-multiplying by the inverse cancels the transform for this one primitive. A non-invertible
-    // transform cannot arise from a usable calibration - TryBuildDeltaTransform refuses to produce
-    // one - but it falls back to the plain box rather than dropping the box entirely.
-    // ###########################################################################################
-    private KiCadOverlayPrimitive BuildKiCadCalibrationBoxPrimitiveForCurrentOverlayTransform()
-    {
-        var primitive = this.BuildKiCadCalibrationBoxPrimitive();
-        var overlayTransform = this.SchematicsKiCadOverlayCanvas.OverlayTransform;
-
-        if (overlayTransform == Matrix.Identity ||
-            primitive.Geometry == null ||
-            !overlayTransform.TryInvert(out var inverseTransform))
-        {
-            return primitive;
-        }
-
-        var compensatedGeometry = primitive.Geometry.Clone();
-        compensatedGeometry.Transform = new MatrixTransform(inverseTransform);
-
-        return new KiCadOverlayPrimitive
-        {
-            Kind = primitive.Kind,
-            Geometry = compensatedGeometry,
-            Pen = primitive.Pen,
-            Fill = primitive.Fill
-        };
-    }
-
-    // ###########################################################################################
-    // Completes the active KiCad calibration drag, clears the transient drag mode, and forces one
-    // final full-quality refresh - the throttle above can otherwise leave the traces/pads one step
-    // behind the box's true resting position after the last pointer move of the drag.
+    // *** NO REBUILD ON THE RELEASE (2026-11-06). *** There was one, "so the primitives are built at
+    // the calibration they represent" - measured on a fast PC, 58 ms on 250469's top and 252 ms on the
+    // Open128's, on every release. A box only MOVED is drawn exactly as a rebuild draws it
+    // (KiCadCalibrationTransform.IsTranslationOnly); a box resized or flipped is rebuilt once the
+    // input has gone quiet (SettleKiCadCalibrationOverlay), so its traces' widths are a rebuild's.
+    // Nothing else needs the primitives rebuilt: the next drag moves them from whatever calibration
+    // they were built at, and hover hit-testing (off while aligning) keeps world geometry of its own.
     // ###########################################################################################
     private void CompleteKiCadTraceCalibrationDrag()
     {
         this.thisKiCadTraceCalibrationDragMode = LabelEditorDragMode.None;
 
-        // One real rebuild at the box's final position, which also re-points the drag reference at
-        // the freshly built geometry and clears the transform (NoteKiCadOverlayBuiltCalibration).
-        // The transformed overlay is geometrically identical to this, so nothing visibly jumps -
-        // but from here on the primitives are genuinely built at the calibration they represent,
-        // which is what the hover hit-test caches and the next drag both need.
-        this.RefreshKiCadOverlay(forceImmediate: true);
+        this.SchematicsKiCadOverlayCanvas.StopDrawingFromSnapshot();
+        this.ScheduleKiCadCalibrationSettle();
     }
 
     // ###########################################################################################

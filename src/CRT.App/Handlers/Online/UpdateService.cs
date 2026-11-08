@@ -135,7 +135,7 @@ namespace Handlers.OnlineHandling
                     return false;
                 }
 
-                Logger.Critical($"Update install failed - [{ex.Message}]");
+                Logger.Critical($"Update install failed - [{ex.Message}]", alreadyShown: true);
                 return false; // Safely return false instead of crashing the app
             }
         }

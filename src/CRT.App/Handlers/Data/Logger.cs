@@ -22,10 +22,6 @@ namespace Handlers.DataHandling
         private static BufferedLogFile? _file;
         private static Timer? _flushTimer;
 
-        // Controls whether DEBUG-level entries are written to the log file.
-        // Set from UserSettings after settings are loaded.
-        public static bool IsDebugEnabled { get; set; } = false;
-
         // ###########################################################################################
         // Resolves the log file path in a persistent AppData folder that survives Velopack updates,
         // and overwrites any previous log content. Must be called once at application startup.
@@ -91,25 +87,53 @@ namespace Handlers.DataHandling
         public static void Warning(string message) => Write(LogCategory.WARN, message);
 
         // ###########################################################################################
-        // Writes a Critical-level log entry.
+        // Writes a Critical-level log entry - something that went wrong, which Main's "Something went wrong" card says at
+        // once (ProblemsLog). `alreadyShown`: the place it happened says it itself, so it is only listed.
         // ###########################################################################################
         public static void Critical(string message) => Write(LogCategory.CRIT, message);
 
+        public static void Critical(string message, bool alreadyShown) => Write(LogCategory.CRIT, message, alreadyShown);
+
         // ###########################################################################################
-        // Formats a single timestamped log line and hands it to the buffered file - thread-safe.
-        // DEBUG entries are silently suppressed when IsDebugEnabled is false.
+        // Formats a single timestamped log line and hands it to the buffered file - thread-safe. DEBUG
+        // entries too, always, since "Write a detailed log" went (owner request, 2026-11-07: "remove this
+        // checkbox and then always write this detailed logfile"). A warning or an error goes on the run's
+        // list as well, for the screen (ProblemsLog) - only once the log writes at all.
         // ###########################################################################################
-        private static void Write(LogCategory category, string message)
+        // ###########################################################################################
+        // What a test sees of the lines logged, and at which level - Logger writes nothing in a test (Initialize is never
+        // called there), so a rule about WHICH level a failure is logged at is read here (LoggedLines, in the tests). Null
+        // in CRT.
+        // ###########################################################################################
+        internal static Action<LogCategory, string>? SeenForTests { get; set; }
+
+        private static void Write(LogCategory category, string message, bool alreadyShown = false)
         {
+            Logger.SeenForTests?.Invoke(category, message);
+
             var file = _file;
 
             if (file == null)
                 return;
 
-            if (category == LogCategory.DBUG && !IsDebugEnabled)
-                return;
+            DateTime now = DateTime.Now;
+            file.Append($"{now:yyyy-MM-dd HH:mm:ss} {category} {message}", category);
 
-            file.Append($"{DateTime.Now:yyyy-MM-dd HH:mm:ss} {category} {message}", category);
+            if (category is LogCategory.WARN or LogCategory.CRIT)
+            {
+                try
+                {
+                    ProblemsLog.Current.Add(new LoggedProblem(
+                        now,
+                        category == LogCategory.CRIT ? ProblemLevel.Error : ProblemLevel.Warning,
+                        message,
+                        ShownElsewhere: alreadyShown));
+                }
+                catch
+                {
+                    // A listener failing must never stop a line being logged.
+                }
+            }
         }
     }
 }

@@ -201,6 +201,85 @@ namespace CRT
             }
         }
 
+        // For tests, in place of showing a file in the file manager.
+        internal Action<string, string?>? RevealFileOverrideForTests { get; set; }
+
+        // ###########################################################################################
+        // "REVEAL" (owner request, 2026-11-07: 'a button named "Reveal" and then open and select the file in File
+        // Explorer'): a file the board names shown selected in the system's file manager - found as "Open file" finds it,
+        // and held to the root it was found under (ExternalTargetLauncher.TryReveal).
+        // ###########################################################################################
+        internal void RevealFileOfBoard(string? file, string? name)
+        {
+            this.ShowMessage(null);
+
+            if (this.thisSession is not { } session)
+            {
+                return;
+            }
+
+            string draftFolder = DraftFolderLayout.GetBoardFolder(session.DraftsRoot, session.ExcelDataFile);
+
+            if (DraftFileResolver.ResolveWithSource(DataManager.DataRoot, draftFolder, file, session.ExcelDataFile) is not { } found)
+            {
+                this.ShowMessage(ComponentPaneWording.FileNotFound(name));
+                return;
+            }
+
+            if (this.RevealFileOverrideForTests is { } reveal)
+            {
+                reveal(found.FullPath, found.Root);
+                return;
+            }
+
+            if (!ExternalTargetLauncher.TryReveal(found.FullPath, found.Root))
+            {
+                this.ShowMessage(ComponentPaneWording.FileNotRevealed(name));
+            }
+        }
+
+        // "Reveal" on any row naming a file: a component's file, picture or baseline, or a board file.
+        private void OnRevealFileClick(object? sender, RoutedEventArgs e)
+        {
+            object? tag = (sender as Control)?.Tag;
+
+            if (ComponentPane.FileAndNameOf(tag) is (string file, string name))
+            {
+                this.RevealFileOfBoard(file, string.IsNullOrWhiteSpace(name) ? file : name);
+            }
+        }
+
+        // The file a row names, and its name - for any row "Reveal" stands on; null for anything else.
+        private static (string File, string Name)? FileAndNameOf(object? row)
+        {
+            if (row is ComponentPaneFileRow file)
+            {
+                return (file.File, file.Name);
+            }
+
+            if (row is ComponentPanePictureRow picture)
+            {
+                return (picture.File, picture.Name);
+            }
+
+            if (row is ComponentPaneBaselineRow baseline)
+            {
+                return (baseline.File, baseline.Name);
+            }
+
+            return row is ComponentPaneBoardFileRow boardFile ? (boardFile.File, boardFile.Name) : null;
+        }
+
+        // "Open file" on a component's file (owner request, 2026-11-07: "it misses the same "Open file" button, which is
+        // available in the "Board: Files"") - the board file's own way (OpenFileOfBoard).
+        private void OnOpenComponentFileClick(object? sender, RoutedEventArgs e)
+        {
+            if (sender is Control { Tag: ComponentPaneFileRow row })
+            {
+                this.OpenFileOfBoard(row.File, row.Name.Trim().Length > 0 ? row.Name : row.File);
+            }
+        }
+
         // How many each holds is its tab's to say (ShowPageTabs).
         private void ShowImageAndFileHeadings()
         {
@@ -1265,7 +1344,18 @@ namespace CRT
 
         public string Name { get => this.thisName; set => this.Set(ref this.thisName, value ?? string.Empty); }
 
-        public string File { get => this.thisFile; set => this.Set(ref this.thisFile, value ?? string.Empty); }
+        public string File
+        {
+            get => this.thisFile;
+            set
+            {
+                this.Set(ref this.thisFile, value ?? string.Empty);
+                this.Raise(nameof(this.HasFile));
+            }
+        }
+
+        // "Open file" and "Reveal" are on while the row names a file - a board file's rule.
+        public bool HasFile => this.thisFile.Trim().Length > 0;
 
         public static ComponentPaneFileRow From(ComponentLocalFileEntry row) => new()
         {

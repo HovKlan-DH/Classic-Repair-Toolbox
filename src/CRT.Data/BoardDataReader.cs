@@ -191,8 +191,9 @@ namespace Handlers.DataHandling
             {
                 BoardData? board = BoardFiles.ReadContent(excelPath)?.Board;
 
+                // Said once per state of the file - it is read again at every load of the board (UnreadableFiles).
                 if (board is null)
-                    CrtLog.Critical($"Failed to load board file [{logKey}]");
+                    UnreadableFiles.Report(excelPath, $"Failed to load board file [{logKey}]");
 
                 return board;
             }
@@ -231,7 +232,7 @@ namespace Handlers.DataHandling
             }
             catch (Exception ex)
             {
-                CrtLog.Critical($"Failed to load board Excel file [{logKey}] - [{ex.Message}]");
+                UnreadableFiles.Report(excelPath, $"Failed to load board Excel file [{logKey}] - [{ex.Message}]");
                 return null;
             }
         }

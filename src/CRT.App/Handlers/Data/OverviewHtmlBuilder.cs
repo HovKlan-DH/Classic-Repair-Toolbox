@@ -30,8 +30,9 @@ namespace Handlers.DataHandling
 
             foreach (var comp in boardData.Components)
             {
-                string note = boardData.ComponentImages
-                    .FirstOrDefault(ci => string.Equals(ci.BoardLabel, comp.BoardLabel, StringComparison.OrdinalIgnoreCase))?.Note ?? string.Empty;
+                // A note's plain text - its formatting marks are no part of a table cell (RichNote, 2026-11-07).
+                string note = RichNote.PlainOf(boardData.ComponentImages
+                    .FirstOrDefault(ci => string.Equals(ci.BoardLabel, comp.BoardLabel, StringComparison.OrdinalIgnoreCase))?.Note);
 
                 bool OfThisRow(string? label, string? region) =>
                     string.Equals(label, comp.BoardLabel, StringComparison.OrdinalIgnoreCase) &&

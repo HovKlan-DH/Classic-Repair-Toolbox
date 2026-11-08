@@ -346,29 +346,9 @@ public partial class TabSchematics : UserControl
         this.SchematicsInteractiveCadTraceHoverHoldShiftCheckBox.IsCheckedChanged +=
             this.OnSchematicsInteractiveCadTraceHoverModeChanged;
 
-        this.ToggleGlobalSettingsPanelButton.Click += (s, e) =>
-        {
-            bool willBeExpanded = !this.GlobalSettingsListPanel.IsVisible;
-            this.GlobalSettingsListPanel.IsVisible = willBeExpanded;
-            this.ToggleGlobalSettingsPanelButton.Content = willBeExpanded ? "Collapse" : "Expand";
-            UserSettings.SchematicsGlobalSettingsPanelExpanded = willBeExpanded;
-        };
-
-        this.ToggleLabelsPanelButton.Click += (s, e) =>
-        {
-            bool willBeExpanded = !this.LabelsListPanel.IsVisible;
-            this.LabelsListPanel.IsVisible = willBeExpanded;
-            this.ToggleLabelsPanelButton.Content = willBeExpanded ? "Collapse" : "Expand";
-            UserSettings.SchematicsLabelsPanelExpanded = willBeExpanded;
-        };
-
-        this.ToggleImportantSignalsPanelButton.Click += (s, e) =>
-        {
-            bool willBeExpanded = !this.ImportantSignalsListPanel.IsVisible;
-            this.UpdateImportantSignalsPanelExpandedState(willBeExpanded);
-            this.UpdateImportantSignalsClearButtonState(this.ImportantSignalsPanel.IsVisible);
-            UserSettings.SchematicsImportantSignalsPanelExpanded = willBeExpanded;
-        };
+        this.ToggleGlobalSettingsPanelButton.Click += (s, e) => this.ToggleGlobalSettingsPanel();
+        this.ToggleLabelsPanelButton.Click += (s, e) => this.ToggleLabelsPanel();
+        this.ToggleImportantSignalsPanelButton.Click += (s, e) => this.ToggleImportantSignalsPanel();
 
         this.ImportantSignalsListBox.SelectionChanged += (s, e) =>
         {
@@ -692,6 +672,64 @@ public partial class TabSchematics : UserControl
     }
 
     // ###########################################################################################
+    // The three panels over the picture - "Global settings", "Labels visible" and "Important KiCad
+    // signals" - collapse and expand by their button AND by a left press on their headline or the
+    // room around it (owner request, 2026-11-06: "This will make it easier for the user"). A press on
+    // the button itself is the button's: it marks the press handled, so it never toggles twice.
+    // ###########################################################################################
+    private void OnPanelHeaderPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (!e.GetCurrentPoint(sender as Visual).Properties.IsLeftButtonPressed)
+        {
+            return;
+        }
+
+        if (ReferenceEquals(sender, this.GlobalSettingsHeader))
+        {
+            this.ToggleGlobalSettingsPanel();
+        }
+        else if (ReferenceEquals(sender, this.LabelsPanelHeader))
+        {
+            this.ToggleLabelsPanel();
+        }
+        else if (ReferenceEquals(sender, this.ImportantSignalsPanelHeader))
+        {
+            this.ToggleImportantSignalsPanel();
+        }
+        else
+        {
+            return;
+        }
+
+        // The picture under the panel takes no press of it.
+        e.Handled = true;
+    }
+
+    private void ToggleGlobalSettingsPanel()
+    {
+        bool willBeExpanded = !this.GlobalSettingsListPanel.IsVisible;
+        this.GlobalSettingsListPanel.IsVisible = willBeExpanded;
+        this.ToggleGlobalSettingsPanelButton.Content = willBeExpanded ? "Collapse" : "Expand";
+        UserSettings.SchematicsGlobalSettingsPanelExpanded = willBeExpanded;
+    }
+
+    private void ToggleLabelsPanel()
+    {
+        bool willBeExpanded = !this.LabelsListPanel.IsVisible;
+        this.LabelsListPanel.IsVisible = willBeExpanded;
+        this.ToggleLabelsPanelButton.Content = willBeExpanded ? "Collapse" : "Expand";
+        UserSettings.SchematicsLabelsPanelExpanded = willBeExpanded;
+    }
+
+    private void ToggleImportantSignalsPanel()
+    {
+        bool willBeExpanded = !this.ImportantSignalsListPanel.IsVisible;
+        this.UpdateImportantSignalsPanelExpandedState(willBeExpanded);
+        this.UpdateImportantSignalsClearButtonState(this.ImportantSignalsPanel.IsVisible);
+        UserSettings.SchematicsImportantSignalsPanelExpanded = willBeExpanded;
+    }
+
+    // ###########################################################################################
     // Saves the schematics/thumbnail split ratio for the current board after the drag ends.
     // Deferred via Post to ensure Bounds reflects the completed layout pass.
     // ###########################################################################################
@@ -772,6 +810,13 @@ public partial class TabSchematics : UserControl
 
         this.thisIsKiCadTraceCalibrationMode = false;
         this.thisKiCadTraceCalibrationDragMode = LabelEditorDragMode.None;
+
+        // The geometry is gone, so is what moved it: a box moved and let go of is left under its
+        // matrix rather than rebuilt (CompleteKiCadTraceCalibrationDrag).
+        this.StopKiCadCalibrationSettle();
+        this.ClearKiCadTraceCalibrationDragTransform();
+        this.SchematicsKiCadOverlayCanvas.StopDrawingFromSnapshot();
+
         this.thisKiCadCalibrationImageLeft = 0.0;
         this.thisKiCadCalibrationImageTop = 0.0;
         this.thisKiCadCalibrationImageRight = 0.0;

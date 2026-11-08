@@ -162,11 +162,17 @@ internal sealed class SimulatedT48Runner : IMiniproRunner
         Func<string, bool?> socket = this.chip.SocketOf(vector);
 
         // A GOOD chip must never drive a pin the T48 drives.
-        foreach (var (number, drive) in this.chip.Respond(socket))
+        Dictionary<int, ChipDrive> good = this.chip.Respond(socket);
+        foreach (var (number, drive) in good)
         {
             if (drive != ChipDrive.None && vector[number - 1] is '0' or '1')
                 throw new InvalidOperationException($"vector {index}: the T48 and the chip both drive pin {number}");
         }
+
+        // A chip that sees every input as the socket drives it responds as the good one - only its output stage can be
+        // broken. Worked out once: twice was a third of the IC tests' time.
+        if (this.fault is not { Kind: ChipFaultKind.InputStuckLow or ChipFaultKind.InputStuckHigh })
+            return ChipFault.ApplyTo(this.fault, this.chip, good);
 
         // The chip as it is: an input it sees at a fixed level, an output stage that is broken.
         Func<string, bool?> seen = name =>

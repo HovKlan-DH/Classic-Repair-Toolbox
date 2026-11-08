@@ -182,8 +182,8 @@ Wiki describes what everybody runs.
 
 ## Build, test, run, publish
 
-- **Run the tests: `dotnet test Classic-Repair-Toolbox.slnx`** (about 2 minutes in Release; needs
-  no hardware, network or display)
+- **Run the tests: `dotnet test Classic-Repair-Toolbox.slnx`** (about 3 minutes in Release, build
+  included; needs no hardware, network or display)
 - Build (Release, matches CI): `dotnet build Classic-Repair-Toolbox.slnx -c Release`
 - Run/iterate: VS Code task `watch`, F5 in VS Code (`.vscode/launch.json`), or Visual Studio
 - Self-contained publish: `dotnet publish -c Release -f net10.0 -r <rid> --self-contained` with
@@ -209,28 +209,55 @@ Wiki describes what everybody runs.
 
 ## Tests
 
-**THREE test projects**, all xUnit and all run by the one `dotnet test Classic-Repair-Toolbox.slnx`:
-[tests/CRT.App.Tests/](../tests/CRT.App.Tests/) (the app's `Handlers/`, the Maintainer tab's logic in
-`Maintainer/`, and the headless UI tests in `Ui/`), [tests/CRT.Data.Tests/](../tests/CRT.Data.Tests/)
-and [tests/CRT.Server.Tests/](../tests/CRT.Server.Tests/). None needs an oscilloscope, a MiniPro, a
-display, a database or a network. Read real counts off a run; do not quote them from here.
+**FIVE test projects**, all xUnit and all run by the one `dotnet test Classic-Repair-Toolbox.slnx`, each in a
+process of its own and all at once: [tests/CRT.App.Tests/](../tests/CRT.App.Tests/) (the app's `Handlers/` and the
+Maintainer tab's logic in `Maintainer/`), the headless UI tests in two -
+[tests/CRT.App.ContributeUiTests/](../tests/CRT.App.ContributeUiTests/) (the Contribute tab: the component pane, the
+table editor, the drafts, the Submit dialog and that flow's windows) and [tests/CRT.App.UiTests/](../tests/CRT.App.UiTests/)
+(every other tab and window, and `Main`) - [tests/CRT.Data.Tests/](../tests/CRT.Data.Tests/) and
+[tests/CRT.Server.Tests/](../tests/CRT.Server.Tests/). None needs an oscilloscope, a MiniPro, a display, a database or a
+network. Read real counts off a run; do not quote them from here. **The UI tests are two projects because one Avalonia
+session serves a process on ONE dispatcher thread** (owner request, 2026-11-08: "yes, do this", to running the App tests
+in parallel): in one project with the rest they were 3 min 58 s of a suite nothing else could shorten, and as one
+project of their own still 3 min 31 s; as two, the whole suite took 161 s instead of some 240 s. **A new UI test goes
+where its tab's are, and the two stay about as long as each other** - split them again by tab, never at random, if one
+grows well past the other. Helpers both App test projects use live in `CRT.App.Tests/Shared/`, the headless harness in
+`CRT.App.UiTests/Shared/`, each compiled into the projects that need it (their csproj) - never a library, which would
+need CRT's internals opened to it too.
 
 **The framework is xunit v3 (4.x), as the `xunit.v3.mtp-off` package, on VSTest** - so `dotnet test`,
 CI, the release gate, the Stop hook and `coverlet.collector` coverage all work as on xunit 2. Moving
 to Microsoft Testing Platform is a change to all of those at once, not a package bump. **xUnit1051**
-(pass `TestContext.Current.CancellationToken`) is in `NoWarn` in all three projects.
+(pass `TestContext.Current.CancellationToken`) is in `NoWarn` in all five projects.
 
 **v3 RANDOMISES test order on every run**, so a test leaking state into whichever test follows fails
 (or hangs) at random. The run header prints the seed, and running the test executable directly
 replays that order and names a hang:
-`tests/CRT.App.Tests/bin/Release/net10.0/CRT.App.Tests.exe :N -reporter verbose -longRunning 30`.
+`tests/<project>/bin/Release/net10.0/<project>.exe :N -reporter verbose -longRunning 30`.
 
-**Performance, measured - keep both:** every `ExcelPackage` is made by CRT.Data's
+**A test PROCESS that dies is `[FATAL ERROR] Xunit.Sdk.TestPipelineException`, and its project still says "Passed!"**,
+counting only the tests that ran; `dotnet test` exits 1 (v3 runs each assembly as a child process). Windows' Application
+log names the cause (".NET Runtime", event 1023). **Since 2026-11-02 this machine's .NET 10.0.14 processes die now and
+then with an internal error, 0x80131506** - the test processes of every project and the compiler server (VBCSCompiler)
+alike, so no test's doing: a garbage collection finding its heap damaged (a dump of one that hung instead: a GC thread
+looping in `plan_phase`/`find_next_marked`, the frames of dotnet/runtime#122528, whose reporter traced it to faulty RAM).
+Run the suite again; the Stop hook says so when it sees one.
+
+**Performance, measured - keep all four:** every `ExcelPackage` is made by CRT.Data's
 `EpplusLicense.NewPackage`/`OpenPackage`, which turn off EPPlus's forced GC on dispose (it was ~85 %
 of a 10-minute suite, and cost CRT on the UI thread per board read) - `EpplusPackagesTests` fails on
 `new ExcelPackage(` elsewhere in `src/`. A test that WRITES a board workbook as set-up goes through
 `CachedWorkbooks.Write` (saves under test stay real; `CachedWorkbooksTests` holds the key complete).
-For the next slowdown, measure before guessing: run a class alone against its time in the full run,
+**Every test project runs with `TieredPGO` off and the server garbage collector** (their csproj; owner request,
+2026-11-07: "please optimize this" - the app tests 6 min 5 s, then 3 min 58 s): a short test process never earns back
+tiered PGO's instrumented code (a headless UI class 43 s -> 33 s), and the server collector collects on every core
+(-> 29 s); CRT itself keeps the defaults. Measured again with the five projects side by side (2026-11-08): the
+workstation collector 176-188 s against 161 s, and **never cap the server collector's heaps** - `GCHeapCount=2` was
+faster and crashed or hung the runtime in 3 of 6 runs (see the dying processes above). **A sequential chip's every-order check follows each (state, events done)
+once** (`IcTestCatalogueShippedDataTests.EveryOrder` - after any set of a vector's pin changes the socket is the same
+whatever their order, so the state alone tells two orders apart; 8! orders replayed one by one took the 74LS373 eleven
+seconds), and the simulated chip finds a pin by name in a table and works out a good chip's response once. Windows a
+test leaves open were measured too: closing them all saved nothing. For the next slowdown, measure before guessing: run a class alone against its time in the full run,
 or take a sampled trace (`dotnet-trace collect --profile dotnet-common,dotnet-sampled-thread-time --
 <absolute path to the test exe>`) and count busy samples per method.
 
@@ -323,7 +350,8 @@ not go looking for more to extract there. Two traps worth knowing in extracted c
   `LoadFrom` on a MISSING file keeps the previous settings, so write `{}` first when a test needs a
   clean slate.
 - `DataManager.LoadFrom(dataRoot, workbookName)` - **never call `DataManager.InitializeAsync()`.**
-- `Logger` writes nothing until `Logger.Initialize()` - **never call it from a test.**
+- `Logger` writes nothing until `Logger.Initialize()` - **never call it from a test.** A test about the LEVEL a line is
+  logged at reads it through `LoggedLines.Watch()` (CRT.App.Tests; `Logger.SeenForTests`), in a `using`.
 - `WorklogManager.LoadFrom(root)` - **never call `WorklogManager.Load()`.** `TabWorkbooks.BoardKeyOverrideForTests`
   and `CurrentBoardDataOverrideForTests` stand in for `Main`.
 - `ReviewSessionStore.InitialiseAt(path)` - **never call `ReviewSessionStore.Initialise()`** (it
@@ -338,13 +366,18 @@ not go looking for more to extract there. Two traps worth knowing in extracted c
 Tests that mutate shared statics live in their collections - `"UserSettings"`, `"DataManager"`,
 `"BoardData"` (`BoardDataReader`'s static cache), `"ReviewSessionStore"`, `"HeadlessUi"`. **Any new
 test class touching one of these statics must join its collection.** Collections do NOT run in
-parallel with each other (`xunit.runner.json`, `"parallelizeTestCollections": false`) - keep that,
-it removed a whole class of race.
+parallel with each other (`xunit.runner.json`, `"parallelizeTestCollections": false`, in every project) - keep that,
+it removed a whole class of race. It costs nothing measurable since the projects run side by side (2026-11-08): the two
+UI projects decide the wall clock, and CRT.App.Tests and CRT.Data.Tests finish under them. **The projects share no
+static - each is a process - but they share the DISK**: a test writes only under its own `TempWorkspace` (or a folder
+of `Path.GetTempPath()` with a GUID in its name), never a fixed path another project's test could be writing at the
+same moment.
 
 ### Headless UI tests
 
-`tests/CRT.App.Tests/Ui/` builds the tabs, windows and `Main` itself through Avalonia's headless
-platform - no display, so it runs on CI. `TestAppBuilder.cs` is a `CRT.App` subclass whose
+`tests/CRT.App.UiTests/` and `tests/CRT.App.ContributeUiTests/` build the tabs, windows and `Main` itself through
+Avalonia's headless platform - no display, so they run on CI. `TestAppBuilder.cs` (in `CRT.App.UiTests/Shared/`, as
+`UiTest.cs`) is a `CRT.App` subclass whose
 `OnFrameworkInitializationCompleted` is deliberately empty; `UiTest.cs` runs a body on the UI thread.
 **Anything touching a control must go through `UiTest.Run(...)`/`RunAsync(...)`.**
 
@@ -418,7 +451,7 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
   spacing ... everywhere in UI"): a row's `Spacing`/`ItemSpacing` is 6, a row spaced by margins has a
   right margin of 6, two buttons in a Grid stand either side of a 6px column; code uses
   `Handlers/Theme/ButtonRow.Gap`. A gap that SETS A GROUP APART (the header's "UI" and "Table") is wider on
-  purpose. Segmented switches, screen tabs and link buttons are not such rows. **Machine-checked:**
+  purpose. Segmented switches, screen tabs, link buttons and a note box's row of format icons (`FormatTool`) are not such rows. **Machine-checked:**
   `ButtonSpacingTests`.
 - **A button's colour says what it does, and only two do** (owner decision, 2026-10-13: "Throw-away
   and danger equals this IndianRed, while Accept/save/update is a green'ish button"). App.axaml's
@@ -431,14 +464,79 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
   a button labelled in code carries the class and its own test checks it.
 - **Everything only the administrator can use carries Font Awesome's padlock** (owner rule,
   2026-10-04): `<TextBlock Classes="AdminLock" Text="&#xf023;" />` right after its name, NO tooltip,
-  and the entry hidden from everybody else. Today that is the administrator's entries on the
-  Maintainer tab's Account screen; `TabMaintainerModesTests` lists them by name, so a new entry has to
-  be decided one way or the other.
+  and the entry hidden from everybody else. Today that is the Maintainer tab's "Management" screen, whose
+  TAB carries it - its entries are the administrator's alone, so none has a padlock of its own (owner
+  request, 2026-11-07: "no need to have a 'lock' icon on each individual menu item");
+  `TabMaintainerModesTests` lists the Account and Management entries by name, so a new entry has to be
+  put on one or the other.
+- **Shift+Delete cuts in every text box** (owner report, 2026-11-07: it deleted without copying; Avalonia
+  12.1.4 lists only Ctrl+X as Cut): `Handlers/Theme/TextEditingKeys.UseShiftDeleteCut`, added to the
+  platform's keys once in `App.Initialize` - not on macOS, which has no such key.
+- **A note people write at length is a `RichNoteTextBox`** (owner request, 2026-11-07: "a very simple
+  WYSIWYG ... Bold, Italic, Underscore, Strikethrough, Bulletlist (nested) ... nor should it feel 'heavy'
+  and slow"; `Controls/RichNote/`): a workbook's note, a worklog's description, work done, a comment, a
+  photo's or file's comment, a device's description, and a component picture's and baseline's note. It
+  IS a TextBox - typing, caret, selection, clipboard and IME are Avalonia's - whose presenter
+  (`RichNoteTextPresenter`, `CreateTextLayout` overridden) draws each character's style in the very layout
+  the caret is measured against, under Fluent's own template copied whole (`RichNoteTheme.axaml`, with a
+  row of five `FormatTool` icon buttons over the text; compare it with Avalonia's TextBox.xaml when
+  Avalonia is updated). **Code reads and writes `Markup`, never `Text`** (the words without their
+  formatting), **and trims it with `RichNote.TrimMarkup`, never `Trim()`** (code review, 2026-11-08: a first line's
+  indent says whether it is a bullet and how deep - "  - sub" saved trimmed reopened a level up) - where it is saved,
+  compared (a component picture's and baseline's note: `ComponentPaneEdits.NormalisedMarkupNote`) and shown alike. **A board
+  row's note is marked `[RichNoteMarkup]`, its column a sheet's `NoteColumns`** (owner decision, 2026-11-08: an indent-only
+  change "is a change like any other change so it should count"): `BoardDataDiffer.ComparableText` compares it so, the table's
+  cells keep and compare it so, and `BoardWorkbookSchemaTests` holds the attribute and the columns together. **What is stored is readable text, CRT.Data's `RichNote`**: `**bold**`, `*italic*`,
+  `__underline__`, `~~strike~~`, a line starting "- " a bullet, two spaces a level (at no other indent - one
+  space or twelve is the dash it is, `IsBulletIndent`; code review, 2026-11-08), "\" before a mark
+  character to keep it - written with the fewest marks, and a note typed before reads as it was typed
+  (measured 2026-11-07: none of the 69,839 shipped texts nor the owner's worklogs holds anything read
+  otherwise). **A "\" is an escape only where it changes the reading** (`RichNote.IsEscapeAt`; code review,
+  2026-11-07: "\\NAS\c64" read as "\NAS\c64", "D:\_old" as "D:_old", and the first edit saved them so) - before a
+  star, a doubled "_" or "~", or a run of backslashes ending at one - and Serialize writes by that very rule
+  (`NeedsEscape`); **nothing inside a web address is a mark** (`LinkParts`: "...#object.__init__" stays the
+  link it is), only marks at its very end may close one opened before it, and a style covers an address whole
+  or not at all (`Tidy`). **Line ends are "\n"**: the box sets its `NewLine` (a TextBox's is `Environment.NewLine`,
+  "\r\n" on Windows, and every note of two lines was stored with a "\" before each literal star - code review,
+  2026-11-07), and a "\r\n" pasted in is written as "\n" (`Tidy`). **Text typed in a PLAIN box is shown through
+  `TextLinkRenderer.PlainLinkText`, never `LinkText`** (the "Resources" tab's notes): `LinkText` reads formatting. Every rule of an edit is `RichNoteEditing` (typing takes the style before it on its line;
+  Tab/Shift+Tab nest a bullet, Enter continues or ends the list, Backspace at its words takes it away);
+  **a change's styles follow from where it BEGAN** (`RichNoteEditing.ChangeOf`; code review, 2026-11-08: compared as text
+  alone, "b" typed after a bold "a" in "ab" took the plain "b"'s style) - the selection's start as `Text` changes, which
+  Avalonia 12.1.4 sets before it moves the caret, a Backspace noted in `OnKeyDown` as it takes out what stands before;
+  the box keeps its OWN undo, as the TextBox's undid the text and left its styles behind. Shown by
+  `TextLinkRenderer` (styles merged with links and search marks), the PDF export
+  (`ComposeLinkedText`), searched and listed as `RichNote.PlainOf`. **A TextBox lets go of its
+  selection as its `CaretIndex` is set** (Avalonia's `OnCaretIndexChanged`) - set the caret first, then
+  the selection.
 - **Every tooltip opens at its control's EDGE, never under the pointer** (`Handlers/Theme/ToolTipPlacement`,
   registered in `App`'s static constructor). Avalonia's default could land a tooltip over the pointer,
   and CRT's tooltips are popup windows, so the next click went to the tooltip (Approve needed three
   clicks). **Do not set `ToolTip.Placement="Pointer"` or a positive `VerticalOffset` on a control.**
   `ToolTipPlacementTests` reproduces the lost click.
+- **EVERY WARNING AND ERROR REACHES THE SCREEN, NOT THE LOG ALONE** (owner request, 2026-11-07: "I think we must show
+  every ERROR and WARNING in here in the UI"; "implement what you believe is the most optimal solution as seen from a user
+  perspective"). Logger hands every WARN and CRIT line to `ProblemsLog` (the run's, `Current`; only once `Logger.Initialize`
+  ran, so a test fills nothing). **A CRIT line is an ERROR, which Main's "Something went wrong" card says at once**
+  (`Main.Problems.cs` - in plain words, `ProblemsLog.ReadableOf`: the first line, no exception type names; how many since it
+  was closed; until closed), **unless the place it happened says it itself: `Logger.Critical(message, alreadyShown: true)`**
+  (the data check's manifest, the update install, the Submit dialog's outcomes) - so a new failure a person must know is
+  logged CRIT, and one a person needs to do nothing about WARN, which is only listed (`AtomicJsonFile.Write(...,
+  needsNothingDone: true)` for a rebuildable cache). **CRT.Data's `CrtLog.Critical` raises the card too** (through
+  `AppLoggerAdapter`), so a class moved there keeps the level it had - KiCad files that cannot be read are WARN (code
+  review, 2026-11-08: CRIT since the loader moved, for data nobody at the keyboard could mend). **A file read again at every refresh is said ONCE per state of the
+  file** (`UnreadableFiles.Report` - a damaged workbook, worklog or device; code review, 2026-11-07: logged at every read, the
+  card came back as soon as it was closed; CRT.Data's since 2026-11-08, so a damaged board file too - `BoardDataReader`,
+  `BoardFiles`). A test of CRT.App.Tests watching the lines logged (`LoggedLines`) sees CRT.Data's at CRT's own levels. Errors logged before the window was there are said as it opens, **taken with what
+  comes after in ONE step** (`ProblemsLog.Watch` - listening, then reading, counted an error logged in between twice).
+  **"Errors and warnings"** (`ProblemsWindow`, from the card's "Show details" and the
+  "Configuration" tab's "Show errors and warnings") lists them newest first, with "Copy all" for the "Feedback" tab. **A fatal
+  crash is said at the NEXT launch, once** ("CRT closed unexpectedly" - `CrashReports.LatestFatal` over the crash file,
+  `UserSettings.LastCrashReportSaid`), its report listed - **and never with nothing stored**: the crash file is never emptied,
+  so the first launch of a CRT that keeps the setting stores its own time and says nothing (code review, 2026-11-07: it said
+  September's crash as "the last time it ran"). **The data check never says "up to date" over files it could not
+  download** (`DataCheckNotice.After(..., failedCount)`, counted by `OnlineServices.FailedDownloads` across the check - **the
+  launch check's from the splash on**, `DataManager.FailedDownloadsAtLaunch`, as the main file and the board files sync there).
 - **Main's notices FLOAT over the tabs' bottom-right corner, never in a row of their own** (owner
   report, 2026-10-11; `NoticeStack` in Main.axaml, `Main.Notices.cs`). As rows above the tabs, every
   notice that came or went moved the window, and RESIZED the schematic, which is fitted to its
@@ -468,11 +566,18 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
   MiniPro test, the scope's live output, the synchronous table LOAD, and a draft saving itself (the
   Drafts table's session, a second after a change). Waiting for that save because the contributor
   pressed something - closing the table, submitting, quitting - IS under it (`TabDrafts.SaveTableNowAsync`).
+- **A picture is moved ONE way everywhere, the Schematics tab's** (owner request, 2026-11-06: "I do think we need to unify
+  how pan works, and then have the same pan functionality as present in the 'Schematics' tab"; `Handlers/Geometry/PanGesture`):
+  a drag with the RIGHT or the MIDDLE button pans, the wheel zooms at the pointer, and the left button is left to what it does
+  there - the Schematics tab in all its tools (aligning KiCad data and marking components were its `TryBeginPan` already), the
+  component popup's picture (the right button alone until then), the Contribute tab's previews of the schematic images
+  (`PicturePreview`, a left drag until then - Ctrl+wheel still zooms, the wheel scrolling the cards) and the photo viewer
+  (`PhotoZoomView`). A new picture that pans asks `PanGesture.IsPanPress`, and its tip says `PanGesture.Hint`.
 - **User-visible punctuation is plain ASCII** (hyphens, straight quotes) unless an app label already
   has a character such as "·".
 - **A tab, a menu or a button named in the UI is in quotes** (owner request, 2026-11-01: "when there is a reference to a
   tab, a menu or a button then it must be encapsulated with """): `the "Schematics" tab`, `under "Schematic images"`, `press
-  "Align KiCad data"`, `"Undo" takes it back` - sentences, tooltips, a label's own words (`Enable "Workbooks" tab`) and the
+  "Align KiCad data"`, `"Undo" takes it back` - sentences, tooltips, a label's own words (`Enable "My Devices" tab`) and the
   server's. A name that only opens a heading or a title ("Align KiCad data on [Top]") is the label itself. **Machine-checked:**
   `UiReferenceQuotingTests` (every tab, and a list of names that cannot be anything else, a sentence carried over to the next
   line read as one); a word that is also plain English
@@ -507,9 +612,25 @@ One folder per tab - `About`, `Configuration`, `Drafts` (the Contribute tab), `F
 `UserControl` with its logic in code-behind. `Worklog/` holds the worklog's dialog windows (the
 component editor's window, `Contribute/`, went in CRT 4.0's step 2 - the component pane replaced it).
 **Conditional tabs:**
-Oscilloscope (`ApplyOscilloscopeTabVisibility`), Workbooks with the worklog bar
+Oscilloscope (`ApplyOscilloscopeTabVisibility`), "My Devices" (the Workbooks tab, below) with the worklog bar
 (`ApplyWorklogBarVisibility`), Maintainer (`EnableMaintainerTab`, off by default). Hiding a selected
-tab moves the selection to the first visible one.
+tab moves the selection to the first visible one. **Code asks for a tab by its TabItem, never its header**
+(`ReferenceEquals(..., this.WorkbooksTabItem)`): "Workbooks" was compared as text in two places, and the tab was
+renamed (2026-11-06).
+
+**The "About" tab shows the whole CHANGELOG.md below the credits, drawn as GitHub draws it** (owner request, 2026-11-06;
+`TabAbout.Changelog.cs`, the parse `GitHubMarkdown`, the drawing `MarkdownRenderer`, colors `Changelog_*` in both themes):
+the file is EMBEDDED by CRT.App.csproj (`CRT.CHANGELOG.md`) - read, never written, so "Hands off CHANGELOG.md" holds - and
+so a CRT shows the changelog of its own version. **The tab is one virtualized list** - the page first, then one item per
+block, built as it scrolls into view and only once the tab is first shown: drawn at once it was ~1,100 controls and up
+to 450 ms of layout at every width change. Links open through `ExternalTargetLauncher`. **A version's heading reads
+"Version **3.0.0**, 2026-October-11", only the number bold** (owner request, 2026-11-06; `ChangelogVersionHeadings` rewords
+it as it is shown - `MarkdownHeading.BoldAsMarked` - CHANGELOG.md's "# 3.0.0, 2026-October-11" is never touched; any other
+heading stays bold as a whole). **Home, End, Page Up and Page Down scroll the tab from wherever the keyboard is**
+(owner request, 2026-11-06; `Main.KeyIsForAboutPage` -> `TabAbout.TakeScrollKey`): every click on the tab sends the focus
+back to the component filter, so the keys moved its caret; they are the page's unless the focus is in another text box,
+an open drop-down or a list on the left. End brings the last block into view first - the list guesses the heights of the
+blocks it has not built, and the end worked out from the guess fell short.
 
 #### The Contribute tab (`Tabs/Drafts/`, class `TabDrafts`) - local-first contributing
 
@@ -596,7 +717,8 @@ gone** (`ContributeEntries.TableOf`; `ContributeEntriesTests` fails on a sheet w
 "Name", "Regions", "KiCad: Files", "Categories"): they show their page under `NoTableNotice`. **The new component's form is no entry, so the switch is greyed out over it** (`EntryOpen` null; code review, 2026-11-04). **"Component images" is two entries**, one
 sheet (CRT.Data's `BoardTableSheetParts`, below). A component picked with "Table" on goes to its first row of the sheet of the page it stood
 on (`GoToRowsOfComponent`). **A pill or a search moving the table moves the entry** (`SheetShown`), and turns off the entries it shows nothing of,
-as such a sheet's tab went (`ShowTableEntriesEnabled`). **What opens a page with a table of its own is the "UI" view, however it was asked for**
+as such a sheet's tab went (`ShowTableEntriesEnabled`) - **the five that are no sheet too, which neither looks in** (owner request, 2026-11-07;
+`BoardTableEditor.IsFilteredByPillsOrSearch`); turned off, an entry is faded with no grey behind it. **What opens a page with a table of its own is the "UI" view, however it was asked for**
 ("Edit component", `OpenPaneOnDraftAsync`), **and a table opened from elsewhere the "Table" view** ("Show in the table", Submit on a draft
 with errors, `OpenTableOnDraftAsync`). The tab's lists
 are ONE collection each, changed in place (`InPlaceList.Sync`, never inside itself: a category that goes is a selection changed while it
@@ -623,7 +745,12 @@ into its draft and a save starts; one that fails waits in memory for its board o
 `ConfirmLeavingTableAsync` - every draft - is quitting's. **One timer saves every draft no editor
 holds** (`SaveDueDraftsNoEditorHoldsAsync` over `DraftSessions.Due`, started by `Initialize`); the
 table and the pane save their own, whose Saved events the row and the board on screen follow. Every
-pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
+pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`. **A save waiting for the one in flight waits
+only while that one is UNFINISHED** (`thisSaveInFlight is { IsCompleted: false }`, the pane's and the table's; owner report,
+2026-11-06: CRT froze for good, a note typed and the "Resources" tab clicked): the finished save's own continuation clears the
+field at the priority it began under - the save timer's, low - so a save asked for from a click came first, found it still
+there, and `await` on a finished task looped for ever on the UI thread. A tool for the next hang: `dotnet-stack report -p <pid>`
+(installed with `--tool-path`) names the method the UI thread spins in.
 
 - **"Draft" IS THE ONE WORD FOR "DIFFERS FROM THE PUBLISHED BOARD"** (owner request, 2026-11-02: "Changed" until then in the
   Contribute tab's list and the pane's header; the component list on the left of CRT always said "Draft"), **and A NEW BOARD HAS
@@ -685,8 +812,12 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   with none, which deleted every pin; code review, 2026-11-01). A new baseline starts in the region shown, as 99% are; a new picture in all,
   as 99% are; a new pin with its set - **a component's row per region says nothing of its pins**, the tick does.
   **A FILE OR A LINK, OF A COMPONENT OR OF THE BOARD, CAN BE OF ONE REGION** (owner request, 2026-11-02: "a new column with the
-  region"; `Region` on the four row types, `region` in the board file written only when filled, the last column of their sheets,
-  part of a row's identity only when filled - `BoardDraftNaturalKeys`). The popup and the Overview list what their region shows,
+  region"; `Region` on the four row types, `region` in the board file written only when filled, the last column of their sheets but
+  the board's two, part of a row's identity only when filled - `BoardDraftNaturalKeys`). **A BOARD FILE AND A BOARD LINK HAVE A NOTE**
+  (owner request, 2026-11-06: "describe what this link or file is about ... For now I do not want this on the component files and
+  links"): `Note`, several lines, a box under each row of "Board: Files" and "Board: Links", the last column of their sheets, `note` in
+  the board file written only when filled; the "Resources" tab shows it under the name, its web addresses clickable and nothing read as formatting (`TextLinkRenderer.PlainLinkText` - it is typed in a plain box).
+  A row with nothing but a note typed is a row (`BoardPartEdits.IsBlank`). The popup and the Overview list what their region shows,
   and the "Resources" tab what the region shown shows, following the switch (`Main.ShowResources`), the board's "Scope measurements"
   notes too (`ScopeMeasurementFiles.Of(board, region)`). "Board: Files" and "Board: Links", and a component's "Files" and "Links",
   list every row whatever region CRT shows - they are the whole lists - with "Applies to" as a column while the board has regions.
@@ -816,7 +947,22 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   pointer only where it draws, so it fills itself with Transparent; owner request, 2026-11-02: **the pin of the image shown stays
   lit on both**, `ShowViewedPin`, `PinoutDrawing.MarkPin` - `HoverPin` for the pointer in the list), replacement parts,
   a baseline's machine state (`ComponentPopupContent`); the Overview has a Package column and
-  its Notes are the first image's note (`OverviewHtmlBuilder.BuildRows`).
+  its Notes are the first image's note (`OverviewHtmlBuilder.BuildRows`). **"Detach pinout image in component info popup"**
+  (owner request, 2026-11-07; `ComponentInfoWindow.Pinout.cs`) moves the popup's pinout section into a window of its own,
+  870x960 the first time, its size and place one for all. **The section is taken out at once and put in only after the window
+  it left has had its layout** (`PlaceSectionAfterLayoutOf`; owner report, 2026-11-07: CRT ended on "Attempt to call
+  InvalidateArrange on wrong LayoutManager") - Avalonia keeps a control queued for the old window's layout, and arranging it
+  there once it stands in another throws. **A resistor's color bands are drawn
+  under the pinout, read off its value** (owner request, 2026-11-07, after the owner's own hand-made picture;
+  the rule `ResistorColorCode`, every position `ResistorBandsGeometry`, the drawing `ResistorBandsDrawing`):
+  the values as the published data writes them ("560Ω", "4K7Ω", "1.5KΩ 1/4W 5%" - 116 spellings measured),
+  **and a number alone, "100", "3.3k", "100 K", as KiCad data writes them** (owner request, 2026-11-07 - only a
+  "Resistor" gets bands, so its number is ohms; nothing but a rating and tolerance may follow it),
+  four bands, five for 2% or closer or a value two digits cannot say, a pill under each band, the value
+  ("8.2K Ω 5%", owner request, 2026-11-07), its power rating and each band's color in words ("Colors:", a swatch
+  each, the tolerance's last) under it. **A wrong picture is worse than none**: a resistor pack ("RP", "Resistor
+  pack" - printed with a number code), a trimmer, an array or network, "wire", "N/A", a lower-case "m" and a
+  tolerance no band stands for draw nothing. The colors are IEC 60062's, the same in both themes.
   **The board's own lists open in the pane too** (slice 4a, 2026-10-26; `ComponentPane.Board.cs`,
   `TabDrafts.OpenBoardPartAsync`): the left column's "Files", "Links", "Credits" and "Important
   signals" show one of them in place of a component (`PaneBoardPart`) - Schematic images too since
@@ -991,10 +1137,18 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   on its popup, for everyone** (`Main.EditComponentFromPopup` -> `EditComponentAsync` -> the pane, its draft made by
   `OnCurrentDraftAsync`): the popup goes, as it stands over CRT's window, and with a picture tool on that tool is
   shown instead. Not on the Contribute tab's own preview of the popup, nor on a popup still open once another board
-  is shown (`ComponentInfoWindow.OfferEdit`, `FollowBoardShown`). **What the mode switched on besides
-  its menu is "Write a detailed log" on the Configuration tab** (`UserSettings.DetailedLog` - the
-  log's debug lines and every board's data checked at launch), STORED as `contributorMode`, so
-  whoever had the mode on keeps it.
+  is shown (`ComponentInfoWindow.OfferEdit`, `FollowBoardShown`), **and it opens on "Basics"** (owner request,
+  2026-11-07; `TabDrafts.EditComponentAsync`). **The log ALWAYS holds its debug lines** (owner request, 2026-11-07:
+  "remove this checkbox and then always write this detailed logfile" - "Write a detailed log", contributor mode's
+  heir, went; `Logger` has no switch). **What it also did, every board's data checked at launch into the log, went with it**
+  (owner decision, 2026-11-07: its findings "should show just like any other error or warning in the "Contribute" tab"):
+  `DataValidator` is gone, and **a published board with no draft shows its OWN errors and warnings** there, badges, list
+  rows and "Overview" panels as a draft's (`DraftStatusReader.PublishedProblemsCached` - the very checks, on the published
+  file, read off the UI thread for the board SHOWN, one published board's read kept at a time; `TabDrafts.ReadPublishedProblemsAsync`),
+  **only once the tab is shown** (code review, 2026-11-08: every board shown on another tab was checked whole, for badges
+  nothing else shows), the board status's panels waiting for that very check (`PublishedProblemsOf`).
+  The STORED `contributorMode`, `validateDataOnLaunch` and `debugLogging` stay written as found: CRT 3.x reads the same
+  settings file and goes by them.
   **"Clone component from another board"** (owner request, 2026-11-04: "select a hardware, a board and then a component ... clone all its data
   to this component. It will not change the component name, but all other data should be identical"; `ComponentPane.Copy.cs`, every rule CRT.Data's
   `ComponentClone`; "Copy from another board" until then, by part number with parts to tick): a panel over the page picks the hardware
@@ -1294,10 +1448,26 @@ pool save is `DraftSession.SaveAsync` - never another `Task.Run(session.Save)`.
   went without a word). Nothing marked is said for what it is (`KiCadMarkPlan.WhyNothing`: no components
   yet, no footprint on the picture, all marked already), and the note under the part goes once the draft
   moves on (`DropPicturesNoteIfMovedOn` - an Undo takes it).
+  **A KEY OR A DRAG WHILE ALIGNING REBUILDS NOTHING** (owner report, 2026-11-06: "incredible slow ... not always react when I use the
+  keys"; measured 75-265 ms per arrow key, 37-60 ms of raster per drag frame): the box moves by `OverlayTransform` alone, a board of more
+  than 500 primitives drawn from one picture of the overlay while dragged or a key is held (`KiCadOverlayRenderControl.DrawFromSnapshot`,
+  every position `OverlaySnapshotGeometry`) - **taken again once the view needs more than it holds** (`StillCovers`; code review,
+  2026-11-07: kept across moves, a band of traces went missing past its margin) - rebuilt once 400 ms after a resize or flip settles; the box itself is drawn untransformed. The
+  runtime cache's scope key is the one computed at load - it stat-ed every KiCad file once per net. **The arrows (and Escape) reach the box
+  from anywhere in CRT's window** while the tool is on and the tab shown (`Main.KeyIsForKiCadAlignment`, `TabSchematics.TakeKiCadCalibrationKey`)
+  - never from a text box, nor an open drop-down (code review, 2026-11-08: Escape there ended the alignment, the list still
+  open). A held key's repeats were lost behind the rebuilds: Avalonia 12.1.4 ignores Windows' repeat count.
+  **DrawImage's SOURCE rectangle is in the image's PIXELS, never its DIPs** (owner report, 2026-11-06, a display at 125%: the traces
+  "zooming slightly" as a marker was grabbed; `OverlaySnapshotGeometry.SourceRectOf`): Skia takes it as it is
+  (`WriteableBitmapImpl.Draw` -> `Canvas.DrawImage`), and the picture, taken at the screen's scaling, is 80% as many DIPs as pixels
+  there - so `new Rect(bitmap.Size)` drew 80% of it over the whole area. Headless tests run at 100%, where the two are one number.
   **WHILE ALIGNING ONLY THE SIDE BEING ALIGNED IS DRAWN**, whatever "Show opposite side traces" says (owner request, 2026-11-03: "if I am
   aligning the top PCB, then I only want to see traces from the top"; `RenderKiCadPcbGeometry`) - a through-hole pad is on both sides, so it stays.
   **AND NO COPPER POUR, whatever "Show zones" says, which is not offered then** (owner request, 2026-11-05: "NOT include any ground plane, as it is hard to
   align those nets"): every zone, by what is drawn and never a net's name - measured, the pours are on "GND" or "Earth" and on "+5V" too. Each net's tracks and pads stay.
+  **NOR ANY WORKLOG, whatever "Show worklogs" says** (owner request, 2026-11-07: "When I am aligning KiCad data, then I do not want to see any
+  worklogs on top"; `TabSchematics.FollowAligningInWorklogOverlay`, from `FollowPictureTool` as the calibration starts and ends): the overlay
+  is hidden, never cleared, so it comes back as it was.
   **A SHEET BEING ALIGNED SHOWS EVERY WIRE, NAMED OR NOT** (owner report, 2026-11-04: "it has no traces in the alignment that I can align
   to" - the Open128's "Power", 221 wires and none drawn; `everyWire`). Half-drawn sheets were aligned off by up to 11% and said nothing.
   **A POWER SYMBOL IS A NET LABEL** (`KiCadSchematicLabels.Power`, `ExtractSchematicPowerLabels`: flagged "(power)" with a power_in pin, so never PWR_FLAG,
@@ -1659,7 +1829,9 @@ value in its tooltip), red + strike-through deleted, shown where the row used to
   2026-11-05: "group and order into what is logical for the new setup"; CRT.Data's `BoardTableTabs`, `ContributeEntriesTests` holding the two together):
   Board - "Schematic images", "Files", "Links", "Credits"; KiCad - "Important signals"; Components - "Basics", "Replacement parts", "Pinout", "Pictures",
   "Oscilloscope baseline", "Files", "Links". A heading is a `TabItem` that cannot be picked; KiCad stands after Board there, as a table opens on its first tab and most
-  boards have no important signals. A tab counts its own changes (`BoardTableSheetParts.ChangeCountOf`), a host remembers the part with the sheet, an undo goes to the
+  boards have no important signals. **The strip is a LINE PER GROUP, never a paragraph** (owner request, 2026-11-06: "it wraps into next line, which
+  makes it hard to overview"; `SheetTabsPanel`, every position `SheetTabsLayout`): Board and KiCad on the first line, Components on its own
+  (`BoardTableTabs.StartsLine`), the two line headings in one column so the tabs line up, a long line wrapped under its own tabs. A tab counts its own changes (`BoardTableSheetParts.ChangeCountOf`), a host remembers the part with the sheet, an undo goes to the
   tab and column holding its change, and `BoardTableDocument.Sheets` and the list of problems over the table go in this order, the list naming each by its tab ("Components: Basics", `BoardTableTabs.NameOf`); a workbook keeps `AllSheets`'. With `SheetsPickedElsewhere` no strip is built. **"Component images" is shown in
   two, "Pictures" and "Oscilloscope baseline"** (CRT.Data's `BoardTableSheetParts`): ONE sheet, as the board file and the server keep it; a row is
   a baseline by its pin alone, so a pin typed moves it across once the cursor leaves it; a row with nothing typed shows in either. **A row that can
@@ -1790,16 +1962,34 @@ value in its tooltip), red + strike-through deleted, shown where the row used to
   "Delete row" calls `BoardTableSheet.DeleteRows` - one undo step, and a component's rows on other
   sheets go with it (`BoardTableDocument.DeleteRowsOfComponent`; highlights at save). A RENAME keeps
   them. `SelectCell` makes its cell the whole selection. ONE "Insert row" button.
-- **Blocks are copied and pasted, with fill down and find & replace** (CRT 4.0, 2026-10-25 - step 0
+- **Blocks are copied and pasted, with find & replace** (CRT 4.0, 2026-10-25 - step 0
   of the plan, so the table does what Excel was used for; `BoardTableEditor.BlockEdits.cs`, the rules
-  `BoardTableSheet.PasteBlock`/`PasteIntoCells`/`FillDown` and `BoardTableDocument.ReplaceAll`, the
-  words `BoardTableEditWording`). Ctrl+C copies the selected cells as a spreadsheet block
+  `BoardTableSheet.PasteBlock`/`PasteIntoCells` and `BoardTableDocument.ReplaceAll`, the
+  words `BoardTableEditWording`). **No fill down** (owner request, 2026-11-07: "I do not understand what
+  "Fill down" does ... please remove this functionality entirely" - button, Ctrl+D and its rule gone). Ctrl+C copies the selected cells as a spreadsheet block
   (`BoardTableClipboard.ForCells`). Ctrl+V lands a block from the selection's top-left cell down the
   rows SHOWN - red rows passed over, rows added at the end unless a pill or search narrows the table,
   columns past the last and a pasted heading row left out, each said on the status line; ONE value
-  onto several selected cells fills them all. Ctrl+D / "Fill down": each column's top selected cell
-  into the rest - on one row, the row shown above into it. Ctrl+H / "Replace": capitals ignored, the
-  rows shown, this sheet or every sheet - of a sheet in two the part shown, its rows and columns, unless "On every sheet" is ticked. Ctrl+F: the search box. **Each is ONE undo step**
+  onto several selected cells fills them all. Ctrl+H / "Replace": capitals ignored, the
+  rows shown on this sheet - of a sheet in two the part shown, its rows and columns - **and of those columns the ones
+  ticked under "Columns"** (owner request, 2026-11-07: "restrict replacement to specific columns"; a drop-down with a tick
+  per column shown, "Every column" and "Unselect all" (owner request, 2026-11-07: "so I can choose only one column"),
+  kept per sheet and part by column NAME while CRT runs -
+  `BoardTableEditor.ColumnsTickedFor`): "Find" shows and marks only what is in them (`BoardTableSearch.Literal`'s
+  `columnsOf`, `Searches`; a cell knows its column - `BoardTableCellText.ColumnIndex`), and the count and "Replace all" go by
+  them. **A tick changed keeps the table on its sheet and part, whatever they then show** (code review, 2026-11-08:
+  "Unselect all" moved it to another sheet holding the text, the list then ticking that sheet's columns), and the list open
+  as another is shown is made again for it. **Home and End go to the row's first and last DATA column, Ctrl with them to the first and last row shown**
+  (`MoveToRowEnd`; owner report, 2026-11-07): the grid's own Home went to the marker column, no cell of the board, and left
+  the table scrolled. **"Find" starts with what the search box
+  filtered by, the cursor after it, nothing selected** (owner request, 2026-11-07). **Its "Find" IS the
+  table's search while the bar is open, as typed** (owner request, 2026-11-07: "only search for the string
+  as-is and do not 'AND' multiple words or exclude with minus"; `WorklogSearchQuery.Literal`,
+  `BoardTableSearch.Literal`, the cells split by `BoardTableReplaceText`): it narrows and marks the rows as
+  the search does, the words in "Replace with" drawn in place of each match in a color of their own
+  (`BoardTable_ReplacePreview_*`), "Replace all" counting the places in a badge
+  (`BoardTableDocument.CountReplacements`, the very cells `ReplaceAll` changes), the search box empty and
+  greyed out until "Cancel" (no "On every sheet" any more). Ctrl+F: the search box. **Each is ONE undo step**
   (`BoardTableSheet.AsOneChange`, a history group ended whatever happens - left open, every later
   edit joined it); a read-only table offers none of them, copying aside.
 - **Row order is what the user sees, and new components are PLACED** (`ComponentPlacement`: a new
@@ -1815,12 +2005,57 @@ value in its tooltip), red + strike-through deleted, shown where the row used to
   `BoardTableColourCells`): a swatch and its text per side, "(not set)" for a blank one - no bytes needed, so with or without a source.
 - **Every cell wraps; a double-click on a heading's edge fits the column to every row**
   (`BoardTableEditor.TextWrap.cs`, `ColumnAutoFitGeometry`; the grid's own fit measured only built rows).
+- **Several selected cells: a veil and a 1px blue edge on each** (`BoardTable_Selection_Fill`, `..._Edge`; owner report,
+  2026-11-07: the "Board label" cells "miss some dividers" - the veil is as light as the grey grid line, which vanished
+  into it), never on the current cell, which keeps its frame.
 - **The current cell has no fill and a 2px dashed red frame** (the template's `CurrencyVisual`
   restyled; the grid's focus visual, selection outline and fill handle hidden).
 - No "Restore row"/"Revert cell" buttons (owner request, once undo existed); the model keeps them for
   the Maintainer tab.
 
-#### Workbooks (`Tabs/Workbooks/`) and the worklog
+#### Workbooks (`Tabs/Workbooks/`, the "My Devices" tab) and the worklog
+
+**The tab reads "My Devices" since 2026-11-06** (owner request: "Can we try and rename the 'Workbooks' tab to 'My Devices' -
+I want to see if this is better" - a try; every name in code, the settings and the Wiki page `Workbooks-tab`, which
+installed CRTs open, keep "Workbooks").
+
+**WHILE THE TAB IS SHOWN, ITS "My devices" STANDS IN MAIN'S LEFT PANEL, THE WORKBOOKS IN THE TAB** (owner requests,
+2026-11-06: "when in the 'My Devices' tab, I want the 'My devices' list and the 'Workbooks' list to show in the left-side
+panel, where the component category and component list is", then "I have changed my mind in terms of moving the
+'Workbooks' to the left-side panel - please again have them visible where they were previously, but do keep the 'My
+devices' in the left-side panel"; `Main.DeviceList.cs`, `TabWorkbooks.ShowDevicesIn`): Main takes the tab's
+`DeviceListArea` - its heading over its framed list - once, at construction, into `DeviceListHost` (the line under it,
+`DeviceListSeparator`, hidden); the
+category and component lists (`ComponentListsGrid` - their container, hidden whole, as the Contribute tab switches the
+lists in it) and the buttons under them (`ComponentActionsPanel`) give way while the tab is shown, Hardware and Board stay.
+**The list stays the tab's**: its controls in the tab's name scope (a test's `tab.GetControl` finds them, and a tab built on
+its own keeps it above its workbooks), filled by the tab's code. **Its card styles go with it** -
+`TabWorkbooksCardStyles.axaml`, included by the tab AND by the list's border: a style of the tab no longer reaches a control
+standing outside it. **No "Add device" beside it** (owner request: "no need for it") - the worklog bar's. **Its heading
+stands over the frame as "Hardware" and "Board" stand over theirs, not bold** (owner request, 2026-11-06: "make it a
+headline for the panel below"), **how many it lists in an outlined badge after it** (owner request, 2026-11-07;
+`DeviceCountHost`), **and "Clear" stands UNDER the frame, outside it, in line with the workbook list's "Clear"** (owner
+requests, 2026-11-06: "should always be visible even if scrolling down in list", and 2026-11-07: "outside of the 'My
+devices' panel ... vertically align the two buttons"; `ClearDeviceButton`, greyed out with nothing picked; the two the same
+height above the window's foot). **A card is up to three lines** (owner requests, 2026-11-06 and 2026-11-07; `BuildDeviceCard`):
+the name and status; the serial number or unique identifier with how many workbooks the device has at that line's end - **a
+device with none has no blank line**, its count moving up beside the status; its hardware and board, **its condition in stars
+at that line's end** (none for 0). **THE ORDER IS "Sorting of devices"** (owner request, 2026-11-07; the Configuration tab's
+radio buttons under the scope, `UserSettings.DeviceSorting` - `deviceSorting`, "Name" by default - every rule
+`OwnedDeviceSorting`): by name (`NaturalLabelComparer`), by hardware, board and name, or BY HAND - each card a drag handle
+at its right edge (`DeviceListCard`, an `IDraggableRow` that is its own container, `ListRowDrag`), the order stored on the
+devices themselves (`OwnedDeviceRecord.DisplayOrder`, `OwnedDeviceStore.SetOrder`; a new device goes last, one never placed
+after the placed ones by id). The bar's "Device" drop-down lists them in the same order (`TabWorkbooks.SortDevices`).
+**"Find a previous repair" searches the devices too** ("so it also covers devices and not only workbooks/worklogs";
+`WorklogSearchIndex.ForDevice` - the card's name, serial and board, and everything typed on the device), the list narrowed to
+what it finds and the match marked on the three lines (`OwnedDeviceWording.NoDevicesMatch` with none).
+**WHAT BOTH LISTS SHOW IS ONE SCOPE** (owner request, 2026-11-06: "This should now follow devices and not workbooks" -
+"Show all devices", "Show only devices for selected hardware" in the middle, "Show only devices for selected board"; asked,
+"Follow the same scope" for the workbooks; `MyDevicesScope`): every device and workbook, those of any board of the
+hardware shown, or those of the board shown - the default. Stored as the workbooks' scope always was (`workbooksScope`,
+`UserSettings.WorkbooksScope`), "CurrentHardware" its new value, which CRT 3.x - reading the same file - takes as the board
+shown. With devices but none in the scope the list says so (`OwnedDeviceWording.NoDevicesInScope`). Every device is still
+read for a device's page and the lookups; only the cards follow the scope.
 
 `TabWorkbooks.axaml(.cs)`, `.BoardPreviews.cs` (the board pane), `.Summary.cs` (the summary strip),
 `.Export.cs` (PDF/ZIP), `.PreviewReorder.cs`, `.Devices.cs` (the user's devices). A workbook is a
@@ -1899,15 +2134,69 @@ repair on one board; it holds worklogs.
   (`JsonExtensionData`). **A repair names its device** (`WorkbookRecord.OwnedDeviceId`, null for none,
   `WorklogManager.SetWorkbookDevice`), never a list on the device: a deleted workbook leaves nothing
   behind, and an id no device has reads as none (`OwnedDeviceRepairs.DeviceOf`).
-  "My devices" lists EVERY device above the workbooks, whatever board is shown; a card opens its PAGE in
-  place of the workbook (one card marked at a time): what it is (status as words, `OwnedDeviceStatus`,
-  its pill `WorklogInfoPillBuilder.BuildDeviceStatusPill` - the tab's one informational look), its
-  repairs on ANY board totalled by ONE `WorkbookSummary` over every worklog, time and cost by the
-  workbook headline's own `BuildTimeAndCostStats` (`OwnedDeviceRepairs.Summarize`/`HeadlineStats`), the
-  changes made to it (a board swapped in "Edit device" is recorded by itself), notes and photos.
-  **Notes are saved to the device they were TYPED FOR** (`thisNotesDeviceId`; code review 2026-10-28 -
-  a card click takes no focus, and the next device's page saved the first one's notes as its own),
-  never refilled under the caret. **Photos are copied in, and a device deleted, off the UI thread under
+  "My devices" lists the devices of the scope (above), each card saying how many workbooks it has (owner request,
+  2026-11-06: "Just as in the 'Device' drop-down list"; `BuildCountPill`, on its second line); the card marked is THE DEVICE
+  PICKED (below), and a card clicked picks it and opens its PAGE in place of the workbook: what it is (status as words,
+  `OwnedDeviceStatus`, its pill `WorklogInfoPillBuilder.BuildDeviceStatusPill` - the tab's one informational look - its
+  condition in stars, `ConditionStars`), its
+  repairs on ANY board - headed "Workbooks associated to this device" (owner request, 2026-11-06), the history export too - totalled
+  by ONE `WorkbookSummary` over every worklog, time and cost by the workbook headline's own `BuildTimeAndCostStats`
+  (`OwnedDeviceRepairs.Summarize`/`HeadlineStats`), then a headline per part (owner request, 2026-11-06: '"Photos" should
+  sit just above the photos'): its links of interest and comments (a link clicked opened through `ExternalTargetLauncher`),
+  and its photos, EACH IN A PANEL OF ITS OWN WITH ITS COMMENT UNDER IT ("I want each photo to have its own panel and with its
+  text displayed below"), a photo clicked opened in the worklog's viewer. **THE PAGE ONLY SHOWS** (owner request, 2026-11-07:
+  "it should not allow for direct edits or 'Add X', as this should be a view-only place"): everything is changed through
+  "Edit device" - no notes box, no "Add photos", no "New repair" - **and a part with nothing in it has no headline**
+  ("Only show headlines if it has data"; `DeviceLinksSection`, `DeviceCommentsSection`, `DevicePhotosSection`); with no
+  workbook it says so (`OwnedDeviceWording.NoRepairsYet`). **The device's NOTES ARE GONE, the description is the one text**
+  ("Remove the 'Notes' as we now have the 'Description'"): notes an earlier pre-release stored are read into the end of the
+  description (`OwnedDeviceStore.FoldNotes`, `notes` written no more - `Notes` null, `WhenWritingNull`), so nothing typed is
+  lost. **No "Changes made to it" any more** (owner request,
+  2026-11-06: "this is exactly what the workbooks will cover") - deleted with its recording and its part of the export; a
+  `changes` array an earlier build wrote stays in the device's index.json untouched (`JsonExtensionData`). **Its
+  description is several lines** (Enter a new line, Ctrl+Enter saves) and keeps them on the page and in the export -
+  "Where it came from" until 2026-11-06 (owner request: 'change text "Where did it come from" to "Description"'), STORED
+  as `origin` still, its property `Description`. **The form's Region shows only for a board with regions**
+  (`BoardRegions.Has`, the board read as viewed off the UI thread; a region stored on a board without them is kept, not
+  shown). **"Unknown" is the first status and the first region, "Not mine any more" no status** (owner request, 2026-11-06:
+  "this is different data as I see it"; "Not set" the region's none until then): a new device's status is "Unknown", a
+  blank one reads so, and "Not mine any more" an earlier pre-release stored stays as any word this CRT does not know.
+  **Its condition is 0 to 5 stars** (owner request, 2026-11-06; `condition`, `OwnedDeviceCondition` - a star clicked sets
+  that many, the one set clicked again none, the stars lit up to the one under the pointer; the export says it in words, a PDF
+  font having no star). **The stars are SHAPES, never a font's glyph** (owner request: 'have this show prettier ... more
+  "depth" and coloring'; `ConditionStarGeometry`, `ConditionStars`): a lit one gold, light at its top and deeper at its foot,
+  a darker edge and a soft shadow; an unlit one a quiet outline - colors `Workbooks_Star_*` in both themes.
+  **Its links of interest are a worklog's** (owner request, 2026-11-06: 'the same "Links of interest" for the device';
+  `links`, `OwnedDeviceStore.AddLink`/`UpdateLink`/`RemoveLink`, the worklog's `WorklogAddLinkWindow` and `WorklogLinkRow`),
+  saved as the comments are, and in the exported history (`ComposeLinkRows`, the worklog export's own).
+  **Its photos are dragged into another order** (owner request: "rearrange the photos, just like it is possible to do in the
+  worklogs"; `ListRowDrag` over the form's ONE `ObservableCollection` of `WorklogAttachmentRow`s - an `IDraggableRow` since -
+  the order `OwnedDeviceStore.SetPhotoOrder`, at once on a device). **A device with workbooks keeps its hardware and board**
+  (owner decision, asked: "Locked while it has workbooks" - "I should only be allowed to associate that workbook to a device of
+  the same hardware/board"): "Edit device" greys the two boxes out and says why (`OwnedDeviceWording.BoardLocked`), and
+  `OwnedDeviceStore.Update` takes no board for such a device whatever it is handed. "Associate workbook to device" offers the
+  devices of the workbook's board alone (`OwnedDeviceRepairs.ChoicesFor`); a workbook already on a device of another board -
+  from before - keeps showing it until changed.
+  **THE DEVICE FORM IS LAID OUT AS THE WORKLOG'S EDITOR** (owner request, 2026-11-06: "more like the 'Worklog' modal, where
+  it has these same possibilities ... Comments - Photos"; `OwnedDeviceWindow`): fields and comments left, photos right,
+  the worklog's own small windows (`WorklogAddCommentWindow`, `WorklogAddPhotoWindow`) and rows (`WorklogCommentRow`,
+  `WorklogAttachmentRow`). **An existing device's comments and photos are saved as they change** (owner decision, asked:
+  "At once, as a worklog does"; `OwnedDeviceStore.AddComment`/`UpdateComment`/`RemoveComment`, `AddPhotos` with a comment
+  each, `UpdatePhoto`) - Cancel takes back the fields alone, and `ChangedOnDisk` has the page drawn again; a new device's
+  are held by the form and written with it (`Create(details, comments)`, then its photos copied in - one that could not be
+  is said on its page). **A photo clicked - the
+  worklog editor's, the form's, the page's - opens `WorklogPhotoViewerWindow`, which ZOOMS** (owner request, 2026-11-06:
+  "zoom in/out with scrollwheel"; `PhotoZoomView`: the wheel at the pointer, a drag to move, a double-click whole, every
+  position `PicturePreviewGeometry`'s, the source rectangle in the photo's pixels). **"Add device"** - the worklog bar's -
+  adds one on any board, no workbook needed, and PICKS it; with none, the list's line names that button (2026-11-06: the
+  owner had not found it). **The worklog bar has "Add device"
+  too, its last button, after "Add worklog" and "Add workbook"** ("Create new workbook" until 2026-11-06; owner requests that
+  day: with no device and no workbook the bar offered only that, and "show the 'Add device' as the last button";
+  `Main.AddDeviceFromBarAsync` - the tab's own `AddDeviceAsync`, the device picked, then the tab shown on its page). **The device form
+  opens over CRT's window whichever tab is shown** (`TabWorkbooks.DeviceFormOwner`; owner report, 2026-11-06: "clicking the
+  'Add device' in the top-bar result in nothing"): a tab not shown is out of the window's visual tree, so
+  `TopLevel.GetTopLevel` of it is null - a form a tab opens for a caller elsewhere asks for `MainWindow` then.
+  **Photos are copied in, and a device deleted, off the UI thread under
   the BusyOverlay**, each under a PLAIN name directly in the device's folder
   (`ComponentPaneFileNames.ForDevicePhoto` and a containment check - Security, code review 2026-10-28: on
   Linux a "\" in a picked name took the copy out of the folder), what could not be added said
@@ -1916,23 +2205,72 @@ repair on one board; it holds worklogs.
   them - and the board pane not rebuilt behind the page (`ShouldRebuildBoardPreviews`). Enter in "Add
   device" saves from a box, never from a focused button. An action on the page
   reads the devices AGAIN before drawing it (`ShowDeviceAgain` - drawn from the old list, a change
-  added did not show). "New repair" is "Create new workbook" with the device
-  preselected, then opens it on its board; that form ALWAYS asks the device when creating (the plan:
+  added did not show). "Add workbook" ALWAYS asks the device when creating (the plan:
   "one of yours on this board, a new one, or none"): "None" and the devices with the board, and an
   "Add device" BUTTON beside them - never an item of the list (code review, 2026-10-29: reaching "A new
   device" with the Down key opened the dialog) - whose form keeps THIS board (`boardFixed`) and picks
   what it adds; one on another board is not offered. Its title follows the device picked ("New repair
   on <name>"). **A device added there is on disk even when the form is then cancelled**: the form is
-  opened ONLY through `Main.ShowCreateWorkbookAsync` (the bar, "New repair", a device picked with no
-  repair), which shows it whatever the form closes with (`AfterCreateWorkbookForm`) - no caller to
-  forget it. Under a workbook's title "On my device" puts it on a device with its
+  opened ONLY through `Main.ShowCreateWorkbookAsync` (the bar's "Add workbook"), which shows it whatever the form closes with (`AfterCreateWorkbookForm`) - no caller to
+  forget it. Under a workbook's title "Associate workbook to device" ("On my device" until 2026-11-06, the
+  form's too - owner request) puts it on a device with its
   board, or the one it is on. "Delete device" asks, and its repairs stay. Words: `OwnedDeviceWording`.
-  **The device picker above Hardware** (slice 4c, `Main.Devices.cs`; shown while the worklog is on and a
-  device exists) **has no state of its own**: it shows the device the worklog bar's workbook is on, "No
-  device" otherwise - so it can never name another repair than the one "Add worklog" writes into.
-  Picking one activates the repair `OwnedDeviceRepairs.RepairToWorkOn` names (newest OPEN, any board;
-  else newest on its board now - only on a board CRT can show, `Main.CanShowBoard`), its board selected
-  first; a device with none gets its board and "New repair on <name>" - cancelled, the picker goes back.
+  **THE WORKLOG BAR IS TWO DROP-DOWNS, "Device" THEN "Workbook", AND ITS BUTTONS** (owner requests, 2026-11-06: "a device
+  selector as the first drop-down, and then it will show all workbooks for this device in the other 'Workbook' selector",
+  "a badge shown as the last in each line", "remove the highlighted text in the top-bar" - the workbook's counts and dates
+  and its Open pill beside the picker went - and "Create new workbook" was cut off at the window's edge; slice 4c's picker
+  stood above Hardware until then). The buttons are docked right and always whole. **The drop-downs are as wide as the line
+  each shows** (owner request: "have the two drop-downs resize, so it will show as much as the text in the drop-downs as
+  possible" - fixed shares until then; `BarPickersPanel`, the rule `BarPickersGeometry`): short of room, shared as water
+  fills - a short line stays whole beside a long one cut short - and clipped to their place on a narrow window.
+  **Each line ends in its badge** - a device's status (`BuildDeviceStatusPill`), a workbook's Open or Closed
+  (`BuildStatePill`) - in the open list and the closed box alike, **and the badge gives way before the words do**
+  (`BarPickerLinePanel`, the rule `BarPickerLineGeometry`: the closed device box read "Working" and not "C64" at 1100px).
+  **With "Show workbooks for all devices" picked, a workbook's line STARTS with its device's name in a badge** (owner
+  request, 2026-11-07: "It should not show this when I have selected a specific device"; `Main.DeviceBadgeOnBar`,
+  `WorklogInfoPillBuilder.BuildDeviceNamePill`), none for a workbook on no device; short of room it takes at most
+  `BarPickerLineGeometry.LeadingShare` of the line, the words before the badges at the end.
+  **THE DEVICE DROP-DOWN IS THE DEVICE PICKED, REMEMBERED** (owner request: "rename 'No device' to 'Show workbooks for all devices'
+  and then have that as first selection. When this is selected (and it is per default if never set before) then it will
+  show all workbooks"; `UserSettings.WorklogBarDeviceId`, null for all): its lines are `BarDeviceChoice`s, "Show workbooks
+  for all devices" first, then every device, **each with how many workbooks it holds, an outlined badge last on the line,
+  after the status** ("a counter for number of workbooks", then "I actually did mean an outlined badge, and please show
+  that as the last, right of the status"; `WorklogInfoPillBuilder.BuildCountPill`); greyed out with no device. All devices lists EVERY workbook, a device its
+  own (`OwnedDeviceRepairs.Of`), on any board. **IT IS ONE CHOICE WITH THE DEVICE MARKED IN "My devices"** (owner request,
+  2026-11-06: a device selected there "will only show the workbooks for this device in the 2 workbooks lists", and a
+  workbook selected there "I want that device selected in both the drop-down and in the 'My devices' panel"): a card clicked
+  picks it (`TabWorkbooks.SelectDevice` -> `Main.PickDevice`; the device picked clicked again only shows its page - a workbook
+  of it clicked since is kept, never swapped for the repair a pick works on), a workbook card clicked picks the device it is on - or all
+  devices for one on none (`TabWorkbooks.SelectWorkbook`) - and "Clear" picks all (`Main.ClearDevicePick`); the tab's list
+  is then the device's workbooks, on any board, a card naming its board only when it is not the one shown. **WHILE A DEVICE
+  IS PICKED CRT WORKS ONLY IN ITS WORKBOOKS** (owner decision, asked: "Only the device's" - the drop-down went back to all
+  devices until then, never hiding the workbook "Add worklog" wrote into): the active workbook is resolved among them
+  (`OwnedDeviceRepairs.WorkedIn`, in `RefreshWorklogBar` and `Main.ResolveActiveWorkbookForBoard` - "Add worklog" and the
+  popup's capture alike), so with none of them on the board shown there is none: the workbook drop-down says so
+  (`OwnedDeviceWording.NoWorkbookOfDeviceYet`/`NoWorkbookOfDeviceOnBoard`) and "Add worklog" is hidden - never another
+  device's workbook written into unseen. **The pick is checked FIRST in `RefreshWorklogBar`** (`OwnedDeviceRepairs.BarFilter`,
+  saved back): a device gone is all devices, and so is another board shown that is neither its own nor holds one of its
+  workbooks (a device whose board CRT cannot show stays - there is nowhere to go); with the worklog off nothing is read and
+  the pick is kept. **With NO board shown the pick is kept too** (owner report, 2026-11-06: another device clicked "does the
+  exact same thing as 'Clear'"): switching HARDWARE replaces the boards' list before the board is picked, the bar is drawn in
+  that moment, and a device on its way to its own board on another hardware was let go of - `MainDeviceListTests` holds it
+  through the real drop-downs. **A workbook activated off the device picked takes the pick along** (`Main.ActivateWorkbook`/
+  `ActivateWorkbookAcrossBoards` -> `FollowWorkbookInDevicePick`, the rule `OwnedDeviceRepairs.PickFollowing`): its own
+  device, or all for one on none - a workbook "Add workbook" made on another device is the one worked in; **and so does the
+  workbook shown, put on another device or none under its title** (`TabWorkbooks.PutShownWorkbookOnDevice`; code review,
+  2026-11-08: it dropped out of both lists, another workbook worked in). The workbook
+  drop-down says "No workbook on this board yet" in its place with none on the board shown and all devices picked, greyed
+  out with nothing to list. **A device picked** works on the repair `OwnedDeviceRepairs.RepairToWorkOn` names (newest OPEN,
+  any board; else newest on its board now - only on a board CRT can show, `Main.CanShowBoard`), its board selected first,
+  and is remembered; **one with no repair to work on has its own board shown (`SwitchToBoard`, a board CRT lists) and its
+  page opened on the "My Devices" tab** (owner request: "it should not open the 'create new workbook' modal, but instead it
+  should go to the 'My Devices' tab and select that device"), and stays picked. All devices picked changes no workbook.
+  **"Clear" under the tab's workbook list leaves NO WORKBOOK WORKED IN on the board** (owner request, 2026-11-06: 'a similar
+  button named "Clear" ... that will clear the selection of the workbook'; asked, "No workbook worked in"; `ClearWorkbookButton`,
+  `Main.ClearWorkbookPick`): `WorklogManager.NoWorkbookChosen` (0 - ids start at 1) saved as the board's active workbook, which
+  `ResolveActiveWorkbook` reads as none - no card marked, the bar's drop-down "No workbook picked" (`Main.NoWorkbookPickedText`),
+  "Add worklog" hidden - till a workbook is clicked, picked, activated or made. CRT 3.x, reading the same settings, finds no
+  workbook 0 and takes its newest. In its place the device picked's page, or "No workbook selected".
   **A board key becomes a drop-down selection only through `Main.FindListedEntryForBoardKey`** - a
   board the drop-downs LIST, not unticked in the Configuration tab's list (code review, 2026-10-29:
   selecting a hidden one blanked them, the bar's own workbook picker too) - and a device's board
@@ -1943,13 +2281,13 @@ repair on one board; it holds worklogs.
   (`OnDevicePickerPropertyChanged`). **The click is counted on the TUNNEL route**: the ComboBox closes
   its list in its own bubble handler, so a bubble handler saw it closed and never counted a click
   (second review, 2026-10-29). A selection change is the pick, never also the close after it. A pick
-  whose board switch lands nowhere (the board in other capitals) draws the bar again, so the picker
-  goes back.
+  whose board switch lands nowhere (the board in other capitals) draws the bar again on the workbook it
+  works in.
   A pick and the forms it opens use what the last `RefreshWorklogBar` read (`thisWorkbooksLastRead`,
-  `thisDevicesLastRead`), never a second read of every folder. The bar's workbook picker reads "#3 | Breadbin #2
-  - No video (C64/250407)" (`Main.WorkbookPickerText`), and its "Create new workbook" preselects the
-  device worked on when it has the board shown. `RefreshWorklogBar` reads the devices ONCE (none with
-  the worklog off) for the picker, the bar and the Workbooks tab.
+  `thisDevicesLastRead`), never a second read of every folder. The bar's workbook picker reads "#3 | No video", one on
+  another board than the one shown "#3 | No video (C64/250407)" (`Main.WorkbookPickerText` - the device is the picker beside
+  it), and its "Add workbook" preselects the device picked, else the bar's workbook's, when it has the board shown. `RefreshWorklogBar` reads the devices ONCE (none with
+  the worklog off) for the drop-downs and the Workbooks tab.
   **"Export history"** (slice 4d, `TabWorkbooks.DeviceHistory.cs`; content `DeviceHistoryExportModel`,
   drawing `WorkbookPdfExporter.History.cs`): two buttons on the device's page, PDF or ZIP, as a
   workbook's export. The device heads every page; first what it is, the summary of every repair
@@ -2025,7 +2363,9 @@ right click that did not move is a click (a component's highlight). **The one-ti
 picture's name until "Got it" or the first pan (`UserSettings.SchematicsPanHintSeen`). **"Global
 settings" is a panel as the two beside it** (owner request, 2026-11-05: "use that name again instead of the gear icon" - a gear
 button's popover from step 5 until then), its "Collapse" remembered (`schematicsGlobalSettingsPanelExpanded`), shown only
-while a row is - every row is a KiCad one.
+while a row is - every row is a KiCad one. **The three panels - "Global settings", "Labels visible", "Important KiCad signals" -
+collapse and expand by a left press on their headline and the room around it too** (owner request, 2026-11-06; `OnPanelHeaderPressed`,
+the header's border taking the panel's padding back); a press on the button is the button's, never a second toggle.
 
 #### Maintainer (`Tabs/Maintainer/`, logic in `Handlers/Maintainer/`)
 
@@ -2050,7 +2390,8 @@ while a row is - every row is a KiCad one.
   shared whatever the Configuration tab says, until signing out.
 - **The tab's badge** (`MaintainerModes.TabAttention`): the two queues' attention counts ADDED UP - and,
   for the administrator, the oscilloscope models waiting (the queue answer's `OscilloscopeModelsWaiting`,
-  badged on the Account button too; 2026-10-29), and the models screen's own read sets that count at
+  badged on the Management tab and on its "Oscilloscope models" entry too - owner request, 2026-11-07: "indicate
+  which menu item to choose in the 'Account'"; 2026-10-29), and the models screen's own read sets that count at
   once (`OscilloscopeModelsView.ModelsWaitingRead`). One rule: `UpdateModeBadges` calls
   `MaintainerModes.TabAttention`. Which screen the tab OPENS on is the two queues' alone
   (`QueueAttention`). No tooltips on it. A 401 clears what it counts.
@@ -2067,17 +2408,21 @@ while a row is - every row is a KiCad one.
 - **The minute check** (`QueueRefreshRules.MinuteCheck`): everything while on screen with CRT in
   front; otherwise only the queue and the BETA list while the badge can be seen. Every request slides
   the 30-day session (accepted with the request). Nothing open is reloaded unless its row changed.
-- **Four screens as a tab strip** - Boards, "Queue: Contributor submissions", "Queue: Awaiting push
-  from BETA to stable", Account. **Their labels are CRT.Data's `MaintainerScreenWording`** - never write
+- **Five screens as a tab strip** - Boards, "Queue: Contributor submissions", "Queue: Awaiting push
+  from BETA to stable", Management (the administrator's alone), Account. **Their labels are CRT.Data's `MaintainerScreenWording`** - never write
   a screen's name as a literal. Switching screen HIDES, never closes. With nothing waiting, the tab
   opens on Boards (`MaintainerModes.ScreenOnOpening`); the queues open on the last-looked-at entry
   (`MaintainerModes.EntryToOpen`).
 - **Account**: every maintainer has "My account" (name, address, password, Sign out -
   `MyAccountView`; the session alone is enough, no current password - an accepted risk) and "Server
-  version". The administrator's own entries (Maintainers, Order of boards, Unused files, Rebuild
-  checksum manifests, Delete a board, API usage, Oscilloscope models, Reset contribution data) carry the padlock and are
-  taken OUT of the list for anybody else (`ShowAdministratorEntries` - not `IsVisible = false`, which a
-  `VirtualizingStackPanel` undoes).
+  version", and nothing else.
+- **Management** (owner request, 2026-11-07: 'a new tab named "Management" (shown before "Account") - it should only be
+  visible by me ... show a "lock" icon. Then move all the menu items from "Account" into there'; `TabMaintainer.Account.cs`,
+  `ShowManagementScreen`): the administrator's entries - Maintainers, Order of boards, Unused files, Rebuild checksum
+  manifests, Delete a board, API usage, Oscilloscope models, Reset contribution data - its TAB padlocked and shown only while
+  the server says the account is one; the entries carry none. Signed out, or another account, the tab goes and a screen on it
+  goes to Account (`ShowModeAsync` sends a non-administrator there). It opens on "Oscilloscope models" while one waits, else
+  on "Maintainers" (`EnterManagementAsync`). The server's sentences name it through `MaintainerScreenWording.ManagementQuoted`.
 - **The submission view IS the table** (`BoardTableEditor.Open(BoardTableDocument)`, document mode;
   Save raises `SaveRequested` and the host saves it as an AMENDMENT, decided by the server's
   `AmendSubmissionFlow`). A submission has three views (Board data, Files, Contributor); switching hides.
@@ -2161,8 +2506,9 @@ reflection in its tests - `BoardWorkbookWriter`/`BoardWorkbookStyle`), the table
 checks (`BoardDataChecks`), placement, search, the contracts and wordings, and the logging seam
 `CrtLog` (null sink by default; CRT installs `AppLoggerAdapter`). **`CRT.Data` must never depend on
 Avalonia.** `src/CRT.App/Handlers/Data/` keeps what orchestrates the app: `DataManager`,
-`DataValidator` (its rules are `BoardDataChecks`), `UserSettings`, `Logger`, `WorklogManager`, the
-KiCad loaders, `PublishedDraftRetirer`. Check which side a class belongs on before moving it - a hidden
+`UserSettings`, `Logger` (and `ProblemsLog`, below), `WorklogManager`,
+`PublishedDraftRetirer`. The KiCad loaders are CRT.Data's since 2026-11-06 (the conversion makes pinouts with
+them - "THE CONVERSION MAKES EVERY BOARD'S PINOUTS" below). Check which side a class belongs on before moving it - a hidden
 dependency makes a "move" a rewrite. `HighlightRectBuilder`, `PolygonGeometry` and `RectGeometry` stay
 in CRT.App (Avalonia types, 21 call sites).
 
@@ -2407,7 +2753,8 @@ service to the 4.0 trees"). CRT reads a main file only at or below its own versi
   component sheets - "Component pins" (`ComponentPinEntry`: label, region, pin, name, direction) and
   "Component replacements" (`ComponentReplacementEntry`: label, region, part number, kind, note - one
   `Note` of several lines since 2026-11-01, owner request, when a baseline's "where it comes from" went
-  too; server 8.0.0). **Stored as WORDS, not codes** (`ComponentVocabulary` - rewording one changes the
+  too; server 8.0.0; its part number reads "Replacement part" in the pane since 2026-11-06 - owner request: it may be a technical
+  number or a friendly name - the stored column keeping its name). **Stored as WORDS, not codes** (`ComponentVocabulary` - rewording one changes the
   published data). A board file writes each new row field only when filled, so a board without them
   keeps its rows line for line. **A submission that does not carry the two lists keeps the published
   ones** (`SubmissionRows.ComponentPins` null - `PublishMerge`); an empty list is "none". Every rule
@@ -2419,12 +2766,18 @@ service to the 4.0 trees"). CRT reads a main file only at or below its own versi
   board-level "how the baselines were measured" is NOT a field: it is the board's "Scope measurements"
   files (owner decision, 2026-10-26; `ScopeMeasurementFiles`). The popup and the Overview tab show the
   new data since slice 3c (`ComponentPopupContent`, `OverviewHtmlBuilder.BuildRows`).
-- **TEMPORARY - TO REMOVE BEFORE GO-LIVE** (owner request, 2026-11-01): `BaselinePinMigration`, the tool making
-  pinouts of scope baselines (the "Pinout" page's Notice panel, per component and for the whole board; for the whole board also from the
-  KiCad data, every component it has - owner request, 2026-11-03: `KiCadPinoutSource`, `TabDrafts.ReadKiCadForPinoutsAsync`). Delete it, its panel
-  (`MigrationPanel`), its part of `ComponentPane.Pages.cs`, `ReadKiCadForPinouts`, the `Migration*`/`Migrated*` words and
-  `DraftStepWording.PinsFromBaselines*`. **`BaselinePinMigrationTests` fails a release version while it is there**, which
-  stops the release workflow.
+- **THE CONVERSION MAKES EVERY BOARD'S PINOUTS** (owner decisions, 2026-11-06: "populate all boards having KiCad data
+  with its pinouts", every board's scope baselines too, and "Conversion adds them"; CRT.Data's `ConversionPinouts`, run by
+  `DataTreeConversion.WithPinouts`): the pins a board's scope baselines and its KiCad data say, and the package its footprint or
+  baselines make certain, only where the board has none - so release day's conversion makes them again. It was a temporary tool on the
+  "Pinout" page until that day ("Create pinout from oscilloscope baselines", "Create pinouts for the whole board",
+  `BaselinePinMigration`) - gone with its release guard. **CRT's KiCad reader is CRT.Data's for it** (`KiCadProjectLoader`,
+  `KiCadRawProjectLoader`, `KiCadProjectData`, `KiCadComponentTable`, `KiCadPinTable`, `KiCadSheetNetAliases`, `KiCadSymbolPlacement`,
+  `StampedLruCache`; their tests stay in CRT.App.Tests) - how many components a VIEW shows needs the app's marking geometry, so that is
+  `BoardKiCadFacts.CountsByView`. **The proof allows only that addition** (`DataTreeConversionShippedDataTests`: a package filled where it
+  was empty, every pin the workbook had kept). **A user's Excel-era draft takes the pinouts its published board was converted with, in the
+  draft and its base** (`ConversionPinouts.FromPublished`, `DraftConversion`): a draft sends its whole pin list, and without them it read as
+  every pin removed.
 - **Not done yet**: the release day itself (stop the test instance, convert once more, work the queue
   empty, switch the service, point CRT back at the live service - a submission CRT 3.x sent names its
   files by their Excel-tree paths), and pasting the Wiki's 4.0 pages and deleting the fourteen it no
@@ -2456,7 +2809,11 @@ service to the 4.0 trees"). CRT reads a main file only at or below its own versi
   (`ScopeCommandTrial`) sends the command as typed over the tab's session: a Set command sets the value
   the scope HAS (read with the model's Read command first), a command that answers nothing is followed
   by the model's Finished and Last error (a non-zero error number = not taken), a query that does not
-  answer in 10 s drops the session. **The editor's own refresh of the drop-downs keeps the connection**
+  answer in 10 s drops the session. **Its box is framed by what came of it** (owner request, 2026-11-07: "have the
+  entire input field border in red (and green if OK)"; `TextBox.TrialPassed`/`TrialFailed`, `ShowTrialMark`): green taken,
+  red not - by "Try it", by "Run full test suite" (each command as it runs, `NoteSuiteCommand`) and by a palette sent
+  while the suite runs; no frame for "trying" or "not connected", and the frame goes once the box's value changes or
+  another model is edited. **The editor's own refresh of the drop-downs keeps the connection**
   (`thisKeepsSessionThroughListRefresh` - connect with the similar model, try your own at once; the
   TCP port typed stays, the model's is not written over it); choosing another model closes the editor.
   **At every launch a model published under an own model's name takes it over** - exactly the same, the
@@ -2501,7 +2858,10 @@ service to the 4.0 trees"). CRT reads a main file only at or below its own versi
   change since makes it not so; told, decides nothing). Every check is `OscilloscopeModelRules.SubmissionProblems`, asked by CRT before it
   sends and by the server when it takes it (a command is one line; a value name the server does not
   know is refused; Identify is needed). Sent, the editor says when (`UserSettings.OscilloscopeModelsSent`).
-  **The administrator decides on the Account screen's "Oscilloscope models"** (padlocked;
+  **Its panel, "Submit this model for everybody", is ALWAYS shown under the editor, "Submit" in it** (owner request,
+  2026-11-07: "please always do show this panel and have the 'Submit' button inside of that panel"; no open or
+  Cancel button any more - "Run full test suite" and "Delete model" stay where they were).
+  **The administrator decides on the Management screen's "Oscilloscope models"** (its tab padlocked;
   `OscilloscopeModelsView`, words `OscilloscopeModelsDisplay`): each model a card - sender in bold, the
   suite line, the message, every value beside the published model of its name, the changes marked -
   with Publish and Reject (a reason needed, mailed). The server's side is "Oscilloscope models sent in"
@@ -2522,7 +2882,11 @@ service to the 4.0 trees"). CRT reads a main file only at or below its own versi
   every plausible clock-pulse shape, and in every order of one vector's pin changes; the T48's "C" is
   played as high-then-low, the only shape the manufacturer's own 74193 test in minipro's DB agrees with.
 - `Security/ExternalTargetLauncher` - **the only sanctioned way to open an external link or local
-  file**: HTTP/HTTPS/mailto, or a local path inside the data root with an allowlisted extension. The
+  file**: HTTP/HTTPS/mailto, or a local path inside the data root with an allowlisted extension.
+  **A place that says nothing of its own when opening fails calls `OpenOrSay`** (an error on the "Something went wrong"
+  card, named by `ShortNameOf` - never the folders of a path); one that says it itself keeps `TryOpen`. **"Reveal" on
+  Windows is the shell's `SHOpenFolderAndSelectItems`**, on a thread of its own (owner report, 2026-11-07: explorer.exe's
+  "/select" opened the folder without the file selected the first time), "/select" only when the shell refuses. The
   Maintainer tab's saved files open through it too, rooted at `OpenedFiles.Root`
   (`AppConfig.MaintainerOpenedFilesFolder`, the user's own app data folder, never temp; `OpenedFilesTests`
   holds the two lists together, and a `.kicad_pro` opens as JSON). What an earlier CRT left under
@@ -2687,7 +3051,7 @@ Load-bearing, and easy to undo by accident:
   follows. A reason typed on a card outlives a decision on another (`OscilloscopeModelsView.ShowModels`).
   **The models waiting are the administrator's work**: `GET /api/review/queue` carries
   `OscilloscopeModelsWaiting` (`OscilloscopeModelFlows.WaitingForAsync`, 0 for anybody else), counted in
-  the tab's badge and on the Account button - "hide the tab while no work is waiting" hid them. The data
+  the tab's badge and on the Management button - "hide the tab while no work is waiting" hid them. The data
   reset counts, shows, fingerprints and deletes the table like the submissions. `contact_email` is
   VARCHAR(320), as every email column (`EmailColumnsMigrationTests`).
 - **The Boards screen is for every maintainer, every board** (`CanReviewAnything`) - do not narrow

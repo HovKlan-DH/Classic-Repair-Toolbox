@@ -593,7 +593,8 @@ namespace CRT.Server.Handlers.Email
                     " The contributor wrote:")
                 .Quote(contributorMessage, "(no message given)")
                 .Paragraph(
-                    "Open CRT, go to the \"Maintainer\" tab, then " + EmailTemplates.AccountScreenQuoted +
+                    // The administrator's own "Management" screen (2026-11-07) - "Account" until then (code review, 2026-11-08).
+                    "Open CRT, go to the \"Maintainer\" tab, then " + global::Handlers.DataHandling.MaintainerScreenWording.ManagementQuoted +
                     " > \"Oscilloscope models\", to publish it or to say why it will not go in.")
                 .WithContactLine()
                 .ToMessage(toAddress, "An oscilloscope model is waiting for you");

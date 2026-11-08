@@ -618,7 +618,7 @@ namespace CRT
                 // down - mid-submit, with the dialog stuck on "Preparing contribution". A send's own
                 // failures are its outcome (SendOneAsync); anything else is reported the same way and
                 // logged in full.
-                Logger.Critical($"Submitting a draft failed unexpectedly - [{ex}]");
+                Logger.Critical($"Submitting a draft failed unexpectedly - [{ex}]", alreadyShown: true);
 
                 this.ShowFailure(SubmitDraftWindow.UnexpectedMessage(this.thisCreditAdded), []);
             }

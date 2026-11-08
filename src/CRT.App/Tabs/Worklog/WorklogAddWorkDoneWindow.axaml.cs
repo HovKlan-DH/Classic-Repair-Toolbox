@@ -50,7 +50,7 @@ namespace CRT
             this.Title = "Edit work done";
             this.HeaderText.Text = "Edit work done";
             this.AddButton.Content = "Update work";
-            this.DescriptionTextBox.Text = text;
+            this.DescriptionTextBox.Markup = text;
             this.HoursNumericUpDown.Value = (decimal)hoursSpent;
             this.CostNumericUpDown.Value = (decimal)cost;
 
@@ -133,7 +133,7 @@ namespace CRT
 
         private void OnAddClick(object? sender, RoutedEventArgs e)
         {
-            string text = this.DescriptionTextBox.Text?.Trim() ?? string.Empty;
+            string text = RichNote.TrimMarkup(this.DescriptionTextBox.Markup);
 
             if (string.IsNullOrWhiteSpace(text))
             {

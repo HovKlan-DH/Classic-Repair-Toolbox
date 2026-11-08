@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
 using Handlers.DataHandling;
 
 namespace ClassicRepairToolbox.Tests;
@@ -102,6 +103,92 @@ public sealed class DraftStatusReaderTests : IDisposable
         File.SetLastWriteTimeUtc(status!.WorkbookPath, DateTime.UtcNow.AddMinutes(1));
 
         Assert.Equal(new BoardProblemCounts(1, 2), DraftStatusReader.CountProblemsCached(status, this.DataRoot, draftFolder));
+    }
+
+    // ###########################################################################################
+    // *** A PUBLISHED BOARD'S OWN ERRORS AND WARNINGS (owner decision, 2026-11-07: the launch check of every board
+    // "needs to run for everyone and its findings should show just like any other error or warning in the "Contribute"
+    // tab"). *** The very checks a draft gets, on the published file, the same read while it is unchanged - and only the
+    // latest published board's kept, as each holds its whole board.
+    // ###########################################################################################
+    [Fact]
+    public void A_published_boards_problems_are_found_by_the_drafts_checks_and_only_the_latest_one_is_kept()
+    {
+        BoardData published = DraftStatusReaderTests.BoardWith(2);
+        published.ComponentLinks.Add(new ComponentLinkEntry { BoardLabel = "U0", Name = "Bad", Url = "ftp://example.com" });
+        this.WritePublished(published);
+
+        string file = DraftBoardSource.PublishedPathOf(this.DataRoot, DraftStatusReaderTests.BoardKey);
+        string draftFolder = DraftFolderLayout.GetBoardFolder(this.DraftsRoot, DraftStatusReaderTests.BoardKey);
+
+        BoardProblemsRead read = DraftStatusReader.PublishedProblemsCached(file, this.DataRoot, draftFolder, DraftStatusReaderTests.BoardKey);
+
+        Assert.Equal(new BoardProblemCounts(1, 2), read.Counts);
+        BoardDataProblem link = Assert.Single(read.Problems, problem => problem.Level == BoardProblemLevel.Error);
+        Assert.Equal("U0", read.Board!.ComponentLinks[link.Index].BoardLabel);
+        Assert.Same(read, DraftStatusReader.PublishedProblemsCached(file, this.DataRoot, draftFolder, DraftStatusReaderTests.BoardKey));
+
+        // Another published board asked: the first one's read goes.
+        string other = Path.Combine(this.DataRoot, "Other", "board.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(other)!);
+        BoardWorkbookWriter.Write(other, DraftStatusReaderTests.BoardWith(1));
+
+        DraftStatusReader.PublishedProblemsCached(other, this.DataRoot, draftFolder, "Other/board.json");
+
+        Assert.False(DraftStatusReader.HoldsProblemsForTests(file));
+        Assert.True(DraftStatusReader.HoldsProblemsForTests(other));
+
+        // No file: nothing to say.
+        Assert.Same(BoardProblemsRead.None, DraftStatusReader.PublishedProblemsCached(Path.Combine(this.DataRoot, "none.json"), this.DataRoot, draftFolder, "none.json"));
+    }
+
+    // ###########################################################################################
+    // *** A CHECK STILL RUNNING AS ANOTHER BOARD'S BEGINS KEEPS NOTHING (code review, 2026-11-08). *** The earlier board was
+    // let go of as the next one was asked, but its check, still running, stored its read after that - and it stayed for the
+    // run, one more whole board for every such race. Its read is handed back all the same.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_published_check_overtaken_by_another_boards_keeps_nothing()
+    {
+        this.WritePublished(DraftStatusReaderTests.BoardWith(2));
+        string first = DraftBoardSource.PublishedPathOf(this.DataRoot, DraftStatusReaderTests.BoardKey);
+        string second = Path.Combine(this.DataRoot, "Other", "board.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(second)!);
+        BoardWorkbookWriter.Write(second, DraftStatusReaderTests.BoardWith(1));
+        string draftFolder = DraftFolderLayout.GetBoardFolder(this.DraftsRoot, DraftStatusReaderTests.BoardKey);
+
+        using var firstAtItsEnd = new System.Threading.ManualResetEventSlim();
+        using var secondDone = new System.Threading.ManualResetEventSlim();
+
+        DraftStatusReader.BeforePublishedReadIsKeptForTests = file =>
+        {
+            if (string.Equals(file, first, StringComparison.OrdinalIgnoreCase))
+            {
+                firstAtItsEnd.Set();
+                secondDone.Wait(TimeSpan.FromSeconds(10));
+            }
+        };
+
+        try
+        {
+            var checking = System.Threading.Tasks.Task.Run(() =>
+                DraftStatusReader.PublishedProblemsCached(first, this.DataRoot, draftFolder, DraftStatusReaderTests.BoardKey));
+
+            Assert.True(firstAtItsEnd.Wait(TimeSpan.FromSeconds(10)), "The first board's check did not reach its end in time");
+
+            DraftStatusReader.PublishedProblemsCached(second, this.DataRoot, draftFolder, "Other/board.json");
+            secondDone.Set();
+
+            BoardProblemsRead firstRead = await checking;
+
+            Assert.NotSame(BoardProblemsRead.None, firstRead);
+            Assert.False(DraftStatusReader.HoldsProblemsForTests(first));
+            Assert.True(DraftStatusReader.HoldsProblemsForTests(second));
+        }
+        finally
+        {
+            DraftStatusReader.BeforePublishedReadIsKeptForTests = null;
+        }
     }
 
     // The problems themselves come with the counts - where they are is what the Contribute tab says (owner

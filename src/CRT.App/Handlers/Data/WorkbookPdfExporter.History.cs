@@ -11,7 +11,7 @@ namespace Handlers.DataHandling
     //
     // The device heads every page. The document opens with what it is - where it came from, its
     // notes, what its repairs add up to (the workbook's own summary panel, under the device page's
-    // headline), the list of its repairs, the changes made to it and its photos - then every repair,
+    // headline), the list of its repairs (under the page's own heading) and its photos - then every repair,
     // oldest first, each from a fresh page and drawn EXACTLY as its own workbook export draws it
     // (ComposeHeader, ComposeContent): one drawing of a repair, never a second.
     //
@@ -84,15 +84,27 @@ namespace Handlers.DataHandling
             {
                 column.Spacing(14);
 
-                if (history.OriginLine.Length > 0)
+                // Its condition in words (a PDF font may have no star), then its description and notes -
+                // free text that may well carry a link, as a workbook's note does.
+                column.Item().Text(history.ConditionLine).FontSize(10).FontColor(HeadingColor);
+
+                if (history.Description.Length > 0)
                 {
-                    column.Item().Element(e => ComposeLinkedText(e, history.OriginLine, 10, HeadingColor));
+                    column.Item().Element(e => ComposeLinkedText(e, history.Description, 10, HeadingColor));
                 }
 
-                // Notes are free text that may well carry a link, as a workbook's note does.
-                if (history.Notes.Length > 0)
+                // Its links of interest and its comments, dated, as a worklog's are drawn.
+                if (history.Links.Count > 0)
                 {
-                    column.Item().Element(e => ComposeLinkedText(e, history.Notes, 10, HeadingColor));
+                    column.Item().Element(e => ComposeLinkRows(e, history.Links));
+                }
+
+                if (history.Comments.Count > 0)
+                {
+                    column.Item().Element(e => ComposeSubList(
+                        e,
+                        OwnedDeviceWording.CommentsHeading(0),
+                        history.Comments.Select(comment => new SubListLine(comment.DateText, comment.Text))));
                 }
 
                 column.Item().Element(e => ComposeSummary(
@@ -105,17 +117,9 @@ namespace Handlers.DataHandling
                     e,
                     OwnedDeviceWording.RepairsHeading,
                     history.Repairs.Count == 0
-                        ? [OwnedDeviceWording.NoRepairsRecorded]
-                        : history.Repairs.Select(repair => OwnedDeviceWording.HistoryRepairLine(
-                            repair.WorkbookId, repair.Title, repair.Status, WorkbookDateText(repair), repair.Totals.WorklogCount))));
-
-                if (history.Changes.Count > 0)
-                {
-                    column.Item().Element(e => ComposeSubList(
-                        e,
-                        OwnedDeviceWording.ChangesHeading(history.Changes.Count),
-                        history.Changes.Select(change => $"{OwnedDeviceWording.ChangeDate(change.Date)}  {change.Text}")));
-                }
+                        ? [new SubListLine(OwnedDeviceWording.NoRepairsRecorded)]
+                        : history.Repairs.Select(repair => new SubListLine(OwnedDeviceWording.HistoryRepairLine(
+                            repair.WorkbookId, repair.Title, repair.Status, WorkbookDateText(repair), repair.Totals.WorklogCount)))));
 
                 if (history.Photos.Count > 0)
                 {

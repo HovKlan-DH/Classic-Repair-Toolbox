@@ -35,12 +35,21 @@ namespace Handlers.DataHandling
         // baselines too, every cell in sight.
         private readonly HashSet<BoardTableRow> thisHiddenAmongPictures;
 
-        private BoardTableSearch(string text, WorklogSearchQuery query, HashSet<BoardTableRow> hidden, HashSet<BoardTableRow> hiddenAmongPictures)
+        // The columns of each sheet it looks in - null for every one.
+        private readonly Func<BoardTableSheet, IReadOnlyCollection<int>?>? thisColumnsOf;
+
+        private BoardTableSearch(
+            string text,
+            WorklogSearchQuery query,
+            HashSet<BoardTableRow> hidden,
+            HashSet<BoardTableRow> hiddenAmongPictures,
+            Func<BoardTableSheet, IReadOnlyCollection<int>?>? columnsOf = null)
         {
             this.Text = text;
             this.Query = query;
             this.thisHidden = hidden;
             this.thisHiddenAmongPictures = hiddenAmongPictures;
+            this.thisColumnsOf = columnsOf;
         }
 
         // No search: every row shows.
@@ -57,11 +66,35 @@ namespace Handlers.DataHandling
         public bool IsActive => !this.Query.IsEmpty;
 
         // The search `text` over `document` as it is now. Blank text is no search (None).
-        public static BoardTableSearch For(BoardTableDocument document, string? text)
+        public static BoardTableSearch For(BoardTableDocument document, string? text) =>
+            BoardTableSearch.Build(document, text, WorklogSearchQuery.Parse(text));
+
+        // ###########################################################################################
+        // What "Replace" finds, over `document` as it is now: `text` AS TYPED, capitals ignored - the rows holding it
+        // shown, it marked (owner request, 2026-11-07: "I want that 'Find' works in same way as the filtering, where
+        // it will filter and highlight my search string (however, do not allow the fancy search - only search for the
+        // string as-is ...)"; WorklogSearchQuery.Literal). Empty text is no search.
+        // ###########################################################################################
+        //
+        // *** IN THE COLUMNS TICKED (owner request, 2026-11-07: "I need some possibility to restrict replacement to
+        // specific columns, and not necessarily all"; "Columns" in the replace bar). *** `columnsOf` names the columns of
+        // a sheet it looks in - null, or a sheet it answers null for, every one: a row is shown for the text in one of
+        // THOSE, and only there is it marked (Searches), as only there is it replaced.
+        // ###########################################################################################
+        public static BoardTableSearch Literal(
+            BoardTableDocument document,
+            string? text,
+            Func<BoardTableSheet, IReadOnlyCollection<int>?>? columnsOf = null) =>
+            BoardTableSearch.Build(document, text, WorklogSearchQuery.Literal(text), columnsOf);
+
+        private static BoardTableSearch Build(
+            BoardTableDocument document,
+            string? text,
+            WorklogSearchQuery query,
+            Func<BoardTableSheet, IReadOnlyCollection<int>?>? columnsOf = null)
         {
             ArgumentNullException.ThrowIfNull(document);
 
-            WorklogSearchQuery query = WorklogSearchQuery.Parse(text);
             if (query.IsEmpty)
             {
                 return BoardTableSearch.None;
@@ -70,26 +103,41 @@ namespace Handlers.DataHandling
             var hidden = new HashSet<BoardTableRow>(ReferenceEqualityComparer.Instance);
             var hiddenAmongPictures = new HashSet<BoardTableRow>(ReferenceEqualityComparer.Instance);
 
-            foreach (BoardTableRow row in document.Sheets.SelectMany(sheet => sheet.Rows))
+            foreach (BoardTableSheet sheet in document.Sheets)
             {
-                if (row.State == BoardTableRowState.Blank)
-                {
-                    continue;
-                }
+                IReadOnlyCollection<int>? columns = columnsOf?.Invoke(sheet);
 
-                if (!BoardTableSearch.Matches(query, row))
+                foreach (BoardTableRow row in sheet.Rows)
                 {
-                    hidden.Add(row);
-                }
+                    if (row.State == BoardTableRowState.Blank)
+                    {
+                        continue;
+                    }
 
-                if (BoardTableSheetParts.IsSplit(row.Sheet.Name) &&
-                    !query.Matches(BoardTableSheetParts.CellsShown(BoardTableSheetPart.Pictures, row).Select(cell => cell.Text)))
-                {
-                    hiddenAmongPictures.Add(row);
+                    if (!query.Matches(row.Cells.Where(cell => columns is null || columns.Contains(cell.ColumnIndex)).Select(cell => cell.Text)))
+                    {
+                        hidden.Add(row);
+                    }
+
+                    if (BoardTableSheetParts.IsSplit(sheet.Name) &&
+                        !query.Matches(BoardTableSheetParts.CellsShown(BoardTableSheetPart.Pictures, row)
+                            .Where(cell => columns is null || columns.Contains(cell.ColumnIndex))
+                            .Select(cell => cell.Text)))
+                    {
+                        hiddenAmongPictures.Add(row);
+                    }
                 }
             }
 
-            return new BoardTableSearch(text!, query, hidden, hiddenAmongPictures);
+            return new BoardTableSearch(text!, query, hidden, hiddenAmongPictures, columnsOf);
+        }
+
+        // Whether it looks in `column` of `sheet` - every column but those a "Columns" choice left out.
+        public bool Searches(BoardTableSheet sheet, int column)
+        {
+            ArgumentNullException.ThrowIfNull(sheet);
+
+            return this.thisColumnsOf?.Invoke(sheet) is not { } columns || columns.Contains(column);
         }
 
         // Whether `query` finds `row` - in its cells, the values it shows.

@@ -9,52 +9,6 @@ namespace ClassicRepairToolbox.Tests;
 // ###########################################################################################
 public sealed class JpegExifOrientationTests
 {
-    // ###########################################################################################
-    // A JPEG's header as a camera writes it: SOI, an APP1 "Exif" segment whose first IFD holds
-    // another tag and then Orientation (0 leaves the segment out), the SOF0 frame header with
-    // the size, and EOI - no image data, which neither this reader nor the size reader looks at.
-    // ###########################################################################################
-    internal static byte[] Jpeg(int width, int height, int orientation, bool bigEndian, ushort orientationType = 3)
-    {
-        var bytes = new List<byte> { 0xFF, 0xD8 };
-
-        if (orientation != 0)
-        {
-            var tiff = new List<byte>();
-            tiff.AddRange(bigEndian ? "MM"u8.ToArray() : "II"u8.ToArray());
-            Add16(tiff, 42, bigEndian);
-            Add32(tiff, 8, bigEndian);
-            Add16(tiff, 2, bigEndian);
-
-            // Make (ASCII, empty), then Orientation (SHORT, its value in the first two bytes).
-            Add16(tiff, 0x010F, bigEndian); Add16(tiff, 2, bigEndian); Add32(tiff, 1, bigEndian); Add32(tiff, 0, bigEndian);
-            Add16(tiff, 0x0112, bigEndian); Add16(tiff, orientationType, bigEndian); Add32(tiff, 1, bigEndian); Add16(tiff, orientation, bigEndian); Add16(tiff, 0, bigEndian);
-            Add32(tiff, 0, bigEndian);
-
-            byte[] payload = [.. "Exif\0\0"u8.ToArray(), .. tiff];
-            int length = payload.Length + 2;
-            bytes.AddRange([0xFF, 0xE1, (byte)(length >> 8), (byte)length]);
-            bytes.AddRange(payload);
-        }
-
-        bytes.AddRange([0xFF, 0xC0, 0x00, 0x11, 0x08, (byte)(height >> 8), (byte)height, (byte)(width >> 8), (byte)width, 0x03, 1, 0x22, 0, 2, 0x11, 1, 3, 0x11, 1]);
-        bytes.AddRange([0xFF, 0xD9]);
-
-        return bytes.ToArray();
-    }
-
-    private static void Add16(List<byte> bytes, int value, bool bigEndian)
-    {
-        byte high = (byte)(value >> 8), low = (byte)value;
-        bytes.AddRange(bigEndian ? [high, low] : [low, high]);
-    }
-
-    private static void Add32(List<byte> bytes, long value, bool bigEndian)
-    {
-        byte[] four = [(byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value];
-        bytes.AddRange(bigEndian ? four : four.Reverse());
-    }
-
     private static int Read(byte[] bytes) => JpegExifOrientation.Read(new MemoryStream(bytes));
 
     [Theory]
@@ -64,13 +18,13 @@ public sealed class JpegExifOrientationTests
     [InlineData(5, true)] [InlineData(6, true)] [InlineData(7, true)] [InlineData(8, true)]
     public void Each_orientation_is_read_in_either_byte_order(int orientation, bool bigEndian)
     {
-        Assert.Equal(orientation, Read(Jpeg(640, 480, orientation, bigEndian)));
+        Assert.Equal(orientation, Read(TestJpegs.Jpeg(640, 480, orientation, bigEndian)));
     }
 
     [Fact]
     public void A_JPEG_without_EXIF_is_as_stored()
     {
-        Assert.Equal(JpegExifOrientation.AsStored, Read(Jpeg(640, 480, orientation: 0, bigEndian: false)));
+        Assert.Equal(JpegExifOrientation.AsStored, Read(TestJpegs.Jpeg(640, 480, orientation: 0, bigEndian: false)));
     }
 
     [Fact]
@@ -85,21 +39,21 @@ public sealed class JpegExifOrientationTests
     [InlineData(255)]
     public void An_orientation_EXIF_does_not_have_is_as_stored(int orientation)
     {
-        Assert.Equal(JpegExifOrientation.AsStored, Read(Jpeg(640, 480, orientation, bigEndian: false)));
+        Assert.Equal(JpegExifOrientation.AsStored, Read(TestJpegs.Jpeg(640, 480, orientation, bigEndian: false)));
     }
 
     // The tag must be a SHORT; a LONG in its place is a file nobody wrote right, shown as stored.
     [Fact]
     public void An_orientation_that_is_not_a_SHORT_is_as_stored()
     {
-        Assert.Equal(JpegExifOrientation.AsStored, Read(Jpeg(640, 480, 6, bigEndian: false, orientationType: 4)));
+        Assert.Equal(JpegExifOrientation.AsStored, Read(TestJpegs.Jpeg(640, 480, 6, bigEndian: false, orientationType: 4)));
     }
 
     // Cut short anywhere, the header is read as far as it goes and never throws.
     [Fact]
     public void A_header_cut_short_anywhere_is_read_without_an_error()
     {
-        byte[] whole = Jpeg(640, 480, 6, bigEndian: true);
+        byte[] whole = TestJpegs.Jpeg(640, 480, 6, bigEndian: true);
 
         for (int length = 0; length < whole.Length; length++)
         {
@@ -114,7 +68,7 @@ public sealed class JpegExifOrientationTests
     {
         using var workspace = new TempWorkspace();
         string path = Path.Combine(workspace.Root, "photo.jpg");
-        File.WriteAllBytes(path, Jpeg(4032, 3024, 6, bigEndian: false));
+        File.WriteAllBytes(path, TestJpegs.Jpeg(4032, 3024, 6, bigEndian: false));
 
         Assert.Equal((4032, 3024), WorkbookPdfExporter.TryReadImageSize(path));
         Assert.Equal(6, JpegExifOrientation.Read(path));

@@ -37,6 +37,24 @@ public sealed class KiCadProjectLoaderTests : IDisposable
         Assert.Null(await LoadAsync(this.WritePcb(content: "(not_a_board (version 1))")));
     }
 
+    // ###########################################################################################
+    // *** KiCAD FILES THAT CANNOT BE READ ARE A WARNING, NEVER AN ERROR (code review, 2026-11-08). *** A CRIT line raises
+    // the "Something went wrong" card, and nobody at the keyboard can mend a published board's KiCad data - the
+    // Contribute tab's own panel says it of a draft's already (BoardKiCadFacts.Read). A WARN line is listed under "Errors
+    // and warnings", as it was before the loader moved to CRT.Data (Logger.Warning there, CrtLog.Critical since).
+    // Watched through CRT's own adapter (LoggedLines), so the level is the one CRT's log gets.
+    // ###########################################################################################
+    [Fact]
+    public async Task KiCad_files_that_cannot_be_read_are_logged_as_a_warning()
+    {
+        using LoggedLines logged = LoggedLines.Watch();
+
+        Assert.Null(await LoadAsync(this.WritePcb(content: "(not_a_board (version 1))")));
+
+        Assert.Equal(1, logged.Count(LogCategory.WARN, "Raw KiCad files could not be loaded"));
+        Assert.DoesNotContain(logged.Lines, line => line.Category == LogCategory.CRIT);
+    }
+
     [Fact]
     public async Task LoadRawAsync_returns_a_bundle_wrapping_the_parsed_root()
     {

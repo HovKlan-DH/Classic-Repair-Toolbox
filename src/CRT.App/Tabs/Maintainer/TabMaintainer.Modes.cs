@@ -27,7 +27,7 @@ namespace CRT
     // queue, so the counts are right on whichever screen is shown. Choosing a screen reads its list
     // once more, so what it shows is current the moment it is chosen. The Review and BETA counts
     // added up - with an administrator's oscilloscope models waiting, which the queue answer carries
-    // and the Account button shows - are the tab's own badge in CRT's row of tabs (2026-09-30), kept
+    // and the Management button shows - are the tab's own badge in CRT's row of tabs (2026-09-30), kept
     // current off screen too.
     // ###########################################################################################
     public partial class TabMaintainer
@@ -48,6 +48,7 @@ namespace CRT
             (MaintainerMode.Review, "ReviewModeButton", "ReviewList", "ReviewPanel"),
             (MaintainerMode.Beta, "BetaModeButton", "BetaListPanel", "BetaDetailView"),
             (MaintainerMode.Boards, "BoardsModeButton", "BoardsListPanel", "BoardDetailPane"),
+            (MaintainerMode.Management, "ManagementModeButton", "ManagementList", null),
             (MaintainerMode.Account, "AccountModeButton", "AccountList", null)
         ];
 
@@ -89,6 +90,10 @@ namespace CRT
                     this.ShowBoardsListMessage(message, isError: true);
                     break;
 
+                case MaintainerMode.Management:
+                    WindowMessage.Show(this.FindControl<TextBlock>("ManagementListMessageText"), message, isError: true);
+                    break;
+
                 case MaintainerMode.Account:
                     WindowMessage.Show(this.FindControl<TextBlock>("AccountListMessageText"), message, isError: true);
                     break;
@@ -114,6 +119,12 @@ namespace CRT
             // still undecided (TabMaintainer.OpenOnEntry.cs).
             this.EndOpening();
 
+            // "Management" is the administrator's alone - nobody else is ever on it.
+            if (mode == MaintainerMode.Management && !this.thisIsAdministrator)
+            {
+                mode = MaintainerMode.Account;
+            }
+
             this.thisMode = mode;
             this.ApplyModeVisibility();
 
@@ -132,6 +143,10 @@ namespace CRT
 
                 case MaintainerMode.Boards:
                     await this.RefreshBoardsAsync(background: true);
+                    break;
+
+                case MaintainerMode.Management:
+                    await this.EnterManagementAsync();
                     break;
 
                 case MaintainerMode.Account:
@@ -161,13 +176,24 @@ namespace CRT
 
             foreach ((string panel, string item) in TabMaintainer.AccountPanels)
                 this.SetShown(panel, account && ReferenceEquals(accountItem, this.FindControl<ListBoxItem>(item)));
+
+            object? managementItem = this.FindControl<ListBox>("ManagementList")?.SelectedItem;
+            bool management = this.thisMode == MaintainerMode.Management;
+
+            foreach ((string panel, string item) in TabMaintainer.ManagementPanels)
+                this.SetShown(panel, management && ReferenceEquals(managementItem, this.FindControl<ListBoxItem>(item)));
         }
 
         // The Account screen's panels on the right, each with its entry on the left.
         private static readonly (string Panel, string Item)[] AccountPanels =
         [
             ("MyAccountPanel", "MyAccountItem"),
-            ("ServerVersionView", "ServerVersionItem"),
+            ("ServerVersionView", "ServerVersionItem")
+        ];
+
+        // The Management screen's - the administrator's own (owner request, 2026-11-07).
+        private static readonly (string Panel, string Item)[] ManagementPanels =
+        [
             ("MaintainerPoolAdminView", "MaintainersItem"),
             ("BoardOrderAdminView", "BoardOrderItem"),
             ("UnusedFilesAdminView", "UnusedFilesItem"),
@@ -185,15 +211,14 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // The server's word on whether this account is an administrator. The Account screen is every
-        // maintainer's; only its administrator's entries follow this - shown for one, hidden for
-        // everybody else, and an account that stops being one while such an entry is chosen goes
-        // back to "My account" (TabMaintainer.Account.cs).
+        // The server's word on whether this account is an administrator: the "Management" screen's tab shown for one,
+        // hidden for everybody else - and an account that stops being one while on it goes to "Account", "My account"
+        // (TabMaintainer.Account.cs), so nothing of the administrator's stays on show.
         // ###########################################################################################
         private void SetAdministrator(bool isAdministrator)
         {
             this.thisIsAdministrator = isAdministrator;
-            this.ShowAdministratorEntries(isAdministrator);
+            this.ShowManagementScreen(isAdministrator);
             this.ApplyModeVisibility();
         }
 
@@ -229,8 +254,12 @@ namespace CRT
             // title - no need to see it"). *** They said what each screen is and what its badge
             // counts; the labels and the badges say it well enough.
 
-            // The administrator's oscilloscope models waiting, on the screen that holds them.
-            this.SetBadge("AccountBadge", "AccountBadgeText", MaintainerModes.AttentionBadge(this.thisOscilloscopeModelsWaiting));
+            // The administrator's oscilloscope models waiting, on the screen that holds them - and on their entry there,
+            // so the screen says which entry to choose (owner request, 2026-11-07: "nothing indicates which menu I should
+            // choose").
+            string? models = MaintainerModes.AttentionBadge(this.thisOscilloscopeModelsWaiting);
+            this.SetBadge("ManagementBadge", "ManagementBadgeText", models);
+            this.SetBadge("OscilloscopeModelsEntryBadge", "OscilloscopeModelsEntryBadgeText", models);
 
             // The tab's own badge in CRT's row of tabs: MaintainerModes.TabAttention - the attention
             // badges added up, the models too, so "hide the tab while no work is waiting" never hides
@@ -318,6 +347,7 @@ namespace CRT
                 MaintainerMode.Review => "ReviewBadge",
                 MaintainerMode.Beta => "BetaBadge",
                 MaintainerMode.Boards => "BoardsBadge",
+                MaintainerMode.Management => "ManagementBadge",
                 _ => string.Empty
             };
 

@@ -95,6 +95,76 @@ public sealed class OwnedDeviceRepairsTests
     }
 
     // ###########################################################################################
+    // THE DEVICE PICKED (owner requests, 2026-11-06: the bar's "Device" drop-down and the device selected in "My
+    // devices", one choice; asked, CRT works "Only the device's" workbooks while one is): the device saved, while
+    // there is such a device and the board shown is its own (capitals aside) or holds one of its workbooks - another
+    // board shown is all devices (null) again, rather than nothing worked in there. A device on a board CRT cannot
+    // show has no board to go to and stays. Nothing saved is all devices, the default.
+    // ###########################################################################################
+    [Fact]
+    public void The_device_picked_holds_while_the_board_shown_is_its_own_or_holds_its_workbooks()
+    {
+        const string Other = "Commodore 64|250425";
+        OwnedDeviceRecord[] devices = [Device(7), Device(8, Other), Device(9, "Gone|board")];
+        WorkbookRecord[] workbooks = [Workbook(1, 7, Other), Workbook(2, 8)];
+        bool CanShow(string board) => board is Board or Other;
+
+        Assert.Null(OwnedDeviceRepairs.BarFilter(null, devices, Board, workbooks, CanShow));
+
+        // On its own board, whatever workbooks there are - none of its own included.
+        Assert.Equal(7, OwnedDeviceRepairs.BarFilter(7, devices, Board, [], CanShow)!.Id);
+        Assert.Equal(7, OwnedDeviceRepairs.BarFilter(7, devices, " commodore 64|250407 ", workbooks, CanShow)!.Id);
+
+        // Another board: while one of its workbooks is there (a board swapped since), else all devices.
+        Assert.Equal(7, OwnedDeviceRepairs.BarFilter(7, devices, Other, workbooks, CanShow)!.Id);
+        Assert.Equal(8, OwnedDeviceRepairs.BarFilter(8, devices, Board, workbooks, CanShow)!.Id);
+        Assert.Null(OwnedDeviceRepairs.BarFilter(8, devices, Board, [], CanShow));
+        Assert.Null(OwnedDeviceRepairs.BarFilter(7, devices, "Commodore 128|310378", workbooks, CanShow));
+
+        // A board CRT cannot show: nowhere to go - it stays picked.
+        Assert.Equal(9, OwnedDeviceRepairs.BarFilter(9, devices, Board, [], CanShow)!.Id);
+
+        // No board shown - the moment between a hardware and its board, on the way to the device's own: it stays.
+        Assert.Equal(8, OwnedDeviceRepairs.BarFilter(8, devices, "", [], CanShow)!.Id);
+        Assert.Equal(8, OwnedDeviceRepairs.BarFilter(8, devices, null, [], CanShow)!.Id);
+
+        // A device that has gone: all devices.
+        Assert.Null(OwnedDeviceRepairs.BarFilter(10, devices, Board, workbooks, CanShow));
+    }
+
+    // ###########################################################################################
+    // While a device is picked the workbooks worked in are its own (owner decision, 2026-11-06: "Only the
+    // device's") - the active one is resolved among them, so with none there is none; all devices, all of them.
+    // ###########################################################################################
+    [Fact]
+    public void The_workbooks_worked_in_are_the_device_picked_s_or_all()
+    {
+        WorkbookRecord[] onBoard = [Workbook(3, 7), Workbook(2, null), Workbook(1, 8)];
+
+        Assert.Equal([3, 2, 1], OwnedDeviceRepairs.WorkedIn(onBoard, null).Select(w => w.Id));
+        Assert.Equal([3], OwnedDeviceRepairs.WorkedIn(onBoard, 7).Select(w => w.Id));
+        Assert.Empty(OwnedDeviceRepairs.WorkedIn(onBoard, 9));
+        Assert.Null(WorklogManager.ResolveActiveWorkbook(OwnedDeviceRepairs.WorkedIn(onBoard, 9), savedActiveId: 2));
+        Assert.Equal(3, WorklogManager.ResolveActiveWorkbook(OwnedDeviceRepairs.WorkedIn(onBoard, 7), savedActiveId: 2)!.Id);
+    }
+
+    // ###########################################################################################
+    // A workbook activated takes the pick along when it is not on the device picked - its own device, or all
+    // devices for one on none (or on a device gone); the device's own keeps it, and all devices hold every one.
+    // ###########################################################################################
+    [Fact]
+    public void A_workbook_activated_off_the_device_picked_takes_the_pick_to_its_own()
+    {
+        OwnedDeviceRecord[] devices = [Device(7), Device(8)];
+
+        Assert.Equal(7, OwnedDeviceRepairs.PickFollowing(7, Workbook(1, 7), devices));
+        Assert.Equal(8, OwnedDeviceRepairs.PickFollowing(7, Workbook(1, 8), devices));
+        Assert.Null(OwnedDeviceRepairs.PickFollowing(7, Workbook(1, null), devices));
+        Assert.Null(OwnedDeviceRepairs.PickFollowing(7, Workbook(1, 12), devices));
+        Assert.Null(OwnedDeviceRepairs.PickFollowing(null, Workbook(1, 8), devices));
+    }
+
+    // ###########################################################################################
     // A workbook goes on a device with its board (capitals aside) - and stays offered the device it
     // is on, whose board may have been swapped since.
     // ###########################################################################################
@@ -131,7 +201,7 @@ public sealed class OwnedDeviceRepairsTests
         Assert.Equal(2, history.Totals.WorklogCount);
 
         string line = string.Concat(OwnedDeviceRepairs.HeadlineStats(history, "DKK").Select(stat => stat.Prefix + stat.Number + stat.Suffix + " "));
-        Assert.StartsWith("2 repairs ", line, StringComparison.Ordinal);
+        Assert.StartsWith("2 workbooks ", line, StringComparison.Ordinal);
         Assert.Contains("45 DKK", line, StringComparison.Ordinal);
         Assert.EndsWith("1 open ", line, StringComparison.Ordinal);
     }
@@ -158,7 +228,7 @@ public sealed class OwnedDeviceRepairsTests
         OwnedDeviceRepairs.History history = OwnedDeviceRepairs.Summarize([Workbook(1, 7)], _ => []);
 
         Assert.Equal(
-            ["1 repair", "1 open"],
+            ["1 workbook", "1 open"],
             OwnedDeviceRepairs.HeadlineStats(history, "DKK").Select(stat => stat.Prefix + stat.Number + stat.Suffix));
     }
 }

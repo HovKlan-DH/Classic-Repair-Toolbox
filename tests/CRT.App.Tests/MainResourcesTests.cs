@@ -73,4 +73,26 @@ public sealed class MainResourcesTests : IDisposable
         Assert.All(popupFiles, file => Assert.Equal(this.DraftFolder, file.SourceRoot));
         Assert.Equal(1, popupListings.ReadsForTests);
     }
+
+    // A board file's note (owner request, 2026-11-06) goes with it into the "Resources" tab, its ends
+    // trimmed and its lines kept; a file with none has no note to show.
+    [Fact]
+    public void Each_file_carries_its_note_into_the_resources_tab()
+    {
+        var board = new BoardData
+        {
+            BoardLocalFiles =
+            [
+                new BoardLocalFileEntry { Category = "Manuals", Name = "Service manual", File = "Board local files/manual.pdf", Note = " Page 12 has the PLA.\nThe rest is the C64C. " },
+                new BoardLocalFileEntry { Category = "Manuals", Name = "Dead test", File = "Board local files/dead.pdf" },
+            ],
+        };
+
+        List<ResourceItem> files = CRT.Main.ResourceFilesOf(board, null, Path.Combine(this.thisWorkspace.Root, "Data"), this.DraftFolder, MainResourcesTests.Identity, new BoardFileListings());
+
+        Assert.Equal("Page 12 has the PLA.\nThe rest is the C64C.", files[0].Note);
+        Assert.True(files[0].HasNote);
+        Assert.Equal(string.Empty, files[1].Note);
+        Assert.False(files[1].HasNote);
+    }
 }

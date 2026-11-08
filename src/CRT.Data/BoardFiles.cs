@@ -15,8 +15,9 @@ namespace Handlers.DataHandling
     // (FileReplacer), so a reader never sees half a board and a failed write leaves the old one.
     //
     // A board file that is missing reads as null, quietly; one that is there and cannot be read
-    // reads as null with a warning naming it - the readers' "cannot load this board", as for a
-    // broken workbook. Nothing here caches: BoardDataReader does, by the file's stamp.
+    // reads as null with a warning naming it, said once per state of the file (UnreadableFiles) -
+    // the readers' "cannot load this board", as for a broken workbook. Nothing here caches:
+    // BoardDataReader does, by the file's stamp.
     // ###########################################################################################
     public static class BoardFiles
     {
@@ -31,7 +32,7 @@ namespace Handlers.DataHandling
             }
             catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException)
             {
-                CrtLog.Warning($"Could not read the board file [{path}] - [{ex.Message}]");
+                UnreadableFiles.Warn(path, $"Could not read the board file [{path}] - [{ex.Message}]");
                 return null;
             }
         }

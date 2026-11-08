@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
+using Avalonia.Threading;
 using Handlers.DataHandling;
 using Handlers.Oscilloscope;
 using System;
@@ -46,7 +47,7 @@ namespace CRT
     {
         internal const string NotConnectedReply = "Connect to your scope first - \"Connect to oscilloscope\", on the left.";
 
-        internal const string TryingReply = "Trying...";
+        internal const string TryingReply = "Waiting for the scope to answer";
 
         internal const string NewModelIntro =
             "CRT talks to your scope over its network port, with SCPI commands - so the scope needs a network (LAN) port " +
@@ -436,17 +437,23 @@ namespace CRT
             {
                 fieldRow.Box.Text = fieldRow.Field.Get(row);
                 fieldRow.Reply.IsVisible = false;
+                ShowTrialMark(fieldRow, null);
                 this.ShowFieldProblem(fieldRow, fieldRow.Field.Kind == ScopeModelFieldKind.StepList ? ScopeModelFields.ProblemOf(fieldRow.Field, fieldRow.Box.Text) : null);
             }
 
             this.ModelEditorHeading.Text = $"{row.Brand.Trim()} {row.SeriesOrModel.Trim()}";
             this.ModelEditorIntro.Text = TabOscilloscope.EditModelIntro;
-            this.SubmitModelPanel.IsVisible = false;
             this.ShowModelSent(row);
             this.DeleteModelConfirmPanel.IsVisible = false;
             this.DeleteModelButton.IsVisible = true;
             this.NewModelPanel.IsVisible = false;
             this.EditModelPanel.IsVisible = true;
+
+            // The send panel, always under the model's buttons (owner request, 2026-11-07), filled for this model - a
+            // message typed for another one does not go with it.
+            this.SubmitModelMessageTextBox.Text = string.Empty;
+            this.ShowSubmitPanel();
+
             this.OpenModelEditor();
         }
 
@@ -515,6 +522,9 @@ namespace CRT
             }
 
             this.SaveEditedModel(OscilloscopeModelRules.With(model, copy => row.Field.Set(copy, value)));
+
+            // What its frame said was of the command before.
+            ShowTrialMark(row, null);
 
             // The model's port is the one "Connect" uses, as when a model is picked - but never under
             // a session, which the box's change would end (OnSeriesOrModelSelectionChanged's rule).
@@ -606,7 +616,7 @@ namespace CRT
 
             // A change since the suite went through makes that no longer so - the line follows, and
             // nothing else in the panel: the address typed there stays (code review, 2026-10-29).
-            if (this.SubmitModelPanel.IsVisible)
+            if (this.IsSubmitPanelShown)
             {
                 this.ShowSubmitSuiteLine();
             }
@@ -770,54 +780,172 @@ namespace CRT
                 return;
             }
 
-            this.ShowReply(row, new ScopeTrialOutcome(true, TabOscilloscope.TryingReply));
+            // A command the scope does not know is often met with silence: the answer is waited for a shorter time than
+            // the session's, but a picture can take a while.
+            TimeSpan limit = this.TrialAnswerLimitForTests ?? (command == ScopeCommand.DumpImage ? TimeSpan.FromSeconds(30) : TimeSpan.FromSeconds(10));
+
+            DispatcherTimer countdown = this.ShowWaitingFor(row, limit);
             this.AppendOutputLine("Debug", "---");
             this.AppendOutputLine("Debug", $"Try it - {row.Field.Label}:");
 
             ScopeTrialOutcome? outcome = null;
             string? failure = null;
 
-            await this.RunWithEstablishedOscilloscopeSessionAsync(
-                snapshot,
-                async (scopeClient, _, cancellationToken) =>
-                {
-                    // A command the scope does not know is often met with silence: the answer is
-                    // waited for a shorter time than the session's, but a picture can take a while.
-                    using var limit = new CancellationTokenSource(command == ScopeCommand.DumpImage ? TimeSpan.FromSeconds(30) : TimeSpan.FromSeconds(10));
-                    using var linked = CancellationTokenSource.CreateLinkedTokenSource(limit.Token, cancellationToken);
+            try
+            {
+                await this.RunWithEstablishedOscilloscopeSessionAsync(
+                    snapshot,
+                    async (scopeClient, _, cancellationToken) =>
+                    {
+                        using var limitSource = new CancellationTokenSource(limit);
+                        using var linked = CancellationTokenSource.CreateLinkedTokenSource(limitSource.Token, cancellationToken);
 
-                    try
-                    {
-                        outcome = await ScopeCommandTrial.TryAsync(
-                            scopeClient,
-                            model,
-                            command,
-                            line => this.AppendOutputLine("Debug", line),
-                            linked.Token).ConfigureAwait(false);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        failure = "The scope did not answer in time. CRT let go of the connection, since the scope may still " +
-                                  "answer later - check the command, and connect again.";
-                        throw;
-                    }
-                    catch (Exception ex)
-                    {
-                        failure = $"{ex.Message} - CRT let go of the connection; connect again.";
-                        throw;
-                    }
-                },
-                CancellationToken.None,
-                writeWarnings: true);
+                        try
+                        {
+                            outcome = await ScopeCommandTrial.TryAsync(
+                                scopeClient,
+                                model,
+                                command,
+                                line => this.AppendOutputLine("Debug", line),
+                                linked.Token).ConfigureAwait(false);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            failure = "The scope did not answer in time. CRT let go of the connection, since the scope may still " +
+                                      "answer later - check the command, and connect again.";
+                            throw;
+                        }
+                        catch (Exception ex)
+                        {
+                            failure = $"{ex.Message} - CRT let go of the connection; connect again.";
+                            throw;
+                        }
+                    },
+                    CancellationToken.None,
+                    writeWarnings: true,
+                    // The Identify command is what connecting sends: one the scope left unanswered is never sent again on
+                    // its own (thisAutomaticConnectHeld).
+                    holdAutomaticConnectOnFailure: command == ScopeCommand.Identify);
+            }
+            finally
+            {
+                countdown.Stop();
+            }
 
             this.ShowReply(row, outcome ?? new ScopeTrialOutcome(false, failure ?? TabOscilloscope.NotConnectedReply));
         }
 
+        // How long "Try it" waits for an answer - for the tests, in place of its 10 seconds.
+        internal TimeSpan? TrialAnswerLimitForTests { get; set; }
+
+        // ###########################################################################################
+        // WHILE "TRY IT" WAITS FOR THE SCOPE, ITS LINE COUNTS DOWN (owner report, 2026-11-07: "some seconds before it showed
+        // anything. If there is a wait time here, then that needs to be visualized") - "Waiting for the scope to answer -
+        // 7 s left", in the waiting color, no frame on the box until the outcome is in.
+        // ###########################################################################################
+        private DispatcherTimer ShowWaitingFor(ModelFieldRow row, TimeSpan limit)
+        {
+            DateTime ends = DateTime.UtcNow + limit;
+
+            void Show()
+            {
+                int left = Math.Max(0, (int)Math.Ceiling((ends - DateTime.UtcNow).TotalSeconds));
+
+                row.Reply.Text = TabOscilloscope.WaitingReply(left);
+                row.Reply.Classes.Set("failed", false);
+                row.Reply.Classes.Set("waiting", true);
+                row.Reply.IsVisible = true;
+            }
+
+            ShowTrialMark(row, null);
+            Show();
+
+            var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+            timer.Tick += (_, _) => Show();
+            timer.Start();
+            return timer;
+        }
+
+        internal static string WaitingReply(int secondsLeft) => $"{TabOscilloscope.TryingReply} - {secondsLeft} s left";
+
         private void ShowReply(ModelFieldRow row, ScopeTrialOutcome outcome)
         {
             row.Reply.Text = outcome.Reply;
+            row.Reply.Classes.Set("waiting", false);
             row.Reply.Classes.Set("failed", !outcome.Worked);
             row.Reply.IsVisible = true;
+
+            // "Connect first" says nothing of the command: no frame for it.
+            bool noOutcome = string.Equals(outcome.Reply, TabOscilloscope.NotConnectedReply, StringComparison.Ordinal);
+            ShowTrialMark(row, noOutcome ? null : outcome.Worked);
+        }
+
+        // ###########################################################################################
+        // A command's box framed green or red by how its last test went (owner request, 2026-11-07: "if a test runs
+        // successfully or fails, then it need to be visualized per task ... have the entire input field border in red
+        // (and green if OK)") - "Try it", or the command's step of "Run full test suite". Null takes the frame away: the
+        // box changed, or another model is shown.
+        // ###########################################################################################
+        private static void ShowTrialMark(ModelFieldRow row, bool? worked)
+        {
+            row.Box.Classes.Set("TrialPassed", worked == true);
+            row.Box.Classes.Set("TrialFailed", worked == false);
+        }
+
+        // How a command's box is framed now - true green, false red, null none. For the tests.
+        internal bool? TrialMarkForTests(ScopeCommand command) =>
+            this.thisModelFieldRows.Single(row => row.Field.Command == command).Box.Classes switch
+            {
+                var classes when classes.Contains("TrialPassed") => true,
+                var classes when classes.Contains("TrialFailed") => false,
+                _ => null,
+            };
+
+        private void ClearTrialMarks()
+        {
+            foreach (ModelFieldRow row in this.thisModelFieldRows)
+            {
+                ShowTrialMark(row, null);
+            }
+        }
+
+        // ###########################################################################################
+        // "Run full test suite" marking the boxes as it goes - each command sent as it should be green, the one it
+        // stopped at red. Only while the suite runs (thisMarkingSuite): the keyboard's palettes send the same
+        // commands and say nothing of a model's test. Called on whichever thread the command ran on.
+        // ###########################################################################################
+        private volatile bool thisMarkingSuite;
+
+        private void NoteSuiteCommand(ScopeCommand command, bool worked)
+        {
+            if (!this.thisMarkingSuite)
+            {
+                return;
+            }
+
+            void Mark()
+            {
+                foreach (ModelFieldRow row in this.thisModelFieldRows.Where(row => row.Field.Command == command))
+                {
+                    ShowTrialMark(row, worked);
+                }
+            }
+
+            if (Avalonia.Threading.Dispatcher.UIThread.CheckAccess())
+            {
+                Mark();
+            }
+            else
+            {
+                Avalonia.Threading.Dispatcher.UIThread.Post(Mark);
+            }
+        }
+
+        internal void NoteSuiteCommandForTests(ScopeCommand command, bool worked)
+        {
+            this.thisMarkingSuite = true;
+            this.NoteSuiteCommand(command, worked);
+            this.thisMarkingSuite = false;
         }
 
         // The Try it buttons follow the tab's own: off while a command runs. With nothing connected a

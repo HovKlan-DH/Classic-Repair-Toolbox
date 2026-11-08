@@ -120,7 +120,7 @@ namespace CRT
             this.Title = isFile ? "Edit file" : "Edit photo";
             this.HeaderText.Text = this.Title;
             this.AddButton.Content = isFile ? "Update file" : "Update photo";
-            this.CommentTextBox.Text = comment;
+            this.CommentTextBox.Markup = comment;
 
             this.SelectedFileText.Text = fileName;
             this.SelectedFilePathText.Text = isFile
@@ -390,7 +390,7 @@ namespace CRT
                 }
             }
 
-            this.Close(new PhotoResult(this.thisSelectedFilePath, this.CommentTextBox.Text?.Trim() ?? string.Empty));
+            this.Close(new PhotoResult(this.thisSelectedFilePath, RichNote.TrimMarkup(this.CommentTextBox.Markup)));
         }
     }
 }

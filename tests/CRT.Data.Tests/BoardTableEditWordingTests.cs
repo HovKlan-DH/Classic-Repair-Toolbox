@@ -81,12 +81,9 @@ public sealed class BoardTableEditWordingTests
     }
 
     [Fact]
-    public void Fill_and_paste_into_cells_count_cells_and_say_how_to_take_it_back()
+    public void A_paste_into_cells_counts_cells_and_says_how_to_take_it_back()
     {
         Assert.Equal("Pasted into 5 cells. Ctrl+Z undoes it.", BoardTableEditWording.PastedIntoCells(5));
-        Assert.Equal("Filled 1 cell with the value at the top. Ctrl+Z undoes it.", BoardTableEditWording.Filled(1));
-        Assert.Equal("Filled 7 cells with the value at the top. Ctrl+Z undoes it.", BoardTableEditWording.Filled(7));
-        Assert.DoesNotContain("Ctrl+Z", BoardTableEditWording.Filled(0));
         Assert.DoesNotContain("Ctrl+Z", BoardTableEditWording.PastedIntoCells(0));
     }
 
@@ -95,15 +92,11 @@ public sealed class BoardTableEditWordingTests
     {
         Assert.Equal(
             "Replaced [6510] 3 times in 2 cells. Ctrl+Z undoes it.",
-            BoardTableEditWording.Replaced(new BoardTableReplaceResult(3, 2, 1), "6510", everySheet: false));
+            BoardTableEditWording.Replaced(new BoardTableReplaceResult(3, 2, 1), "6510"));
 
         Assert.Equal(
             "Replaced [6510] 1 time in 1 cell. Ctrl+Z undoes it.",
-            BoardTableEditWording.Replaced(new BoardTableReplaceResult(1, 1, 1), "6510", everySheet: true));
-
-        Assert.Equal(
-            "Replaced [6510] 4 times in 4 cells on 3 sheets. Ctrl+Z undoes it.",
-            BoardTableEditWording.Replaced(new BoardTableReplaceResult(4, 4, 3), "6510", everySheet: true));
+            BoardTableEditWording.Replaced(new BoardTableReplaceResult(1, 1, 1), "6510"));
     }
 
     // The Maintainer tab shows the same table - a submission's, BETA's - so a red row's sentence
@@ -115,7 +108,6 @@ public sealed class BoardTableEditWordingTests
         [
             BoardTableEditWording.PasteOnDeletedRow,
             BoardTableEditWording.PasteOnDeletedRows,
-            BoardTableEditWording.FillOnDeletedRows,
         ];
 
         Assert.All(sentences, sentence =>
@@ -129,7 +121,15 @@ public sealed class BoardTableEditWordingTests
     [Fact]
     public void A_replace_finding_nothing_says_where_it_looked()
     {
-        Assert.Equal("No row shown on this sheet contains [VIC].", BoardTableEditWording.Replaced(new BoardTableReplaceResult(0, 0, 0), "VIC", everySheet: false));
-        Assert.Equal("No row shown on any sheet contains [VIC].", BoardTableEditWording.Replaced(new BoardTableReplaceResult(0, 0, 0), "VIC", everySheet: true));
+        // On the sheet shown only since 2026-11-07 (owner request: "remove the checkbox for 'On every sheet'").
+        Assert.Equal("No row shown on this sheet contains [VIC].", BoardTableEditWording.Replaced(new BoardTableReplaceResult(0, 0, 0), "VIC"));
     }
+
+    // The replace bar's "Columns" says how many of the columns shown it looks in (owner request, 2026-11-07).
+    [Theory]
+    [InlineData(7, 7, "Columns: All")]
+    [InlineData(2, 7, "Columns: 2 of 7")]
+    [InlineData(0, 7, "Columns: None")]
+    public void Columns_says_how_many_of_the_columns_shown_are_ticked(int ticked, int shown, string expected) =>
+        Assert.Equal(expected, BoardTableEditWording.ColumnsChoice(ticked, shown));
 }

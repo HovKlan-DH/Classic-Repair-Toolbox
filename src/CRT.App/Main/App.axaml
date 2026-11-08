@@ -9,6 +9,8 @@
 			<!-- The table editor's own colours, shared by the Contribute tab and the Maintainer tab (Controls/BoardTable). -->
 			<ResourceDictionary.MergedDictionaries>
 				<ResourceInclude Source="avares://Classic-Repair-Toolbox/Controls/BoardTable/BoardTableColors.axaml" />
+				<!-- The formatted note box's look - Fluent's TextBox with its format row (RichNoteTextBox, 2026-11-07). -->
+				<ResourceInclude Source="avares://Classic-Repair-Toolbox/Controls/RichNote/RichNoteTheme.axaml" />
 			</ResourceDictionary.MergedDictionaries>
 
 			<FontFamily x:Key="FontAwesomeSolid">
@@ -201,6 +203,15 @@
 					<SolidColorBrush x:Key="Workbooks_Muted_Fg">#5A5A5A</SolidColorBrush>
 					<SolidColorBrush x:Key="Workbooks_Faint_Fg">#7A7A7A</SolidColorBrush>
 
+					<!-- A device's condition in stars (ConditionStars; owner request, 2026-11-06: "more 'depth' and
+					     coloring"): a lit star gold, light at its top and deeper at its foot, its edge a darker
+					     amber; an unlit one a quiet grey outline on the faintest fill. -->
+					<SolidColorBrush x:Key="Workbooks_Star_Lit_Top">#FFE27A</SolidColorBrush>
+					<SolidColorBrush x:Key="Workbooks_Star_Lit_Bottom">#F4A30C</SolidColorBrush>
+					<SolidColorBrush x:Key="Workbooks_Star_Lit_Edge">#B06E00</SolidColorBrush>
+					<SolidColorBrush x:Key="Workbooks_Star_Dim_Fill">#F2F2F2</SolidColorBrush>
+					<SolidColorBrush x:Key="Workbooks_Star_Dim_Edge">#B4B4B4</SolidColorBrush>
+
 					<!-- The summary strip's ZERO-count category/state pills (WorklogInfoPillBuilder's
 					     MutedPillBrush) - deliberately its OWN, lighter token rather than reusing
 					     Muted_Fg or Faint_Fg above: both of those are body-text greys, tuned to stay
@@ -231,6 +242,20 @@
 					<SolidColorBrush x:Key="Notice_Bg">#FFF4DC</SolidColorBrush>
 					<SolidColorBrush x:Key="Notice_Border">#E8B866</SolidColorBrush>
 					<SolidColorBrush x:Key="Notice_Fg">#5C3A00</SolidColorBrush>
+
+					<!-- Light, the changelog on the "About" tab (MarkdownRenderer, 2026-11-06): GitHub's own
+					     light colors - its inline code ground, the bar of a thematic break, the line under
+					     a heading, a quote's bar and muted text, and the five alerts' colors. -->
+					<SolidColorBrush x:Key="Changelog_Code_Bg">#EFF1F3</SolidColorBrush>
+					<SolidColorBrush x:Key="Changelog_Rule">#D1D9E0</SolidColorBrush>
+					<SolidColorBrush x:Key="Changelog_HeadingLine">#DDE3E9</SolidColorBrush>
+					<SolidColorBrush x:Key="Changelog_Quote_Bar">#D1D9E0</SolidColorBrush>
+					<SolidColorBrush x:Key="Changelog_Quote_Fg">#59636E</SolidColorBrush>
+					<SolidColorBrush x:Key="Changelog_Alert_Note">#0969DA</SolidColorBrush>
+					<SolidColorBrush x:Key="Changelog_Alert_Tip">#1A7F37</SolidColorBrush>
+					<SolidColorBrush x:Key="Changelog_Alert_Important">#8250DF</SolidColorBrush>
+					<SolidColorBrush x:Key="Changelog_Alert_Warning">#9A6700</SolidColorBrush>
+					<SolidColorBrush x:Key="Changelog_Alert_Caution">#D1242F</SolidColorBrush>
 
 					<!-- Light, Thumbnail -->
 					<SolidColorBrush x:Key="Thumbnail_Border">Black</SolidColorBrush>
@@ -406,6 +431,13 @@
 				<SolidColorBrush x:Key="Workbooks_Muted_Fg">#B5A896</SolidColorBrush>
 				<SolidColorBrush x:Key="Workbooks_Faint_Fg">#8F8578</SolidColorBrush>
 
+				<!-- See the light block's stars: the same gold, the unlit ones a little lighter than the ground. -->
+				<SolidColorBrush x:Key="Workbooks_Star_Lit_Top">#FFE48A</SolidColorBrush>
+				<SolidColorBrush x:Key="Workbooks_Star_Lit_Bottom">#F0A01A</SolidColorBrush>
+				<SolidColorBrush x:Key="Workbooks_Star_Lit_Edge">#FFCD5C</SolidColorBrush>
+				<SolidColorBrush x:Key="Workbooks_Star_Dim_Fill">#2E2824</SolidColorBrush>
+				<SolidColorBrush x:Key="Workbooks_Star_Dim_Edge">#6E6259</SolidColorBrush>
+
 				<!-- See the light block's own comment on Workbooks_ZeroCount_Fg - a dedicated,
 				     dimmer tone for a zero-count pill rather than either body-text grey above.
 				     Darker than both of them here (the dark surfaces run the opposite direction
@@ -432,6 +464,19 @@
 				<SolidColorBrush x:Key="Notice_Bg">#33270F</SolidColorBrush>
 				<SolidColorBrush x:Key="Notice_Border">#7A5A1E</SolidColorBrush>
 				<SolidColorBrush x:Key="Notice_Fg">#F7D9A0</SolidColorBrush>
+
+				<!-- Dark, the changelog on the "About" tab: GitHub's dark alert colors, the grounds and
+				     lines in this theme's own browns. -->
+				<SolidColorBrush x:Key="Changelog_Code_Bg">#3E342F</SolidColorBrush>
+				<SolidColorBrush x:Key="Changelog_Rule">#524842</SolidColorBrush>
+				<SolidColorBrush x:Key="Changelog_HeadingLine">#3E342F</SolidColorBrush>
+				<SolidColorBrush x:Key="Changelog_Quote_Bar">#524842</SolidColorBrush>
+				<SolidColorBrush x:Key="Changelog_Quote_Fg">#B5A896</SolidColorBrush>
+				<SolidColorBrush x:Key="Changelog_Alert_Note">#4493F8</SolidColorBrush>
+				<SolidColorBrush x:Key="Changelog_Alert_Tip">#3FB950</SolidColorBrush>
+				<SolidColorBrush x:Key="Changelog_Alert_Important">#AB7DF8</SolidColorBrush>
+				<SolidColorBrush x:Key="Changelog_Alert_Warning">#D29922</SolidColorBrush>
+				<SolidColorBrush x:Key="Changelog_Alert_Caution">#F85149</SolidColorBrush>
 
 				<!-- Dark, Thumbnail -->
 				<SolidColorBrush x:Key="Thumbnail_Border">LightGray</SolidColorBrush>
@@ -721,6 +766,28 @@
 			<Setter Property="Background" Value="{DynamicResource Button_Cancel_Bg}" />
 			<Setter Property="Foreground" Value="{DynamicResource Button_Cancel_Fg}" />
 			<Setter Property="BorderBrush" Value="{DynamicResource Button_Cancel_Border}" />
+		</Style>
+
+		<!-- A LABEL OF ITS OWN IN A GREEN OR RED BUTTON IS WRITTEN AS THE BUTTON'S TEXT IS (owner report, 2026-11-07: "Replace
+		     all" read black on green - "make sure to have same text colors (everywhere) for buttons (matching its background
+		     color)"). The TextBlock style above gives every TextBlock the page's color, which outranks what it would take
+		     from its button, so a TextBlock in a button's content - alone, or in a panel there - is given the color a label
+		     of plain text has: its class's, and the theme's under the pointer, pressed and greyed out, as the theme colors
+		     the button's presenter then. Only the content: a tooltip's text is no child of these panels. -->
+		<Style Selector="Button.Accept > TextBlock, Button.Accept > :is(Panel) > TextBlock">
+			<Setter Property="Foreground" Value="{DynamicResource Button_Ok_Fg}" />
+		</Style>
+		<Style Selector="Button.Danger > TextBlock, Button.Danger > :is(Panel) > TextBlock">
+			<Setter Property="Foreground" Value="{DynamicResource Button_Cancel_Fg}" />
+		</Style>
+		<Style Selector="Button.Accept:pointerover > TextBlock, Button.Accept:pointerover > :is(Panel) > TextBlock, Button.Danger:pointerover > TextBlock, Button.Danger:pointerover > :is(Panel) > TextBlock">
+			<Setter Property="Foreground" Value="{DynamicResource ButtonForegroundPointerOver}" />
+		</Style>
+		<Style Selector="Button.Accept:pressed > TextBlock, Button.Accept:pressed > :is(Panel) > TextBlock, Button.Danger:pressed > TextBlock, Button.Danger:pressed > :is(Panel) > TextBlock">
+			<Setter Property="Foreground" Value="{DynamicResource ButtonForegroundPressed}" />
+		</Style>
+		<Style Selector="Button.Accept:disabled > TextBlock, Button.Accept:disabled > :is(Panel) > TextBlock, Button.Danger:disabled > TextBlock, Button.Danger:disabled > :is(Panel) > TextBlock">
+			<Setter Property="Foreground" Value="{DynamicResource ButtonForegroundDisabled}" />
 		</Style>
 
 		<!-- "LEARN MORE" (CRT 4.0 step 5 - the plan: "The remaining help buttons read 'Learn more'"):

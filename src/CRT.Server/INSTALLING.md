@@ -730,6 +730,12 @@ workbooks, what only they cite, and `!` notes no board cites), and - as `PROBLEM
 it could not carry: a column or sheet CRT does not read, a file a row cites that is missing, a board
 the main workbook does not list. **With a problem it writes nothing**; fix the data and run it again.
 
+**It also makes every board's pinouts** (since server 10.1.0): the pins its scope baselines and its
+KiCad data say, and the package a footprint or the baselines make certain - the Excel trees have no
+pinouts, so each conversion makes them again. A `Note:` line per board says how many components got
+pins and from what; KiCad files it could not read are a note too (that board then gets its baselines'
+pins alone), not a problem.
+
 Then convert each tree into its own 4.0 folder, with that folder's public address so its manifest is
 written:
 

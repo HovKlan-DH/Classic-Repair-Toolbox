@@ -7,7 +7,7 @@ using Handlers.DataHandling;
 namespace Handlers.MaintainerHandling
 {
     // ###########################################################################################
-    // "Account" > API USAGE (owner request, 2026-10-04: "how about tracking the API
+    // "Management" > API USAGE ("Account" until 2026-11-07) (owner request, 2026-10-04: "how about tracking the API
     // end-points, to see if it is possible to retire any, if almost no versions uses it any more").
     // Every word ApiUsageView shows, grouped and ordered here so a test can read it.
     //

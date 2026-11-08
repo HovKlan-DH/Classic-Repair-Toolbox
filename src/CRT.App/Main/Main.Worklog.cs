@@ -6,6 +6,7 @@ using Handlers.DataHandling;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace CRT
 {
@@ -43,9 +44,16 @@ namespace CRT
         // ask the same question this window does, rather than re-deriving "which workbook" a third
         // time - WorklogManager.ResolveActiveWorkbook's own header is explicit that it is the ONE
         // place that rule lives.
+        //
+        // AMONG THE DEVICE PICKED'S WORKBOOKS while one is (owner decision, 2026-11-06: "Only the device's";
+        // OwnedDeviceRepairs.WorkedIn) - none of them on the board, none active. The pick is the one
+        // RefreshWorklogBar has checked and saved (OwnedDeviceRepairs.BarFilter); with the worklog off
+        // nothing is narrowed, as nothing there is read.
         internal static WorkbookRecord? ResolveActiveWorkbookForBoard(string boardKey) =>
             WorklogManager.ResolveActiveWorkbook(
-                WorklogManager.GetWorkbooksForBoard(boardKey),
+                OwnedDeviceRepairs.WorkedIn(
+                    WorklogManager.GetWorkbooksForBoard(boardKey),
+                    UserSettings.EnableWorklog ? UserSettings.WorklogBarDeviceId : null),
                 UserSettings.GetActiveWorkbookId(boardKey));
 
         // ###########################################################################################
@@ -109,14 +117,38 @@ namespace CRT
             // switched off; this is the other way "which workbook is being written to" can change.
             this.TabSchematicsControl.CancelWorklogEntryMode();
 
+            this.FollowWorkbookInDevicePick(workbookId);
             UserSettings.SetActiveWorkbookId(boardKey, workbookId);
             this.RefreshWorklogBar();
         }
 
         // ###########################################################################################
-        // Lets the worklog bar's own workbook picker activate ANY workbook directly - including one
-        // for a board other than the one currently on screen, since the picker now lists every
-        // workbook on every board (see RefreshWorklogBar). Guarded by _suppressWorklogJobBoxSave so
+        // A workbook activated that is not on the device picked takes the pick along - its own device, or
+        // all devices for one on none (OwnedDeviceRepairs.PickFollowing): CRT works only in the device
+        // picked's workbooks, so the workbook activated would otherwise be one nothing shows. A workbook
+        // made just now, or on a device added just now in "Add workbook", is read from disk.
+        // ###########################################################################################
+        private void FollowWorkbookInDevicePick(int workbookId)
+        {
+            if (UserSettings.WorklogBarDeviceId is not { } picked)
+            {
+                return;
+            }
+
+            WorkbookRecord? workbook = this.thisWorkbooksLastRead.FirstOrDefault(each => each.Id == workbookId)
+                ?? WorklogManager.GetAllWorkbooks().FirstOrDefault(each => each.Id == workbookId);
+
+            List<OwnedDeviceRecord> devices = workbook?.OwnedDeviceId is { } deviceId && this.thisDevicesLastRead.All(device => device.Id != deviceId)
+                ? OwnedDeviceStore.GetAll()
+                : this.thisDevicesLastRead;
+
+            UserSettings.WorklogBarDeviceId = OwnedDeviceRepairs.PickFollowing(picked, workbook, devices);
+        }
+
+        // ###########################################################################################
+        // Lets the worklog bar's own workbook picker activate any workbook it lists directly - including
+        // one for a board other than the one currently on screen, since the picker lists the device's
+        // workbooks on every board (Main.FillBarPickers). Guarded by _suppressWorklogJobBoxSave so
         // RefreshWorklogBar re-seeding the box's ItemsSource/SelectedItem does not loop back in here.
         // ###########################################################################################
         private void OnWorklogJobBoxSelectionChanged(object? sender, SelectionChangedEventArgs e)
@@ -161,7 +193,7 @@ namespace CRT
                 return;
             }
 
-            if (!TryResolveHardwareAndBoardForBoardKey(boardKey, out string hardwareName, out string boardName))
+            if (!TryResolveHardwareAndBoardForBoardKey(boardKey, out _, out _))
             {
                 // The board this workbook belongs to is no longer in the synced data (its Excel entry
                 // was removed by a later sync), so there is nothing to switch to. Refresh instead of
@@ -171,9 +203,25 @@ namespace CRT
                 return;
             }
 
+            this.FollowWorkbookInDevicePick(workbookId);
             UserSettings.SetActiveWorkbookId(boardKey, workbookId);
 
             this.TabSchematicsControl.CancelWorklogEntryMode();
+
+            this.SwitchToBoard(boardKey);
+        }
+
+        // ###########################################################################################
+        // The board `boardKey` names selected in the drop-downs at the top - its load draws everything
+        // again. False when CRT does not list it. Shared by a workbook activated on another board and a
+        // device picked whose own board is not the one shown (Main.Devices.cs).
+        // ###########################################################################################
+        private bool SwitchToBoard(string boardKey)
+        {
+            if (!TryResolveHardwareAndBoardForBoardKey(boardKey, out string hardwareName, out string boardName))
+            {
+                return false;
+            }
 
             // Switching HardwareComboBox first (if needed) synchronously repopulates BoardComboBox's
             // ItemsSource via OnHardwareSelectionChanged before BoardComboBox.SelectedItem is set -
@@ -196,6 +244,7 @@ namespace CRT
             }
 
             this.BoardComboBox.SelectedItem = boardName;
+            return true;
         }
 
         // ###########################################################################################
@@ -244,8 +293,10 @@ namespace CRT
             // come back on leaving it (Main.Maintainer.cs).
             this.ApplyMaintainerLayoutForSelection(e);
 
-            // The Contribute tab has lists of its own on the far left, in place of the other tabs' (Main.ContributeLists.cs).
+            // The Contribute tab has lists of its own on the far left, in place of the other tabs' (Main.ContributeLists.cs),
+            // and the "My Devices" tab its "My devices" there (Main.DeviceList.cs).
             this.FollowContributeTabInLists();
+            this.FollowWorkbooksTabInLeftPanel();
 
             // "Draw trace" is the Schematics tab's: leaving the tab stops it (code review, 2026-10-29 -
             // left on, the window's Escape went on taking a key meant for another tab).
@@ -254,7 +305,7 @@ namespace CRT
                 this.TabSchematicsControl.SetDrawingTraces(false);
             }
 
-            if (this.MainTabControl?.SelectedItem is TabItem { Header: "Workbooks" })
+            if (ReferenceEquals(this.MainTabControl?.SelectedItem, this.WorkbooksTabItem))
             {
                 this.TabWorkbooks?.FocusSearchBox();
             }
@@ -271,8 +322,8 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Refreshes the worklog bar's content for the currently selected board: either the empty
-        // "no jobs recorded" state, or that board's active workbook (see ResolveActiveWorkbookForBoard).
+        // Refreshes the worklog bar's content for the currently selected board: that board's active
+        // workbook (see ResolveActiveWorkbookForBoard), the device it is on, or neither.
         //
         // The bar deliberately shows the active workbook whether it is Open or Closed. Resolving a
         // workbook's last outstanding entry closes it automatically, and showing only open workbooks
@@ -284,7 +335,7 @@ namespace CRT
         // ###########################################################################################
         public void RefreshWorklogBar()
         {
-            if (this.WorklogNoJobText == null)
+            if (this.WorklogJobBox == null)
                 return;
 
             string boardKey = this.GetCurrentBoardKey();
@@ -301,15 +352,34 @@ namespace CRT
                 .Where(w => string.Equals(w.BoardKey, boardKey, StringComparison.Ordinal))
                 .ToList();
 
-            var activeWorkbook = WorklogManager.ResolveActiveWorkbook(workbooks, UserSettings.GetActiveWorkbookId(boardKey));
-            bool hasWorkbook = activeWorkbook != null;
-
             // The user's devices, read ONCE too - for the device picker, the bar naming a repair's
             // device and the Workbooks tab's "My devices". Not read at all with the worklog off.
             List<OwnedDeviceRecord> devices = UserSettings.EnableWorklog ? OwnedDeviceStore.GetAll() : [];
 
             // Kept for a device pick (Main.Devices.cs) - nothing is read a second time for it.
             this.thisWorkbooksLastRead = allWorkbooks;
+            this.thisDevicesLastRead = devices;
+
+            // THE DEVICE PICKED - the bar's "Device" drop-down and "My devices"' mark, one choice - checked
+            // FIRST and saved (OwnedDeviceRepairs.BarFilter: a device gone, or another board shown with none
+            // of its workbooks, is all devices again), as the active workbook is resolved among its
+            // workbooks only (owner decision, 2026-11-06: "Only the device's") and the tab reads it. With
+            // the worklog off nothing was read, and what was picked is kept for when it comes back.
+            OwnedDeviceRecord? picked = UserSettings.EnableWorklog
+                ? OwnedDeviceRepairs.BarFilter(UserSettings.WorklogBarDeviceId, devices, boardKey, allWorkbooks, this.CanShowBoard)
+                : null;
+
+            if (picked is null && UserSettings.EnableWorklog)
+            {
+                UserSettings.WorklogBarDeviceId = null;
+            }
+
+            List<WorkbookRecord> workedIn = OwnedDeviceRepairs.WorkedIn(workbooks, picked?.Id);
+            var activeWorkbook = WorklogManager.ResolveActiveWorkbook(workedIn, UserSettings.GetActiveWorkbookId(boardKey));
+            bool hasWorkbook = activeWorkbook != null;
+
+            // Workbooks there to work in, none chosen - "Clear" under the workbook list (Main.ClearWorkbookPick).
+            bool noneChosen = !hasWorkbook && workedIn.Count > 0;
 
             // The Workbooks tab's list is rebuilt from here rather than from its own wiring: this
             // method is already the single place worklog state is refreshed from - board changes,
@@ -328,32 +398,28 @@ namespace CRT
             // early-out on tab selection would make card clicks silently do nothing.
             if (UserSettings.EnableWorklog)
             {
-                // The tab's own list can show every board's workbooks ("Show all workbooks", the
-                // Configuration tab's radio group below "Enable Worklog") rather than just this
-                // board's - allWorkbooks is already the unfiltered read from above, so passing it
-                // through costs nothing extra; board is still used to resolve which workbook is
-                // active and to filter the fallback when no explicit choice was made (see
-                // TabWorkbooks.RefreshWorkbooks).
-                bool showAllBoards = string.Equals(UserSettings.WorkbooksScope, "AllBoards", StringComparison.Ordinal);
+                // The tab's own list shows the device picked's workbooks, on any board, as the bar's
+                // "Workbook" drop-down does (owner request, 2026-11-06: "it will only show the workbooks for
+                // this device"); with none picked, those the Configuration tab's scope lists - every
+                // board's, the hardware's, or this board's (MyDevicesScope) - all from the one read
+                // above; board is still used to resolve which workbook is active and to filter the
+                // fallback when no explicit choice was made (see TabWorkbooks.RefreshWorkbooks).
+                string scope = UserSettings.WorkbooksScope;
+                List<WorkbookRecord> listed = picked is { } device
+                    ? OwnedDeviceRepairs.Of(device.Id, allWorkbooks)
+                    : scope switch
+                    {
+                        MyDevicesScope.CurrentBoard => workbooks,
+                        _ => allWorkbooks.Where(workbook => MyDevicesScope.Holds(scope, workbook.BoardKey, boardKey)).ToList(),
+                    };
 
                 // Every workbook too, for a device's page, and the devices - read here already, never
                 // a second time there (code review, 2026-10-28).
-                this.TabWorkbooks?.RefreshWorkbooks(showAllBoards ? allWorkbooks : workbooks, allWorkbooks, devices);
+                this.TabWorkbooks?.RefreshWorkbooks(listed, allWorkbooks, devices);
             }
 
-            this.WorklogNoJobText.IsVisible = !hasWorkbook;
-
-            // The picker stays visible whenever ANY workbook exists anywhere, not just when THIS
-            // board has one. It lists every workbook on every board and is the only way to reach
-            // another board's workbook from the bar, so hiding it on a board with none of its own
-            // hid it exactly where it is most useful - a board you have never worked on is precisely
-            // where you want to jump to the job you were doing elsewhere. (The visibility rule was
-            // written for the old read-only text box, which genuinely had nothing to show.)
-            this.WorklogJobBox.IsVisible = allWorkbooks.Count > 0;
-
-            // These three still follow the ACTIVE workbook: there is no status to show, no entries to
-            // draw and nothing to add an entry to when this board has no workbook.
-            this.WorklogJobStatusPanel.IsVisible = hasWorkbook;
+            // These follow the ACTIVE workbook: there are no entries to draw and nothing to add an entry
+            // to when this board has no workbook.
             this.WorklogShowEntriesPanel.IsVisible = hasWorkbook;
             this.WorklogAddEntryButton.IsVisible = hasWorkbook;
 
@@ -394,85 +460,15 @@ namespace CRT
                 this.TabSchematicsControl.RefreshWorklogEntriesListForCurrentWorkbook();
             }
 
-            // The device picker above Hardware, before the workbook picker below: that one's items
-            // name a repair's device from what this fills in (Main.Devices.cs).
-            this.FillDevicePicker(devices, activeWorkbook);
-
-            // The picker lists EVERY workbook on every board, not just this board's own workbooks in
-            // "workbooks" above - selecting one for a different board is how the bar can jump there
-            // (see OnWorklogJobBoxSelectionChanged). "allWorkbooks" is the single disk read taken at
-            // the top of this method; "workbooks" is its board-scoped subset.
-            //
-            // SelectedItem is looked up BY ID inside this same list rather than set to "activeWorkbook"
-            // directly: WorkbookRecord has no Equals/GetHashCode override, so ComboBox's SelectedItem
-            // only shows as selected when it is REFERENCE-equal to an item actually in ItemsSource -
-            // and while activeWorkbook now comes from a filtered view of this very list (so reference
-            // equality would in fact hold today), the by-id lookup keeps that from being a silent
-            // dependency on how "workbooks" happens to be derived.
-            //
-            // Seeded whether or not a workbook is active: with no active workbook the box shows no
-            // selection while still listing every OTHER board's workbooks, which is what makes it
-            // usable as a navigator on a board that has none of its own. Suppressed the same way
-            // OnWorklogShowEntriesCheckedChanged's seed is: this is RefreshWorklogBar re-populating
-            // the list for the board on screen, not a user picking a workbook, and letting it reach
-            // OnWorklogJobBoxSelectionChanged would call ActivateWorkbook -> RefreshWorklogBar again
-            // for a selection nobody made.
-            this._suppressWorklogJobBoxSave = true;
-            try
-            {
-                this.WorklogJobBox.ItemsSource = allWorkbooks;
-                this.WorklogJobBox.SelectedItem = hasWorkbook
-                    ? allWorkbooks.FirstOrDefault(w => w.Id == activeWorkbook!.Id)
-                    : null;
-            }
-            finally
-            {
-                this._suppressWorklogJobBoxSave = false;
-            }
-
-            if (activeWorkbook == null)
-                return;
-
-            // Border, padlock, label and the padlock's overshoot padding all applied by the ONE
-            // shared informational styling - see Handlers/Theme/WorklogInfoPillBuilder.cs. This
-            // pill is declared in Main.axaml (long-lived, only its text changes), so it is
-            // restyled in place rather than rebuilt. It used to be styled here by hand at 2px,
-            // which is exactly the drift that class now prevents.
-            //
-            // The status WORD lives in the pill, so WorklogJobStatusText below carries only the
-            // counts and the start date - otherwise "Open" would read twice, once in each.
-            Handlers.Theming.WorklogInfoPillBuilder.ApplyStatePillVisual(
-                this.WorklogJobStatusPill,
-                this.WorklogJobStatusDot,
-                this.WorklogJobStatusPillText,
-                activeWorkbook.Status);
-
-            // A CLOSED workbook reports when it finished; an open one reports when it started -
-            // the whole rule, word and date together, lives in the shared
-            // WorklogEntryScope.FormatWorkbookDateLine, which the Workbooks tab's own cards use
-            // too. This bar had the rule and the card had a hardcoded "started" against StartDate,
-            // so the same workbook read "ended 2026-September-6" here and "started 2026-September-6"
-            // on its card a row below. See that method for why "ended" rather than "closed", and
-            // for the no-EndDate fallback.
-            string dateLine = WorklogEntryScope.FormatWorkbookDateLine(
-                activeWorkbook.Status,
-                activeWorkbook.StartDate,
-                activeWorkbook.EndDate);
-
-            if (activeWorkbook.WorklogCount == 0)
-            {
-                this.WorklogJobStatusText.Text = $"No worklogs yet · {dateLine}";
-                return;
-            }
-
-            string worklogWord = activeWorkbook.WorklogCount == 1 ? "worklog" : "worklogs";
-            this.WorklogJobStatusText.Text =
-                $"{activeWorkbook.WorklogCount} {worklogWord} · {dateLine}";
+            // The bar's two drop-downs: the device the active workbook is on, and that device's workbooks -
+            // its status at the end of each line, the counts and dates of the workbook that stood beside it
+            // until 2026-11-06 gone (owner request: "too much info there now"). Main.Devices.cs.
+            this.FillBarPickers(devices, allWorkbooks, activeWorkbook, picked, noneChosen);
         }
 
         // ###########################################################################################
-        // Opens the "Create new workbook" dialog for the currently selected board and ACTIVATES the
-        // workbook it creates.
+        // "Add workbook" ("Create new workbook" until 2026-11-06): opens the form for the currently
+        // selected board and ACTIVATES the workbook it creates.
         //
         // ActivateWorkbook, not a bare RefreshWorklogBar: "which workbook is active" used to be
         // "the board's newest", which a just-created workbook always was, so a plain refresh was
@@ -503,6 +499,34 @@ namespace CRT
             catch (Exception ex)
             {
                 Logger.Critical($"Creating a workbook failed: [{ex.Message}]");
+            }
+        }
+
+        // ###########################################################################################
+        // "Add device" on the bar (owner request, 2026-11-06: with no device and no workbook "all you see in
+        // that top-bar is 'Create new workbook' - you do not have an option to create a new device"): the
+        // "My Devices" tab's own "Add device" - the form on any hardware and board, no workbook made, shown
+        // over CRT's window whichever tab is shown - and, once one is added, that tab shown on the device's
+        // page, where "New repair" starts its first.
+        // ###########################################################################################
+        private async void OnWorklogAddDeviceClick(object? sender, RoutedEventArgs e)
+        {
+            // Nothing may leave an async void handler: App lets such an exception end CRT.
+            try
+            {
+                await this.AddDeviceFromBarAsync();
+            }
+            catch (Exception ex)
+            {
+                Logger.Critical($"Adding a device from the worklog bar failed - [{ex}]");
+            }
+        }
+
+        internal async Task AddDeviceFromBarAsync()
+        {
+            if (await this.TabWorkbooks.AddDeviceAsync() && this.WorkbooksTabItem.IsVisible)
+            {
+                this.MainTabControl.SelectedItem = this.WorkbooksTabItem;
             }
         }
 

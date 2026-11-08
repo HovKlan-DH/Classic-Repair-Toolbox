@@ -422,7 +422,8 @@ namespace Handlers.DataHandling
                 }
                 catch (Exception ex)
                 {
-                    Logger.Warning($"Failed to load workbook: [{folder}] [{ex.Message}] - skipped");
+                    // An error once, not at every read of the list (UnreadableFiles).
+                    UnreadableFiles.Report(indexPath, $"Failed to load workbook: [{folder}] [{ex.Message}] - skipped");
                 }
             }
 
@@ -961,10 +962,17 @@ namespace Handlers.DataHandling
         // design was supposed to prevent. One implementation, unit-testable, called from both.
         //
         // "workbooks" is expected newest-first, which is GetWorkbooksForBoard's own order.
+        //
+        // NoWorkbookChosen saved is NO workbook - "Clear" under the "My Devices" tab's workbook list (owner decision,
+        // 2026-11-06, asked: "No workbook worked in") - until one is picked, activated or made.
         // ###########################################################################################
+        public const int NoWorkbookChosen = 0;
+
         public static WorkbookRecord? ResolveActiveWorkbook(IReadOnlyList<WorkbookRecord> workbooks, int? savedActiveId)
         {
-            if (workbooks == null || workbooks.Count == 0)
+            // "Clear" under the "My Devices" tab's workbook list: no workbook worked in on the board, till one is picked
+            // (owner decision, 2026-11-06: "No workbook worked in"). Ids start at 1, so it is never a workbook's.
+            if (workbooks == null || workbooks.Count == 0 || savedActiveId == NoWorkbookChosen)
             {
                 return null;
             }
@@ -1039,7 +1047,7 @@ namespace Handlers.DataHandling
                 Id = id,
                 BoardKey = boardKey,
                 Title = title.Trim(),
-                Note = note?.Trim() ?? string.Empty,
+                Note = RichNote.TrimMarkup(note),
                 Status = "Open",
                 StartDate = DateTime.Now.Date,
                 WorklogCount = 0,
@@ -1094,7 +1102,7 @@ namespace Handlers.DataHandling
             }
 
             record.Title = title?.Trim() ?? string.Empty;
-            record.Note = note?.Trim() ?? string.Empty;
+            record.Note = RichNote.TrimMarkup(note);
 
             if (!SaveWorkbook(folder, record))
             {
@@ -1279,7 +1287,7 @@ namespace Handlers.DataHandling
             if (comments == null || string.IsNullOrWhiteSpace(text))
                 return null;
 
-            int nextId = comments.Count == 0 ? 1 : comments.Max(c => c.Id) + 1;
+            int nextId = RecordIds.Next(comments.Select(c => c.Id));
 
             var comment = new WorklogCommentRecord
             {
@@ -1389,7 +1397,8 @@ namespace Handlers.DataHandling
             }
             catch (Exception ex)
             {
-                Logger.Warning($"Failed to load worklog: [{worklogFolder}] [{ex.Message}] - skipped");
+                // An error once, not at every read of the list (UnreadableFiles).
+                UnreadableFiles.Report(indexPath, $"Failed to load worklog: [{worklogFolder}] [{ex.Message}] - skipped");
                 return null;
             }
         }
@@ -1557,8 +1566,10 @@ namespace Handlers.DataHandling
             // Trimmed exactly as AddEntry does. The editor's Save gate uses IsNullOrWhiteSpace, so a
             // title of "  CPU socket  " passes it; writing that verbatim would sort and search
             // differently from every entry AddEntry ever wrote, and render its padding on the card.
+            // The description is markup: trimmed so its first line keeps the indent that says whether
+            // it is a bullet (RichNote.TrimMarkup; code review, 2026-11-08).
             entry.Title = entry.Title?.Trim() ?? string.Empty;
-            entry.Description = entry.Description?.Trim() ?? string.Empty;
+            entry.Description = RichNote.TrimMarkup(entry.Description);
 
             if (string.IsNullOrWhiteSpace(entry.Category))
             {
@@ -1725,7 +1736,7 @@ namespace Handlers.DataHandling
                 AreaWidth = area.Width,
                 AreaHeight = area.Height,
                 Title = title?.Trim() ?? string.Empty,
-                Description = description?.Trim() ?? string.Empty,
+                Description = RichNote.TrimMarkup(description),
                 Category = string.IsNullOrWhiteSpace(category) ? "Note" : category,
                 State = string.IsNullOrWhiteSpace(state) ? "Open" : state,
                 ComponentLabels = componentLabels?.ToList() ?? new List<string>(),

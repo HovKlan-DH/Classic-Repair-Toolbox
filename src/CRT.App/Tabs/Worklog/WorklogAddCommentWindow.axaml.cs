@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
+using Handlers.DataHandling;
 
 namespace CRT
 {
@@ -32,7 +33,7 @@ namespace CRT
             this.Title = "Edit comment";
             this.HeaderText.Text = "Edit comment";
             this.AddButton.Content = "Update comment";
-            this.CommentTextBox.Text = text;
+            this.CommentTextBox.Markup = text;
         }
 
         // ###########################################################################################
@@ -63,7 +64,7 @@ namespace CRT
 
         private void OnAddClick(object? sender, RoutedEventArgs e)
         {
-            string text = this.CommentTextBox.Text?.Trim() ?? string.Empty;
+            string text = RichNote.TrimMarkup(this.CommentTextBox.Markup);
 
             if (string.IsNullOrWhiteSpace(text))
             {

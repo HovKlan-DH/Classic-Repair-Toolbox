@@ -10,20 +10,23 @@ The strip above the tabs, visible on every tab.
 
 | Control | Does |
 | --- | --- |
-| Workbook drop-down | Which workbook you are working in - `#3 \| Breadbin #2 - No video (C64/250407)` names its device too |
-| Status pill | Open or Closed |
+| **Device** drop-down | **Show workbooks for all devices**, or one of your devices - each with its status and how many workbooks it has. Picking a device goes to its repair, and while it is picked you work only in its workbooks - see [Devices](Workbooks-Devices) |
+| **Workbook** drop-down | Which workbook you are working in - `#3 \| No video`, with Open or Closed at the end of the line |
 | **Show worklogs** | Draws the markers on the schematic |
 | **Add worklog** | Start marking an area (see below) |
 | **Cancel** | Shown while you are marking an area - backs out |
-| **Create new workbook** | New workbook on the selected board |
+| **Add workbook** | New workbook on the selected board |
+| **Add device** | Add a computer you own - see [Devices](Workbooks-Devices) |
 
-Beside the status pill the bar says how many worklogs the workbook holds and when it started (or ended), for example `3 worklogs · started 2026-September-4`.
+The **Workbook** drop-down lists every workbook, on every board - or, with a device picked, that device's workbooks. One on another board names that board, `#3 | No video (C64/250407)`, and picking it switches the application to that board first.
 
-On a board with no workbook yet, the bar reads "No repairs recorded for this board", and **Show worklogs** and **Add worklog** stay hidden until you create one.
+The device picked is the same choice as the device selected under "My devices" on the "My Devices" tab - picking it in one place picks it in the other. CRT remembers it. **While a device is picked, you work only in its workbooks**: with none of them on the board shown, the **Workbook** drop-down says so and **Add worklog** is hidden until **Add workbook** makes one. Working in a workbook of another device picks that device; a workbook on no device - or switching to a board with none of the device's workbooks - puts the drop-down back on **Show workbooks for all devices**.
 
-The drop-down lists workbooks from **all** boards. Picking one from another board switches the application to that board first.
+Both drop-downs are as wide as their text. When the window is too narrow for both, the shorter one keeps its text whole and the longer one is cut short.
 
-Once you have a device, the **Device** drop-down above **Hardware** shows the device the bar's workbook is on, and picking a device goes to its repair - see [Devices](Workbooks-Devices).
+After **Clear** under the workbooks on the "My Devices" tab, the drop-down reads "No workbook picked" and **Add worklog** is hidden until you pick one.
+
+On a board with no workbook yet, the drop-down reads "Select a workbook" when you have workbooks on other boards to pick from, or "No workbook on this board yet" when you have none at all, and **Show worklogs** and **Add worklog** stay hidden until you pick or create one. With no device yet, the **Device** drop-down is greyed out.
 
 ## Adding a worklog
 
@@ -51,6 +54,7 @@ Below that, seven lists you fill in as the repair goes on: Links of interest, Wo
 * **Work done** and **Comments** have two sort buttons beside their heading: newest first or oldest first.
 * Click a Work done or Comments row to edit it. Links, Photos and Files rows have their own edit and delete buttons.
 * Click a link row to open the link, a photo to view it full size, or a file name to open the file.
+* In the photo viewer, the mouse wheel zooms in and out where the pointer is. A drag with the right or middle mouse button moves the zoomed photo - as on the "Schematics" tab - and a double-click shows it whole again.
 
 **Work done** takes time and cost per line and totals them. The Time spent field is the one place in the application where time is typed as decimal hours, because that is what a quarter of an hour is easiest to enter as. As you type it is read back underneath in hours and minutes - `1,25` shows as **1** hour and **15** minutes - so a mistyped decimal shows itself straight away rather than once it is in the totals (`1,4` is an hour and **24** minutes, not an hour and forty).
 
@@ -73,6 +77,21 @@ The application writes a few comments into the Comments list by itself, so a wor
 ### Links in your text
 
 A web link starting with `http://`, `https://` or `www.` can be clicked when it is in a workbook's note, a worklog's description, a work done line, a comment, or the comment on a photo or file. Titles are never links. The same links are clickable in the exported PDF.
+
+### Formatting your text
+
+Every box you write a longer text in - a workbook's note, a worklog's description, a work done line, a comment, the comment on a photo or file, and a device's description - has a small row of buttons at its top: **bold**, *italic*, underline, ~~strikethrough~~ and a bullet list. You see the formatting in the box as you type.
+
+| Keys | Does |
+| --- | --- |
+| Ctrl+B, Ctrl+I, Ctrl+U | Bold, italic, underline - on the selected text, or, with nothing selected, on what you type next |
+| Ctrl+Shift+X | Strikethrough |
+| Ctrl+Shift+8 | Bullets on or off for the lines selected |
+| Tab / Shift+Tab | On a bullet: one level deeper / one level back |
+| Enter | On a bullet: the next bullet. On an empty bullet: ends the list |
+| Ctrl+Z / Ctrl+Y | Undo / redo, the formatting included |
+
+The text is stored as you would write it by hand: `**bold**`, `*italic*`, `__underline__`, `~~strikethrough~~`, and a line starting with `- ` (two spaces more for each level) for a bullet. The formatting is shown on the cards, the device page and in the exported PDF, and the search looks in the words, not the marks.
 
 ### What Cancel does
 
@@ -131,7 +150,7 @@ If the section is missing entirely, the board data has not finished loading, or 
 
 ## Filing an oscilloscope capture
 
-After a capture, the "Saved image as [...]" banner in the component popup has an **Attach image to worklog** button. It only appears when the Workbooks tab is enabled and the board has a workbook, and the image goes into the workbook shown in the bar.
+After a capture, the "Saved image as [...]" banner in the component popup has an **Attach image to worklog** button. It only appears when the "My Devices" tab is enabled and the board has a workbook, and the image goes into the workbook shown in the bar.
 
 The dialog shows the image and the workbook, asks which worklog, and takes a comment. Worklogs that already have the component you were probing in scope are listed first, under "Worklogs with [U8] in scope", then "All other worklogs". The first one is preselected - so probing U8 while working a fault on U8 is one click on **Attach to existing worklog**.
 

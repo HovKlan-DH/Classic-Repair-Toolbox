@@ -178,6 +178,30 @@ public sealed class BoardDataDifferTests
     }
 
     // ###########################################################################################
+    // *** A NOTE'S FIRST INDENT IS AN EDIT (owner decision, 2026-11-08: "this is a change like any other change so it
+    // should count"). *** A picture's or a baseline's note is a note with formatting (RichNote), whose first line's indent
+    // says whether it is a bullet and how deep - "  - recapped" a bullet nested once, "- recapped" one at the top. Trimmed,
+    // the two compared the same: the change was saved, and "Review changes", Submit and the "Draft" mark never saw it. Such
+    // a note is trimmed as notes are (RichNote.TrimMarkup) - a trailing space or a blank line before it still no edit.
+    // ###########################################################################################
+    [Fact]
+    public void A_note_nested_one_level_deeper_is_an_edit_while_space_at_its_end_is_not()
+    {
+        static BoardData Pictures(string note) => new()
+        {
+            ComponentImages = [new ComponentImageEntry { BoardLabel = "U8", Name = "Top", File = "Images/u8.png", Note = note }],
+        };
+
+        BoardRowChange change = Assert.Single(BoardDataDiffer.Compare(Pictures("- recapped"), Pictures("  - recapped")));
+        Assert.Equal(BoardRowChangeKind.Modified, change.Kind);
+        Assert.Equal(["Note"], change.ChangedFields);
+
+        Assert.Empty(BoardDataDiffer.Compare(Pictures("- recapped"), Pictures("- recapped  \n")));
+        Assert.Empty(BoardDataDiffer.Compare(Pictures("recapped"), Pictures("\n  recapped")));
+        Assert.Empty(BoardDataDiffer.Compare(Pictures("one\ntwo"), Pictures("one\r\ntwo")));
+    }
+
+    // ###########################################################################################
     // Case-insensitive on the KEY, case-sensitive on the CONTENT - the two halves are different
     // questions, and re-casing a label is BOTH at once.
     //

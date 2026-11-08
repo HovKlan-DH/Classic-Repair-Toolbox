@@ -63,12 +63,112 @@ public sealed class ExternalTargetLauncherTests : IDisposable
         return method!;
     }
 
-    private static bool TryResolveDataRootScopedFilePath(string target, string dataRoot, out string localPath)
+    private static bool TryResolveDataRootScopedFilePath(string target, string dataRoot, out string localPath, bool requireOpenableExtension = true)
     {
-        object?[] args = { target, dataRoot, null };
+        object?[] args = { target, dataRoot, null, requireOpenableExtension };
         bool result = (bool)GetPrivateMethod("TryResolveDataRootScopedFilePath").Invoke(null, args)!;
         localPath = (string)(args[2] ?? string.Empty);
         return result;
+    }
+
+    // ------------------------------------------------------------------------- reveal
+
+    // ###########################################################################################
+    // "Reveal" (owner request, 2026-11-07) shows a file selected in the file manager: held to the same root as opening -
+    // a file outside it is refused before anything starts - but with any extension, as nothing is run.
+    // ###########################################################################################
+    [Fact]
+    public void Reveal_takes_a_file_of_any_kind_inside_the_root_and_refuses_one_outside_it()
+    {
+        string dump = Path.Combine(this.thisDataRoot, "Commodore", "C64", "kernal.bin");
+        File.WriteAllText(dump, "rom");
+
+        Assert.False(TryResolveDataRootScopedFilePath(dump, this.thisDataRoot, out _));
+        Assert.True(TryResolveDataRootScopedFilePath(dump, this.thisDataRoot, out string revealed, requireOpenableExtension: false));
+        Assert.Equal(dump, revealed);
+
+        Assert.False(ExternalTargetLauncher.TryReveal(Path.Combine(this.thisOutsideRoot, "secrets.txt"), this.thisDataRoot));
+        Assert.False(ExternalTargetLauncher.TryReveal("../Outside/secrets.txt", this.thisDataRoot));
+        Assert.False(ExternalTargetLauncher.TryReveal(Path.Combine(this.thisDataRoot, "missing.pdf"), this.thisDataRoot));
+    }
+
+    // What each system is asked to start - Explorer's "/select," with the path quoted as one argument, the Finder's
+    // "open -R", and the freedesktop file manager's ShowItems with the file's address.
+    [Fact]
+    public void Reveal_asks_each_system_its_own_way()
+    {
+        string path = Path.Combine(this.thisDataRoot, "Commodore", "C64", "notes.txt");
+
+        System.Diagnostics.ProcessStartInfo windows = ExternalTargetLauncher.RevealCommandFor(ExternalTargetLauncher.RevealDesktop.Windows, path);
+        Assert.Equal("explorer.exe", windows.FileName);
+        Assert.Equal($"/select,\"{path}\"", windows.Arguments);
+        Assert.False(windows.UseShellExecute);
+
+        System.Diagnostics.ProcessStartInfo mac = ExternalTargetLauncher.RevealCommandFor(ExternalTargetLauncher.RevealDesktop.MacOs, path);
+        Assert.Equal("open", mac.FileName);
+        Assert.Equal(["-R", path], mac.ArgumentList);
+
+        System.Diagnostics.ProcessStartInfo linux = ExternalTargetLauncher.RevealCommandFor(ExternalTargetLauncher.RevealDesktop.Linux, "/home/someone/C64/notes.txt");
+        Assert.Equal("dbus-send", linux.FileName);
+        Assert.Contains("org.freedesktop.FileManager1.ShowItems", linux.ArgumentList);
+        Assert.Contains("array:string:file:///home/someone/C64/notes.txt", linux.ArgumentList);
+    }
+
+    // ###########################################################################################
+    // A reveal that could not even start: on Linux the file's folder is opened instead (code review, 2026-11-08: dbus-send
+    // missing - on some systems a package of its own - opened nothing at all); elsewhere it is said not shown. What is
+    // started is not tested here (CLAUDE.md, test rule 6): only the choice.
+    // ###########################################################################################
+    [Fact]
+    public void A_reveal_that_cannot_start_opens_the_folder_on_Linux_alone()
+    {
+        Assert.True(ExternalTargetLauncher.RevealFallsBackToFolder(ExternalTargetLauncher.RevealDesktop.Linux));
+        Assert.False(ExternalTargetLauncher.RevealFallsBackToFolder(ExternalTargetLauncher.RevealDesktop.MacOs));
+        Assert.False(ExternalTargetLauncher.RevealFallsBackToFolder(ExternalTargetLauncher.RevealDesktop.Windows));
+    }
+
+    // ###########################################################################################
+    // Linux's "Reveal": the file manager answered only when dbus-send ended in time, and well (code review, 2026-11-07: a
+    // FileManager1 service that hung kept dbus-send waiting; the wait gave up and returned, and nothing opened at all). Not
+    // ending in time is no answer, and the file's folder is opened.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_file_manager_answering_late_or_not_at_all_is_no_answer()
+    {
+        Assert.True(await ExternalTargetLauncher.AnsweredInTimeAsync(_ => Task.FromResult(0), TimeSpan.FromSeconds(5)));
+        Assert.False(await ExternalTargetLauncher.AnsweredInTimeAsync(_ => Task.FromResult(1), TimeSpan.FromSeconds(5)));
+
+        Assert.False(await ExternalTargetLauncher.AnsweredInTimeAsync(
+            async token =>
+            {
+                await Task.Delay(Timeout.Infinite, token);
+                return 0;
+            },
+            TimeSpan.FromMilliseconds(50)));
+    }
+
+    // ###########################################################################################
+    // dbus-send splits "array:string:" at every comma, with no way to escape one (code review, 2026-11-07): a file named
+    // "Schematic, rev B.pdf" went to the file manager as two broken addresses. Its comma goes as "%2C" - one item, the
+    // same file to whoever reads the URI. And a "%" in a name is itself (code review, 2026-11-08: "a%41b.pdf" went as
+    // "aAb.pdf", and nothing was selected).
+    // ###########################################################################################
+    [Theory]
+    [InlineData("Schematic, rev B.pdf")]
+    [InlineData("a%41b.pdf")]
+    [InlineData("100% sure, 50%.pdf")]
+    [InlineData("Board #2 (rev?).pdf")]
+    public void Reveal_on_Linux_sends_the_file_as_one_item_naming_it_exactly(string fileName)
+    {
+        // A Linux path, the only kind this way is asked about - built as text, never a path of this machine.
+        string path = "/home/someone/.local/share/Classic-Repair-Toolbox/Data v4/Board local files/" + fileName;
+
+        System.Diagnostics.ProcessStartInfo linux = ExternalTargetLauncher.RevealCommandFor(ExternalTargetLauncher.RevealDesktop.Linux, path);
+        string items = Assert.Single(linux.ArgumentList, argument => argument.StartsWith("array:string:", StringComparison.Ordinal))["array:string:".Length..];
+
+        Assert.DoesNotContain(",", items, StringComparison.Ordinal);
+        Assert.StartsWith("file:///home/someone/", items, StringComparison.Ordinal);
+        Assert.Equal(path, Uri.UnescapeDataString(items["file://".Length..]));
     }
 
     private static bool TryCreateAllowedUri(string target, out Uri? uri)
@@ -492,5 +592,28 @@ public sealed class ExternalTargetLauncherTests : IDisposable
     public void An_openable_document_is_accepted_for_attaching(string name)
     {
         Assert.True(ExternalTargetLauncher.IsOpenableFile(name));
+    }
+
+    // ###########################################################################################
+    // What "Something went wrong" names when a link or a file could not be opened (OpenOrSay; owner request, 2026-11-07):
+    // a web or mail address as it is, a file by its name - never the folders of somebody's computer.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("https://www.lemon64.com/forum", "https://www.lemon64.com/forum")]
+    [InlineData("mailto:someone@example.com", "mailto:someone@example.com")]
+    [InlineData("Commodore/C64/250407/Files/ab/manual.pdf", "manual.pdf")]
+    [InlineData(@"Images\top.png", "top.png")] // windows-path-literal: a cell as a 3.x workbook wrote it, read on every platform
+    [InlineData("", "")]
+    public void A_target_that_could_not_be_opened_is_named_by_its_address_or_file_name(string target, string named)
+    {
+        Assert.Equal(named, ExternalTargetLauncher.ShortNameOf(target));
+    }
+
+    // Nothing to open is refused, and said - never thrown.
+    [Fact]
+    public void Open_or_say_refuses_nothing_to_open_without_throwing()
+    {
+        Assert.False(ExternalTargetLauncher.OpenOrSay(string.Empty));
+        Assert.False(ExternalTargetLauncher.OpenOrSay("javascript:alert(1)"));
     }
 }

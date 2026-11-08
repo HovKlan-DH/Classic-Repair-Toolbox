@@ -25,8 +25,15 @@ namespace Handlers.DataHandling
 
         public const string BetaQueue = "Queue: Awaiting push from BETA to stable";
 
-        // Every maintainer's: "My account" and "Server version", and below them the administrator's
-        // own entries, each marked with a padlock.
+        // ###########################################################################################
+        // The administrator's alone, its tab padlocked and shown to nobody else (owner request, 2026-11-07: 'a new tab
+        // named "Management" (shown before "Account")'): "Maintainers", "Order of boards", "Unused files", "Rebuild
+        // checksum manifests", "Delete a board", "API usage", "Oscilloscope models" and "Reset contribution data" -
+        // the entries under "Account" until then, each with a padlock of its own.
+        // ###########################################################################################
+        public const string Management = "Management";
+
+        // Every maintainer's: "My account" and "Server version".
         public const string Account = "Account";
 
         // The first entry under "Account": the name, the email address, the password and signing out.
@@ -35,6 +42,8 @@ namespace Handlers.DataHandling
         public const string ContributorQueueQuoted = "\"" + ContributorQueue + "\"";
 
         public const string BetaQueueQuoted = "\"" + BetaQueue + "\"";
+
+        public const string ManagementQuoted = "\"" + Management + "\"";
 
         public const string AccountQuoted = "\"" + Account + "\"";
 

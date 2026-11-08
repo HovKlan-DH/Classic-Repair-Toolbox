@@ -995,7 +995,7 @@ namespace CRT
         // the image has been mapped to a KiCad file, then per image I want to see status of how many
         // components is available from KiCad and how many has been marked", then in a list, "If any
         // components have been manually marked, then I think it should show like this"): how many
-        // components its KiCad view shows (KiCadComponentTable.CountsByView - null while not known, set
+        // components its KiCad view shows (BoardKiCadFacts.CountsByView - null while not known, set
         // by the pane with the views) and how many are marked on it, of the region shown; the marks count
         // is the part's as it was read, so a new card follows a change of them.
         //

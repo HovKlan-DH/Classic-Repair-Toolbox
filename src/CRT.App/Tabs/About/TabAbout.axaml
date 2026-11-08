@@ -34,9 +34,31 @@
 		</Style>
 	</UserControl.Styles>
 
-	<ScrollViewer VerticalScrollBarVisibility="Auto"
-                  HorizontalScrollBarVisibility="Disabled">
-		<StackPanel Margin="16">
+	<!--
+	The whole tab is ONE virtualized list: its first item is the page as it always was (name, version,
+	links, the board's credits), and every block of the changelog under it is an item of its own,
+	built only as it scrolls into view (TabAbout.Changelog.cs). Measured with real text: the
+	changelog drawn at once was some 1,100 controls, 0.4-0.7 s to show the first time and 0.15-0.2 s
+	to lay out again at every change of the window's width.
+	-->
+	<ItemsControl x:Name="AboutItems">
+		<ItemsControl.Template>
+			<ControlTemplate>
+				<ScrollViewer VerticalScrollBarVisibility="Auto"
+							  HorizontalScrollBarVisibility="Disabled">
+					<ItemsPresenter Name="PART_ItemsPresenter"
+									ItemsPanel="{TemplateBinding ItemsPanel}"
+									Margin="16" />
+				</ScrollViewer>
+			</ControlTemplate>
+		</ItemsControl.Template>
+		<ItemsControl.ItemsPanel>
+			<ItemsPanelTemplate>
+				<VirtualizingStackPanel />
+			</ItemsPanelTemplate>
+		</ItemsControl.ItemsPanel>
+
+		<StackPanel x:Name="AboutPage">
 
 			<StackPanel Orientation="Horizontal"
                         Spacing="16"
@@ -230,7 +252,15 @@
                        Text="Credits will in many cases not be fully represented, but the idea is that at least the main author or contributor should be listed. If more than one person, then the one with the most contribution is placed on top, though this also probably sometimes can be quite hard figuring out exactly. Small contributions are not listed, and the amount contributed for a place here should be &quot;substantial&quot;."
 					   Foreground="{DynamicResource Fg}"
 					   />
-			
+
+			<!-- The changelog of the version running, as GitHub shows it - its blocks are the list's
+			     items after this page (TabAbout.Changelog.cs) -->
+			<TextBlock x:Name="ChangelogTitle"
+					   Text="Full changelog for application"
+					   FontSize="14"
+					   FontWeight="SemiBold"
+					   Margin="0,32,0,16" />
+
 		</StackPanel>
-	</ScrollViewer>
+	</ItemsControl>
 </UserControl>

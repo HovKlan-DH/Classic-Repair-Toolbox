@@ -184,6 +184,15 @@
 			<Setter Property="Foreground" Value="{DynamicResource Form_Selected_Fg}" />
 		</Style>
 
+		<!-- An entry turned off - the table filtered, and nothing of its sheet found (ShowTableEntriesEnabled) - reads as
+		     off: on the column's own ground, faded, never the theme's grey box for a disabled button (owner report,
+		     2026-11-07: "menu items NOT having any hit will show with lightgrey background ... the menu entry should be
+		     disabled and not have that lightgrey background color"). -->
+		<Style Selector="Button.WorkspaceNavItem:disabled /template/ ContentPresenter">
+			<Setter Property="Background" Value="Transparent" />
+			<Setter Property="Opacity" Value="0.4" />
+		</Style>
+
 		<!-- The left column's panel, with an edge of its own (owner request, 2026-10-29). -->
 		<Style Selector="Border.WorkspaceNavPanel">
 			<Setter Property="BorderBrush" Value="{DynamicResource Form_Border}" />
