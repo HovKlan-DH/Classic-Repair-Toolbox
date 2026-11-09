@@ -52,22 +52,31 @@ namespace CRT.Server.Tests
             Assert.Equal($"ExecStart=/usr/bin/dotnet {app}/CRT.Server.dll", TestInstanceUnitTests.Line("crt-server-test.service", "ExecStart="));
         }
 
-        // The 4.0 trees it publishes into and its own uploads and feedback - never the live service's
-        // folders, never the Excel trees CRT 3.x reads.
+        // ###########################################################################################
+        // Its OWN data trees (owner decision, 2026-11-09: "we need to have a new data source for the test
+        // server, so it does not mix data with the real server") and its own uploads and feedback - never the
+        // live service's 4.0 trees, which are the real data from CRT 4.0's release on, never the Excel trees CRT
+        // 3.x reads, never the live service's folders. The filesystem holds it there whatever its settings say.
+        // ###########################################################################################
         [Fact]
-        public void It_writes_the_CRT_4_0_trees_and_its_own_folders_only()
+        public void It_writes_its_own_data_trees_and_its_own_folders_only()
         {
             string[] paths = TestInstanceUnitTests.Line("crt-server-test.service", "ReadWritePaths=")["ReadWritePaths=".Length..]
                 .Split(' ', StringSplitOptions.RemoveEmptyEntries);
 
             Assert.Equal(
                 [
-                    TestInstanceUnitTests.Site + "/public_html/app-data-v4-BETA",
-                    TestInstanceUnitTests.Site + "/public_html/app-data-v4",
+                    TestInstanceUnitTests.Site + "/public_html/app-data-v4-test-BETA",
+                    TestInstanceUnitTests.Site + "/public_html/app-data-v4-test",
                     TestInstanceUnitTests.Site + "/crt-server-test/blobs",
                     TestInstanceUnitTests.Site + "/crt-server-test/feedback",
                 ],
                 paths);
+
+            string[] live = TestInstanceUnitTests.Line("crt-server.service", "ReadWritePaths=")["ReadWritePaths=".Length..]
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries);
+
+            Assert.Empty(paths.Intersect(live, StringComparer.Ordinal));
         }
 
         // Every line that sets something - comments, blank lines and section headings left out.

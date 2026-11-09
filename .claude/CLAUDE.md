@@ -2904,13 +2904,19 @@ service to the 4.0 trees"). CRT reads a main file only at or below its own versi
   `TestInstanceUnitTests`); set up as INSTALLING.md's "A test instance for pre-releases". **Nothing is
   set back by hand on release day** - `AppConfig.ContributionServerRootUrl` is a PROPERTY over the
   version (a static field declared above `AppDisplayVersionString` would read it as null, and every
-  release would talk to the test instance; `ContributionServerTests`). **The test instance stays after
-  CRT 4.0's release** (owner decision, 2026-11-09: "Trees of its own"): until then it publishes into the
-  4.0 trees, from release day into `app-data-v4-test(-BETA)`, copies of the live ones no CRT reads -
-  pre-releases read the live data like everybody (INSTALLING.md, "On release day"). **Only the
-  contribution service moves**: submissions, the Maintainer tab and the health check use
-  `ContributionServerRootUrl`, while the check-in, feedback and board views stay on `CrtServerRootUrl`,
-  the live service - the usage numbers and the feedback mail. What CRT remembers of a service is kept
+  release would talk to the test instance; `ContributionServerTests`). **AND EVERY PRE-RELEASE READS THE
+  TEST INSTANCE'S DATA** (owner decision, 2026-11-09: "we need to have a new data source for the test
+  server, so it does not mix data with the real server"; asked, the pre-releases read "The test
+  server's"): the test instance publishes into `app-data-v4-test-BETA` and `app-data-v4-test` - copies of
+  the 4.0 trees, each manifest's addresses rewritten (INSTALLING.md, "Setting it up, once" and "Moving it
+  to trees of its own") - and a pre-release's manifest is there (`ContributionServer.ChecksumsUrlFor`,
+  `AppConfig.LiveDataRootUrl`/`TestDataRootUrl`, properties for the same reason), its BETA source the
+  test BETA tree. Its unit can write those two and nothing of the live service's (`TestInstanceUnitTests`).
+  So nothing is moved on release day, and the test instance stays after it. The local "Data v4" folder is
+  shared, as the BETA source shares it: a release launched after a pre-release syncs it back by its manifest,
+  as switching the BETA source does. **Only the contribution service and the data move**: submissions, the
+  Maintainer tab, the health check and the data use the test instance's, while the check-in, feedback and
+  board views stay on `CrtServerRootUrl`, the live service - the usage numbers and the feedback mail. What CRT remembers of a service is kept
   per service (`ContributionServer.FileNameFor`: `maintainer-session-test.json`, `submissions-test.json`)
   - shared with the files a release reads, a pre-release would send the live token to the test
   instance and forget it on the 401. The sign-in screen and the Submit dialog say it is the test server,
@@ -3009,8 +3015,7 @@ service to the 4.0 trees"). CRT reads a main file only at or below its own versi
   was empty, every pin the workbook had kept). **A user's Excel-era draft takes the pinouts its published board was converted with, in the
   draft and its base** (`ConversionPinouts.FromPublished`, `DraftConversion`): a draft sends its whole pin list, and without them it read as
   every pin removed.
-- **Not done yet**: the release day itself (stop the test instance and move it to trees of its own,
-  convert once more, work the queue empty, switch the service - a submission CRT 3.x sent names its
+- **Not done yet**: the release day itself (convert once more, work the queue empty, switch the service - a submission CRT 3.x sent names its
   files by their Excel-tree paths; CRT itself needs nothing, its version picks the service), and pasting
   the Wiki's 4.0 pages and deleting the fourteen it no longer has (`Assets/Wiki/README.md`, "Pages
   removed at CRT 4.0").

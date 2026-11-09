@@ -36,6 +36,28 @@ public sealed class ContributionServerTests
         Assert.Equal(expected == ContributionServerTests.Live, ContributionServer.IsRelease(version));
     }
 
+    // ###########################################################################################
+    // *** THE DATA FOLLOWS THE SAME RULE (owner decisions, 2026-11-09: "we need to have a new data source for the
+    // test server, so it does not mix data with the real server" - an alpha or a beta downloads "The test
+    // server's"). *** A release downloads the live 4.0 trees, an alpha or a beta the test instance's own; the
+    // BETA source of each beside it. A pre-release never reads the live trees, a release never the test ones.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("4.0.0", false, "https://classic-repair-toolbox.dk/app-data-v4/dataChecksums.json")]
+    [InlineData("4.0.0", true, "https://classic-repair-toolbox.dk/app-data-v4-BETA/dataChecksums.json")]
+    [InlineData("4.0.0-alpha.5", false, "https://classic-repair-toolbox.dk/app-data-v4-test/dataChecksums.json")]
+    [InlineData("4.1.0-beta.1+7f3a2c1", true, "https://classic-repair-toolbox.dk/app-data-v4-test-BETA/dataChecksums.json")]
+    [InlineData(null, false, "https://classic-repair-toolbox.dk/app-data-v4-test/dataChecksums.json")]
+    public void A_release_downloads_the_live_data_and_an_alpha_or_beta_the_test_servers(string? version, bool betaSource, string expected) =>
+        Assert.Equal(expected, ContributionServer.ChecksumsUrlFor(version, betaSource));
+
+    [Fact]
+    public void This_build_downloads_the_data_its_own_version_names()
+    {
+        Assert.Equal(ContributionServer.ChecksumsUrlFor(AppConfig.AppDisplayVersionString, betaSource: false), AppConfig.ChecksumsUrl);
+        Assert.Equal(ContributionServer.ChecksumsUrlFor(AppConfig.AppDisplayVersionString, betaSource: true), AppConfig.ChecksumsUrl_test);
+    }
+
     // The address this very build uses follows the rule - read at each use, never fixed before the version is known
     // (a static field declared above AppDisplayVersionString would read it as null: every release on the test instance).
     [Fact]

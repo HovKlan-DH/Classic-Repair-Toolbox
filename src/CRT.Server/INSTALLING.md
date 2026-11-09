@@ -658,19 +658,25 @@ Then on the box, each step in the same shell:
    sudo chown -hR crt-deploy:crt-data $S/releases
    sudo find $S/releases -type d -exec chmod 2750 {} +
    sudo find $S/releases -type f -exec chmod 0640 {} +
+   sudo setfacl -m u:crt-deploy:x $S
    sudo cp $S/app/crt-server-test.service /etc/systemd/system/
    sudo systemctl daemon-reload
    sudo systemctl start crt-server-test
    ```
 
    The `2750` on the folders - the setgid bit - is what makes every file the updater unpacks later
-   belong to `crt-data`, so the service can read it although the updater is not in that group.
+   belong to `crt-data`, so the service can read it although the updater is not in that group. The
+   `setfacl` line lets `crt-deploy` PASS THROUGH the instance's folder to its `releases/` - nothing more:
+   it cannot list the folder, and `settings/` and `blobs/` stay closed to it. (`setfacl` missing: `sudo
+   dnf install acl`.)
 
    **Check** - give it a few seconds to start:
 
    ```bash
    curl -s http://127.0.0.1:5198/api/health        # "version":"<V>"
    ls -l $S/app $S/releases/current                # app -> releases/current, current -> <V>
+   sudo -u crt-deploy test -r $S/app/CRT.Server.dll && echo "The updater reaches its builds (correct)" \
+     || echo "*** THE UPDATER CANNOT REACH ITS BUILDS - namei -l $S/app/CRT.Server.dll shows which folder ***"
    sudo -u crt-deploy cat $S/settings/appsettings.Production.json > /dev/null 2>&1 \
      && echo "*** THE UPDATER CAN READ THE SETTINGS - check step 2 ***" || echo "Settings closed to the updater (correct)"
    ```
@@ -927,10 +933,11 @@ clean up before restarting.
 ## Converting a data tree for CRT 4.0
 
 **Not live yet.** CRT 4.0 keeps its board data as JSON instead of Excel, and reads it from two
-folders of its own. Until CRT 4.0 is released only its pre-releases read them, and only the test
-instance writes them ("A test instance for pre-releases", below): CRT 3.x and older keep
-reading `app-data` and `app-data-BETA`, and the 3.x service keeps writing those as before. The 4.0
-service writes only the 4.0 folders - see "Switching the service to the 4.0 trees" below.
+folders of its own. Until CRT 4.0 is released no CRT reads them and nothing but this conversion
+writes them: CRT 4.0's pre-releases read the test instance's copies of them, `app-data-v4-test` and
+`app-data-v4-test-BETA` ("A test instance for pre-releases", below), CRT 3.x and older keep reading
+`app-data` and `app-data-BETA`, and the 3.x service keeps writing those as before. The 4.0 service
+writes only the 4.0 folders - see "Switching the service to the 4.0 trees" below.
 
 ```
 public_html/
@@ -1014,7 +1021,6 @@ A plan can also be made from a PC with .NET 10, against a tree over the network 
 never a workbook - and tell every CRT 3.x that sends a submission or opens the Maintainer tab to update
 (API revision 2). So it is deployed on CRT 4.0's release day, not before, in this order:
 
-0. **Stop the test instance** (its "On release day" below) - the 4.0 trees get one writer.
 1. **Work the queue empty on the running (3.x) service** - approve, publish to stable or reject every
    submission waiting. A submission sent by CRT 3.x names its files by their place in the Excel tree
    ("Commodore/C64/250407/Images/sheet.png"); approved into a 4.0 tree those would become the board's
@@ -1045,37 +1051,56 @@ for a 4.0 service read `app-data-v4-BETA` and `app-data-v4` there.
 
 ## A test instance for pre-releases
 
-**Every pre-release of CRT (`...-alpha...`, `...-beta...`) submits to a test instance of the service,
-never to the live one, and every release to the live one** - CRT decides by its own version (owner
-decision, 2026-11-09), so nothing changes in CRT on a release day. Until CRT 4.0 is released, the live
-service keeps serving CRT 3.x from the Excel trees, and the test instance runs the newest build -
-server 4.0.0 and up, which must not go live before the release - and publishes into the CRT 4.0 trees
-the pre-releases read. **From CRT 4.0's release day it stays, publishing into trees of its own** ("On
-release day" below). Only submissions and the
-Maintainer tab go there: a pre-release sends its launch check-in, its feedback and its board views to
-the live service, like every CRT.
+**Every pre-release of CRT (`...-alpha...`, `...-beta...`) talks to a test instance of the service and
+downloads ITS data; every release talks to the live service and downloads the live data** - CRT decides by
+its own version (owner decisions, 2026-11-09: "we need to have a new data source for the test server, so it
+does not mix data with the real server"), so nothing changes in CRT on a release day. The test instance has
+its own program, settings, database, port AND data trees: nothing it publishes ever reaches a CRT release,
+and nothing changes in the live data when a test submission is approved. Until CRT 4.0 is released, the live
+service keeps serving CRT 3.x from the Excel trees, and the test instance runs the newest build - server 4.0.0
+and up. Only submissions, the Maintainer tab and the data go there: a pre-release sends its launch check-in,
+its feedback and its board views to the live service, like every CRT.
 
 |  | Live service | Test instance |
 | --- | --- | --- |
-| Program and settings | `crt-server/app` | `crt-server-test/app` |
+| Program | `crt-server/app` | `crt-server-test/app` (-> `releases/<version>` with automatic updates) |
+| Settings | `crt-server/app/appsettings.Production.json` | `crt-server-test/settings/appsettings.Production.json` |
 | Port (loopback) | 5199 | 5198 |
 | Address | `https://classic-repair-toolbox.dk/api/` | `https://classic-repair-toolbox.dk/crt-test/api/` |
 | Database | `crt_review` | `crt_review_test` |
-| Data it writes | `app-data-BETA`, `app-data` (until release day) | `app-data-v4-BETA`, `app-data-v4` |
+| Data it writes | `app-data-BETA`, `app-data` (until release day; then `app-data-v4-BETA`, `app-data-v4`) | `app-data-v4-test-BETA`, `app-data-v4-test` |
+| Data CRT reads from it | every release of CRT | every alpha and beta of CRT |
 | Uploads and feedback | `crt-server/blobs`, `user-feedback` | `crt-server-test/blobs`, `crt-server-test/feedback` |
 | Unit | `crt-server.service` | `crt-server-test.service` |
 
 It is the same program, the same user and groups (`crt-server`, `crt-data`) and the steps of part
 one with these names. **Its accounts are its own**: a pre-release signs in to it (CRT says so above
 "Sign in"), so maintainers are invited on it separately and the administrator is made in its database.
-What it publishes is test data, replaced on release day.
+What it publishes is test data, seen by CRT's alphas and betas only.
 
 ### Setting it up, once
 
-1. **The 4.0 folders and fresh data.** Make the two folders as in "The two folders, once" above (their
-   `<Directory>` blocks included), then run the conversion for both trees as there, as `crt-server`. The
-   trees converted over the network share on 2026-10-24 are an older snapshot, and files copied in over
-   the share are not the service's.
+(For a box that has none yet. The test instance on this box was made before it had trees of its own -
+"Moving it to trees of its own" below is what moved it, once.)
+
+1. **Its data trees**, as copies of the live 4.0 trees, each manifest's addresses rewritten to the copy -
+   the files and their checksums are the same, only where CRT downloads them from changes:
+
+   ```bash
+   P=/mydir/http/classic-repair-toolbox.dk/public_html
+   sudo cp -a $P/app-data-v4 $P/app-data-v4-test
+   sudo cp -a $P/app-data-v4-BETA $P/app-data-v4-test-BETA
+   sudo sed -i 's#https://classic-repair-toolbox.dk/app-data-v4/Data/#https://classic-repair-toolbox.dk/app-data-v4-test/Data/#' $P/app-data-v4-test/dataChecksums.json
+   sudo sed -i 's#https://classic-repair-toolbox.dk/app-data-v4-BETA/Data/#https://classic-repair-toolbox.dk/app-data-v4-test-BETA/Data/#' $P/app-data-v4-test-BETA/dataChecksums.json
+   for T in $P/app-data-v4-test $P/app-data-v4-test-BETA; do
+     sudo chgrp -R crt-data $T
+     sudo chmod -R g+rwX    $T
+     sudo find $T -type d -exec chmod g+s {} +
+   done
+   ```
+
+   And in the vhost, a `<Directory>` block for each, exactly like the 4.0 trees' ("The two folders, once"
+   above) with the folder's name changed. Then `apachectl configtest && sudo systemctl reload httpd`.
 
 2. **Its own folders** - as step 3, the upload store owned by the service and the feedback folder
    setgid (nothing posts feedback to it, but the service needs one of its own):
@@ -1099,20 +1124,21 @@ What it publishes is test data, replaced on release day.
    ```
 
 4. **The program** - publish as in step 5 and copy it into `crt-server-test/app` with the same
-   `chown -R root:crt-data` and `chmod -R 0750`.
+   `chown -R root:crt-data` and `chmod -R 0750` (then "Automatic updates from GitHub" moves it into
+   `releases/`, and the settings below into `settings/`).
 
 5. **Its settings** - as step 6, in `crt-server-test/app/appsettings.Production.json` (copied from
    `appsettings.Example.json`, `root:crt-data`, mode 0640), with these values:
 
    | Setting | Value |
    | --- | --- |
-   | `DataTreeRoot` | `/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4-BETA/Data` |
-   | `ManifestPath` | `/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4-BETA/dataChecksums.json` |
-   | `PublicDataBaseUrl` | `https://classic-repair-toolbox.dk/app-data-v4-BETA/Data` |
-   | `ProductionTreeRoot` | `/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4` |
-   | `ProductionDataTreeRoot` | `/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4/Data` |
-   | `ProductionManifestPath` | `/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4/dataChecksums.json` |
-   | `ProductionPublicDataBaseUrl` | `https://classic-repair-toolbox.dk/app-data-v4/Data` |
+   | `DataTreeRoot` | `/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4-test-BETA/Data` |
+   | `ManifestPath` | `/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4-test-BETA/dataChecksums.json` |
+   | `PublicDataBaseUrl` | `https://classic-repair-toolbox.dk/app-data-v4-test-BETA/Data` |
+   | `ProductionTreeRoot` | `/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4-test` |
+   | `ProductionDataTreeRoot` | `/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4-test/Data` |
+   | `ProductionManifestPath` | `/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4-test/dataChecksums.json` |
+   | `ProductionPublicDataBaseUrl` | `https://classic-repair-toolbox.dk/app-data-v4-test/Data` |
    | `BlobStoreRoot` | `/mydir/http/classic-repair-toolbox.dk/crt-server-test/blobs` |
    | `FeedbackRoot` | `/mydir/http/classic-repair-toolbox.dk/crt-server-test/feedback` |
    | `ConnectionString` | `crt_review_test` and the password from 3. |
@@ -1123,7 +1149,7 @@ What it publishes is test data, replaced on release day.
    The rest as for the live service (`FeedbackToAddress`, `MailFromAddress`, ...).
 
 6. **Its unit** - the program brings `crt-server-test.service`, every line of it the live unit's but
-   the five that say which instance it is (port 5198, its own folders):
+   the five that say which instance it is (port 5198, its own folders, its own data trees):
 
    ```bash
    sudo cp /mydir/http/classic-repair-toolbox.dk/crt-server-test/app/crt-server-test.service /etc/systemd/system/
@@ -1154,11 +1180,41 @@ What it publishes is test data, replaced on release day.
    Open the link in the mail ("Classic Repair Toolbox (test)"), then
    `UPDATE crt_review_test.accounts SET is_administrator = 1 WHERE email_normalised = 'you@example.com';`
 
-9. **End to end, with a CRT 4.0 pre-release**: the Maintainer tab says it signs in to the test server;
-   Account > **Server version** shows the test instance's version and API 2 on both lines; a small change
-   sent from the Drafts tab (whose Submit dialog says it goes to the test server) reaches the queue;
-   approving it changes `app-data-v4-BETA/dataChecksums.json`, publishing it to stable
-   `app-data-v4/dataChecksums.json`.
+9. **End to end, with a CRT pre-release**: the Maintainer tab says it signs in to the test server;
+   Account > **Server version** shows the test instance's version and API 2 on both lines; CRT's log names
+   `app-data-v4-test` for its data; a small change sent from the Contribute tab (whose Submit dialog says it
+   goes to the test server) reaches the queue; approving it changes `app-data-v4-test-BETA/dataChecksums.json`,
+   publishing it to stable `app-data-v4-test/dataChecksums.json` - and nothing under `app-data-v4`.
+
+### Moving it to trees of its own (once, 2026-11-09)
+
+This box's test instance published into the 4.0 trees until server 10.3.1. To move it - server 10.3.1's
+unit names the new trees, so its updater HOLDS 10.3.1 until that unit is installed, and installs it by
+itself the minute after:
+
+1. Wait until `cat .../crt-server-test/releases/update-status.json` says `"outcome": "held"` for 10.3.1 -
+   the build is then in `releases/10.3.1/`.
+2. Stop the test instance, and make its trees as in step 1 of "Setting it up, once" (the copies, the
+   manifests rewritten, the groups, the two `<Directory>` blocks).
+3. Point its seven tree settings at them (a copy of the file kept beside it first):
+
+   ```bash
+   F=/mydir/http/classic-repair-toolbox.dk/crt-server-test/settings/appsettings.Production.json
+   sudo cp -p $F $F.before-test-trees
+   sudo sed -i \
+     -e 's#public_html/app-data-v4-BETA/#public_html/app-data-v4-test-BETA/#g' \
+     -e 's#public_html/app-data-v4/#public_html/app-data-v4-test/#g' \
+     -e 's#public_html/app-data-v4"#public_html/app-data-v4-test"#g' \
+     -e 's#\.dk/app-data-v4-BETA/Data#.dk/app-data-v4-test-BETA/Data#g' \
+     -e 's#\.dk/app-data-v4/Data#.dk/app-data-v4-test/Data#g' \
+     $F
+   sudo grep -o 'app-data[^"]*' $F               # seven lines, every one app-data-v4-test...
+   ```
+
+4. Install 10.3.1's unit and start the test instance - still the build before, now on its own trees:
+   `sudo cp .../crt-server-test/releases/10.3.1/crt-server-test.service /etc/systemd/system/ && sudo
+   systemctl daemon-reload && sudo systemctl start crt-server-test`.
+5. The next minute the updater installs 10.3.1 and restarts it: `update-status.json` says `"installed"`.
 
 ### Running it
 
@@ -1167,32 +1223,18 @@ What it publishes is test data, replaced on release day.
   `ROOT=/mydir/http/classic-repair-toolbox.dk/crt-server-test`, `crt-server-test` and port 5198.
 - **Its log:** the commands in "Is it working, and reading the log" with `-u crt-server-test`.
 - **Starting over:** "Resetting the contribution data" works here as on the live service (with
-  `AllowDataReset` true); the conversion, run again, puts the trees back to the live data as it is.
+  `AllowDataReset` true).
+- **Its data brought up to date with the live data:** stop it, delete its two trees, make them again as in
+  step 1 of "Setting it up, once", and start it. What it had published is gone with them.
 
 ### On release day
 
-**The test instance stays** (owner decision, 2026-11-09): CRT's alphas and betas keep talking to it.
-But the CRT 4.0 trees it has published into become the LIVE ones that day, so it moves to trees of its
-own first - otherwise test data would reach everybody:
+**Nothing for the test instance.** It never writes the 4.0 trees that become the live data that day, and
+CRT's alphas and betas go on reading its own. Bring its data up to date with the freshly converted live
+data afterwards if wanted ("Running it").
 
-1. Before "Switching the service to the 4.0 trees" (above): `sudo systemctl stop crt-server-test`.
-2. Make its own two trees, `public_html/app-data-v4-test-BETA` and `public_html/app-data-v4-test`, as
-   copies of the live 4.0 trees once those are converted, with the groups and permissions of
-   "Folders and permissions" (step 3). They need no `<Directory>` block of their own beyond what the
-   other trees have: no CRT reads them - pre-releases read the live data like everybody - so what the
-   test instance publishes is seen in its Maintainer tab and those trees only.
-3. Point its seven tree settings (`crt-server-test/settings/appsettings.Production.json`, or
-   `app/` before automatic updates) at them, and its unit's `ReadWritePaths=` - a line of yours to
-   change by hand in `/etc/systemd/system/crt-server-test.service`, which the updater then leaves alone
-   (see "When an update waits for you" for keeping your own change).
-4. `sudo systemctl daemon-reload && sudo systemctl start crt-server-test`, and check
-   `curl -s http://127.0.0.1:5198/api/health`.
-
-To bring the test trees up to date with the live data later, stop it, copy the live trees over them
-(and run the group commands of "Copying data into the trees by hand later"), and start it again.
-
-**CRT's side needs nothing:** a release talks to the live service and a pre-release to the test
-instance by its version (`ContributionServer.RootUrlFor`).
+**CRT's side needs nothing either:** a release talks to the live service and reads the live data, a
+pre-release the test instance's, by its version (`ContributionServer.RootUrlFor`, `ChecksumsUrlFor`).
 
 ## Looking at the numbers
 

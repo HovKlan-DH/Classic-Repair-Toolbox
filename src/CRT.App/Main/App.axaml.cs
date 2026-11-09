@@ -161,9 +161,17 @@ namespace CRT
         // URL to the JSON manifest listing all data files and their SHA-256 checksums - CRT 4.0's
         // own trees (2026-10-24): an installed 3.x downloads every file ITS manifest lists, so the
         // 4.0 data lives beside the frozen Excel trees, never among them (DataTreeLayout).
+        //
+        // WHICH 4.0 TREES FOLLOWS THE VERSION, as the contribution service does (owner decisions,
+        // 2026-11-09 - ContributionServer.ChecksumsUrlFor): a release reads the live service's trees
+        // (app-data-v4, app-data-v4-BETA), an alpha or a beta the test instance's own (app-data-v4-test,
+        // app-data-v4-test-BETA). Properties for AppDisplayVersionString's sake (ContributionServerRootUrl).
         // Used by: OnlineServices.FetchManifestAsync
-        public const string ChecksumsUrl = "https://classic-repair-toolbox.dk/app-data-v4/dataChecksums.json";
-        public const string ChecksumsUrl_test = "https://classic-repair-toolbox.dk/app-data-v4-BETA/dataChecksums.json";
+        public const string LiveDataRootUrl = "https://classic-repair-toolbox.dk/app-data-v4";
+        public const string TestDataRootUrl = "https://classic-repair-toolbox.dk/app-data-v4-test";
+
+        public static string ChecksumsUrl => Handlers.Online.ContributionServer.ChecksumsUrlFor(AppDisplayVersionString, betaSource: false);
+        public static string ChecksumsUrl_test => Handlers.Online.ContributionServer.ChecksumsUrlFor(AppDisplayVersionString, betaSource: true);
 
         // URL for the launch check-in.
         // Used by: OnlineServices.CheckInVersionAsync

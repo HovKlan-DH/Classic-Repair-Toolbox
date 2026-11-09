@@ -42,6 +42,19 @@ namespace Handlers.Online
         public static string RootUrlFor(string? informationalVersion) =>
             ContributionServer.IsRelease(informationalVersion) ? AppConfig.CrtServerRootUrl : AppConfig.TestServerRootUrl;
 
+        // ###########################################################################################
+        // *** AND THE DATA IT DOWNLOADS, BY THE SAME RULE (owner decisions, 2026-11-09: "we need to have a new
+        // data source for the test server, so it does not mix data with the real server", and an alpha or a beta
+        // downloads "The test server's"). *** A release reads the live service's 4.0 trees, an alpha or a beta the
+        // test instance's own - so what the test instance publishes is seen by the testers, and never by anybody
+        // else. `betaSource`: the tree's BETA source ("Download data from the BETA source"), else its stable one.
+        // The manifest URL; every file's address comes from the manifest (OnlineServices).
+        // ###########################################################################################
+        public static string ChecksumsUrlFor(string? informationalVersion, bool betaSource) =>
+            (ContributionServer.IsRelease(informationalVersion) ? AppConfig.LiveDataRootUrl : AppConfig.TestDataRootUrl) +
+            (betaSource ? "-BETA" : string.Empty) +
+            "/dataChecksums.json";
+
         // What a file of the test instance's own carries before its extension.
         public const string TestFileSuffix = "-test";
 
