@@ -1,7 +1,7 @@
 namespace CRT
 {
     // ###########################################################################################
-    // "MY DEVICES" IN THE LEFT PANEL WHILE THE "My Devices" TAB IS SHOWN (owner requests, 2026-11-06: "when in the
+    // "MY DEVICES" IN THE LEFT PANEL WHILE THE "Workbooks" TAB IS SHOWN (owner requests, 2026-11-06: "when in the
     // 'My Devices' tab, I want the 'My devices' list ... to show in the left-side panel, where the component
     // category and component list is. When in this tab, I have no use of those data"; then "please again have [the
     // workbooks] visible where they were previously, but do keep the 'My devices' in the left-side panel").

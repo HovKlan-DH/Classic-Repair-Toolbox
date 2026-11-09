@@ -73,6 +73,7 @@ namespace Handlers.DataHandling
                     Region = row.Region,
                     Description = row.Description,
                     Package = BoardDocumentMapping.WhenGiven(row.Package),
+                    Purpose = BoardDocumentMapping.WhenGiven(row.Purpose),
                 }).ToList(),
                 ComponentImages = board.ComponentImages
                     .Where(row => !ComponentImageKinds.IsScopeBaseline(row))
@@ -229,6 +230,7 @@ namespace Handlers.DataHandling
                     Region = row.Region,
                     Description = row.Description,
                     Package = row.Package ?? string.Empty,
+                    Purpose = row.Purpose ?? string.Empty,
                 }).ToList(),
                 ComponentImages = document.ComponentImages
                     .Select(row => new ComponentImageEntry

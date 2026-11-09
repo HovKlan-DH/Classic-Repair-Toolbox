@@ -51,6 +51,7 @@ namespace CRT
             }
 
             this.thisProblemsWatched = log;
+            this.TabConfiguration.WatchProblems(log);
 
             // What it holds and what comes after, in one step (ProblemsLog.Watch) - each error said once.
             foreach (LoggedProblem earlier in log.Watch(problem => Dispatcher.UIThread.Post(() => this.ShowProblem(problem))).Reverse())

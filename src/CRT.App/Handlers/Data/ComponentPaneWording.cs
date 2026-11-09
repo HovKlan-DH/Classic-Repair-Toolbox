@@ -57,14 +57,16 @@ namespace Handlers.DataHandling
 
         public static string Title(string name) => $"Component: {name}";
 
-        // Said only for a component with a row of its own per region - which one is open.
+        // Said only for a component with a row of its own per region - which one is open, the region in bold (owner request,
+        // 2026-11-09: "please bold the selected region (for all menus where this is applicable)"; BoldRuns.ShowMarked).
         public static string RegionLine(string? rowRegion)
         {
-            string region = rowRegion?.Trim() ?? string.Empty;
+            // A row's region is typed data (a table cell): its own "<b>" or "</b>" taken out (code review, 2026-11-09).
+            string region = Handlers.Theming.BoldRuns.Plain(rowRegion).Trim();
 
             return region.Length == 0
                 ? string.Empty
-                : $"The {region} version - each region has a row of its own, and this is the one CRT shows now.";
+                : $"The <b>{region}</b> version - each region has a row of its own, and this is the one CRT shows now.";
         }
 
         public static string NotOnBoard(string label) =>
@@ -90,8 +92,20 @@ namespace Handlers.DataHandling
 
         // Which region a page shows, now that the buttons switching it are CRT's own (owner request,
         // 2026-11-03: "use the regions from the left-side instead of adding new region buttons").
-        public static string RegionShownLine(string? region) =>
-            $"Showing {region?.Trim()} - the \"PAL\" and \"NTSC\" buttons under the component list switch it.";
+        // The board's buttons by name - PAL's and NTSC's, or its own (2026-11-09); null for PAL and NTSC. The region shown in
+        // bold (owner request, 2026-11-09; BoldRuns.ShowMarked).
+        public static string RegionShownLine(string? region, IReadOnlyList<string>? regions = null)
+        {
+            IReadOnlyList<string> buttons = regions is { Count: > 0 } ? regions : BoardRegions.PalAndNtsc;
+            string named = BoardRegions.Joined(buttons.Select(each => $"\"{each}\"").ToList());
+
+            // The region can be a row's, typed in a table cell: its own "<b>" or "</b>" taken out (second code review, 2026-11-09).
+            string shown = Handlers.Theming.BoldRuns.Plain(region).Trim();
+
+            return buttons.Count == 1
+                ? $"Showing <b>{shown}</b> - the {named} button under the component list switches it."
+                : $"Showing <b>{shown}</b> - the {named} buttons under the component list switch it.";
+        }
 
         // ---- a component's label (2026-11-01) --------------------------------------------------------
 
@@ -117,26 +131,36 @@ namespace Handlers.DataHandling
         // ---- regions (2026-11-01) ---------------------------------------------------------------------
 
         // What a row of a board with regions says it applies to - the words of its drop-down list.
-        public const string AllRegions = "All regions";
+        public const string AllRegions = BoardRegions.EveryRegion;
 
-        private static readonly IReadOnlyList<string> UsualAppliesToChoices = [AllRegions, .. BoardRegions.All];
+        // The usual lists, one per set of regions: a box's list replaced in the middle of a pick undoes the pick
+        // (ComponentPaneRegionalRow), so the same regions always give the very same list.
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, IReadOnlyList<string>> UsualAppliesToChoices = new(StringComparer.Ordinal);
 
-        // The choices, and a word the board already holds that is not one of them. The usual ones are ONE
-        // list: a box's list replaced in the middle of a pick undoes the pick (ComponentPaneRegionalRow).
-        public static IReadOnlyList<string> AppliesToChoices(string? region)
+        // ###########################################################################################
+        // The choices for a row of a board coming in `regions` (BoardRegions.Of - 2026-11-09: names of its own since), and a
+        // word the row already holds that is not one of them.
+        // ###########################################################################################
+        public static IReadOnlyList<string> AppliesToChoices(IReadOnlyList<string> regions, string? region)
         {
-            string own = region?.Trim() ?? string.Empty;
+            ArgumentNullException.ThrowIfNull(regions);
 
-            return own.Length == 0 || BoardRegions.All.Contains(own, StringComparer.OrdinalIgnoreCase)
-                ? UsualAppliesToChoices
-                : [AllRegions, .. BoardRegions.All, own];
+            string own = region?.Trim() ?? string.Empty;
+            IReadOnlyList<string> usual = UsualAppliesToChoices.GetOrAdd(string.Join('\u001F', regions), _ => [AllRegions, .. regions]);
+
+            return own.Length == 0 || regions.Contains(own, StringComparer.OrdinalIgnoreCase)
+                ? usual
+                : [.. usual, own];
         }
 
-        public static string AppliesToOf(string? region)
+        // The choice a row's region is, spelt as the board spells it.
+        public static string AppliesToOf(IReadOnlyList<string> regions, string? region)
         {
+            ArgumentNullException.ThrowIfNull(regions);
+
             string own = region?.Trim() ?? string.Empty;
 
-            return own.Length == 0 ? AllRegions : BoardRegions.All.FirstOrDefault(each => string.Equals(each, own, StringComparison.OrdinalIgnoreCase)) ?? own;
+            return own.Length == 0 ? AllRegions : regions.FirstOrDefault(each => string.Equals(each, own, StringComparison.OrdinalIgnoreCase)) ?? own;
         }
 
         public static string RegionOfAppliesTo(string? choice) =>
@@ -157,13 +181,35 @@ namespace Handlers.DataHandling
         public static string NoPinsInRegion(string region) =>
             $"{region.Trim()} has no pins of its own to make the same in every region. Pick the region whose pins it should be, and take \"This data is different per region\" off there.";
 
+        // "Board: Regions"' tick, in the owner's words (2026-11-09; "This board comes in PAL and NTSC versions" until then).
         public const string RegionsHasOnBoard =
-            "This board comes in PAL and NTSC versions";
+            "This board comes with multiple regions";
 
-        // Why the tick cannot be taken away while rows say a region.
+        // What the board comes in, named - "Board status"' line.
+        public static string RegionsOfBoard(IReadOnlyList<string> regions) =>
+            $"This board comes in {BoardRegions.Joined(regions)} versions.";
+
+        // Why the tick cannot be taken away while rows say a region - worded as a region's own line, the count bold (owner
+        // request, 2026-11-09; BoldRuns).
         public static string RegionsInUse(int rows) => rows == 1
-            ? "1 row of this board says PAL or NTSC, so this stays ticked until it applies to all regions."
-            : $"{rows.ToString(CultureInfo.InvariantCulture)} rows of this board say PAL or NTSC, so this stays ticked until they apply to all regions.";
+            ? "<b>1</b> row of this board has a region applied, so this stays ticked until it applies to all regions."
+            : $"<b>{rows.ToString(CultureInfo.InvariantCulture)}</b> rows of this board have a region applied, so this stays ticked until they apply to all regions.";
+
+        // Why a region cannot be deleted, under it on "Board: Regions" - the count bold (owner request, 2026-11-09: "change this
+        // to "<b>2</b> rows of this board have it applied, so it ..""; BoldRuns.MarkedText shows it).
+        public static string RegionInUse(int rows) => rows == 1
+            ? "<b>1</b> row of this board has it applied, so it stays until that row applies to another region or to all of them."
+            : $"<b>{rows.ToString(CultureInfo.InvariantCulture)}</b> rows of this board have it applied, so it stays until they apply to another region or to all of them.";
+
+        // What goes with a region deleted - the rows of components told apart per region it has, and their pins (code review,
+        // 2026-11-09: they went without a word); the count bold, as RegionInUse's.
+        public static string RegionTakesRows(int rows) => rows == 1
+            ? "Deleting it takes <b>1</b> row with it - a component's own data for this region. \"Undo\" brings it back."
+            : $"Deleting it takes <b>{rows.ToString(CultureInfo.InvariantCulture)}</b> rows with it - components' own data for this region. \"Undo\" brings them back.";
+
+        // ... and why the last two stay (BoardRegions.FewestRegions).
+        public const string RegionsAtFewest =
+            "A board with regions comes in two at least - to have none, untick \"This board comes with multiple regions\".";
 
         // ---- the board's categories (2026-11-01) ------------------------------------------------------
 
@@ -381,7 +427,8 @@ namespace Handlers.DataHandling
             Line("Category", facts.Row.Category);
             Line("Part number", facts.Row.PartNumber);
             Line("Package", facts.Row.Package);
-            Line("Short description", facts.Row.Description);
+            Line(BoardWorkbookSchema.DescriptionHeading, facts.Row.Description);
+            Line(BoardWorkbookSchema.ColPurpose, RichNote.PlainOf(facts.Row.Purpose));
 
             lines.Add(
                 $"<b>Holds:</b> {ContributeProblems.Counted(facts.Pins, "pin", "pins")}, {ContributeProblems.Counted(facts.Replacements, "replacement part", "replacement parts")}, " +
@@ -425,7 +472,7 @@ namespace Handlers.DataHandling
             $"The same part - part number [{partNumber.Trim()}] - is on these boards. What you changed here goes into each ticked board's own draft, as one step there - each is reviewed by that board's maintainers. What the part has there of what is ticked is replaced.";
 
         public const string AlsoNothingChanged =
-            "Your draft changes nothing of this part that could go to another board yet - its package, short description, pins, replacement parts, links, files or pictures.";
+            "Your draft changes nothing of this part that could go to another board yet - its package, \"Other technical details\", pins, replacement parts, links, files or pictures.";
 
         // A file replaced with nothing on the other boards to change: no part number to find the part
         // by, or none that has it, and no other board with the file it replaced.

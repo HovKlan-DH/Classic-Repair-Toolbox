@@ -117,7 +117,7 @@ public sealed class ConfigurationWorkbooksScopeTests
                 var hardware = tab.GetControl<RadioButton>("WorkbooksScopeCurrentHardwareRadioButton");
 
                 Assert.Equal(
-                    ["Show all devices", "Show only devices for selected hardware", "Show only devices for selected board"],
+                    ["Show all workbooks and devices", "Show only workbooks and devices for selected hardware", "Show only workbooks and devices for selected board"],
                     Assert.IsAssignableFrom<Panel>(hardware.Parent).Children.OfType<RadioButton>().Select(button => button.Content as string));
 
                 int changes = CountScopeChanges(() => hardware.IsChecked = true);
@@ -232,7 +232,7 @@ public sealed class ConfigurationWorkbooksScopeTests
                 Assert.True(tab.GetControl<RadioButton>("DeviceSortingByNameRadioButton").IsChecked);
                 Assert.Equal("Sort automatically by name", tab.GetControl<RadioButton>("DeviceSortingByNameRadioButton").Content);
                 Assert.Equal("Sort automatically by hardware/board/name", tab.GetControl<RadioButton>("DeviceSortingByHardwareBoardNameRadioButton").Content);
-                Assert.Equal("Sort manually in list (drag up/down)", tab.GetControl<RadioButton>("DeviceSortingManualRadioButton").Content);
+                Assert.Equal("Sort manually in list", tab.GetControl<RadioButton>("DeviceSortingManualRadioButton").Content);
 
                 int changes = 0;
                 Action counted = () => changes++;

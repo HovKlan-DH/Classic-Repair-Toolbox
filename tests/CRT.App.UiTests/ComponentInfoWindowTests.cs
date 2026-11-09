@@ -2,6 +2,8 @@
 using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
+using Avalonia;
 using CRT;
 using Handlers.DataHandling;
 
@@ -160,7 +162,7 @@ public class ComponentInfoWindowTests : IDisposable
                 new List<ComponentLinkEntry>(),
                 "PAL",
                 DataRoot,
-                false);
+                []);
 
             Assert.Equal("Unknown component", TextOf(window, "TitleText"));
         });
@@ -293,6 +295,38 @@ public class ComponentInfoWindowTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // "PURPOSE OR NOTE" IS SHOWN IN THE POPUP, FORMATTED AS TYPED (owner request, 2026-11-09: "It should be visible in the
+    // component info popup"), and hidden without one. The description's heading says what the pane calls it.
+    // ###########################################################################################
+    [Fact]
+    public void The_purpose_is_shown_formatted_and_hidden_without_one()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            ComponentEntry plain = Component();
+            SetComponent(window, new[] { plain });
+            Assert.False(ControlOf<Control>(window, "PurposeSection").IsVisible);
+
+            var withPurpose = new ComponentEntry
+            {
+                BoardLabel = plain.BoardLabel,
+                FriendlyName = plain.FriendlyName,
+                Category = plain.Category,
+                Description = plain.Description,
+                Purpose = "Decodes the **memory map**\n- ROM and I/O",
+            };
+
+            SetComponent(window, new[] { withPurpose });
+
+            Assert.True(ControlOf<Control>(window, "PurposeSection").IsVisible);
+            Assert.Equal("Decodes the **memory map**\n- ROM and I/O", ControlOf<RichNoteTextBox>(window, "InfoPurpose").Markup);
+            Assert.True(ControlOf<RichNoteTextBox>(window, "InfoPurpose").IsReadOnly);
+        });
+    }
+
     [Fact]
     public void The_description_section_is_hidden_when_there_is_no_description()
     {
@@ -303,6 +337,82 @@ public class ComponentInfoWindowTests : IDisposable
             SetComponent(window, new[] { Component(description: "   ") });
 
             Assert.False(ControlOf<Control>(window, "OneLinerSection").IsVisible);
+        });
+    }
+
+    // ###########################################################################################
+    // A BOARD OF ITS OWN REGIONS HAS A BUTTON PER REGION ON THE POPUP TOO (2026-11-09: "so we are prepared for other
+    // regions"), each counting the pictures it shows, stacked from the footer's bottom; PAL and NTSC are not there for
+    // such a board, and stand where they always stood for one in PAL and NTSC.
+    // ###########################################################################################
+    [Fact]
+    public void A_board_of_its_own_regions_has_a_button_per_region_on_the_popup()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+
+            SetComponent(window, new[] { Component(region: "EU"), Component(region: "US") }, region: "US", hasExplicitRegionComponents: true, regions: ["EU", "US"]);
+
+            Assert.Equal(["EU (0)", "US (0)"], window.RegionButtonsShownForTests);
+            Assert.False(ControlOf<Button>(window, "PalRegionButton").IsVisible);
+            Assert.False(ControlOf<Button>(window, "NtscRegionButton").IsVisible);
+
+            SetComponent(window, new[] { Component(region: "PAL") }, region: "PAL", hasExplicitRegionComponents: true);
+
+            Assert.Equal(["PAL (0)", "NTSC (0)"], window.RegionButtonsShownForTests);
+            Assert.Equal(2, Grid.GetRow(ControlOf<Button>(window, "PalRegionButton")));
+            Assert.Equal(4, Grid.GetRow(ControlOf<Button>(window, "NtscRegionButton")));
+            Assert.Contains("active", ControlOf<Button>(window, "PalRegionButton").Classes);
+        });
+    }
+
+    // ###########################################################################################
+    // THE POPUP'S REGION BUTTONS LAID OUT AS ONE BOARD FOLLOWS ANOTHER, THE POPUP SHOWN (owner report, 2026-11-09: CRT threw
+    // at launch - Avalonia's Grid measured a button against a column it had lost; RegionButtonLayout). Its two columns are
+    // fixed: a fourth region stands in the second, 6px off the first, and with three or fewer that column is empty.
+    // ###########################################################################################
+    [Fact]
+    public void The_popups_region_buttons_are_laid_out_as_boards_of_every_kind_follow_each_other()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+            window.Show();
+
+            void Lay(ComponentEntry[] components, string region, IReadOnlyList<string>? regions)
+            {
+                SetComponent(window, components, region: region, hasExplicitRegionComponents: true, regions: regions);
+                Dispatcher.UIThread.RunJobs();
+                window.UpdateLayout();
+            }
+
+            Lay([Component(region: "EU")], "EU", ["EU", "US", "UK", "Japan", "Korea"]);
+            Button fourth = window.GetVisualDescendants().OfType<Button>().Single(button => button.Tag as string == "Japan");
+            Assert.Equal(1, Grid.GetColumn(fourth));
+            Assert.Equal(6, fourth.Margin.Left);
+
+            Lay([Component(region: "PAL")], "PAL", null);
+            Assert.Equal(["PAL (0)", "NTSC (0)"], window.RegionButtonsShownForTests);
+            Assert.Equal(2, ControlOf<Grid>(window, "PopupRegionGrid").ColumnDefinitions.Count);
+
+            Lay([Component(region: "EU")], "EU", ["EU", "US", "UK", "Japan"]);
+            Lay([Component(region: "PAL")], "PAL", null);
+            Assert.Equal(0, ControlOf<Button>(window, "PalRegionButton").Margin.Left);
+
+            // A long name is said whole - the button widens past PAL's 70px rather than cutting it off (code review,
+            // 2026-11-09), its block the very one it was made with, the counts changing only its text.
+            Lay([Component(region: "Japan (NTSC-J)")], "Japan (NTSC-J)", ["Japan (NTSC-J)", "US"]);
+            Button longName = window.GetVisualDescendants().OfType<Button>().Single(button => button.Tag as string == "Japan (NTSC-J)");
+            TextBlock name = Assert.IsType<TextBlock>(longName.Content);
+            Assert.Equal("Japan (NTSC-J) (0)", name.Text);
+            Assert.True(longName.Bounds.Width > 70, $"The button is {longName.Bounds.Width}px");
+            Assert.True(name.Bounds.Height < 20, $"The name wraps to {name.Bounds.Height}px");
+
+            Lay([Component(region: "US")], "US", ["Japan (NTSC-J)", "US"]);
+            Assert.Same(name, longName.Content);
+
+            window.Close();
         });
     }
 
@@ -343,12 +453,15 @@ public class ComponentInfoWindowTests : IDisposable
     }
 
     // ###########################################################################################
-    // A SINGLE RESISTOR'S COLOR BANDS UNDER THE PINOUT (owner request, 2026-11-07: "automatically create such an image
-    // and show it under the pinout info in component info popup"), drawn from its value, with the value in words as the
-    // owner writes it and its power rating apart - and none for a resistor pack, or a value the bands cannot say.
+    // A SINGLE RESISTOR IS ITS COLOR BANDS, IN THE PINOUT (owner requests, 2026-11-07: "automatically create such an image
+    // and show it under the pinout info in component info popup"; 2026-11-09: "the image/drawing of the resistor should be in
+    // the pinout instead (like the other components you are drawing, including the explanation of colors"): drawn from its
+    // value in the pinout section, where the case or a leaded part is drawn, with the value in words as the owner writes it
+    // and its power rating apart - the section shown for it with no pins listed - and none for a resistor pack, or a value
+    // the bands cannot say.
     // ###########################################################################################
     [Fact]
-    public void A_resistor_shows_its_color_bands_and_value_under_the_pinout_and_a_pack_none()
+    public void A_resistor_shows_its_color_bands_and_value_in_the_pinout_and_a_pack_none()
     {
         UiTest.Run(() =>
         {
@@ -356,29 +469,33 @@ public class ComponentInfoWindowTests : IDisposable
 
             SetComponent(window, new[] { new ComponentEntry { BoardLabel = BoardLabel, Category = "Resistor", TechnicalNameOrValue = "560Ω 1/4W 5%" } });
 
-            Assert.True(ControlOf<Control>(window, "ResistorSection").IsVisible);
+            ResistorPicture resistor = ControlOf<ResistorPicture>(window, "InfoResistorPicture");
+            Assert.True(resistor.IsVisible);
+            Assert.True(ControlOf<Control>(window, "PinoutSection").IsVisible);
+            Assert.Same(ControlOf<Grid>(window, "PinoutGrid"), resistor.Parent);
             Assert.Equal(
                 [ResistorColorCode.Band.Green, ResistorColorCode.Band.Blue, ResistorColorCode.Band.Brown, ResistorColorCode.Band.Gold],
-                ControlOf<ResistorBandsDrawing>(window, "InfoResistorDrawing").Bands.Select(band => band.Color));
-            Assert.Equal("560 Ω 5%", TextOf(window, "InfoResistorValueText"));
-            Assert.Equal("Power rating: 1/4W", TextOf(window, "InfoResistorPowerText"));
-            Assert.Equal(["Green", "Blue", "Brown", "Gold"], window.ResistorColorsShownForTests);
+                resistor.BandsShownForTests.Select(band => band.Color));
+            Assert.Equal("560 Ω 5%", resistor.ValueShownForTests);
+            Assert.Equal("Power rating: 1/4W", resistor.PowerShownForTests);
+            Assert.Equal(["Green", "Blue", "Brown", "Gold"], resistor.ColorsShownForTests);
 
             // A value with no ohm sign - a board made from KiCad data writes "8.2k" - reads the same (owner request,
             // 2026-11-07).
             SetComponent(window, new[] { new ComponentEntry { BoardLabel = BoardLabel, Category = "Resistor", TechnicalNameOrValue = "8.2k" } });
-            Assert.True(ControlOf<Control>(window, "ResistorSection").IsVisible);
-            Assert.Equal("8.2K Ω", TextOf(window, "InfoResistorValueText"));
-            Assert.Equal(["Grey", "Red", "Red"], window.ResistorColorsShownForTests);
+            Assert.True(resistor.IsVisible);
+            Assert.Equal("8.2K Ω", resistor.ValueShownForTests);
+            Assert.Equal(["Grey", "Red", "Red"], resistor.ColorsShownForTests);
 
             SetComponent(window, new[] { new ComponentEntry { BoardLabel = BoardLabel, Category = "Resistor", FriendlyName = "Resistor pack", TechnicalNameOrValue = "1KΩ, 6pin" } });
-            Assert.False(ControlOf<Control>(window, "ResistorSection").IsVisible);
+            Assert.False(resistor.IsVisible);
 
             SetComponent(window, new[] { new ComponentEntry { BoardLabel = BoardLabel, Category = "Resistor", TechnicalNameOrValue = "wire" } });
-            Assert.False(ControlOf<Control>(window, "ResistorSection").IsVisible);
+            Assert.False(resistor.IsVisible);
+            Assert.False(ControlOf<Control>(window, "PinoutSection").IsVisible);
 
             SetComponent(window, new[] { Component() });
-            Assert.False(ControlOf<Control>(window, "ResistorSection").IsVisible);
+            Assert.False(resistor.IsVisible);
         });
     }
 
@@ -611,7 +728,7 @@ public class ComponentInfoWindowTests : IDisposable
                 [],
                 "PAL",
                 root,
-                hasExplicitRegionComponents: false,
+                regions: [],
                 boardFiles:
                 [
                     new BoardLocalFileEntry { Category = "Scope measurements", Name = "Introduction", File = "Scope baseline/intro.txt" },
@@ -652,7 +769,7 @@ public class ComponentInfoWindowTests : IDisposable
                 [],
                 "PAL",
                 root,
-                hasExplicitRegionComponents: true,
+                regions: BoardRegions.PalAndNtsc,
                 boardFiles:
                 [
                     new BoardLocalFileEntry { Category = "Scope measurements", Name = "Every region", File = "Scope baseline/every.txt" },
@@ -840,7 +957,7 @@ public class ComponentInfoWindowTests : IDisposable
                 new List<ComponentLinkEntry>(),
                 "PAL",
                 dataRoot,
-                false,
+                [],
                 draftFolder);
 
             var items = ItemsOf<ComponentLocalFileItem>(window, "LocalFilesItemsControl");
@@ -952,6 +1069,72 @@ public class ComponentInfoWindowTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // "EDIT COMPONENT" CLICKS ON THE PRESS THAT BRINGS THE POPUP TO THE FRONT (owner report, 2026-11-08: "it does not
+    // react every time I click the 'Edit component' button ... it did that the second time I pressed it"). With CRT's
+    // window in front, that press activates the popup, whose Activated handler puts the keyboard back in it - posted, so
+    // it ran AFTER the press had put the focus on the button, and a Button that loses the focus lets go of its press
+    // (Avalonia 12.1.4's Button.OnLostFocus): the release clicked nothing. The second press found the popup in front.
+    // ###########################################################################################
+    [Fact]
+    public void Edit_component_clicks_on_the_press_that_brings_the_popup_to_the_front()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+            string? edited = null;
+
+            window.Show();
+            SetComponent(window, new[] { Component() });
+            window.OfferEdit(label => edited = label, boardShown: string.Empty);
+            Dispatcher.UIThread.RunJobs();
+
+            // CRT's window in front, as when a component was clicked on the schematic.
+            var main = new Window { Width = 300, Height = 200 };
+            main.Show();
+            main.Activate();
+            Dispatcher.UIThread.RunJobs();
+
+            bool activated = false;
+            window.Activated += (_, _) => activated = true;
+
+            Button edit = ControlOf<Button>(window, "EditComponentButton");
+            Assert.True(edit.IsVisible);
+            Avalonia.Point centre = edit.TranslatePoint(new Avalonia.Point(edit.Bounds.Width / 2, edit.Bounds.Height / 2), window)!.Value;
+
+            window.MouseDown(centre, MouseButton.Left);
+            Assert.True(edit.IsPressed);
+
+            // Windows activates the popup with that press, and the dispatcher runs what Activated posted before the release.
+            window.Activate();
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(activated);
+
+            window.MouseUp(centre, MouseButton.Left);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(BoardLabel, edited);
+
+            main.Close();
+        });
+    }
+
+    // A popup opened, or brought back with nothing in it focused, still takes the keyboard from CRT's component filter.
+    [Fact]
+    public void A_popup_brought_to_the_front_with_nothing_focused_in_it_takes_the_keyboard()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+            window.Show();
+            SetComponent(window, new[] { Component() });
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.True(window.IsKeyboardFocusWithin);
+            window.Close();
+        });
+    }
+
     // -----------------------------------------------------------------------------------------
     // Fixture
     // -----------------------------------------------------------------------------------------
@@ -971,7 +1154,8 @@ public class ComponentInfoWindowTests : IDisposable
         string draftBoardFolder = "",
         IReadOnlyList<ComponentPinEntry>? pins = null,
         IReadOnlyList<ComponentReplacementEntry>? replacements = null,
-        IReadOnlyDictionary<string, string>? pinNets = null)
+        IReadOnlyDictionary<string, string>? pinNets = null,
+        IReadOnlyList<string>? regions = null)
     {
         window.SetComponent(
             BoardLabel,
@@ -982,7 +1166,7 @@ public class ComponentInfoWindowTests : IDisposable
             (links ?? Array.Empty<ComponentLinkEntry>()).ToList(),
             region,
             DataRoot,
-            hasExplicitRegionComponents,
+            regions ?? (hasExplicitRegionComponents ? BoardRegions.PalAndNtsc : []),
             draftBoardFolder,
             boardIdentity: string.Empty,
             pins,

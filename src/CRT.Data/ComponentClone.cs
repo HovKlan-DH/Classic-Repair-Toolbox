@@ -38,7 +38,9 @@ namespace Handlers.DataHandling
     //   - WHERE IT IS MARKED STAYS. A rectangle is a place on THIS board's pictures - another board's would
     //     mark nothing, or the wrong spot - so the highlights are left alone.
     //   - REGIONS: AS IT STANDS THERE, AS FAR AS THIS COMPONENT HAS ROOM (ReadingOf):
-    //       * in every region here, and there too: its rows as they are, each saying what it says;
+    //       * in every region here, and there too: its rows as they are, each saying what it says - while the
+    //         two boards come in the same regions; one in regions this board has not (PAL and NTSC onto EU and
+    //         US) comes as one region there shows, for every region here;
     //       * in every region here, in one region there: that region's, for every region - this component
     //         must not vanish from the other region for being cloned;
     //       * in one region here: what that region shows there, in this one - the component staying in it
@@ -94,7 +96,7 @@ namespace Handlers.DataHandling
 
             if (!BoardRegions.Has(target))
             {
-                return new Reading(RegionThere(string.IsNullOrWhiteSpace(shown) ? BoardRegions.Pal : shown.Trim()), _ => string.Empty, string.Empty);
+                return new Reading(RegionThere(string.IsNullOrWhiteSpace(shown) ? BoardRegions.Of(source).FirstOrDefault() ?? BoardRegions.Pal : shown.Trim()), _ => string.Empty, string.Empty);
             }
 
             string oneHere = here.Count == 1 ? here[0].Region?.Trim() ?? string.Empty : string.Empty;
@@ -106,10 +108,31 @@ namespace Handlers.DataHandling
 
             string oneThere = there.Count == 1 ? there[0].Region?.Trim() ?? string.Empty : string.Empty;
 
-            return oneThere.Length > 0
-                ? new Reading(oneThere, _ => string.Empty)
-                : new Reading(null, region => region?.Trim() ?? string.Empty);
+            if (oneThere.Length > 0)
+            {
+                return new Reading(oneThere, _ => string.Empty);
+            }
+
+            // In every region on both: its rows as they are - only while the two boards come in the same regions, or nothing
+            // of it says a region there (code review, 2026-11-09: a PAL/NTSC board's chip cloned onto a board in EU and US came
+            // filed as PAL and NTSC, which that board shows in no region). Else what one region shows there - the one shown
+            // here when that board has it, else its first - for every region here.
+            if (ComponentClone.SameRegions(target, source) || !ComponentClone.RegionsThere(source, sourceLabel).Any())
+            {
+                return new Reading(null, region => region?.Trim() ?? string.Empty);
+            }
+
+            IReadOnlyList<string> regionsThere = BoardRegions.Of(source);
+            string read = regionsThere.FirstOrDefault(region => string.Equals(region, shown?.Trim(), StringComparison.OrdinalIgnoreCase))
+                          ?? regionsThere.FirstOrDefault()
+                          ?? ComponentClone.RegionsThere(source, sourceLabel).First();
+
+            return new Reading(read, _ => string.Empty);
         }
+
+        // Whether two boards come in the same regions, whatever their order and capitals.
+        private static bool SameRegions(BoardData target, BoardData source) =>
+            new HashSet<string>(BoardRegions.Of(target), StringComparer.OrdinalIgnoreCase).SetEquals(BoardRegions.Of(source));
 
         // ###########################################################################################
         // What the panel says of the component picked, before anything changes - null without one. What

@@ -46,6 +46,22 @@ namespace CRT
         // The component picked in the list, and shown selected there whatever is open on the right.
         private string thisPickedComponent = string.Empty;
 
+        // ###########################################################################################
+        // *** SEVERAL PICKED, EDITED AS ONE (owner request, 2026-11-08; ComponentPane.Several.cs). *** Every component
+        // picked while more than one is - thisPickedComponent the first of them - and empty while one, or none, is. The
+        // pane shows them together, a component's page lists the problems of every one of them, and the table shows their
+        // rows alone (BoardTableEditor.Components.cs).
+        // ###########################################################################################
+        private List<string> thisPickedSeveral = [];
+
+        // The components picked: the several, the one, or none.
+        private IReadOnlyList<string> PickedLabels =>
+            this.thisPickedSeveral.Count > 1 ? this.thisPickedSeveral
+            : this.thisPickedComponent.Length > 0 ? [this.thisPickedComponent]
+            : [];
+
+        internal IReadOnlyList<string> PickedComponentsForTests => this.PickedLabels;
+
         // Opening it right now: a click selects and is tapped too, and only one should open it.
         private string? thisOpeningComponent;
 
@@ -188,13 +204,15 @@ namespace CRT
         // ###########################################################################################
         private async Task ShowComponentPageAsync(ComponentPage page)
         {
-            if (this.thisPickedComponent.Length == 0)
+            // "Mark all" from the other tabs is shown on no page either (second code review, 2026-11-09: a page picked after
+            // it opened every component of the board as one) - the page says to pick some (TakePickFromOtherTabs).
+            if (this.thisPickedComponent.Length == 0 || this.IsEveryTakenOver)
             {
                 await this.ShowNoComponentPageAsync(page);
                 return;
             }
 
-            if (this.IsPaneOnComponent(this.thisPickedComponent))
+            if (this.IsPaneOnPicked())
             {
                 this.ComponentPane.ShowPage(page);
                 this.ShowNavSelection();
@@ -208,7 +226,7 @@ namespace CRT
             }
 
             this.ComponentPane.ShowPage(page);
-            await this.OpenComponentAsync(this.thisPickedComponent);
+            await this.OpenPickedAsync();
             this.ShowNavSelection();
         }
 
@@ -245,7 +263,20 @@ namespace CRT
             this.IsComponentOpen &&
             this.ComponentPane.BoardPart is null &&
             !this.ComponentPane.IsNewComponentForm &&
+            !this.ComponentPane.IsSeveral &&
             string.Equals(this.ComponentPane.Label, label, StringComparison.OrdinalIgnoreCase);
+
+        // The pane on exactly the components picked - one, or the several.
+        private bool IsPaneOnPicked() =>
+            this.IsComponentOpen &&
+            this.ComponentPane.BoardPart is null &&
+            !this.ComponentPane.IsNewComponentForm &&
+            this.PickedLabels.Count > 0 &&
+            this.ComponentPane.Labels.SequenceEqual(this.PickedLabels, StringComparer.OrdinalIgnoreCase);
+
+        // The components picked opened in the pane - several together.
+        private Task OpenPickedAsync() =>
+            this.PickedLabels.Count > 1 ? this.OpenSeveralAsync(this.PickedLabels.ToList()) : this.OpenComponentAsync(this.thisPickedComponent);
 
         // ###########################################################################################
         // The component picked, as what is open says: the pane's while it is on one - it follows a rename
@@ -258,19 +289,36 @@ namespace CRT
         // ###########################################################################################
         private void FollowPickedComponent()
         {
-            if (this.IsComponentOpen && this.ComponentPane.BoardPart is null && !this.ComponentPane.IsNewComponentForm && this.ComponentPane.Label.Length > 0)
+            // Not while a pick is still opening: the pane shows the pick before it, and following it would take the pick back.
+            if (this.thisPicksOpening == 0 &&
+                this.IsComponentOpen && this.ComponentPane.BoardPart is null && !this.ComponentPane.IsNewComponentForm && this.ComponentPane.Label.Length > 0)
             {
                 this.thisPickedComponent = this.ComponentPane.Label;
+                this.thisPickedSeveral = this.ComponentPane.IsSeveral ? this.ComponentPane.Labels.ToList() : [];
             }
-            else if (this.thisPickedComponent.Length > 0 && this.BoardForList() is { } board && !TabDrafts.Holds(board, this.thisPickedComponent))
+            else if (this.PickedLabels.Count > 0 && this.BoardForList() is { } board)
             {
-                bool inDraft = this.thisCurrentEntry is { } entry &&
-                               DraftManager.Sessions.Find(DraftManager.DraftsRoot, entry.ExcelDataFile) is { } session &&
-                               TabDrafts.Holds(session.Content.Board, this.thisPickedComponent);
+                BoardData? draft = this.thisCurrentEntry is { } entry &&
+                                   DraftManager.Sessions.Find(DraftManager.DraftsRoot, entry.ExcelDataFile) is { } session
+                    ? session.Content.Board
+                    : null;
 
-                if (!inDraft)
+                bool Held(string label) => TabDrafts.Holds(board, label) || (draft is not null && TabDrafts.Holds(draft, label));
+
+                List<string> held = this.PickedLabels.Where(Held).ToList();
+
+                if (held.Count != this.PickedLabels.Count)
                 {
-                    this.thisPickedComponent = string.Empty;
+                    bool every = this.IsEveryTakenOver;
+
+                    this.thisPickedComponent = held.FirstOrDefault() ?? string.Empty;
+                    this.thisPickedSeveral = held.Count > 1 ? held : [];
+
+                    // "Mark all" from the other tabs stays what it is with a component gone from it.
+                    if (every)
+                    {
+                        this.thisEveryTakenOver = this.thisPickedSeveral;
+                    }
                 }
             }
         }
@@ -285,6 +333,8 @@ namespace CRT
         internal void LetGoOfPickedComponent()
         {
             this.thisPickedComponent = string.Empty;
+            this.thisPickedSeveral = [];
+            this.thisPickGeneration++;
 
             if (this.IsComponentOpen && this.ComponentPane.BoardPart is null && !this.ComponentPane.IsNewComponentForm)
             {
@@ -300,7 +350,8 @@ namespace CRT
         {
             IReadOnlyDictionary<ComponentPage, ComponentPageFact>? facts =
                 this.thisPickedComponent.Length == 0 ? null
-                : this.IsPaneOnComponent(this.thisPickedComponent) && this.ComponentPane.PagesShown is { } shown ? shown
+                : this.IsPaneOnPicked() && this.ComponentPane.PagesShown is { } shown ? shown
+                : this.PickedLabels.Count > 1 ? null
                 : this.BoardForList() is { } board ? ContributeEntries.FactsOf(board, this.thisPickedComponent, this.thisCurrentRegion)
                 : null;
 
@@ -385,7 +436,10 @@ namespace CRT
 
                 this.TableEditor.ShowSheetPart(table.Sheet, table.Part);
 
-                if (ContributeEntries.PageOf(entry) is not null && this.thisPickedComponent.Length > 0)
+                // Their rows alone, and the cursor to the first one's (owner request, 2026-11-08) - every row for "Mark all"'s.
+                this.TableEditor.ShowOnlyComponents(this.TableLabels);
+
+                if (ContributeEntries.PageOf(entry) is not null && this.thisPickedComponent.Length > 0 && !this.IsEveryTakenOver)
                 {
                     this.TableEditor.GoToRowsOfComponent(this.thisPickedComponent);
                 }
@@ -438,6 +492,14 @@ namespace CRT
         // ###########################################################################################
         private void OnComponentsListTapped(object? sender, TappedEventArgs e)
         {
+            // A click with Ctrl, Shift or Cmd adds to the selection, and several selected are open already: neither is a click
+            // on the one picked (owner report, 2026-11-08: "I cannot mark multiple components when I am in "Contribute" tab" -
+            // this put the list back to the one clicked after each Ctrl+click).
+            if ((e.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Shift | KeyModifiers.Meta)) != 0 || this.SelectedInList().Count > 1)
+            {
+                return;
+            }
+
             if (e.Source is Avalonia.Visual source &&
                 source.FindAncestorOfType<ListBoxItem>(includeSelf: true)?.DataContext is ComponentListItem item)
             {

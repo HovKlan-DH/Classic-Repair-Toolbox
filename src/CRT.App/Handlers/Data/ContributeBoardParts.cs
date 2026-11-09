@@ -26,7 +26,7 @@ namespace Handlers.DataHandling
 
         // "Regions" in the column: what the board comes in, or "0" as the counts say it.
         public static string RegionsText(BoardData? board) =>
-            BoardRegions.Has(board) ? string.Join(", ", BoardRegions.All) : ContributeBoardParts.CountText(0);
+            BoardRegions.Has(board) ? string.Join(", ", BoardRegions.Of(board)) : ContributeBoardParts.CountText(0);
 
         // A count as the column shows it - "0" with none (owner request, 2026-11-04: "none" until then).
         public static string CountText(int count) =>
@@ -54,6 +54,11 @@ namespace Handlers.DataHandling
 
         internal static string NoComponentPicked(ComponentPage page) =>
             $"No component is selected. Select one in the component list on the far left - the \"Category\" list and the filter box above it narrow it down - and its \"{ComponentPaneWording.PageName(page)}\" shows here. \"Add component\" adds a new one.";
+
+        // ... every component selected, as "Mark all" on the other tabs selects them - opened, the next field typed would go
+        // to every component of the board (code review, 2026-11-09). "Mark all" is off on this tab.
+        internal static string EveryComponentSelected(ComponentPage page) =>
+            $"Every component in the list is selected, as \"Mark all\" selects them. Click one to see its \"{ComponentPaneWording.PageName(page)}\" here, or pick several with Ctrl or Shift to edit them together.";
 
         // "Table" picked, on an entry that is no sheet: why nothing changed.
         public const string NoTableForEntry =

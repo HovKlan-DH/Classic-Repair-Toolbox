@@ -43,6 +43,18 @@ namespace Handlers.DataHandling
         // A component picked in the list while the table shows a sheet it has no row on.
         public static string NoRowsOfComponent(string label) => $"[{label.Trim()}] has no rows on this table.";
 
+        // Over a component sheet narrowed to the components picked in the list on CRT's left (owner request, 2026-11-08).
+        public static string ComponentsShown(IReadOnlyList<string> labels)
+        {
+            ArgumentNullException.ThrowIfNull(labels);
+
+            string named = string.Join(", ", labels.Take(8)) + (labels.Count > 8 ? $" and {labels.Count - 8} more" : string.Empty);
+
+            return labels.Count == 1
+                ? $"Only the rows of {named}, picked in the list on the left - \"Clear\" under the list shows every component's. \"Replace\" replaces in these rows alone."
+                : $"Only the rows of the {labels.Count} components picked in the list on the left: {named} - \"Clear\" under the list shows every component's. \"Replace\" replaces in these rows alone.";
+        }
+
         // ###########################################################################################
         // A paste of several cells: where it went, then whatever of the clipboard did not go in and
         // why. Empty for ONE cell pasted into one cell, which needs no words - the cell shows it.

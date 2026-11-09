@@ -164,6 +164,8 @@ answer BoardDetailAnswer | .submissions[].changes.files.removedCount number
 answer BoardDetailAnswer | .submissions[].changes.files.replaced array of string
 answer BoardDetailAnswer | .submissions[].changes.files.replacedCount number
 answer BoardDetailAnswer | .submissions[].changes.isNewBoard boolean
+answer BoardDetailAnswer | .submissions[].changes.regionNamesBefore array of string
+answer BoardDetailAnswer | .submissions[].changes.regionNamesNow array of string
 answer BoardDetailAnswer | .submissions[].changes.regionsNow boolean
 answer BoardDetailAnswer | .submissions[].changes.reordered array of string
 answer BoardDetailAnswer | .submissions[].changes.sections array of object
@@ -348,6 +350,7 @@ answer BoardTableAnswer | .rows.components[].description string
 answer BoardTableAnswer | .rows.components[].friendlyName string
 answer BoardTableAnswer | .rows.components[].package string
 answer BoardTableAnswer | .rows.components[].partNumber string
+answer BoardTableAnswer | .rows.components[].purpose string
 answer BoardTableAnswer | .rows.components[].region string
 answer BoardTableAnswer | .rows.components[].technicalNameOrValue string
 answer BoardTableAnswer | .rows.credits array of object
@@ -642,6 +645,7 @@ answer ReviewTableData | .published.components[].description string
 answer ReviewTableData | .published.components[].friendlyName string
 answer ReviewTableData | .published.components[].package string
 answer ReviewTableData | .published.components[].partNumber string
+answer ReviewTableData | .published.components[].purpose string
 answer ReviewTableData | .published.components[].region string
 answer ReviewTableData | .published.components[].technicalNameOrValue string
 answer ReviewTableData | .published.credits array of object
@@ -736,6 +740,7 @@ answer ReviewTableData | .submitted.components[].description string
 answer ReviewTableData | .submitted.components[].friendlyName string
 answer ReviewTableData | .submitted.components[].package string
 answer ReviewTableData | .submitted.components[].partNumber string
+answer ReviewTableData | .submitted.components[].purpose string
 answer ReviewTableData | .submitted.components[].region string
 answer ReviewTableData | .submitted.components[].technicalNameOrValue string
 answer ReviewTableData | .submitted.credits array of object
@@ -835,6 +840,8 @@ answer SubmissionDetailAnswer | .changes.changedSections[].section string
 answer SubmissionDetailAnswer | .changes.changedSections[].totalChanges number
 answer SubmissionDetailAnswer | .changes.hasChanges boolean
 answer SubmissionDetailAnswer | .changes.isNewBoard boolean
+answer SubmissionDetailAnswer | .changes.regionNamesBefore array of string
+answer SubmissionDetailAnswer | .changes.regionNamesNow array of string
 answer SubmissionDetailAnswer | .changes.regionsNow boolean
 answer SubmissionDetailAnswer | .changes.reorderedSections array of string
 answer SubmissionDetailAnswer | .changes.revisionDate object
@@ -966,6 +973,7 @@ answer SubmissionDetailAnswer | .manifest.rows.components[].description string
 answer SubmissionDetailAnswer | .manifest.rows.components[].friendlyName string
 answer SubmissionDetailAnswer | .manifest.rows.components[].package string
 answer SubmissionDetailAnswer | .manifest.rows.components[].partNumber string
+answer SubmissionDetailAnswer | .manifest.rows.components[].purpose string
 answer SubmissionDetailAnswer | .manifest.rows.components[].region string
 answer SubmissionDetailAnswer | .manifest.rows.components[].technicalNameOrValue string
 answer SubmissionDetailAnswer | .manifest.rows.credits array of object
@@ -1207,6 +1215,7 @@ body POST /api/review/boards/edit | .rows.components[].description string
 body POST /api/review/boards/edit | .rows.components[].friendlyName string
 body POST /api/review/boards/edit | .rows.components[].package string
 body POST /api/review/boards/edit | .rows.components[].partNumber string
+body POST /api/review/boards/edit | .rows.components[].purpose string
 body POST /api/review/boards/edit | .rows.components[].region string
 body POST /api/review/boards/edit | .rows.components[].technicalNameOrValue string
 body POST /api/review/boards/edit | .rows.credits array of object
@@ -1306,6 +1315,7 @@ body POST /api/review/boards/edit/check | .rows.components[].description string
 body POST /api/review/boards/edit/check | .rows.components[].friendlyName string
 body POST /api/review/boards/edit/check | .rows.components[].package string
 body POST /api/review/boards/edit/check | .rows.components[].partNumber string
+body POST /api/review/boards/edit/check | .rows.components[].purpose string
 body POST /api/review/boards/edit/check | .rows.components[].region string
 body POST /api/review/boards/edit/check | .rows.components[].technicalNameOrValue string
 body POST /api/review/boards/edit/check | .rows.credits array of object
@@ -1428,6 +1438,7 @@ body POST /api/review/submissions/{submissionId:long}/amend | .rows.components[]
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.components[].friendlyName string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.components[].package string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.components[].partNumber string
+body POST /api/review/submissions/{submissionId:long}/amend | .rows.components[].purpose string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.components[].region string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.components[].technicalNameOrValue string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.credits array of object
@@ -1553,6 +1564,7 @@ body POST /api/submissions | .rows.components[].description string
 body POST /api/submissions | .rows.components[].friendlyName string
 body POST /api/submissions | .rows.components[].package string
 body POST /api/submissions | .rows.components[].partNumber string
+body POST /api/submissions | .rows.components[].purpose string
 body POST /api/submissions | .rows.components[].region string
 body POST /api/submissions | .rows.components[].technicalNameOrValue string
 body POST /api/submissions | .rows.credits array of object

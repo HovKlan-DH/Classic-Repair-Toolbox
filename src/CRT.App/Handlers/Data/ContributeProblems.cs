@@ -111,7 +111,8 @@ namespace Handlers.DataHandling
         // switch - a row of every region, "Files" and "Links", which list every row whatever CRT shows, and
         // any other word in the cell, which shows in neither region.
         // ###########################################################################################
-        public static string RegionToOpen(EntryProblem item)
+        // `regions`: the board's (BoardRegions.Of - names of its own since 2026-11-09); null for PAL and NTSC.
+        public static string RegionToOpen(EntryProblem item, IReadOnlyList<string>? regions = null)
         {
             ArgumentNullException.ThrowIfNull(item);
 
@@ -120,9 +121,9 @@ namespace Handlers.DataHandling
                 return string.Empty;
             }
 
-            return string.Equals(item.Region, BoardRegions.Pal, StringComparison.OrdinalIgnoreCase) ? BoardRegions.Pal
-                : string.Equals(item.Region, BoardRegions.Ntsc, StringComparison.OrdinalIgnoreCase) ? BoardRegions.Ntsc
-                : string.Empty;
+            string wanted = item.Region?.Trim() ?? string.Empty;
+
+            return (regions ?? BoardRegions.PalAndNtsc).FirstOrDefault(region => string.Equals(region, wanted, StringComparison.OrdinalIgnoreCase)) ?? string.Empty;
         }
 
         // Every problem of `read` where it belongs - errors first, each kind as the checks found them.
@@ -207,32 +208,47 @@ namespace Handlers.DataHandling
                 : $"Row {(problem.Index + 1).ToString(CultureInfo.InvariantCulture)}: {problem.Message}";
         }
 
-        // What a page shows of what is on it: on a component's page with a component selected, that one's alone.
-        public static List<EntryProblem> OnEntry(IEnumerable<EntryProblem> placed, ContributeEntry entry, string? selected)
+        // What a page shows of what is on it: on a component's page with components selected, theirs alone - one, or the
+        // several edited as one (owner request, 2026-11-08).
+        public static List<EntryProblem> OnEntry(IEnumerable<EntryProblem> placed, ContributeEntry entry, IReadOnlyCollection<string> selected)
         {
             ArgumentNullException.ThrowIfNull(placed);
+            ArgumentNullException.ThrowIfNull(selected);
 
-            bool ofSelected = !string.IsNullOrEmpty(selected) && ContributeEntries.PageOf(entry) is not null;
+            bool ofSelected = selected.Count > 0 && ContributeEntries.PageOf(entry) is not null;
+
+            // One lookup per problem, never a walk of the selected (code review, 2026-11-09: hundreds selected and thousands
+            // of warnings, at every refresh of the left column).
+            IReadOnlySet<string> lookup = ofSelected ? ContributeProblems.SetOf(selected) : new HashSet<string>();
 
             return placed
                 .Where(item => item.Entry == entry)
-                .Where(item => !ofSelected || string.Equals(item.ComponentLabel, selected, StringComparison.OrdinalIgnoreCase))
+                .Where(item => !ofSelected || lookup.Contains(item.ComponentLabel))
                 .ToList();
         }
 
+        // `labels` as a set ignoring capitals - the very set when it is one already.
+        private static IReadOnlySet<string> SetOf(IReadOnlyCollection<string> labels) =>
+            labels is HashSet<string> set && ReferenceEquals(set.Comparer, StringComparer.OrdinalIgnoreCase)
+                ? set
+                : new HashSet<string>(labels, StringComparer.OrdinalIgnoreCase);
+
         // ###########################################################################################
-        // How many each entry's badges say, with `selected` the component selected ("" for none): "Overview"
+        // How many each entry's badges say, with `selected` the components selected (none for none): "Overview"
         // every problem of the draft, the rest what their page shows. An entry with none is not listed.
         // ###########################################################################################
-        public static Dictionary<ContributeEntry, BoardProblemCounts> CountsShown(IReadOnlyCollection<EntryProblem> placed, string? selected)
+        public static Dictionary<ContributeEntry, BoardProblemCounts> CountsShown(IReadOnlyCollection<EntryProblem> placed, IReadOnlyCollection<string> selected)
         {
             ArgumentNullException.ThrowIfNull(placed);
 
             var counts = new Dictionary<ContributeEntry, BoardProblemCounts>();
 
+            // The set made once, for every entry (OnEntry takes it as it is).
+            var picked = new HashSet<string>(selected ?? [], StringComparer.OrdinalIgnoreCase);
+
             foreach (ContributeEntry entry in placed.Select(item => item.Entry).Distinct().Where(entry => entry != ContributeEntry.Overview))
             {
-                BoardProblemCounts shown = BoardProblemCounts.Of(ContributeProblems.OnEntry(placed, entry, selected).Select(item => item.Problem));
+                BoardProblemCounts shown = BoardProblemCounts.Of(ContributeProblems.OnEntry(placed, entry, picked).Select(item => item.Problem));
 
                 if (shown.Errors > 0 || shown.Warnings > 0)
                 {

@@ -48,10 +48,13 @@ namespace CRT
         private IBrush thisSearchHitBackground = Brushes.Khaki;
         private IBrush thisSearchHitForeground = Brushes.Black;
 
-        // Whether the table shows only some rows - a pill picked or a search typed. Rows cannot be
-        // moved then: a position among rows that cannot be seen means nothing.
+        // Whether the table shows only some rows - a pill picked, a search typed, a sheet in two, or a component sheet
+        // narrowed to the components picked. Rows cannot be moved then: a position among rows that cannot be seen means
+        // nothing. A sheet of the board as a whole is never narrowed by the components picked (code review, 2026-11-09:
+        // "Board: Files" lost its grips and a paste its new rows while a component was picked, with nothing hidden).
         private bool IsNarrowed =>
-            this.thisFilter != BoardTableRowKinds.None || this.thisSearch.IsActive || this.thisPart != BoardTableSheetPart.Whole;
+            this.thisFilter != BoardTableRowKinds.None || this.thisSearch.IsActive || this.thisPart != BoardTableSheetPart.Whole ||
+            this.IsNarrowedToComponents;
 
         // A pill picked or a search applied - what a host's own pages, which neither looks in, are left out by.
         internal bool IsFilteredByPillsOrSearch => this.thisFilter != BoardTableRowKinds.None || this.thisSearch.IsActive;
@@ -223,9 +226,11 @@ namespace CRT
         // ###########################################################################################
         private void FollowSheetInReplaceFind()
         {
+            // On THAT sheet and part (owner report, 2026-11-08, as the bar opening): picked in the left column while "Find"
+            // has nothing there, the table went back to a sheet that has - the entry picked was left at once.
             if (!this.thisApplyingSearch && this.ReplaceBar.IsVisible && this.thisSearchIsLiteral && !this.IsFindTakenForWhatIsShown)
             {
-                this.ApplyReplaceFind();
+                this.ApplyReplaceFind(stayOnSheet: true);
             }
         }
 

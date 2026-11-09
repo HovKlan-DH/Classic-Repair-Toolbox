@@ -291,8 +291,9 @@ namespace CRT
             // A picture moves one place at a time, as a schematic image does (owner request, 2026-11-02).
             for (int index = 0; index < this.thisPictures.Count; index++)
             {
-                this.thisPictures[index].CanMoveUp = index > 0;
-                this.thisPictures[index].CanMoveDown = index < this.thisPictures.Count - 1;
+                // An order is each component's own - none moves while several are shown (RowsMove).
+                this.thisPictures[index].CanMoveUp = this.RowsMove && index > 0;
+                this.thisPictures[index].CanMoveDown = this.RowsMove && index < this.thisPictures.Count - 1;
             }
         }
 
@@ -352,6 +353,12 @@ namespace CRT
         // ###########################################################################################
         private void CommitBaselines()
         {
+            // A baseline is measured on one component: none is shown, nor written, while several are (ComponentPane.Several.cs).
+            if (this.IsSeveral)
+            {
+                return;
+            }
+
             var rows = new List<ComponentImageEntry>(this.thisBaselines.Count);
             var taken = new List<(ComponentPaneBaselineRow Row, ComponentImageEntry Entry)>();
 
@@ -381,6 +388,12 @@ namespace CRT
 
         private void CommitPictures()
         {
+            if (this.IsSeveral)
+            {
+                this.CommitPicturesOfSeveral();
+                return;
+            }
+
             List<ComponentImageEntry> pictures = this.thisPictures.Select(row => row.ToEntry()).ToList();
 
             this.Apply(
@@ -390,6 +403,12 @@ namespace CRT
 
         private void CommitFiles()
         {
+            if (this.IsSeveral)
+            {
+                this.CommitFilesOfSeveral();
+                return;
+            }
+
             List<ComponentLocalFileEntry> files = this.thisFiles.Select(row => row.ToEntry()).ToList();
 
             this.Apply(
@@ -698,7 +717,14 @@ namespace CRT
 
         // A file dragged by its handle, or moved by Alt+Up and Alt+Down, as the board's are (owner request,
         // 2026-11-02: "the reordering is missing in the component part").
-        private void OnFileHandlePressed(object? sender, Avalonia.Input.PointerPressedEventArgs e) => this.thisFilesDrag?.Press(sender, e);
+        private void OnFileHandlePressed(object? sender, Avalonia.Input.PointerPressedEventArgs e)
+        {
+            // An order is each component's own - none moves while several are shown (RowsMove).
+            if (this.RowsMove)
+            {
+                this.thisFilesDrag?.Press(sender, e);
+            }
+        }
 
         internal bool MoveFile(ComponentPaneFileRow row, int by)
         {
@@ -785,8 +811,8 @@ namespace CRT
             // 2026-11-01) - on a board that has regions.
             string region = this.RegionForNewBaseline();
             this.NewBaselineRegionPanel.IsVisible = this.thisBoardHasRegions;
-            this.NewBaselineRegionBox.ItemsSource = ComponentPaneWording.AppliesToChoices(region);
-            this.NewBaselineRegionBox.SelectedItem = ComponentPaneWording.AppliesToOf(region);
+            this.NewBaselineRegionBox.ItemsSource = ComponentPaneWording.AppliesToChoices(this.thisBoardRegions, region);
+            this.NewBaselineRegionBox.SelectedItem = ComponentPaneWording.AppliesToOf(this.thisBoardRegions, region);
 
             this.NewBaselinePanel.IsVisible = true;
             this.AddBaselineButtons.IsVisible = false;

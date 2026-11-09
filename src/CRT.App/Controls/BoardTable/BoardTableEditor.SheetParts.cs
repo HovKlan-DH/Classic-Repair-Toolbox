@@ -102,7 +102,11 @@ namespace CRT
                 // Only a sheet in two has parts to tell apart. A sheet shown whole goes by the document's answer,
                 // which counts a row just inserted (code review, 2026-11-05) - ShowsAnything does not, or it would
                 // keep both parts for one such row, and its tab went with the insert looking as if it had failed.
-                return shown.Contains(sheet) && (!narrowed || part == BoardTableSheetPart.Whole || BoardTableSheetParts.ShowsAnything(sheet, part, filter, search));
+                // Narrowed to the components picked as well, a component sheet showing none of theirs shows nothing
+                // (third code review, 2026-11-09: "Errors" left their entries on, for rows the narrowing hid).
+                return shown.Contains(sheet) &&
+                       (!narrowed || part == BoardTableSheetPart.Whole || BoardTableSheetParts.ShowsAnything(sheet, part, filter, search)) &&
+                       (!narrowed || this.ShowsRowsOfPicked(sheet, part, filter, search));
             };
         }
 

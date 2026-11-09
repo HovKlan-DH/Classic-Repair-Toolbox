@@ -40,6 +40,8 @@ namespace CRT
     //                         column (its entries, "Add component" below the board's - the components
     //                         are picked in CRT's own lists on the far left - and the entry open shown
     //                         selected) and "My drafts"
+    //   TabDrafts.Several.cs - several components picked in that list, opened together, and the pick the other
+    //                         tabs' lists hand over as the tab is entered ("Mark all" there shown, never opened)
     //   TabDrafts.Splitters.cs - the widths dragged on the tab - the left column, and the previews on
     //                         the schematic images' cards - kept per board
     //   TabDrafts.BoardName.cs - "Board name": the page, and a new board's name changed
@@ -874,6 +876,13 @@ namespace CRT
 
             if (rowsWithErrors)
             {
+                // Every row with an error, whichever components are picked (code review, 2026-11-09): the table narrowed
+                // to a component with none opened on the errors' sheet showing nothing under "Submit is blocked".
+                if (this.PickedLabels.Count > 0)
+                {
+                    this.LetGoOfPickedComponent();
+                }
+
                 this.TableEditor.Filter = BoardTableRowKinds.Errors;
             }
 

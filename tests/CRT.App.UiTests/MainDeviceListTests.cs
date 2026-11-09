@@ -12,7 +12,7 @@ using Handlers.DataHandling;
 namespace ClassicRepairToolbox.Tests.Ui;
 
 // ###########################################################################################
-// "MY DEVICES" STANDS IN THE LEFT PANEL WHILE THE "My Devices" TAB IS SHOWN, THE WORKBOOKS IN THE TAB (owner requests,
+// "MY DEVICES" STANDS IN THE LEFT PANEL WHILE THE "Workbooks" TAB IS SHOWN, THE WORKBOOKS IN THE TAB (owner requests,
 // 2026-11-06: the lists "in the left-side panel, where the component category and component list is", then "please
 // again have [the workbooks] visible where they were previously, but do keep the 'My devices' in the left-side panel")
 // - Main.DeviceList.cs, TabWorkbooks.ShowDevicesIn; and what both list, the Configuration tab's scope (MyDevicesScope).
@@ -83,6 +83,52 @@ public sealed class MainDeviceListTests : IDisposable
             .ToList();
 
     // ###########################################################################################
+    // WITH NO DEVICE MADE, THE WORKBOOKS STAND IN THE LEFT PANEL IN PLACE OF "My devices", and the tab's own list column is
+    // shut, the workbook taking its width (owner request, 2026-11-08: "when there are no devices created, then the list of
+    // workbooks should move into the left-side panel ... This would make the content area larger for the actual
+    // worklogs"). The first device made puts both back.
+    // ###########################################################################################
+    [Fact]
+    public void With_no_device_the_workbooks_stand_in_the_left_panel_and_the_first_device_puts_them_back()
+    {
+        WithMain(main =>
+        {
+            WorklogManager.CreateWorkbook(BoardKey, "No video", string.Empty);
+            main.RefreshWorklogBar();
+            OnTab(main, "WorkbooksTabItem");
+
+            Decorator host = main.GetControl<Decorator>("DeviceListHost");
+            Control workbooks = main.TabWorkbooks.GetControl<Control>("WorkbookListArea");
+            Grid split = main.TabWorkbooks.GetControl<Grid>("OuterSplitGrid");
+
+            Assert.True(host.IsVisible);
+            Assert.Same(workbooks, host.Child);
+            Assert.True(main.TabWorkbooks.IsWorkbookListInLeftPanel);
+            Assert.False(main.TabWorkbooks.GetControl<Border>("WorkbookListBorder").IsVisible);
+            Assert.Equal(0, split.ColumnDefinitions[0].ActualWidth);
+            Assert.True(main.TabWorkbooks.GetControl<Control>("WorkbookListHeading").IsVisible);
+            Assert.False(main.TabWorkbooks.GetControl<TextBlock>("WorkbookCountText").IsVisible);
+            Assert.Single(WorkbookIds(main));
+
+            // Its cards are still the tab's, styled and clickable where they stand.
+            Assert.True(main.TabWorkbooks.GetControl<StackPanel>("WorkbookListPanel").Children[0].Bounds.Height > 0);
+
+            AddDevice("Breadbin", BoardKey);
+            main.RefreshWorklogBar();
+            main.UpdateLayout();
+
+            Assert.Same(main.TabWorkbooks.GetControl<Control>("DeviceListArea"), host.Child);
+            Assert.False(main.TabWorkbooks.IsWorkbookListInLeftPanel);
+            Assert.Same(workbooks, main.TabWorkbooks.GetControl<Border>("WorkbookListBorder").Child);
+            Assert.True(main.TabWorkbooks.GetControl<Border>("WorkbookListBorder").IsVisible);
+            Assert.True(split.ColumnDefinitions[0].ActualWidth >= 200);
+            Assert.False(main.TabWorkbooks.GetControl<Control>("WorkbookListHeading").IsVisible);
+            Assert.True(main.TabWorkbooks.GetControl<TextBlock>("WorkbookCountText").IsVisible);
+            Assert.Equal(["Breadbin"], DeviceNames(main));
+        });
+    }
+
+    // ###########################################################################################
     // "My devices"' frame is the workbook list's line, and follows the theme as that one does (code review, 2026-11-07: its
     // color was copied once, as Main was built, and stayed the old theme's after a switch). The theme is switched on the
     // window - never on the shared Application (UiTest).
@@ -92,6 +138,10 @@ public sealed class MainDeviceListTests : IDisposable
     {
         WithMain(main =>
         {
+            // In the left panel only with a device made.
+            AddDevice("Breadbin", BoardKey);
+            main.RefreshWorklogBar();
+
             Color ColorIn(Avalonia.Styling.ThemeVariant variant)
             {
                 Assert.True(Application.Current!.TryGetResource("Workbooks_Separator", variant, out object? brush));
@@ -119,13 +169,17 @@ public sealed class MainDeviceListTests : IDisposable
     // On the tab "My devices" stands in the left panel where the category and component lists were, those lists and
     // the buttons under them gone - Hardware and Board stay - with no "Add device" of its own (owner request: "no need
     // for it"; the bar has one). The workbooks are in the tab's own column, with its splitter. Every other tab has the
-    // lists back, the Contribute tab its own.
+    // lists back, the Contribute tab its own. With a device made - with none, the workbooks take its place
+    // (With_no_device_the_workbooks_stand_in_the_left_panel_and_the_first_device_puts_them_back).
     // ###########################################################################################
     [Fact]
-    public void On_the_My_Devices_tab_my_devices_takes_the_component_lists_place_and_the_workbooks_stay_in_the_tab()
+    public void On_the_Workbooks_tab_my_devices_takes_the_component_lists_place_and_the_workbooks_stay_in_the_tab()
     {
         WithMain(main =>
         {
+            AddDevice("Breadbin", BoardKey);
+            main.RefreshWorklogBar();
+
             Border devices = main.TabWorkbooks.GetControl<Border>("DeviceListBorder");
             Border workbooks = main.TabWorkbooks.GetControl<Border>("WorkbookListBorder");
             Border leftPanel = main.GetControl<Border>("LeftPanel");

@@ -53,14 +53,14 @@ public sealed class OwnedDeviceWindowTests : IDisposable
     private static OwnedDeviceWindow NewForm()
     {
         var window = new OwnedDeviceWindow();
-        window.Initialize(Boards, Board, boardHasRegions: _ => Task.FromResult(false));
+        window.Initialize(Boards, Board, boardRegions: _ => Task.FromResult<IReadOnlyList<string>>([]));
         return window;
     }
 
     private static OwnedDeviceWindow EditForm(OwnedDeviceRecord device)
     {
         var window = new OwnedDeviceWindow();
-        window.InitializeForEdit(device, Boards, _ => Task.FromResult(false));
+        window.InitializeForEdit(device, Boards, _ => Task.FromResult<IReadOnlyList<string>>([]));
         return window;
     }
 
@@ -716,7 +716,7 @@ public sealed class OwnedDeviceWindowTests : IDisposable
         UiTest.Run(() =>
         {
             OwnedDeviceWindow locked = new();
-            locked.InitializeForEdit(device, Boards, _ => Task.FromResult(false), workbookCount: 2);
+            locked.InitializeForEdit(device, Boards, _ => Task.FromResult<IReadOnlyList<string>>([]), workbookCount: 2);
 
             Assert.False(locked.GetControl<ComboBox>("HardwareComboBox").IsEnabled);
             Assert.False(locked.GetControl<ComboBox>("BoardComboBox").IsEnabled);

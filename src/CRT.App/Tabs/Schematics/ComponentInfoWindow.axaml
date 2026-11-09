@@ -10,31 +10,6 @@
         MinHeight="260">
 
 	<Window.Styles>
-		<!-- Region toggle buttons -->
-		<Style Selector="Button.RegionToggle.active">
-			<Setter Property="BorderThickness" Value="2" />
-		</Style>
-
-		<!-- PAL active -->
-		<Style Selector="Button#PalRegionButton.RegionToggle.active">
-			<Setter Property="Foreground" Value="{DynamicResource Schematics_Region_PAL_Fg}" />
-			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_PAL_Bg}" />
-		</Style>
-		<Style Selector="Button#PalRegionButton.RegionToggle.active /template/ ContentPresenter">
-			<Setter Property="Background" Value="{DynamicResource Schematics_Region_PAL_Bg}" />
-			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_PAL_Bg}" />
-		</Style>
-
-		<!-- NTSC active -->
-		<Style Selector="Button#NtscRegionButton.RegionToggle.active">
-			<Setter Property="Foreground" Value="{DynamicResource Schematics_Region_NTSC_Fg}" />
-			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_NTSC_Bg}" />
-		</Style>
-		<Style Selector="Button#NtscRegionButton.RegionToggle.active /template/ ContentPresenter">
-			<Setter Property="Background" Value="{DynamicResource Schematics_Region_NTSC_Bg}" />
-			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_NTSC_Bg}" />
-		</Style>
-
 		<Style Selector="Button.ComponentResourceLinkButton">
 			<Setter Property="Background" Value="Transparent" />
 			<Setter Property="Foreground" Value="{DynamicResource Link_Fg}" />
@@ -504,8 +479,10 @@
 								Spacing="0"
 								Margin="0,8,0,0">
 						<Grid RowDefinitions="Auto,Auto">
+							<!-- "Component one-liner" until 2026-11-09 - the pane's "Short description" became "Other technical
+							     details" (owner request), and the popup says what the pane says. -->
 							<TextBlock Grid.Row="0"
-									   Text="Component one-liner"
+									   Text="Other technical details"
 									   FontSize="10"
 									   FontWeight="SemiBold"
 									   Foreground="{DynamicResource Fg}" />
@@ -515,6 +492,25 @@
 									 AcceptsReturn="False"
 									 TextWrapping="Wrap"
 									 FontSize="12" />
+						</Grid>
+					</StackPanel>
+
+					<!-- What the component is there for (owner request, 2026-11-09: "It should be visible in the component
+					     info popup") - formatted as typed, only read, as the image note is. Hidden when empty. -->
+					<StackPanel x:Name="PurposeSection"
+								IsVisible="False"
+								Spacing="0"
+								Margin="0,8,0,0">
+						<Grid RowDefinitions="Auto,Auto">
+							<TextBlock Grid.Row="0"
+									   Text="Purpose or note"
+									   FontSize="10"
+									   FontWeight="SemiBold"
+									   Foreground="{DynamicResource Fg}" />
+							<local:RichNoteTextBox Grid.Row="1"
+												   x:Name="InfoPurpose"
+												   IsReadOnly="True"
+												   FontSize="12" />
 						</Grid>
 					</StackPanel>
 
@@ -608,6 +604,29 @@
 											 PinsCanBePicked="True"
 											 PinPicked="OnPinPickedInDrawing"
 											 IsVisible="False" />
+						<!-- A leaded part drawn as it looks, each lead labelled with its pin - a capacitor, a diode, a
+						     transistor, a crystal ... (owner request, 2026-11-09; PartPicture decides) - in the case's
+						     place for the parts it draws. -->
+						<local:PartPictureDrawing x:Name="InfoPartDrawing"
+												  Grid.Column="0"
+												  HorizontalAlignment="Left"
+												  VerticalAlignment="Top"
+												  Margin="0,2,12,4"
+												  PinsCanBePicked="True"
+												  PinPicked="OnPinPickedInDrawing"
+												  IsVisible="False" />
+						<!-- A single resistor drawn with its color bands, its value and the bands' colors in words (owner requests,
+						     2026-11-07, and 2026-11-09: "the image/drawing of the resistor should be in the pinout instead (like the
+						     other components you are drawing, including the explanation of colors"; ResistorPicture) - in the pinout,
+						     so it goes with it into a window of its own, and UNDER the pin list (owner request, 2026-11-09: "I want the
+						     pinout table to be shown first and then the image and explanation afterwards"; PlacePinList). -->
+						<local:ResistorPicture x:Name="InfoResistorPicture"
+											   Grid.Row="1"
+											   Grid.Column="0"
+											   Grid.ColumnSpan="2"
+											   HorizontalAlignment="Left"
+											   VerticalAlignment="Top"
+											   Margin="0,10,12,4" />
 						<!-- With the board's KiCad data, each pin's net on this board beside its signal name
 						     (the plan: "side by side") - the headings say which is which. -->
 						<StackPanel x:Name="InfoPinsPanel" Grid.Column="1" Spacing="0" Grid.IsSharedSizeScope="True">
@@ -658,44 +677,6 @@
 							</ItemsControl>
 						</StackPanel>
 						</Grid>
-					</StackPanel>
-
-					<!-- A single resistor's color bands, drawn from the value typed for it, and that value in words (owner
-					     request, 2026-11-07: "automatically create such an image and show it under the pinout info in
-					     component info popup"; ResistorColorCode, ResistorBandsDrawing). Hidden for anything else, a
-					     resistor pack included, and for a value the bands cannot say. -->
-					<StackPanel x:Name="ResistorSection"
-								IsVisible="False"
-								Spacing="4"
-								Margin="0,8,0,0">
-						<TextBlock Text="Color bands"
-								   FontSize="10"
-								   FontWeight="SemiBold"
-								   Foreground="{DynamicResource Fg}" />
-						<local:ResistorBandsDrawing x:Name="InfoResistorDrawing"
-													HorizontalAlignment="Left"
-													Margin="0,4,0,0" />
-						<TextBlock Text="Resistor value:"
-								   FontSize="12"
-								   Margin="0,6,0,0"
-								   Foreground="{DynamicResource Fg}" />
-						<TextBlock x:Name="InfoResistorValueText"
-								   FontSize="15"
-								   FontWeight="Bold"
-								   Foreground="{DynamicResource Fg}" />
-						<TextBlock x:Name="InfoResistorPowerText"
-								   FontSize="11"
-								   Opacity="0.75"
-								   IsVisible="False"
-								   Foreground="{DynamicResource Fg}" />
-						<!-- Each band's color in words, first to last, the tolerance's too (owner request, 2026-11-07:
-						     "Colors: Grey, Red, Red, Gold") - a swatch of the band's color before each name
-						     (ShowResistorBands fills it). -->
-						<TextBlock Text="Colors:"
-								   FontSize="12"
-								   Margin="0,6,0,0"
-								   Foreground="{DynamicResource Fg}" />
-						<StackPanel x:Name="InfoResistorColorsPanel" Spacing="2" Margin="8,0,0,0" />
 					</StackPanel>
 
 					<!-- Replacement parts (CRT 4.0, hidden without any). -->
@@ -817,9 +798,19 @@
 					BorderThickness="0,1,0,0"
 					Padding="0,6,0,0"
 					Margin="0,6,0,0">
-				<Grid ColumnDefinitions="Auto,10,Auto,*,Auto"
+				<Grid x:Name="FooterGrid"
+					  ColumnDefinitions="Auto,10,Auto,*,Auto"
 					  RowDefinitions="28,4,28,4,28">
 
+					<!-- The region buttons, one per region of the board, stacked from the bottom of the footer - "PAL" and
+					     "NTSC" in its second and third rows as they always stood, a board's own regions in their places too
+					     (2026-11-09; RegionButtonLayout.PopupCellOf). -->
+					<!-- Its columns and rows never change (RegionButtonLayout): an empty second column is no width. -->
+					<Grid x:Name="PopupRegionGrid"
+						  Grid.Column="0"
+						  Grid.RowSpan="5"
+						  ColumnDefinitions="Auto,Auto"
+						  RowDefinitions="28,4,28,4,28">
 					<Button x:Name="PalRegionButton"
 							Classes="RegionToggle"
 							Grid.Column="0"
@@ -849,6 +840,7 @@
 							VerticalContentAlignment="Center"
 							VerticalAlignment="Bottom"
 							Click="OnNtscRegionClick" />
+					</Grid>
 
 					<Grid x:Name="SyncOscilloscopeRow"
 						  Grid.Column="2"

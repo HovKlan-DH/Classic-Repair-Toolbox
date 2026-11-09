@@ -35,7 +35,7 @@ namespace CRT
         //   Main.SchematicsWindows.cs - detached thumbnails window, fullscreen schematics window
         //   Main.Worklog.cs           - worklog bar, workbook activation, worklog entry mode
         //   Main.Devices.cs           - the worklog bar's two drop-downs: the device, and its workbooks
-        //   Main.DeviceList.cs        - the "My Devices" tab's "My devices" in the left panel while it is shown
+        //   Main.DeviceList.cs        - the "Workbooks" tab's "My devices" in the left panel while it is shown
         //   BarPickersPanel.cs        - (a class of its own) those drop-downs side by side, each as wide as its text
         //   BarPickerLinePanel.cs     - (a class of its own) a line of those drop-downs, its badge at the end
         //   Main.ComponentPopup.cs    - component filter/search, component info popup, blink, region
@@ -731,7 +731,7 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Shows or hides the permanent worklog bar above the tabs AND the "My Devices" tab to match
+        // Shows or hides the permanent worklog bar above the tabs AND the "Workbooks" tab to match
         // the "Enable Worklog" configuration setting - and, when switching the feature off, tears
         // down everything the feature had put on the schematic.
         //
@@ -1106,7 +1106,7 @@ namespace CRT
             // Do not steal focus if we are on tabs that utilize text inputs
             var selectedTab = this.MainTabControl?.SelectedItem as TabItem;
 
-            // The "My Devices" tab (TabWorkbooks) has its own priority focus ("Find a previous repair"),
+            // The "Workbooks" tab (TabWorkbooks) has its own priority focus ("Find a previous repair"),
             // set on tab entry by OnMainTabControlSelectionChanged - see FocusSearchBox's
             // comment for why the global steal has to back off here, not just once but on
             // every pointer release while this tab is showing. Every tab is asked by its TabItem, never

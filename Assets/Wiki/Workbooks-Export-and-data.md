@@ -6,7 +6,7 @@ Exporting a repair, where the files live, and deleting.
 
 ## Export
 
-Two buttons in the "My Devices" tab header, acting on the selected workbook.
+Two buttons in the "Workbooks" tab header, acting on the selected workbook.
 
 | | PDF | ZIP |
 | --- | --- | --- |

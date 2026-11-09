@@ -76,6 +76,8 @@ namespace Handlers.DataHandling
 
             bool isNewBoard = published == null;
 
+            bool? regionsNow = ReviewSummary.RegionsNow(published, submitted);
+
             // The lists put in another order (owner decision, 2026-10-30: order is a change) - a
             // maintainer is told, as the table colours no moved row.
             return new ReviewChangeSummary(
@@ -83,7 +85,11 @@ namespace Handlers.DataHandling
                 ReviewSummary.RevisionDateChange(before, submitted),
                 sections,
                 published is null ? [] : BoardRowOrder.ReorderedSheets(published, submitted),
-                ReviewSummary.RegionsNow(published, submitted));
+                regionsNow)
+            {
+                RegionNamesBefore = ReviewSummary.RegionNames(published, regionsNow),
+                RegionNamesNow = ReviewSummary.RegionNames(submitted, regionsNow),
+            };
         }
 
         // ###########################################################################################
@@ -91,6 +97,10 @@ namespace Handlers.DataHandling
         // them - and a new board that has them (code review, 2026-11-02: nothing to differ from, nothing
         // was said, and they reached the published file with an amendment unable to change them).
         // ###########################################################################################
+        // The board's regions by name, after and before - said only with RegionsNow (2026-11-09: names of their own since).
+        private static IReadOnlyList<string>? RegionNames(BoardData? board, bool? regionsNow) =>
+            regionsNow is null ? null : [.. BoardRegions.Of(board)];
+
         private static bool? RegionsNow(BoardData? published, BoardData submitted)
         {
             if (published is null)
@@ -391,7 +401,8 @@ namespace Handlers.DataHandling
                 new(BoardWorkbookSchema.ColCategory, entry.Category),
                 new(BoardWorkbookSchema.ColRegion, entry.Region),
                 new(BoardWorkbookSchema.ColDescription, entry.Description),
-                new(BoardWorkbookSchema.ColPackage, entry.Package)
+                new(BoardWorkbookSchema.ColPackage, entry.Package),
+                new(BoardWorkbookSchema.ColPurpose, entry.Purpose)
             ],
             ComponentImageEntry entry =>
             [
@@ -685,6 +696,12 @@ namespace Handlers.DataHandling
         bool? RegionsNow = null)
     {
         public IReadOnlyList<string> ReorderedSections { get; init; } = ReorderedSections ?? [];
+
+        // The board's regions by name before and after, with RegionsNow (2026-11-09: names of their own since) - null
+        // from a server that does not say, which means PAL and NTSC.
+        public IReadOnlyList<string>? RegionNamesBefore { get; init; }
+
+        public IReadOnlyList<string>? RegionNamesNow { get; init; }
 
         public IReadOnlyList<ReviewSectionChange> ChangedSections =>
             [.. this.Sections.Where(section => section.HasChanges)];

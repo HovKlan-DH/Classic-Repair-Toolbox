@@ -3,7 +3,7 @@ using Handlers.DataHandling;
 namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
-// What the "My Devices" tab lists (MyDevicesScope; owner request, 2026-11-06: "Show all devices", "Show only devices
+// What the "Workbooks" tab lists (MyDevicesScope; owner request, 2026-11-06: "Show all devices", "Show only devices
 // for selected hardware" in the middle, "Show only devices for selected board" - the workbook list narrowing the same
 // way). A board key is "Hardware|Board", capitals aside.
 // ###########################################################################################

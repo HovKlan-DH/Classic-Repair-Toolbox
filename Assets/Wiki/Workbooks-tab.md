@@ -4,7 +4,7 @@ Record what you find on a board and what you did about it - and share the finish
 
 ---
 
-It all lives in the "My Devices" tab, and in the bar above the tabs.
+It all lives in the "Workbooks" tab, and in the bar above the tabs.
 
 * [Getting started](Workbooks-Getting-started) - turn it on and record your first repair
 * [Daily use](Workbooks-Daily-use) - the worklog bar, the editor, marking areas on a schematic

@@ -171,6 +171,9 @@ namespace CRT
             // "Clear" stays in sight, greyed out with nothing to let go of.
             this.ClearDeviceButton.Content = OwnedDeviceWording.ClearChoice;
             this.ClearDeviceButton.IsEnabled = picked is not null || this.thisSelectedDeviceId is not null;
+
+            // No device made at all: the workbooks take this list's place in the left panel (owner request, 2026-11-08).
+            this.PlaceWorkbookList(noDevices: this.thisDevices.Count == 0);
         }
 
         // ###########################################################################################
@@ -775,9 +778,9 @@ namespace CRT
         // The boards a device can be on - DataManager's, or a test's.
         internal IReadOnlyList<HardwareBoardEntry>? BoardsOverrideForTests { get; set; }
 
-        // Whether a board comes in PAL and NTSC, which the device form asks of the board picked - null:
-        // the board as CRT views it (OwnedDeviceWindow.BoardHasRegionsAsViewedAsync). A test's stand-in.
-        internal Func<string, Task<bool>>? BoardHasRegionsOverrideForTests { get; set; }
+        // The regions a board comes in, which the device form asks of the board picked - null: the board as CRT views it
+        // (OwnedDeviceWindow.BoardRegionsAsViewedAsync). A test's stand-in.
+        internal Func<string, Task<IReadOnlyList<string>>>? BoardRegionsOverrideForTests { get; set; }
 
         // Stands in for showing the device form in a test, which cannot show a dialog: handed the form as
         // the tab filled it in, it closes it as a user would - with the record saved, or null. Null in
@@ -797,7 +800,7 @@ namespace CRT
             dialog.Initialize(
                 this.BoardsForDevices,
                 this.BoardKeyOverrideForTests ?? this.MainWindow?.GetCurrentBoardKey(),
-                boardHasRegions: this.BoardHasRegionsOverrideForTests);
+                boardRegions: this.BoardRegionsOverrideForTests);
 
             if (await this.ShowDeviceFormAsync(dialog) is not { } added)
             {
@@ -851,7 +854,7 @@ namespace CRT
             dialog.InitializeForEdit(
                 device,
                 this.BoardsForDevices,
-                this.BoardHasRegionsOverrideForTests,
+                this.BoardRegionsOverrideForTests,
                 OwnedDeviceRepairs.Of(device.Id, WorklogManager.GetAllWorkbooks()).Count);
 
             // Its comments and photos are saved as they change (owner decision, 2026-11-06: "At once, as a

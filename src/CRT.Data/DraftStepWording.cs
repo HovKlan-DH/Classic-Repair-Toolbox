@@ -81,6 +81,9 @@ namespace Handlers.DataHandling
 
         public static string ComponentFiles(string label) => $"Files of [{label}]";
 
+        // "Make all like" with several components picked (ComponentBulk) - the page named as its entry is.
+        public static string ComponentsMadeLike(string source, string page) => $"\"{page}\" made like [{source}]";
+
         // The board's own lists, from the component pane's board parts (slice 4a).
         public const string BoardFiles = "The board's files";
 

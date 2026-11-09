@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Handlers.DataHandling;
+using Handlers.Theming;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -12,9 +13,10 @@ namespace CRT
     // ###########################################################################################
     // "BOARD: REGIONS" AND "BOARD: CATEGORIES" (owner requests, 2026-11-01), two of the board's own parts.
     //
-    //   - REGIONS: the one tick "This board comes in PAL and NTSC versions" (BoardRegions - stored in the
-    //     board file and published). It cannot be taken away while a row says a region: such a row would go
-    //     on being there with no button left to reach it.
+    //   - REGIONS: the one tick "This board comes with multiple regions" and its regions listed, in their
+    //     colors and in the buttons' order, dragged up or down (owner request, 2026-11-09; BoardRegions - stored
+    //     in the board file and published). The tick cannot be taken away while a row says a region: such a row
+    //     would go on being there with no button left to reach it.
     //   - CATEGORIES: rename, add and delete the words the board's components are sorted under
     //     (BoardCategoryEdits). No list is stored: a category is what its components carry, so a rename
     //     or a delete is one step changing those rows, and one no component uses yet is held here, by
@@ -42,28 +44,142 @@ namespace CRT
 
         // ---- Board: Regions --------------------------------------------------------------------------
 
+        private readonly ObservableCollection<ComponentPaneRegionRow> thisRegionRows = new();
+
+        // ###########################################################################################
+        // ONE TICK, "This board comes with multiple regions", AND EVERY REGION LISTED WITH ITS COLORS (owner request,
+        // 2026-11-09: "Why not make this a little differently, and then have the checkbox state "This board comes with
+        // multiple regions" and then list all regions and its colors? It should be possible to reorder the list of regions
+        // up/down" - a PAL and NTSC tick with the board's own regions under it until then): each region as its button looks
+        // under the component list (RegionChoice.ColorsOf - PAL's and NTSC's own colors, the others taking four in turn by
+        // their place among them), how many rows hold it (BoardRegions.RowsHolding - a component told apart in every region
+        // goes with it), "Delete region" while none does and more than two are left, and a
+        // handle to drag it up or down - the buttons' order. Added by name under the list. Unticked, the board comes in
+        // none, which a row saying a region keeps from happening.
+        // ###########################################################################################
         private void ShowRegionsPart(BoardData board)
         {
+            IReadOnlyList<string> regions = BoardRegions.Of(board);
             int rows = BoardRegions.RegionalRows(board);
+            bool has = regions.Count > 0;
 
             this.RegionsCheckBox.Content = ComponentPaneWording.RegionsHasOnBoard;
-            this.RegionsCheckBox.IsChecked = BoardRegions.Has(board);
-            this.RegionsCheckBox.IsEnabled = rows == 0;
-            this.RegionsInUseText.Text = rows > 0 ? ComponentPaneWording.RegionsInUse(rows) : string.Empty;
-            this.RegionsInUseText.IsVisible = rows > 0;
+            this.RegionsCheckBox.IsChecked = has;
+            this.RegionsCheckBox.IsEnabled = !has || rows == 0;
+            BoldRuns.ShowMarked(this.RegionsInUseText, has && rows > 0 ? ComponentPaneWording.RegionsInUse(rows) : string.Empty);
+            this.RegionsInUseText.IsVisible = has && rows > 0;
+            this.RegionsListPanel.IsVisible = has;
+            this.AddRegionPanel.IsVisible = has && regions.Count < BoardRegions.MostRegions;
+
+            // Every region's facts worked out in one go (BoardRegions.HoldingOf).
+            List<ComponentPaneRegionRow.Facts> wanted = BoardRegions.HoldingOf(board)
+                .Select(region => new ComponentPaneRegionRow.Facts(
+                    region.Region,
+                    region.Rows,
+                    region.CanDelete,
+                    RegionChoice.ColorsOf(regions, region.Region),
+                    region.Going))
+                .ToList();
+
+            InPlaceList.Sync(this.thisRegionRows, wanted, (row, facts) => row.Shows(facts), facts => new ComponentPaneRegionRow(facts));
+
+            for (int index = 0; index < wanted.Count && index < this.thisRegionRows.Count; index++)
+            {
+                this.thisRegionRows[index].Use(wanted[index]);
+            }
         }
+
+        internal IReadOnlyList<ComponentPaneRegionRow> RegionRowsForTests => this.thisRegionRows;
 
         private void OnRegionsCheckClick(object? sender, RoutedEventArgs e) => this.SetRegions(this.RegionsCheckBox.IsChecked == true);
 
-        internal void SetRegions(bool has)
+        internal void SetRegions(bool has) => this.ChangeRegions(board => BoardRegions.WithRegions(board, has));
+
+        private void ChangeRegions(Func<BoardData, BoardData> edit)
         {
             if (this.thisSession is { } session)
             {
-                this.Apply(DraftStepWording.Regions, board => BoardRegions.WithRegions(board, has));
+                this.Apply(DraftStepWording.Regions, edit);
                 this.ShowRegionsPart(session.Content.Board);
                 this.ShowBoardPartChanged();
             }
         }
+
+        // A row's handle pressed - the drag starts once the pointer moves (ListRowDrag.Press).
+        private void OnRegionHandlePressed(object? sender, PointerPressedEventArgs e) => this.thisRegionsDrag?.Press(sender, e);
+
+        // A region moved one place up (-1) or down (+1) - Alt+Up and Alt+Down on its row; false when it cannot.
+        internal bool MoveRegion(ComponentPaneRegionRow row, int by)
+        {
+            ArgumentNullException.ThrowIfNull(row);
+
+            int index = this.thisRegionRows.IndexOf(row);
+            int to = index + by;
+
+            if (index < 0 || to < 0 || to >= this.thisRegionRows.Count)
+            {
+                return false;
+            }
+
+            this.thisRegionRows.Move(index, to);
+            this.CommitRegionOrder();
+
+            return true;
+        }
+
+        // The regions as they now stand on screen, into the draft as one step - the buttons in that order.
+        private void CommitRegionOrder()
+        {
+            List<string> order = this.thisRegionRows.Select(row => row.Name).ToList();
+
+            this.ChangeRegions(board => BoardRegions.InOrder(board, order));
+        }
+
+        // ###########################################################################################
+        // A region of the board's own added - its name by BoardRegions.NameProblem's rule, the one the server holds a
+        // submission to; refused, the name stays in its box with the reason under it.
+        // ###########################################################################################
+        internal void AddRegion(string? name)
+        {
+            if (this.thisSession is not { } session)
+            {
+                return;
+            }
+
+            string? problem = BoardRegions.NameProblem(name, BoardRegions.Of(session.Content.Board));
+
+            this.NewRegionProblemText.Text = problem ?? string.Empty;
+            this.NewRegionProblemText.IsVisible = problem is not null;
+
+            if (problem is not null)
+            {
+                return;
+            }
+
+            this.ChangeRegions(board => BoardRegions.WithRegion(board, name));
+            this.NewRegionNameBox.Text = string.Empty;
+        }
+
+        private void OnAddRegionClick(object? sender, RoutedEventArgs e) => this.AddRegion(this.NewRegionNameBox.Text);
+
+        private void OnNewRegionNameKeyDown(object? sender, KeyEventArgs e)
+        {
+            if (e.Key == Key.Enter)
+            {
+                e.Handled = true;
+                this.AddRegion(this.NewRegionNameBox.Text);
+            }
+        }
+
+        private void OnDeleteRegionClick(object? sender, RoutedEventArgs e)
+        {
+            if (sender is Control { Tag: ComponentPaneRegionRow row } && row.CanDelete)
+            {
+                this.DeleteRegion(row.Name);
+            }
+        }
+
+        internal void DeleteRegion(string region) => this.ChangeRegions(board => BoardRegions.WithoutRegion(board, region));
 
         // ---- Board: Categories -----------------------------------------------------------------------
 
@@ -527,6 +643,74 @@ namespace CRT
                 this.thisMoveTo = null;
                 this.Raise(nameof(this.MoveTo));
                 this.Raise(nameof(this.CanDeleteNow));
+            }
+        }
+    }
+
+    // ###########################################################################################
+    // A region on "Board: Regions" (owner request, 2026-11-09): its name in its button's colors and whether it can be
+    // deleted - why not said under it, how many rows have it applied among it. Dragged up or down by its handle. The colors are the markup's, by a
+    // class per set (Border.RegionPill), so they follow the theme and what a person set for PAL and NTSC as the buttons do.
+    // ###########################################################################################
+    public sealed class ComponentPaneRegionRow : ComponentPaneDraggableRow
+    {
+        // What a row shows. The same NAME, the same row (InPlaceList), its facts changed in place (Use) - so a drag's row, and a
+        // row the keyboard is in, survive the step they make (code review, 2026-11-09: moved, two regions swapped colors, their
+        // rows were made again, and the focus Alt+Up had kept was lost).
+        public sealed record Facts(string Name, int Rows, bool CanDelete, string Colors, int Going = 0);
+
+        private Facts thisFacts;
+
+        public ComponentPaneRegionRow(Facts facts) => this.thisFacts = facts;
+
+        public string Name => this.thisFacts.Name;
+
+        public bool CanDelete => this.thisFacts.CanDelete;
+
+        // The colors resource it is drawn in - "Schematics_Region_PAL", "Schematics_Region_Own2".
+        public string Colors => this.thisFacts.Colors;
+
+        public bool IsPal => this.Colors == "Schematics_Region_PAL";
+
+        public bool IsNtsc => this.Colors == "Schematics_Region_NTSC";
+
+        public bool IsOwn1 => this.Colors == "Schematics_Region_Own1";
+
+        public bool IsOwn2 => this.Colors == "Schematics_Region_Own2";
+
+        public bool IsOwn3 => this.Colors == "Schematics_Region_Own3";
+
+        public bool IsOwn4 => this.Colors == "Schematics_Region_Own4";
+
+        // Why it cannot be deleted, its count marked bold (BoldRuns) - "" when it can. How many rows say it is said here
+        // alone (owner request, 2026-11-09: a count beside the name too was "double-wording").
+        public string Why => this.thisFacts.CanDelete
+            ? this.thisFacts.Going > 0 ? ComponentPaneWording.RegionTakesRows(this.thisFacts.Going) : string.Empty
+            : this.thisFacts.Rows > 0 ? ComponentPaneWording.RegionInUse(this.thisFacts.Rows)
+            : ComponentPaneWording.RegionsAtFewest;
+
+        // Whether there is anything to say under it - why it stays, or what goes with it.
+        public bool HasWhy => this.Why.Length > 0;
+
+        public bool Shows(Facts facts) => string.Equals(this.thisFacts.Name, facts.Name, StringComparison.Ordinal);
+
+        // The row's facts as they now are - its colors, whether it can go and why not.
+        public void Use(Facts facts)
+        {
+            if (this.thisFacts == facts)
+            {
+                return;
+            }
+
+            this.thisFacts = facts;
+
+            foreach (string property in new[]
+                     {
+                         nameof(this.CanDelete), nameof(this.Colors), nameof(this.IsPal), nameof(this.IsNtsc), nameof(this.IsOwn1),
+                         nameof(this.IsOwn2), nameof(this.IsOwn3), nameof(this.IsOwn4), nameof(this.Why), nameof(this.HasWhy),
+                     })
+            {
+                this.Raise(property);
             }
         }
     }

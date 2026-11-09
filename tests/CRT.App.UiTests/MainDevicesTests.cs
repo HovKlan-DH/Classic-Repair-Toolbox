@@ -99,7 +99,7 @@ public sealed class MainDevicesTests : IDisposable
     // ###########################################################################################
     // THE BAR ADDS A DEVICE TOO, WITH NO DEVICE AND NO WORKBOOK THERE YET (owner request, 2026-11-06: "if you
     // have created no devices and no workbooks, then all you see in that top-bar is 'Create new workbook'"):
-    // "Add device", green as it adds; added, the "My Devices" tab is shown on its page, and no workbook was made.
+    // "Add device", green as it adds; added, the "Workbooks" tab is shown on its page, and no workbook was made.
     // Called off, nothing is added and the tab shown stays.
     // ###########################################################################################
     [Fact]
@@ -121,7 +121,7 @@ public sealed class MainDevicesTests : IDisposable
             Assert.Empty(WorklogManager.GetAllWorkbooks());
 
             workbooks.BoardsOverrideForTests = [new HardwareBoardEntry { HardwareName = "Commodore 64", BoardName = "250407" }];
-            workbooks.BoardHasRegionsOverrideForTests = _ => Task.FromResult(false);
+            workbooks.BoardRegionsOverrideForTests = _ => Task.FromResult<IReadOnlyList<string>>([]);
 
             // Called off: nothing.
             workbooks.ShowDeviceFormOverrideForTests = _ => Task.FromResult<OwnedDeviceRecord?>(null);
@@ -191,12 +191,13 @@ public sealed class MainDevicesTests : IDisposable
     }
 
     // ###########################################################################################
-    // THE DEVICE DROP-DOWN IS THE BAR'S FIRST (owner request, 2026-11-06 - above Hardware until then): there for
-    // everybody with the worklog on, "Show workbooks for all devices" first and picked, greyed out with no device
-    // to pick, and gone with the bar when the worklog is off.
+    // THE DEVICE DROP-DOWN IS THE BAR'S FIRST (owner request, 2026-11-06 - above Hardware until then): "Show workbooks
+    // for all devices" first and picked, and gone with the bar when the worklog is off. NOT THERE UNTIL A DEVICE IS
+    // (owner request, 2026-11-08: "if no devices or workbooks exists yet ... then its drop-down boxes should not show
+    // either" - greyed out until then), its label with it, the "Workbook" one then standing first.
     // ###########################################################################################
     [Fact]
-    public void The_device_drop_down_is_the_bars_first_with_all_devices_first_and_greyed_out_with_no_device()
+    public void The_device_drop_down_is_the_bars_first_with_all_devices_first_and_not_there_with_no_device()
     {
         UiTest.Run(() =>
         {
@@ -206,17 +207,24 @@ public sealed class MainDevicesTests : IDisposable
             Border bar = main.GetControl<Border>("WorklogBar");
             ComboBox picker = DevicesOf(main);
             Panel pickers = main.GetControl<Panel>("WorklogPickersPanel");
+            TextBlock heading = main.GetControl<TextBlock>("DevicePickerHeadingText");
+            TextBlock workbookHeading = main.GetControl<TextBlock>("WorkbookPickerHeadingText");
 
             Assert.Contains(bar, picker.GetLogicalAncestors());
             Assert.True(pickers.Children.IndexOf(picker) < pickers.Children.IndexOf(WorkbooksOf(main)));
-            Assert.Equal("Device", main.GetControl<TextBlock>("DevicePickerHeadingText").Text);
-            Assert.False(picker.IsEnabled);
+            Assert.Equal("Device", heading.Text);
+            Assert.False(picker.IsVisible);
+            Assert.False(heading.IsVisible);
+            Assert.Equal(0, workbookHeading.Margin.Left);
             Assert.Null(Assert.IsType<BarDeviceChoice>(picker.SelectedItem).Device);
 
             AddDevice("Breadbin #2");
             main.RefreshWorklogBar();
 
+            Assert.True(picker.IsVisible);
+            Assert.True(heading.IsVisible);
             Assert.True(picker.IsEnabled);
+            Assert.True(workbookHeading.Margin.Left > 0);
             Assert.Equal([null, "Breadbin #2"], ChoicesOf(main).Select(choice => choice.Device?.Name));
 
             UserSettings.EnableWorklog = false;
@@ -615,13 +623,12 @@ public sealed class MainDevicesTests : IDisposable
     }
 
     // ###########################################################################################
-    // With no workbook at all the workbook picker says so in its place (the text "No repairs recorded for this board"
-    // beside it until 2026-11-06), and with nothing to list it is greyed out. With "Show workbooks for all devices"
-    // picked and workbooks of other boards to list, it asks for one (owner request, 2026-11-07: '"Please select a
-    // workbook"', "No workbook on this board yet" until then).
+    // With no workbook at all the workbook picker is not there (owner request, 2026-11-08 - it said "No workbook on this
+    // board yet", greyed out, until then). With "Show workbooks for all devices" picked and workbooks of other boards to
+    // list, it asks for one (owner request, 2026-11-07: '"Please select a workbook"').
     // ###########################################################################################
     [Fact]
-    public void With_no_workbook_on_the_board_the_workbook_picker_says_so()
+    public void With_no_workbook_on_the_board_the_workbook_picker_asks_for_one_of_another_board()
     {
         UiTest.Run(() =>
         {
@@ -629,12 +636,12 @@ public sealed class MainDevicesTests : IDisposable
             ComboBox bar = WorkbooksOf(main);
 
             Assert.Null(bar.SelectedItem);
-            Assert.Equal("No workbook on this board yet", bar.PlaceholderText);
-            Assert.False(bar.IsEnabled);
+            Assert.False(bar.IsVisible);
 
             AddRepair("Dead keyboard", null, OtherBoardKey);
             main.RefreshWorklogBar();
 
+            Assert.True(bar.IsVisible);
             Assert.True(bar.IsEnabled);
             Assert.Null(bar.SelectedItem);
             Assert.Equal("Select a workbook", bar.PlaceholderText);
@@ -808,14 +815,76 @@ public sealed class MainDevicesTests : IDisposable
         {
             CRT.Main main = BuildMain();
             ComboBox picker = DevicesOf(main);
-            Assert.False(picker.IsEnabled);
+            Assert.False(picker.IsVisible);
 
             AddDevice("Breadbin #2");
             main.AfterCreateWorkbookForm(created: null, deviceAdded: true);
 
-            Assert.True(picker.IsEnabled);
+            Assert.True(picker.IsVisible);
             Assert.Equal([null, "Breadbin #2"], ChoicesOf(main).Select(choice => choice.Device?.Name));
             Assert.False(main.TabWorkbooks.GetControl<TextBlock>("NoDevicesText").IsVisible);
+        });
+    }
+
+    // ###########################################################################################
+    // THE "Workbook" DROP-DOWN IS NOT THERE UNTIL A WORKBOOK IS, ON ANY BOARD (owner request, 2026-11-08: "if no devices
+    // or workbooks exists yet, because the user has not created any yet, then its drop-down boxes should not show
+    // either"). One on another board is a workbook made: the drop-down lists it, as it lists every board's.
+    // ###########################################################################################
+    [Fact]
+    public void The_workbook_drop_down_is_not_there_until_a_workbook_is_made_on_any_board()
+    {
+        UiTest.Run(() =>
+        {
+            CRT.Main main = BuildMain();
+            main.ApplyWorklogBarVisibility();
+
+            ComboBox workbooks = WorkbooksOf(main);
+            TextBlock heading = main.GetControl<TextBlock>("WorkbookPickerHeadingText");
+
+            Assert.False(workbooks.IsVisible);
+            Assert.False(heading.IsVisible);
+
+            AddRepair("No video", deviceId: null, boardKey: OtherBoardKey);
+            main.RefreshWorklogBar();
+
+            Assert.True(workbooks.IsVisible);
+            Assert.True(heading.IsVisible);
+            Assert.False(DevicesOf(main).IsVisible);
+        });
+    }
+
+    // The bar is as tall with no drop-down as with them: the first workbook or device made must not move the tabs, and
+    // the schematic fitted to them, down.
+    [Fact]
+    public void The_first_drop_down_coming_moves_nothing_below_the_bar()
+    {
+        UiTest.Run(() =>
+        {
+            CRT.Main main = BuildMain();
+
+            try
+            {
+                main.ApplyWorklogBarVisibility();
+                main.Show();
+                Dispatcher.UIThread.RunJobs();
+
+                Control tabs = main.GetControl<Control>("MainTabControl");
+                double before = tabs.Bounds.Top;
+                Assert.False(WorkbooksOf(main).IsVisible);
+
+                AddRepair("No video", deviceId: null);
+                main.RefreshWorklogBar();
+                Dispatcher.UIThread.RunJobs();
+
+                Assert.True(WorkbooksOf(main).IsVisible);
+                Assert.Equal(before, tabs.Bounds.Top);
+            }
+            finally
+            {
+                main.IsApplicationShuttingDownForTests = true;
+                main.Close();
+            }
         });
     }
 

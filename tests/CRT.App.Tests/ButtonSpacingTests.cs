@@ -64,6 +64,7 @@ public sealed class ButtonSpacingTests
     [InlineData("""<StackPanel Orientation="Horizontal" Spacing="4"><ComboBox /><Button /><Button /></StackPanel>""")]
     [InlineData("""<WrapPanel><Button Margin="0,0,8,4" /><Button Margin="0,0,8,4" /></WrapPanel>""")]
     [InlineData("""<Grid ColumnDefinitions="*,4,*"><Button Grid.Column="0" /><Button Grid.Column="2" /></Grid>""")]
+    [InlineData("""<Grid ColumnDefinitions="*,*,*,*,*,*" ColumnSpacing="4"><Button Grid.ColumnSpan="3" /><Button Grid.Column="3" Grid.ColumnSpan="3" /></Grid>""")]
     public void A_row_with_another_gap_is_found(string markup)
     {
         Assert.Contains(ButtonSpacingTests.Check(ButtonSpacingTests.Wrapped(markup)), found => found.Problem is not null);
@@ -74,6 +75,7 @@ public sealed class ButtonSpacingTests
     [InlineData("""<WrapPanel ItemSpacing="6" LineSpacing="4"><Button /><Button /></WrapPanel>""")]
     [InlineData("""<WrapPanel><Button Margin="0,0,6,4" /><Button Margin="0,0,6,4" /></WrapPanel>""")]
     [InlineData("""<Grid ColumnDefinitions="*,6,*"><Button Grid.Column="0" /><Button Grid.Column="2" /></Grid>""")]
+    [InlineData("""<Grid ColumnDefinitions="*,*,*,*,*,*" ColumnSpacing="6"><Button Grid.ColumnSpan="3" /><Button Grid.Column="3" Grid.ColumnSpan="3" /></Grid>""")]
     // Not rows of buttons: one button, a button among other controls, a vertical stack, segments, links.
     [InlineData("""<StackPanel Orientation="Horizontal" Spacing="8"><Button /><TextBlock /></StackPanel>""")]
     [InlineData("""<StackPanel Orientation="Horizontal" Spacing="12"><TextBox /><Button /><Button /></StackPanel>""")]
@@ -136,9 +138,15 @@ public sealed class ButtonSpacingTests
         }
     }
 
-    // Two buttons in a Grid's columns 0 and 2: the column between them is the gap.
+    // Two buttons in a Grid's columns 0 and 2: the column between them is the gap. A Grid spacing its columns itself
+    // (ColumnSpacing - the region buttons' fixed grid, 2026-11-09) has the gap as its spacing.
     private static string? GridGap(XElement grid, IReadOnlyList<XElement> children)
     {
+        if (grid.Attribute("ColumnSpacing")?.Value is { } spacing)
+        {
+            return spacing.Trim() == ButtonSpacingTests.Gap ? null : $"<Grid ColumnSpacing=\"{spacing}\"> holding buttons - the gap is {Gap}";
+        }
+
         string[] columns = (grid.Attribute("ColumnDefinitions")?.Value ?? string.Empty).Split(',');
 
         if (children.Count != 2 || columns.Length != 3 ||

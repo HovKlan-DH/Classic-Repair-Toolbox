@@ -659,6 +659,14 @@
 				</Grid>
 			</Border>
 
+			<!-- Whose rows a component sheet shows: the components picked in the list on CRT's left (owner request,
+			     2026-11-08; BoardTableEditor.Components.cs). Collapsed while every component's show. -->
+			<TextBlock x:Name="ComponentsShownText"
+					   TextWrapping="Wrap"
+					   Margin="0,0,0,6"
+					   FontStyle="Italic"
+					   IsVisible="False" />
+
 			<!-- What just happened (saved, refused, a paste that did not fit) or what to know about
 			     this table. Collapsed when there is nothing to say. -->
 			<TextBlock x:Name="StatusText"

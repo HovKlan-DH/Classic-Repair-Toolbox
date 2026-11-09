@@ -114,14 +114,8 @@ public partial class TabSchematics
         bool hasExplicitRegions = this.MainWindow?.CurrentBoardHasExplicitRegionComponents() ?? true;
         this.SchematicsRegionBorder.IsVisible = this.SchematicsNameBorder.IsVisible && hasExplicitRegions;
 
-        string regionKey = rawRegion.ToUpperInvariant();
-
-        string colorPrefix = regionKey switch
-        {
-            "PAL" => "Schematics_Region_PAL",
-            "NTSC" => "Schematics_Region_NTSC",
-            _ => "SchematicsRegion"
-        };
+        // In the colors of its button: PAL's and NTSC's, or one of a board's own (RegionChoice, 2026-11-09).
+        string colorPrefix = RegionChoice.ColorsOf(this.MainWindow?.CurrentBoardRegions() ?? BoardRegions.PalAndNtsc, rawRegion);
 
         this.SchematicsRegionBorder.Bind(
             Border.BackgroundProperty,

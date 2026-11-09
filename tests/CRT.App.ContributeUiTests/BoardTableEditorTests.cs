@@ -243,7 +243,7 @@ public sealed class BoardTableEditorTests : IDisposable
             DataGrid grid = editor.GetControl<DataGrid>("TableGrid");
 
             Assert.Equal(
-                BoardWorkbookSchema.Components.ColumnOrder,
+                BoardWorkbookSchema.Components.ColumnOrder.Select(BoardWorkbookSchema.HeadingOf),
                 grid.Columns.Skip(1).Select(column => column.Header as string));
 
             Assert.True(grid.Columns[0].IsReadOnly);

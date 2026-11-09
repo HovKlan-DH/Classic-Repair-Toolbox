@@ -1,7 +1,9 @@
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Handlers.DataHandling;
+using Handlers.Geometry;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -21,24 +23,33 @@ namespace CRT
     // tabs had selected to get lost in it. The tab's show TabDrafts.CategoryItems and ComponentItems, which follow
     // the draft as it is edited - the board on screen is read again only once the pane closes. On them:
     //
-    //   - EVERY CATEGORY IS TICKED THE FIRST TIME, AND WHAT IS DONE TO THE LISTS HERE STAYS (owner request,
-    //     2026-11-03: "should select all in the 'Category' list ... but only the first time ... if I switch
-    //     between contribute and schematics tab, then I do not want it to reset every time ... same for the
-    //     component selected"): the categories UNTICKED and the words typed are kept per board for the run
-    //     (ContributeListState) - unticked rather than ticked, so a category the draft has just made is ticked.
-    //     Never saved as the board's filter, which is the other list's.
-    //   - A COMPONENT PICKED IS THE TAB'S, one at a time ("Mark all" is off), and stays picked whatever else the
-    //     tab shows (TabDrafts.thisPickedComponent).
-    //   - THE FILTER BOX ONLY NARROWS THE LIST, selecting nothing.
+    //   - WHAT IS DONE TO THE LISTS HERE STAYS (owner request, 2026-11-03: "if I switch between contribute and
+    //     schematics tab, then I do not want it to reset every time ... same for the component selected"): the
+    //     categories UNTICKED and the words typed are kept per board for the run (ContributeListState) - unticked
+    //     rather than ticked, so a category the draft has just made is ticked. Kept here, they are not the board's
+    //     saved filter; handed back to the other tabs' list as the tab is left (below), they are saved as it, as a
+    //     tick there is. "Every category ticked the first time" (2026-11-03) is over - see "THE SAME LISTS".
+    //   - A COMPONENT PICKED stays picked whatever else the tab shows (TabDrafts.thisPickedComponent) - SEVERAL with Ctrl
+    //     or Shift, edited as one (owner request, 2026-11-08; ComponentPane.Several.cs); "Mark all" stays off.
+    //   - *** THE SAME LISTS ON EVERY TAB (owner requests, 2026-11-08: "always keep the same selection for the left-side
+    //     panel "Category" and "Component" lists", and 2026-11-09: "should keep the exact same components and categories
+    //     selected, and it should not change position in the lists ... it should be the exact same lists"). *** Everything
+    //     the lists show is handed across as the tab is entered and as it is left, whatever was done there
+    //     (TakeListsIntoContribute, GiveListsBackFromContribute): the categories ticked, the word in the filter box, the
+    //     components selected - and where each list stands, the same row at its top (ListPosition). So "every category
+    //     ticked the first time" (2026-11-03) is over: the tab starts from what the other tabs show.
+    //   - THE FILTER BOX ONLY NARROWS THE LIST, selecting nothing - the word handed across narrows the other tabs' list
+    //     too, selecting nothing there either; typed there, it selects all it finds, as it always did.
     //   - "WITH ISSUES" COMES WITH THE LIST, there on no other tab (TabDrafts.Problems.cs).
     //   - "Clear" lets go of all of it: every category ticked, nothing typed, nothing narrowed, no component picked.
     //   - THE REGION BUTTONS are the tab's region too (PickRegion) - and follow "Board: Regions" as it is
     //     ticked, so they read what the tab reads.
     //
-    // The other tabs' lists stay behind them as they were, their selection and scroll with them; back on either,
-    // everything stands where it stood (owner request, 2026-11-04: "navigate to the exact same position"). The one
-    // thing that reaches them is a board read again - what the pane saved - which drops a selection as any load
-    // does, so what was selected as the tab was entered is held until such a load has shown it (_selectionToKeep).
+    // While the tab is shown the other tabs' lists stay behind it; back on either, everything stands where the list shown
+    // last stood (owner requests, 2026-11-04: "navigate to the exact same position", and 2026-11-09). What reaches the
+    // hidden lists meanwhile is a board read again - what the pane saved - which drops a selection as any load does, so
+    // what was selected as the tab was entered, or given back as it was left, is held until such a load has shown it
+    // (_selectionToKeep).
     // Its rows stay on screen until the new ones come, and those come selected in one go (LetGoOfListsForLoad,
     // SelectInComponentList; owner report, 2026-11-05).
     //
@@ -48,6 +59,56 @@ namespace CRT
     {
         // Whether the Contribute tab is shown - so its lists rather than the other tabs'.
         private bool _contributeListsShown;
+
+        // Whether the tab's lists took what the other tabs' show since the tab was entered - not while the board chosen was
+        // still being read, when they are taken as its lists come (OnContributeListsShown). Only lists that took them give
+        // them back: lists that never did hold nobody's choice.
+        private bool _contributeTookLists;
+
+        // True while they are being taken - the tab's lists are read again then, which is no load ending.
+        private bool _takingContributeLists;
+
+        // ###########################################################################################
+        // What the lists said as they were handed over - the tab's as it was entered, the other tabs' as it was left. A side
+        // that still says it was not touched since, and hands nothing over: lists that are the same stay exactly as they
+        // were, a pick a word hides on one side included. Null: hand everything over.
+        // ###########################################################################################
+        private ListsSaid? _contributeSaidAtEntry;
+        private ListsSaid? _othersSaidAtExit;
+
+        private sealed record ListsSaid(HashSet<string> Unticked, string Word, HashSet<string> Picked)
+        {
+            public bool SameAs(ListsSaid other) =>
+                this.Unticked.SetEquals(other.Unticked) &&
+                string.Equals(this.Word, other.Word, StringComparison.Ordinal) &&
+                this.Picked.SetEquals(other.Picked);
+        }
+
+        private ListsSaid OtherTabsListsSay()
+        {
+            var ticked = new HashSet<string>(this.CategoryFilterListBox.SelectedItems?.Cast<string>() ?? [], StringComparer.OrdinalIgnoreCase);
+
+            return new ListsSaid(
+                new HashSet<string>((this.CategoryFilterListBox.ItemsSource?.Cast<string>() ?? []).Where(category => !ticked.Contains(category)), StringComparer.OrdinalIgnoreCase),
+                this.ComponentSearchTextBox.Text ?? string.Empty,
+                new HashSet<string>(this.SelectedComponentLabels(), StringComparer.OrdinalIgnoreCase));
+        }
+
+        private ListsSaid ContributeListsSay()
+        {
+            ContributeListState state = this.ContributeListStateOf(this._contributeListsBoard);
+
+            return new ListsSaid(
+                new HashSet<string>(state.Unticked, StringComparer.OrdinalIgnoreCase),
+                state.Search,
+                new HashSet<string>(this.TabDrafts.PickedForOtherTabs, StringComparer.OrdinalIgnoreCase));
+        }
+
+        // Both sets of lists are of the board shown, read: only then is anything handed across.
+        private bool ListsAreOfOneBoard =>
+            this._currentBoardData is not null &&
+            this.ContributeListsShowTheirBoard &&
+            string.Equals(this._boardInOtherTabsLists, this._contributeListsBoard, StringComparison.OrdinalIgnoreCase);
 
         // The components the other tabs' list selects again when the board is read again, for the board they are of.
         private (string BoardKey, HashSet<string> ComponentKeys)? _selectionToKeep;
@@ -80,6 +141,10 @@ namespace CRT
             public HashSet<string> Unticked { get; } = new(StringComparer.OrdinalIgnoreCase);
 
             public string Search { get; set; } = string.Empty;
+
+            // Taken from the other tabs, or changed here, this run: what the lists say on the board when it is shown on this
+            // tab again - another board shown here and back takes nothing from the other tabs over it.
+            public bool Kept { get; set; }
         }
 
         private readonly Dictionary<string, ContributeListState> _contributeListStates = new(StringComparer.OrdinalIgnoreCase);
@@ -143,6 +208,8 @@ namespace CRT
             string boardKey = this.GetCurrentBoardKey();
 
             this._currentBoardData = board;
+            this._localRegion = RegionChoice.ToShow(BoardRegions.Of(board), UserSettings.Region, UserSettings.RegionOfBoard(boardKey));
+            this.UpdateRegionButtonsState();
             this._suppressCategoryFilterSave = true;
             this.ShowListsOfBoard(board, boardKey, this._localRegion);
             this._suppressCategoryFilterSave = false;
@@ -174,12 +241,52 @@ namespace CRT
 
             if (shown)
             {
+                // A word typed and not taken yet is what the list shows a moment later.
+                if (!string.Equals(this.ComponentSearchTextBox.Text ?? string.Empty, this._componentSearchInEffect, StringComparison.Ordinal))
+                {
+                    this.ApplyComponentSearchNow();
+                }
+
                 this.HoldSelectionOfTheOtherTabs();
+
+                // Nothing done on the other tabs since they took this tab's lists: this tab's stay as they were - a pick a
+                // word here hides, say, which their list cannot hold.
+                if (this._othersSaidAtExit is { } said && said.SameAs(this.OtherTabsListsSay()) && this.ListsAreOfOneBoard)
+                {
+                    this._contributeTookLists = true;
+                }
+                else
+                {
+                    this.TakeListsIntoContribute();
+                }
+
+                this._contributeSaidAtEntry = this._contributeTookLists ? this.ContributeListsSay() : null;
             }
-            else if (!string.Equals(this.ContributeSearchTextBox.Text ?? string.Empty, this._contributeSearchInEffect, StringComparison.Ordinal))
+            else
             {
-                this.ApplyContributeSearchNow();
+                if (!string.Equals(this.ContributeSearchTextBox.Text ?? string.Empty, this._contributeSearchInEffect, StringComparison.Ordinal))
+                {
+                    this.ApplyContributeSearchNow();
+                }
+
+                // Nothing done here since this tab took the other tabs' lists: theirs stay as they were.
+                if (this._contributeSaidAtEntry is not { } said || !said.SameAs(this.ContributeListsSay()))
+                {
+                    this.GiveListsBackFromContribute();
+                }
+
+                this._othersSaidAtExit = this._contributeTookLists ? this.OtherTabsListsSay() : null;
             }
+
+            // Where the list shown until now stands, read before it goes - the list shown next is put there.
+            (ListBox Components, ListBox Categories) from = shown
+                ? (this.ComponentFilterListBox, this.CategoryFilterListBox)
+                : (this.ContributeComponentListBox, this.ContributeCategoryListBox);
+            (ListBox Components, ListBox Categories) to = shown
+                ? (this.ContributeComponentListBox, this.ContributeCategoryListBox)
+                : (this.ComponentFilterListBox, this.CategoryFilterListBox);
+            ListStand? components = Main.StandOf(from.Components);
+            ListStand? categories = Main.StandOf(from.Categories);
 
             TextBox boxShown = shown ? this.ContributeSearchTextBox : this.ComponentSearchTextBox;
             bool keyboardInTheBox = (shown ? this.ComponentSearchTextBox : this.ContributeSearchTextBox).IsFocused;
@@ -202,11 +309,256 @@ namespace CRT
             }
 
             this.MarkAllComponentsButton.IsEnabled = !shown;
+
+            // The region one of the board now read - the draft's here, the board on screen's on the other tabs, which can come
+            // in other regions (FollowRegionsOfBoardShown).
+            this.FollowRegionsOfBoardShown();
             this.UpdateRegionButtonsState();
 
             if (keyboardInTheBox)
             {
                 boxShown.Focus();
+            }
+
+            // The lists shown now put where the others stood, once laid out - by the layout pass that comes, never one forced
+            // on the whole window here (code review, 2026-11-09: every switch laid the window out on the spot, inside the tab
+            // control's selection change).
+            this.PutListsWhenLaidOut(to.Components, components, to.Categories, categories);
+        }
+
+        // The placement waiting for the next layout pass - let go of as the tab is switched again before it came.
+        private EventHandler? _listsWaitingForLayout;
+
+        private ListBox? _listWaitedOn;
+
+        private void PutListsWhenLaidOut(ListBox components, ListStand? componentsStand, ListBox categories, ListStand? categoriesStand)
+        {
+            if (this._listWaitedOn is { } waited && this._listsWaitingForLayout is { } waiting)
+            {
+                waited.LayoutUpdated -= waiting;
+            }
+
+            this._listsWaitingForLayout = null;
+            this._listWaitedOn = null;
+
+            if (componentsStand is null && categoriesStand is null)
+            {
+                return;
+            }
+
+            void Put(object? sender, EventArgs e)
+            {
+                components.LayoutUpdated -= Put;
+                this._listsWaitingForLayout = null;
+                this._listWaitedOn = null;
+
+                Main.PutAt(components, componentsStand);
+                Main.PutAt(categories, categoriesStand);
+            }
+
+            this._listsWaitingForLayout = Put;
+            this._listWaitedOn = components;
+            components.LayoutUpdated += Put;
+        }
+
+        // ---- one set of lists, as far as anybody can tell -----------------------------------------------
+
+        // ###########################################################################################
+        // *** THE SAME LISTS ON EVERY TAB (owner request, 2026-11-09: "Toggling between tabs (e.g. "Contribute" and
+        // "Schematics") should keep the exact same components and categories selected, and it should not change position
+        // in the lists. Right now it works independently, having each its component scope and lists, though it should be
+        // the exact same lists"). *** As the tab is entered its lists take everything the other tabs' show: the categories
+        // ticked, the word in the filter box - which narrows here - and the components selected, picked here. Not while
+        // the board chosen is still being read: the lists then are of the board before (ContributeListsShowTheirBoard) -
+        // they are taken as its lists come (OnContributeListsShown).
+        // ###########################################################################################
+        private void TakeListsIntoContribute()
+        {
+            this._contributeTookLists = false;
+
+            if (!this.ListsAreOfOneBoard)
+            {
+                return;
+            }
+
+            ContributeListState state = this.ContributeListStateOf(this._contributeListsBoard);
+            var ticked = new HashSet<string>(this.CategoryFilterListBox.SelectedItems?.Cast<string>() ?? [], StringComparer.OrdinalIgnoreCase);
+
+            state.Unticked.Clear();
+            state.Unticked.UnionWith((this.CategoryFilterListBox.ItemsSource?.Cast<string>() ?? []).Where(category => !ticked.Contains(category)));
+            state.Search = this.ComponentSearchTextBox.Text ?? string.Empty;
+            state.Kept = true;
+
+            this._takingContributeLists = true;
+
+            try
+            {
+                this._contributeSearchTimer?.Stop();
+                this.ShowContributeSearchText(state.Search);
+                this.TabDrafts.UseComponentFilter(state.Unticked, state.Search);
+                this.ShowContributeTicks();
+                this.TabDrafts.TakePickFromOtherTabs(this.SelectedComponentLabels(), everyRowOfTheirs: this.IsEveryComponentRowSelected);
+            }
+            finally
+            {
+                this._takingContributeLists = false;
+            }
+
+            this._contributeTookLists = true;
+        }
+
+        // ###########################################################################################
+        // ... and as it is left, the other tabs' take the tab's: the categories ticked (saved as the board's filter, as a
+        // tick there is), the word - narrowing their list as it narrows this one, never selecting all it finds, as typing it
+        // there does - and the components picked here, selected and lit up on the picture. Held for the board read again
+        // as the tab is left, as what was selected as it was entered was (_selectionToKeep).
+        // ###########################################################################################
+        private void GiveListsBackFromContribute()
+        {
+            if (!this._contributeTookLists || !this.ListsAreOfOneBoard || this._currentBoardData is not { } board)
+            {
+                return;
+            }
+
+            ContributeListState state = this.ContributeListStateOf(this._contributeListsBoard);
+            List<string> categories = this.CategoryFilterListBox.ItemsSource?.Cast<string>().ToList() ?? [];
+            List<string> ticked = categories.Where(category => !state.Unticked.Contains(category)).ToList();
+            var selection = this.CategoryFilterListBox.Selection;
+            bool ticksChange = categories.Where((category, index) => selection.IsSelected(index) == state.Unticked.Contains(category)).Any();
+            bool wordChanges = !string.Equals(this.ComponentSearchTextBox.Text ?? string.Empty, state.Search, StringComparison.Ordinal);
+            string boardKey = this.GetCurrentBoardKey();
+
+            if (ticksChange)
+            {
+                this._suppressCategoryFilterSave = true;
+                selection.BeginBatchUpdate();
+
+                try
+                {
+                    for (int index = 0; index < categories.Count; index++)
+                    {
+                        if (state.Unticked.Contains(categories[index]))
+                        {
+                            selection.Deselect(index);
+                        }
+                        else
+                        {
+                            selection.Select(index);
+                        }
+                    }
+                }
+                finally
+                {
+                    selection.EndBatchUpdate();
+                    this._suppressCategoryFilterSave = false;
+                }
+
+                if (boardKey.Length > 0)
+                {
+                    UserSettings.SetSelectedCategories(boardKey, ticked, categories);
+                }
+            }
+
+            if (wordChanges)
+            {
+                this._componentSearchDebounceTimer?.Stop();
+                this.ShowComponentSearchText(state.Search);
+            }
+
+            var wanted = new HashSet<string>(this.TabDrafts.PickedForOtherTabs, StringComparer.OrdinalIgnoreCase);
+
+            this._suppressComponentHighlightUpdate = true;
+
+            try
+            {
+                if (ticksChange || wordChanges || this.ComponentFilterListBox.ItemsSource is null)
+                {
+                    this.ComponentFilterListBox.ItemsSource = ComponentListBuilder.BuildComponentItems(
+                        board,
+                        this._localRegion,
+                        new HashSet<string>(ticked, StringComparer.OrdinalIgnoreCase),
+                        state.Search,
+                        this._currentBoardDraftSummary.DraftedComponentBoardLabels);
+                }
+
+                List<ComponentListItem> rows = this.ComponentFilterListBox.ItemsSource?.Cast<ComponentListItem>().ToList() ?? [];
+                var components = this.ComponentFilterListBox.Selection;
+                components.BeginBatchUpdate();
+
+                try
+                {
+                    components.Clear();
+
+                    for (int index = 0; index < rows.Count; index++)
+                    {
+                        if (wanted.Contains(rows[index].BoardLabel))
+                        {
+                            components.Select(index);
+                        }
+                    }
+                }
+                finally
+                {
+                    components.EndBatchUpdate();
+                }
+            }
+            finally
+            {
+                this._suppressComponentHighlightUpdate = false;
+            }
+
+            var keys = new HashSet<string>(
+                this.ComponentFilterListBox.SelectedItems?.Cast<ComponentListItem>().Select(item => item.SelectionKey) ?? [],
+                StringComparer.OrdinalIgnoreCase);
+
+            this._selectionToKeep = keys.Count > 0 || state.Search.Length > 0 ? (boardKey, keys) : null;
+
+            this.TabSchematicsControl.UpdateHighlightsForComponents(this.SelectedComponentLabels());
+            this.TabOverview.ApplyFilter(state.Search);
+        }
+
+        // Where a list stands: its rows' keys, the row at its top and how far into it (ListPosition).
+        private sealed record ListStand(IReadOnlyList<string> Keys, int Row, double Into);
+
+        private static IReadOnlyList<string> KeysOf(ListBox list) =>
+            (list.ItemsSource?.Cast<object>() ?? [])
+                .Select(item => item switch
+                {
+                    ComponentListItem component => component.SelectionKey,
+                    string category => category,
+                    _ => item?.ToString() ?? string.Empty,
+                })
+                .ToList();
+
+        private static ScrollViewer? ScrollerOf(ListBox list) => list.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault();
+
+        // Null for a list never laid out, or with nothing to measure.
+        private static ListStand? StandOf(ListBox list)
+        {
+            IReadOnlyList<string> keys = Main.KeysOf(list);
+
+            return Main.ScrollerOf(list) is { } scroller &&
+                   ListPosition.TopOf(scroller.Offset.Y, scroller.Extent.Height, keys.Count) is { } top
+                ? new ListStand(keys, top.Row, top.Into)
+                : null;
+        }
+
+        // `list` put where `stand` was: the same row at its top, as far into it.
+        private static void PutAt(ListBox list, ListStand? stand)
+        {
+            if (stand is null || Main.ScrollerOf(list) is not { } scroller)
+            {
+                return;
+            }
+
+            IReadOnlyList<string> keys = Main.KeysOf(list);
+            int row = ListPosition.MatchingRow(stand.Keys, stand.Row, keys);
+
+            if (row >= 0)
+            {
+                scroller.Offset = new Avalonia.Vector(
+                    scroller.Offset.X,
+                    ListPosition.OffsetOf(row, stand.Into, scroller.Extent.Height, keys.Count, scroller.Viewport.Height));
             }
         }
 
@@ -258,6 +610,13 @@ namespace CRT
             }
         }
 
+        // Whether the other tabs' component list holds "Mark all"'s selection - the button pressed and every row, more than one,
+        // still selected - which the Contribute tab shows and never opens (TabDrafts.TakePickFromOtherTabs).
+        private bool IsEveryComponentRowSelected =>
+            this._markAllPressed &&
+            this.ComponentFilterListBox.ItemCount > 1 &&
+            (this.ComponentFilterListBox.SelectedItems?.Count ?? 0) == this.ComponentFilterListBox.ItemCount;
+
         private List<string> SelectedComponentLabels() =>
             this.ComponentFilterListBox.SelectedItems?
                 .Cast<ComponentListItem>()
@@ -297,6 +656,7 @@ namespace CRT
 
             state.Unticked.Clear();
             state.Unticked.UnionWith(this.TabDrafts.CategoryItems.Where(category => !ticked.Contains(category)));
+            state.Kept = true;
 
             this.TabDrafts.UseComponentFilter(state.Unticked, state.Search);
         }
@@ -349,9 +709,15 @@ namespace CRT
             this._contributeSearchTimer?.Stop();
 
             string word = this.ContributeSearchTextBox.Text ?? string.Empty;
+            ContributeListState state = this.ContributeListStateOf(this._contributeListsBoard);
 
             this._contributeSearchInEffect = word;
-            this.ContributeListStateOf(this._contributeListsBoard).Search = word;
+
+            if (!string.Equals(state.Search, word, StringComparison.Ordinal))
+            {
+                state.Search = word;
+                state.Kept = true;
+            }
         }
 
         // ###########################################################################################
@@ -371,6 +737,12 @@ namespace CRT
             this.TakeWaitingContributeWord();
             this._contributeListsBoard = boardKey;
             this.ShowContributeSearchText(this.ContributeListStateOf(boardKey).Search);
+
+            // Another board's lists are the other tabs' to give, as they come (OnContributeListsShown) - never this
+            // board's handed to them as the tab is left.
+            this._contributeTookLists = false;
+            this._contributeSaidAtEntry = null;
+            this._othersSaidAtExit = null;
         }
 
         // ###########################################################################################
@@ -433,12 +805,34 @@ namespace CRT
             }
         }
 
-        // The lists were read again: the region buttons read what the tab reads ("Board: Regions" ticked
-        // shows them at once), and the ticks follow the categories there now are.
+        // ###########################################################################################
+        // The lists were read again: the region buttons read what the tab reads ("Board: Regions" ticked shows them at
+        // once), and the ticks follow the categories there now are. The tab entered while the board chosen was still being
+        // read takes the other tabs' lists now that its own are of that board (TakeListsIntoContribute).
+        // ###########################################################################################
         private void OnContributeListsShown(object? sender, EventArgs e)
         {
+            // A region the board no longer has is let go of first - which reads the lists again, and runs this then.
+            if (this.FollowRegionsOfBoardShown())
+            {
+                return;
+            }
+
             this.UpdateRegionButtonsState();
             this.ShowContributeTicks();
+
+            if (this._contributeListsShown && !this._contributeTookLists && !this._takingContributeLists && this.ListsAreOfOneBoard)
+            {
+                // A board shown here before this run keeps what its lists said here - given back whole as the tab is left.
+                if (this.ContributeListStateOf(this._contributeListsBoard).Kept)
+                {
+                    this._contributeTookLists = true;
+                    return;
+                }
+
+                this.TakeListsIntoContribute();
+                this._contributeSaidAtEntry = this._contributeTookLists ? this.ContributeListsSay() : null;
+            }
         }
 
         // "Clear" on the tab: back to how it starts - nothing narrowed, and no component picked.
@@ -450,6 +844,7 @@ namespace CRT
 
             state.Unticked.Clear();
             state.Search = string.Empty;
+            state.Kept = true;
 
             this.ShowContributeSearchText(string.Empty);
 
@@ -527,13 +922,22 @@ namespace CRT
         // ###########################################################################################
         private void SelectInComponentList(IReadOnlyList<ComponentListItem> rows, HashSet<string> selectionKeys)
         {
+            // A key no row has any more - its component's names changed on the Contribute tab since it was held (code review,
+            // 2026-11-09: as the board was read again it lost its selection, and coming back to the tab closed its pane) - is
+            // found by its label and region, the row it was.
+            var present = new HashSet<string>(rows.Select(row => row.SelectionKey), StringComparer.OrdinalIgnoreCase);
+            var renamed = new HashSet<string>(
+                selectionKeys.Where(key => !present.Contains(key)).Select(Main.LabelAndRegionOf),
+                StringComparer.OrdinalIgnoreCase);
+
             this.ComponentFilterListBox.Selection.BeginBatchUpdate();
 
             try
             {
                 for (int i = 0; i < rows.Count; i++)
                 {
-                    if (selectionKeys.Contains(rows[i].SelectionKey))
+                    if (selectionKeys.Contains(rows[i].SelectionKey) ||
+                        (renamed.Count > 0 && renamed.Contains(Main.LabelAndRegionOf(rows[i].SelectionKey))))
                     {
                         this.ComponentFilterListBox.Selection.Select(i);
                     }
@@ -543,6 +947,15 @@ namespace CRT
             {
                 this.ComponentFilterListBox.Selection.EndBatchUpdate();
             }
+        }
+
+        // A component list row's key (ComponentListItem.SelectionKey: label, friendly name, technical name, region) as its
+        // label and region alone - what stays as its names change.
+        internal static string LabelAndRegionOf(string selectionKey)
+        {
+            string[] parts = selectionKey.Split('\u001F');
+
+            return parts.Length >= 2 ? string.Concat(parts[0], "\u001F", parts[^1]) : selectionKey;
         }
 
         // ###########################################################################################

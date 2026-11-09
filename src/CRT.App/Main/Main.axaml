@@ -49,31 +49,6 @@
 			<Setter Property="BoxShadow" Value="0 3 12 0 #59000000" />
 		</Style>
 
-		<!-- Region toggle buttons -->
-		<Style Selector="Button.RegionToggle.active">
-			<Setter Property="BorderThickness" Value="2" />
-		</Style>
-
-		<!-- PAL active -->
-		<Style Selector="Button#PalRegionButton.RegionToggle.active">
-			<Setter Property="Foreground" Value="{DynamicResource Schematics_Region_PAL_Fg}" />
-			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_PAL_Bg}" />
-		</Style>
-		<Style Selector="Button#PalRegionButton.RegionToggle.active /template/ ContentPresenter">
-			<Setter Property="Background" Value="{DynamicResource Schematics_Region_PAL_Bg}" />
-			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_PAL_Bg}" />
-		</Style>
-
-		<!-- NTSC active -->
-		<Style Selector="Button#NtscRegionButton.RegionToggle.active">
-			<Setter Property="Foreground" Value="{DynamicResource Schematics_Region_NTSC_Fg}" />
-			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_NTSC_Bg}" />
-		</Style>
-		<Style Selector="Button#NtscRegionButton.RegionToggle.active /template/ ContentPresenter">
-			<Setter Property="Background" Value="{DynamicResource Schematics_Region_NTSC_Bg}" />
-			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_NTSC_Bg}" />
-		</Style>
-
 	</Window.Styles>
 
 	<Grid x:Name="RootGrid">
@@ -187,7 +162,7 @@
 							  x:Name="BoardComboBox"
 							  HorizontalAlignment="Stretch"
 							  Margin="0,8,0,0" />
-					<!-- The category and component lists - and, on the "My Devices" tab, that tab's "My devices" in their
+					<!-- The category and component lists - and, on the "Workbooks" tab, that tab's "My devices" in their
 					     place (owner requests, 2026-11-06: "When in this tab, I have no use of those data", the workbooks
 					     back in the tab and "keep the 'My devices' in the left-side panel"; Main.DeviceList.cs). -->
 					<Grid x:Name="ComponentListsGrid"
@@ -264,7 +239,7 @@
 								 Classes="SideList ComponentRows"
 								 ItemTemplate="{StaticResource ComponentRowTemplate}"
 								 AutoScrollToSelectedItem="False"
-								 SelectionMode="Multiple,Toggle"
+								 SelectionMode="Multiple"
 								 Margin="0,8,0,0"
 								 BorderThickness="1"
 								 CornerRadius="4"
@@ -276,7 +251,8 @@
 								 Classes="SideList ComponentRows"
 								 ItemTemplate="{StaticResource ComponentRowTemplate}"
 								 IsVisible="False"
-								 SelectionMode="Single"
+								 SelectionMode="Multiple"
+								 AutoScrollToSelectedItem="False"
 								 Margin="0,8,0,0"
 								 BorderThickness="1"
 								 CornerRadius="4"
@@ -291,7 +267,7 @@
 							   IsVisible="False" />
 				</Grid>
 
-				<!-- Action Controls - the component lists', so hidden with them on the "My Devices" tab -->
+				<!-- Action Controls - the component lists', so hidden with them on the "Workbooks" tab -->
 				<StackPanel x:Name="ComponentActionsPanel" Grid.Row="2" Margin="0,12,0,0" Spacing="4">
 					<TextBox x:Name="ComponentSearchTextBox"
 							 FontSize="12"
@@ -329,11 +305,14 @@
 								Click="OnMarkAllComponentsClick" />
 					</Grid>
 
-					<!-- Video standard -->
-					<Grid x:Name="RegionButtonsGrid" ColumnDefinitions="*,6,*">
+					<!-- Video standard, or the board's own regions. ITS COLUMNS AND ROWS NEVER CHANGE (owner report, 2026-11-09:
+					     a grid that lost a column threw at launch - RegionButtonLayout): six equal columns 6px apart, PAL and NTSC
+					     spanning three each - the halves "*,6,*" gave - and three to a row spanning two; a second row under it. -->
+					<Grid x:Name="RegionButtonsGrid" ColumnDefinitions="*,*,*,*,*,*" ColumnSpacing="6" RowDefinitions="Auto,Auto">
 						<Button x:Name="PalRegionButton"
 								Classes="RegionToggle"
 								Grid.Column="0"
+								Grid.ColumnSpan="3"
 								Content="PAL"
 								HorizontalAlignment="Stretch"
 								HorizontalContentAlignment="Center"
@@ -342,7 +321,8 @@
 								Click="OnPalRegionClick" />
 						<Button x:Name="NtscRegionButton"
 								Classes="RegionToggle"
-								Grid.Column="2"
+								Grid.Column="3"
+								Grid.ColumnSpan="3"
 								Content="NTSC"
 								HorizontalAlignment="Stretch"
 								HorizontalContentAlignment="Center"
@@ -473,7 +453,10 @@
 						<!-- Each drop-down as wide as the line it shows; short of room, a short one keeps its words whole and the
 						     longer is cut short (owner request, 2026-11-06: "have the two drop-downs resize, so it will show as much as
 						     the text in the drop-downs as possible" - fixed shares until then). BarPickersPanel; clipped to its place. -->
+						<!-- A drop-down's height with none shown (none made yet - FillBarPickers): the first one coming must not
+						     make the bar taller, moving the tabs and the schematic fitted to them. -->
 						<local:BarPickersPanel x:Name="WorklogPickersPanel"
+											   MinHeight="{DynamicResource ComboBoxMinHeight}"
 											   VerticalAlignment="Center">
 							<local:BarPickersPanel.Styles>
 								<!-- A line of either list as wide as the list, so its badge stands at its end. -->
@@ -488,20 +471,25 @@
 									   Foreground="{DynamicResource Schematics_Panels_Fg}"
 									   VerticalAlignment="Center" />
 							<!-- "Show workbooks for all devices" first, then every device, each with how many workbooks it has and its
-							     status - what the "Workbook" drop-down lists (Main.Devices.cs). Greyed out with no device. -->
+							     status - what the "Workbook" drop-down lists (Main.Devices.cs). Not there, its label with it, until a
+							     device is (owner request, 2026-11-08: "if no devices or workbooks exists yet ... then its drop-down
+							     boxes should not show either") - the workbooks' then has the room. -->
 							<ComboBox x:Name="DevicePickerComboBox"
 									  Classes="BarPicker"
 									  FontSize="12"
 									  HorizontalContentAlignment="Stretch"
 									  VerticalAlignment="Center"
 									  SelectionChanged="OnDevicePickerSelectionChanged" />
-							<TextBlock Text="Workbook"
+							<!-- Its left margin sets it apart from the device drop-down - none while that is not there (FillBarPickers). -->
+							<TextBlock x:Name="WorkbookPickerHeadingText"
+									   Text="Workbook"
 									   FontSize="12"
 									   Margin="16,0,8,0"
 									   Foreground="{DynamicResource Schematics_Panels_Fg}"
 									   VerticalAlignment="Center" />
 							<!-- Every workbook, or the device's - on any board, one on another board than the one shown naming it,
-							     and picking it switches the drop-downs to it (OnWorklogJobBoxSelectionChanged). Greyed out with none. -->
+							     and picking it switches the drop-downs to it (OnWorklogJobBoxSelectionChanged). Greyed out while the
+							     device picked has none; not there, its label with it, until a workbook is made on any board. -->
 							<ComboBox x:Name="WorklogJobBox"
 									  Classes="BarPicker"
 									  FontSize="12"
@@ -526,13 +514,15 @@
 						<local:TabResources x:Name="TabResources" />
 					</TabItem>
 
-					<!-- "My Devices" ("Workbooks" until 2026-11-06 - owner request: "Can we try and rename the
-					     'Workbooks' tab to 'My Devices' - I want to see if this is better"; the code keeps the
-					     Workbooks names). Hidden unless "Enable Worklog" is ticked in Configuration.
+					<!-- "Workbooks" - "My Devices" from 2026-11-06 (owner request, a try: "Can we try and rename the
+					     'Workbooks' tab to 'My Devices' - I want to see if this is better") to 2026-11-08 (owner request:
+					     "When we can have cases where there might never be created any devices, then its most significant
+					     meaning of this tab is about workbooks"). Its "My devices" list keeps its name - it shows devices.
+					     Hidden unless "Enable Worklog" is ticked in Configuration.
 					     IsVisible starts False so a launch with the worklog off never flashes the tab;
 					     ApplyWorklogBarVisibility sets the real value during startup and again whenever
 					     the setting is toggled, alongside the worklog bar's own visibility. -->
-					<TabItem x:Name="WorkbooksTabItem" Header="My Devices" IsVisible="False">
+					<TabItem x:Name="WorkbooksTabItem" Header="Workbooks" IsVisible="False">
 						<local:TabWorkbooks x:Name="TabWorkbooks" />
 					</TabItem>
 

@@ -127,7 +127,7 @@ public sealed class BoardWorkbookSchemaTests
         }
 
         // The pictures' and baselines' note, so the walk above met one.
-        Assert.Equal(1, noteColumns);
+        Assert.Equal(2, noteColumns);
     }
 
     [Fact]

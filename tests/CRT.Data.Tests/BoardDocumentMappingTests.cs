@@ -139,8 +139,8 @@ public sealed class BoardDocumentMappingTests
         {
             // 11 since 2026-10-30: this side's trace colour and both sides' trace opacities.
             [typeof(BoardSchematicEntry)] = 11,
-            // 8 since 2026-11-02: the repair notes went.
-            [typeof(ComponentEntry)] = 8,
+            // 9 since 2026-11-09: "Purpose or note" (8 since 2026-11-02: the repair notes went).
+            [typeof(ComponentEntry)] = 9,
             // 11 since 2026-11-01: where a baseline comes from went.
             [typeof(ComponentImageEntry)] = 11,
             [typeof(ComponentPinEntry)] = 5,

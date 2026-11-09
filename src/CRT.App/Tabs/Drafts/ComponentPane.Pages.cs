@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Handlers.DataHandling;
+using Handlers.Theming;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -53,8 +54,10 @@ namespace CRT
         // The label as the box last read it - its capitals are a change of their own.
         private string thisLabelShown = string.Empty;
 
-        // Whether the board open has regions - what offers "Applies to" and the ticks.
-        private bool thisBoardHasRegions;
+        // The regions of the board open (BoardRegions.Of) - what offers "Applies to" and the ticks, and what they list.
+        private IReadOnlyList<string> thisBoardRegions = [];
+
+        private bool thisBoardHasRegions => this.thisBoardRegions.Count > 0;
 
         internal ComponentPage Page => this.thisPage;
 
@@ -72,14 +75,16 @@ namespace CRT
             this.BasicsSection.IsVisible = this.thisPage == ComponentPage.Basics;
             this.ReplacementsSection.IsVisible = this.thisPage == ComponentPage.Replacements;
             this.PinoutSection.IsVisible = this.thisPage == ComponentPage.Pinout;
+            this.PinsArea.IsVisible = true;
             this.PicturesSection.IsVisible = this.thisPage == ComponentPage.Pictures;
             this.BaselinesSection.IsVisible = this.thisPage == ComponentPage.Baselines;
             this.FilesSection.IsVisible = this.thisPage == ComponentPage.Files;
             this.LinksSection.IsVisible = this.thisPage == ComponentPage.Links;
 
             // Which row of its Basics this is - the other pages' rows say their own region.
-            this.RegionText.IsVisible = this.thisPage == ComponentPage.Basics && !string.IsNullOrEmpty(this.RegionText.Text);
+            this.RegionText.IsVisible = this.thisPage == ComponentPage.Basics && BoldRuns.TextOf(this.RegionText).Length > 0;
             this.ShowRegionShown();
+            this.HoldBackPagesOfOne();
 
             this.TellPagesChanged();
         }
@@ -103,11 +108,13 @@ namespace CRT
                     return null;
                 }
 
-                int rows = session.Content.Board.Components.Count(row => ComponentPaneEdits.IsOfComponent(row.BoardLabel, this.thisLabel));
+                int rows = this.IsSeveral
+                    ? this.thisSeveral.Count
+                    : session.Content.Board.Components.Count(row => ComponentPaneEdits.IsOfComponent(row.BoardLabel, this.thisLabel));
 
                 return new Dictionary<ComponentPage, ComponentPageFact>
                 {
-                    [ComponentPage.Basics] = new(rows, string.IsNullOrWhiteSpace(this.BoxText(ComponentField.Category))),
+                    [ComponentPage.Basics] = new(rows, this.IsCategoryMissing),
                     [ComponentPage.Replacements] = new(this.thisReplacements.Count, false),
                     [ComponentPage.Pinout] = new(this.thisPins.Count, this.thisPins.Any(row => row.PinOutside)),
                     [ComponentPage.Pictures] = new(this.thisPictures.Count, false),
@@ -145,28 +152,55 @@ namespace CRT
             this.FollowRegionInClonePanel();
         }
 
-        private void UseBoardRegions(BoardData board) => this.thisBoardHasRegions = BoardRegions.Has(board);
+        internal string RegionShownForTests => this.thisRegion;
 
-        // The ticks and the "Applies to" lists, as the board has regions or not.
+        private void UseBoardRegions(BoardData board) => this.thisBoardRegions = BoardRegions.Of(board);
+
+        // What the two ticks said as last shown - all of them, none, or (null) some of several.
+        private bool? thisBasicsRegionalShown;
+        private bool? thisPinsRegionalShown;
+
+        // ###########################################################################################
+        // The ticks and the "Applies to" lists, as the board has regions or not. WITH SEVERAL PICKED A TICK SAYS ALL OF THEM,
+        // NONE, OR SOME - half-ticked (owner request, 2026-11-09: "Can't it still have this, even if selecting multiple
+        // components?"); hidden until then.
+        // ###########################################################################################
         private void ShowRegionChoices(BoardData board)
         {
             bool has = BoardRegions.Has(board);
 
             this.UseBoardRegions(board);
 
+            this.thisBasicsRegionalShown = this.AllOrNone(board, ComponentPaneEdits.IsRegional);
             this.BasicsRegionalCheck.IsVisible = has;
-            this.BasicsRegionalCheck.IsChecked = ComponentPaneEdits.IsRegional(board, this.thisLabel);
+            this.BasicsRegionalCheck.IsChecked = this.thisBasicsRegionalShown;
 
             // The one box of Basics that is never per region: it is what every row of the component is
             // filed under, so it is said (owner report, 2026-11-04).
             this.BoardLabelOneText.Text = ComponentPaneWording.LabelInEveryRegion;
-            this.BoardLabelOneText.IsVisible = has && this.BasicsRegionalCheck.IsChecked == true;
+            this.BoardLabelOneText.IsVisible = has && !this.IsSeveral && this.BasicsRegionalCheck.IsChecked == true;
 
-            this.PinsRegionalCheck.IsVisible = has;
-            this.PinsRegionalCheck.IsChecked = ComponentPaneEdits.PinsAreRegional(board, this.thisLabel);
+            this.thisPinsRegionalShown = this.AllOrNone(board, ComponentPaneEdits.PinsAreRegional);
+
+            // Not over pins held back - several whose packages differ (HoldBackPagesOfOne).
+            this.PinsRegionalCheck.IsVisible = has && !(this.IsSeveral && this.PackagesDiffer(board));
+            this.PinsRegionalCheck.IsChecked = this.thisPinsRegionalShown;
 
             this.ShowRegionShown();
             this.FollowRegionChoices(has);
+        }
+
+        // `test` of every component shown: true or false when all say so, null when they differ.
+        private bool? AllOrNone(BoardData board, Func<BoardData, string?, bool> test)
+        {
+            List<bool> each = this.Labels.Select(label => test(board, label)).Distinct().ToList();
+
+            return each.Count switch
+            {
+                0 => false,
+                1 => each[0],
+                _ => null,
+            };
         }
 
         // ###########################################################################################
@@ -176,15 +210,16 @@ namespace CRT
         // ###########################################################################################
         private void ShowRegionShown()
         {
+            // Half-ticked - some of several told apart - the page is the region's for those.
             bool depends = this.thisBoardHasRegions && this.thisPage switch
             {
-                ComponentPage.Basics => this.BasicsRegionalCheck.IsChecked == true,
-                ComponentPage.Pinout => this.PinsRegionalCheck.IsChecked == true,
+                ComponentPage.Basics => this.BasicsRegionalCheck.IsChecked != false,
+                ComponentPage.Pinout => this.PinsRegionalCheck.IsChecked != false,
                 ComponentPage.Replacements or ComponentPage.Pictures or ComponentPage.Baselines => true,
                 _ => false,
             };
 
-            this.RegionShownText.Text = ComponentPaneWording.RegionShownLine(this.thisRegion);
+            BoldRuns.ShowMarked(this.RegionShownText, ComponentPaneWording.RegionShownLine(this.thisRegion, this.thisBoardRegions));
             this.RegionShownText.IsVisible = depends;
         }
 
@@ -198,7 +233,7 @@ namespace CRT
                 .Concat(this.thisFiles)
                 .Concat(this.thisLinks))
             {
-                row.ShowsAppliesTo = has;
+                row.UseRegions(this.thisBoardRegions);
             }
 
             this.FilesAppliesToHeading.IsVisible = has;
@@ -289,56 +324,36 @@ namespace CRT
         private string RegionForNewBaseline() =>
             this.thisSession is { } session && BoardRegions.Has(session.Content.Board) ? this.thisRegion : string.Empty;
 
-        // ###########################################################################################
-        // A new pin joins the set it stands with: the region's own while the pins are told apart, else
-        // the one for every region - but a component that is in one region only: its pins are that
-        // region's, the region it is worked on in (ShowComponent).
-        // ###########################################################################################
-        private string RegionForNewPin()
-        {
-            if (this.thisSession is not { } session)
-            {
-                return string.Empty;
-            }
+        // A new pin of the component shown joins the set it stands with (ComponentPaneEdits.RegionForNewPin) - with several
+        // shown, each one's own, worked out as it is given to each (ComponentBulk.Pins).
+        private string RegionForNewPin() =>
+            this.thisSession is { } session ? ComponentPaneEdits.RegionForNewPin(session.Content.Board, this.thisLabel, this.thisRegion) : string.Empty;
 
-            BoardData board = session.Content.Board;
-
-            if (ComponentPaneEdits.PinsAreRegional(board, this.thisLabel))
-            {
-                return this.thisRegion;
-            }
-
-            List<ComponentEntry> rows = board.Components
-                .Where(row => ComponentPaneEdits.IsOfComponent(row.BoardLabel, this.thisLabel))
-                .ToList();
-
-            return rows.Count == 1 ? rows[0].Region?.Trim() ?? string.Empty : string.Empty;
-        }
-
+        // A half-ticked box clicked ticks them all - its own toggle would untick them all.
         private void OnBasicsRegionalClick(object? sender, RoutedEventArgs e) =>
             this.SetRegional(
-                this.BasicsRegionalCheck.IsChecked == true,
+                this.thisBasicsRegionalShown is null || this.BasicsRegionalCheck.IsChecked == true,
                 DraftStepWording.ComponentRegional,
                 ComponentPaneEdits.WithRegionalRows,
-                "Its fields are");
+                this.IsSeveral ? "Their fields are" : "Its fields are");
 
         private void OnPinsRegionalClick(object? sender, RoutedEventArgs e) =>
             this.SetRegional(
-                this.PinsRegionalCheck.IsChecked == true,
+                this.thisPinsRegionalShown is null || this.PinsRegionalCheck.IsChecked == true,
                 DraftStepWording.PinsRegional,
                 ComponentPaneEdits.WithRegionalPins,
-                "Its pins are",
+                this.IsSeveral ? "Their pins are" : "Its pins are",
                 (regional, region) => regional ? ComponentPaneWording.NoPinsToTellApart : ComponentPaneWording.NoPinsInRegion(region));
 
         // ###########################################################################################
-        // One tick's change, as one step. Not the pane's own edit: the pane reads the component back.
-        // Nothing changed - no pins to tell apart, or none in the region shown to make every region's - and
-        // the tick goes back to what the draft says, saying why (`whyNothingChanged`): no step means
-        // nothing reads it back.
+        // One tick's change, as one step - on every component shown, each as it would be on its own. Not the pane's own
+        // edit: the pane reads the component back. Nothing changed - no pins to tell apart, or none in the region shown to
+        // make every region's - and the tick goes back to what the draft says, saying why (`whyNothingChanged`): no step
+        // means nothing reads it back.
         // ###########################################################################################
         private void SetRegional(bool regional, Func<string, bool, string> step, Func<BoardData, string?, string?, bool, BoardData> edit, string what, Func<bool, string, string>? whyNothingChanged = null)
         {
-            if (this.thisSession is not { } session || this.thisLabel.Length == 0)
+            if (this.thisSession is not { } session || this.Labels.Count == 0)
             {
                 return;
             }
@@ -346,12 +361,13 @@ namespace CRT
             this.CommitHeld();
             this.ShowMessage(null);
 
-            string label = this.thisLabel;
+            IReadOnlyList<string> labels = this.Labels.ToList();
             string region = this.thisRegion;
 
             bool changed = session.Apply(
-                step(label, regional),
-                content => edit(content.Board, label, region, regional) is BoardData board && !ReferenceEquals(board, content.Board)
+                step(this.StepLabel, regional),
+                content => labels.Aggregate(content.Board, (board, label) => edit(board, label, region, regional)) is BoardData board &&
+                           !ReferenceEquals(board, content.Board)
                     ? content with { Board = board }
                     : null);
 
@@ -399,7 +415,8 @@ namespace CRT
         // ###########################################################################################
         private void CommitLabel()
         {
-            if (this.thisSession is not { } session || this.thisLabel.Length == 0)
+            // A label names one component - never several (ComponentPane.Several.cs).
+            if (this.thisSession is not { } session || this.thisLabel.Length == 0 || this.IsSeveral)
             {
                 return;
             }
@@ -512,11 +529,20 @@ namespace CRT
         // row of the board's lists needs.
         private void ShowCategoryProblem()
         {
-            bool empty = string.IsNullOrWhiteSpace(this.BoxText(ComponentField.Category));
+            bool empty = this.IsCategoryMissing;
 
             this.CategoryBox.Classes.Set("Missing", empty);
             this.CategoryRequiredText.IsVisible = empty;
         }
+
+        // ###########################################################################################
+        // Whether the category box says the component has none - the one rule for the box's red and "Basics"' own (code review,
+        // 2026-11-09: "Basics" went red for several whose categories differ, the box left empty on purpose). Several whose
+        // categories differ: each has its own, so none is missing (ComponentPane.Several.cs).
+        // ###########################################################################################
+        private bool IsCategoryMissing =>
+            string.IsNullOrWhiteSpace(this.BoxText(ComponentField.Category)) &&
+            !(this.IsSeveral && this.thisDifferingValues.ContainsKey(ComponentField.Category));
 
         // ###########################################################################################
         // A pin the component's case does not have, on each row that names one (owner request,
@@ -559,7 +585,8 @@ namespace CRT
     public abstract class ComponentPaneRegionalRow : ComponentPaneDraggableRow
     {
         private string thisRegion = string.Empty;
-        private IReadOnlyList<string> thisAppliesToChoices = ComponentPaneWording.AppliesToChoices(null);
+        private IReadOnlyList<string> thisRegions = BoardRegions.PalAndNtsc;
+        private IReadOnlyList<string> thisAppliesToChoices = ComponentPaneWording.AppliesToChoices(BoardRegions.PalAndNtsc, null);
         private bool thisShowsAppliesTo;
 
         public string Region
@@ -569,15 +596,34 @@ namespace CRT
             {
                 if (this.Set(ref this.thisRegion, value))
                 {
-                    if (!this.thisAppliesToChoices.Contains(ComponentPaneWording.AppliesToOf(value), StringComparer.Ordinal))
+                    if (!this.thisAppliesToChoices.Contains(ComponentPaneWording.AppliesToOf(this.thisRegions, value), StringComparer.Ordinal))
                     {
-                        this.thisAppliesToChoices = ComponentPaneWording.AppliesToChoices(value);
+                        this.thisAppliesToChoices = ComponentPaneWording.AppliesToChoices(this.thisRegions, value);
                         this.Raise(nameof(this.AppliesToChoices));
                     }
 
                     this.Raise(nameof(this.AppliesTo));
                 }
             }
+        }
+
+        // ###########################################################################################
+        // The board's regions (BoardRegions.Of; 2026-11-09: names of its own since): "Applies to" shows while it has any,
+        // and lists them. The list is made again only for regions that are not those it was made for.
+        // ###########################################################################################
+        public void UseRegions(IReadOnlyList<string> regions)
+        {
+            ArgumentNullException.ThrowIfNull(regions);
+
+            if (!regions.SequenceEqual(this.thisRegions, StringComparer.Ordinal))
+            {
+                this.thisRegions = regions;
+                this.thisAppliesToChoices = ComponentPaneWording.AppliesToChoices(regions, this.thisRegion);
+                this.Raise(nameof(this.AppliesToChoices));
+                this.Raise(nameof(this.AppliesTo));
+            }
+
+            this.ShowsAppliesTo = regions.Count > 0;
         }
 
         // The region the draft has this row in, once the pane has committed - what decides whether it is
@@ -590,7 +636,7 @@ namespace CRT
         public bool ShowsAppliesTo
         {
             get => this.thisShowsAppliesTo;
-            set
+            private set
             {
                 if (this.thisShowsAppliesTo != value)
                 {
@@ -604,7 +650,7 @@ namespace CRT
 
         public string? AppliesTo
         {
-            get => ComponentPaneWording.AppliesToOf(this.thisRegion);
+            get => ComponentPaneWording.AppliesToOf(this.thisRegions, this.thisRegion);
             set
             {
                 if (value is not null)

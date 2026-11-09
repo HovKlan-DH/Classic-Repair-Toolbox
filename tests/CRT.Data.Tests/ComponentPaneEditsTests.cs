@@ -86,6 +86,7 @@ public sealed class ComponentPaneEditsTests
     [InlineData(ComponentField.Category, "CPU")]
     [InlineData(ComponentField.Package, "DIP-28")]
     [InlineData(ComponentField.Description, "Runs the show")]
+    [InlineData(ComponentField.Purpose, "**Runs** the show")]
     public void Every_field_is_set_and_read_back(ComponentField field, string value)
     {
         BoardData after = ComponentPaneEdits.WithField(Board(), "U8", "PAL", field, value);
@@ -127,6 +128,22 @@ public sealed class ComponentPaneEditsTests
             ComponentPaneEdits.WithField(before, "R10", "PAL", ComponentField.Description, "first line\nand more").Components[0].Description);
     }
 
+    // ###########################################################################################
+    // "PURPOSE OR NOTE" IS A NOTE WITH FORMATTING (owner request, 2026-11-09): it keeps its lines, "\n" alone, and is
+    // trimmed as such a note is - the indent of a first line saying a bullet stays (RichNote.TrimMarkup).
+    // ###########################################################################################
+    [Fact]
+    public void Purpose_keeps_its_lines_and_its_first_bullets_indent()
+    {
+        Assert.Equal("Clock for the CPU\n- from the VIC-II", ComponentPaneEdits.Normalised(ComponentField.Purpose, "Clock for the CPU\r\n- from the VIC-II\r\n"));
+        Assert.Equal("  - sub point", ComponentPaneEdits.Normalised(ComponentField.Purpose, "  - sub point  "));
+
+        BoardData after = ComponentPaneEdits.WithField(Board(), "U8", "PAL", ComponentField.Purpose, "Runs\n**everything**");
+
+        Assert.Equal("Runs\n**everything**", after.Components[2].Purpose);
+        Assert.Equal("CPU", after.Components[2].FriendlyName);
+    }
+
     // A field is one line; a note keeps its lines, each ended by "\n" alone.
     [Fact]
     public void One_line_fields_lose_their_line_breaks_and_notes_keep_theirs()
@@ -143,7 +160,9 @@ public sealed class ComponentPaneEditsTests
             Assert.False(string.IsNullOrWhiteSpace(ComponentPaneEdits.NameOf(field)));
         }
 
-        Assert.Equal("Short description", ComponentPaneEdits.NameOf(ComponentField.Description));
+        // "Short description" until 2026-11-09 (owner request); a component's purpose is a field of its own since.
+        Assert.Equal("Other technical details", ComponentPaneEdits.NameOf(ComponentField.Description));
+        Assert.Equal("Purpose or note", ComponentPaneEdits.NameOf(ComponentField.Purpose));
     }
 
     // ---- a new component (slice 3c) -----------------------------------------------------------
@@ -827,6 +846,21 @@ public sealed class ComponentPaneEditsTests
         Assert.Same(board, ComponentPaneEdits.WithRegionalRows(board, "U1", "PAL", regional: true));
         Assert.Same(board, ComponentPaneEdits.WithRegionalRows(board, "U8", "PAL", regional: false));
         Assert.Same(board, ComponentPaneEdits.WithRegionalRows(board, "U99", "PAL", regional: true));
+    }
+
+    // On a board with no regions nothing is told apart - a row per region of none was no row, and the component and its
+    // pins went (code review, 2026-11-09).
+    [Fact]
+    public void On_a_board_with_no_regions_nothing_is_told_apart()
+    {
+        var board = new BoardData
+        {
+            Components = [new ComponentEntry { BoardLabel = "U8", Category = "IC", FriendlyName = "CPU" }],
+            ComponentPins = [new ComponentPinEntry { BoardLabel = "U8", Pin = "1", Name = "VSS" }],
+        };
+
+        Assert.Same(board, ComponentPaneEdits.WithRegionalRows(board, "U8", string.Empty, regional: true));
+        Assert.Same(board, ComponentPaneEdits.WithRegionalPins(board, "U8", string.Empty, regional: true));
     }
 
     [Fact]

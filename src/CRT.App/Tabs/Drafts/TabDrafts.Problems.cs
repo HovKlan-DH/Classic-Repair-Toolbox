@@ -293,7 +293,7 @@ namespace CRT
         {
             this.PlaceProblems();
 
-            Dictionary<ContributeEntry, BoardProblemCounts> shown = ContributeProblems.CountsShown(this.thisProblemsPlaced, this.thisPickedComponent);
+            Dictionary<ContributeEntry, BoardProblemCounts> shown = ContributeProblems.CountsShown(this.thisProblemsPlaced, this.PickedLabels);
 
             foreach ((ContributeEntry entry, var badges) in this.thisNavBadges)
             {
@@ -471,7 +471,7 @@ namespace CRT
 
             List<EntryProblem> here = open is null or ContributeEntry.Overview
                 ? []
-                : ContributeProblems.OnEntry(this.thisProblemsPlaced, open.Value, this.thisPickedComponent);
+                : ContributeProblems.OnEntry(this.thisProblemsPlaced, open.Value, this.PickedLabels);
 
             InPlaceList.Sync(
                 this.thisEntryProblemRows,
@@ -537,7 +537,7 @@ namespace CRT
 
         private bool ShowsRegionOf(EntryProblem item)
         {
-            string region = ContributeProblems.RegionToOpen(item);
+            string region = ContributeProblems.RegionToOpen(item, BoardRegions.Of(this.BoardForList()));
 
             return region.Length == 0 || string.Equals(region, this.thisCurrentRegion, StringComparison.OrdinalIgnoreCase);
         }
@@ -551,7 +551,7 @@ namespace CRT
         {
             if (!this.ShowsRegionOf(item))
             {
-                string region = ContributeProblems.RegionToOpen(item);
+                string region = ContributeProblems.RegionToOpen(item, BoardRegions.Of(this.BoardForList()));
 
                 if (this.thisMainWindow is { } main)
                 {
@@ -564,6 +564,7 @@ namespace CRT
             }
 
             this.thisPickedComponent = item.ComponentLabel;
+            this.thisPickedSeveral = [];
 
             return this.ShowEntryAsync(item.Entry);
         }

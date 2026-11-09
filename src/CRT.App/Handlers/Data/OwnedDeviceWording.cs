@@ -52,7 +52,7 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         public const string ClearChoice = "Clear";
 
-        // The workbook list on the "My Devices" tab while a device is picked and it has none.
+        // The workbook list on the "Workbooks" tab while a device is picked and it has none.
         public const string NoWorkbooksOfDevice =
             "No workbooks associated to this device yet.\nUse \"Add workbook\" above the tabs to start one.";
 

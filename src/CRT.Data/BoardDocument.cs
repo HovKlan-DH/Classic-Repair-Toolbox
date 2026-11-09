@@ -124,6 +124,10 @@ namespace Handlers.DataHandling
             [JsonPropertyName("package"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
             public string? Package { get; set; }
 
+            // What the component is there for, a note with formatting (2026-11-09) - written only when filled.
+            [JsonPropertyName("purpose"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+            public string? Purpose { get; set; }
+
             [JsonExtensionData] public Dictionary<string, JsonElement>? Unknown { get; set; }
         }
 

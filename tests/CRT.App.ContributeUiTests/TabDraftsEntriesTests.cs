@@ -635,6 +635,63 @@ public sealed class TabDraftsEntriesTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // "Replace" pressed on a sheet the search narrowed STAYS ON THAT SHEET (owner report, 2026-11-08: "Schematic images"
+    // searched for "128", then "Replace" - the table went to "Board: Files" and "Schematic images" was turned off, "Find"
+    // still saying "128"). "Replace all" works on the sheet shown alone, so the sheet it opened on is the one it is for.
+    // Two things made "Find" find nothing there, neither of them seen: a space after the word, which the search ignores
+    // and "Find" looks for as typed, and columns unticked on that sheet earlier under "Columns", kept while CRT runs.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("128 ", false)]
+    [InlineData("128", true)]
+    public async Task Replace_pressed_on_a_searched_sheet_stays_on_it(string searched, bool columnsUntickedEarlier)
+    {
+        BoardData draft = Board();
+        draft.Schematics[0] = new BoardSchematicEntry { SchematicName = "Top", SchematicImageFile = "c128-top.png" };
+        draft.BoardLocalFiles.Add(new BoardLocalFileEntry { Category = "Manuals", Name = "C128 manual", File = "Board local files/c128 manual.pdf" });
+        WriteDraft(BoardA, draft);
+
+        await UiTest.RunAsync(async () =>
+        {
+            (TabDrafts tab, _) = Tab();
+
+            await tab.ShowViewAsync(table: true);
+            await tab.ShowEntryAsync(ContributeEntry.SchematicImages);
+
+            BoardTableEditor editor = Editor(tab);
+
+            if (columnsUntickedEarlier)
+            {
+                editor.OpenReplaceBar();
+                editor.UntickEveryReplaceColumn();
+                editor.TickReplaceColumn(BoardWorkbookSchema.ColSchematicName, ticked: true);
+                editor.GetControl<Button>("CancelReplaceButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                Dispatcher.UIThread.RunJobs();
+            }
+
+            editor.SearchText = searched;
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(BoardWorkbookSchema.SheetBoardSchematics, editor.CurrentSheet!.Name);
+            Assert.Single(editor.RowsShownForTests, row => !row.IsDeleted);
+
+            editor.OpenReplaceBar();
+
+            for (int settle = 0; settle < 10; settle++)
+            {
+                Dispatcher.UIThread.RunJobs();
+                await Task.Delay(30);
+            }
+
+            // What the table was filtered by, as the search read it - no space after it.
+            Assert.Equal("128", editor.GetControl<TextBox>("ReplaceFindBox").Text);
+            Assert.Equal(BoardWorkbookSchema.SheetBoardSchematics, editor.CurrentSheet!.Name);
+            Assert.Equal("PicturesNavButton", tab.SelectedNavEntryForTests);
+            Assert.True(tab.GetControl<Button>("PicturesNavButton").IsEnabled);
+        });
+    }
+
     // A pill goes to what it found, and the column follows - inside the sheet in two too.
     [Fact]
     public async Task A_pill_moving_the_table_moves_the_entry_selected()
@@ -991,6 +1048,336 @@ public sealed class TabDraftsEntriesTests : IDisposable
 
             tab.GetControl<Button>("UiViewButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             await Until(() => !tab.IsTableOpen, "The table never closed.");
+        });
+    }
+
+    // ---- several components picked, edited as one (owner request, 2026-11-08) ---------------------------
+
+    // The tab with the list on the far left as Main has it: several can be picked, with Ctrl or Shift.
+    private static (TabDrafts Tab, ListBox List) TabPickingSeveral()
+    {
+        (TabDrafts tab, ListBox list) = Tab();
+        list.SelectionMode = SelectionMode.Multiple;
+
+        return (tab, list);
+    }
+
+    [Fact]
+    public async Task Several_picked_open_together_in_the_pane_and_one_picked_again_is_that_ones()
+    {
+        WriteDraft();
+
+        await UiTest.RunAsync(async () =>
+        {
+            (TabDrafts tab, ListBox list) = TabPickingSeveral();
+
+            await tab.ShowEntryAsync(ContributeEntry.ComponentBasics);
+            tab.PickComponentsForTests("U8", "C1");
+
+            await Until(() => tab.ComponentPaneForTests.IsSeveral, "The two never opened together.");
+
+            Assert.Equal(["U8", "C1"], tab.ComponentPaneForTests.Labels);
+            Assert.Equal(["U8", "C1"], tab.PickedComponentsForTests);
+            Assert.Equal(2, list.SelectedItems!.Count);
+            Assert.Equal("BasicsNavButton", tab.SelectedNavEntryForTests);
+
+            // One picked again: the pane is that one's.
+            tab.PickComponentForTests("C1");
+            await Until(() => !tab.ComponentPaneForTests.IsSeveral, "The pane stayed on the two.");
+
+            Assert.Equal(["C1"], tab.PickedComponentsForTests);
+        });
+    }
+
+    // ###########################################################################################
+    // A PICK MADE WHILE THE ONE BEFORE IS STILL OPENING STANDS (seen as a Shift+click failing now and then, 2026-11-08): the
+    // first open, ending last, put the pane on the one component and the pick back to it - the list with it.
+    // ###########################################################################################
+    [Fact]
+    public async Task Several_picked_while_one_is_still_opening_stay_picked()
+    {
+        WriteDraft();
+
+        await UiTest.RunAsync(async () =>
+        {
+            (TabDrafts tab, ListBox list) = TabPickingSeveral();
+
+            await tab.ShowEntryAsync(ContributeEntry.ComponentBasics);
+
+            // The first open held until the second pick has opened - so it ends last, as it can under load.
+            var hold = new TaskCompletionSource();
+            tab.HoldOpeningForTests = hold.Task;
+            tab.PickComponentForTests("U8");
+            tab.HoldOpeningForTests = null;
+
+            tab.PickComponentsForTests("U8", "C1");
+            await Until(() => tab.ComponentPaneForTests.IsSeveral, "The two never opened together.");
+
+            hold.SetResult();
+
+            for (int settle = 0; settle < 30; settle++)
+            {
+                Dispatcher.UIThread.RunJobs();
+                await Task.Delay(10);
+            }
+
+            Assert.Equal(["U8", "C1"], tab.PickedComponentsForTests);
+            Assert.True(tab.ComponentPaneForTests.IsSeveral);
+            Assert.Equal(["U8", "C1"], tab.ComponentPaneForTests.Labels);
+            Assert.Equal(2, list.SelectedItems!.Count);
+        });
+    }
+
+    // ###########################################################################################
+    // A CLICK ON THE ONE STILL OPENING, AFTER SEVERAL WERE PICKED, IS THE PICK (code review, 2026-11-09): it was dropped as
+    // "already opening", and the several - ending last - took the pick back.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_click_on_the_one_still_opening_after_several_were_picked_is_the_pick()
+    {
+        WriteDraft();
+
+        await UiTest.RunAsync(async () =>
+        {
+            (TabDrafts tab, ListBox list) = TabPickingSeveral();
+
+            await tab.ShowEntryAsync(ContributeEntry.ComponentBasics);
+
+            var hold = new TaskCompletionSource();
+            tab.HoldOpeningForTests = hold.Task;
+            tab.PickComponentForTests("U8");
+            tab.HoldOpeningForTests = null;
+
+            tab.PickComponentsForTests("U8", "C1");
+            await Until(() => tab.ComponentPaneForTests.IsSeveral, "The two never opened together.");
+
+            tab.PickComponentsForTests("U8");
+            hold.SetResult();
+
+            await Until(() => tab.IsComponentOpen && !tab.ComponentPaneForTests.IsSeveral, "U8 alone never opened.");
+
+            for (int settle = 0; settle < 30; settle++)
+            {
+                Dispatcher.UIThread.RunJobs();
+                await Task.Delay(10);
+            }
+
+            Assert.Equal(["U8"], tab.PickedComponentsForTests);
+            Assert.Equal(["U8"], tab.ComponentPaneForTests.Labels);
+            Assert.Single(list.SelectedItems!);
+        });
+    }
+
+    // ###########################################################################################
+    // "MARK ALL" ON THE OTHER TABS IS SHOWN SELECTED HERE, NEVER OPENED FOR EDITING (code review, 2026-11-09): taken as the
+    // tab was entered, it opened the pane on every component, and the next field typed went to all of them. Fewer than all
+    // open together, as before.
+    // ###########################################################################################
+    [Fact]
+    public async Task Mark_all_taken_from_the_other_tabs_is_shown_selected_and_never_opened_for_editing()
+    {
+        WriteDraft();
+
+        await UiTest.RunAsync(async () =>
+        {
+            (TabDrafts tab, ListBox list) = TabPickingSeveral();
+
+            await tab.ShowEntryAsync(ContributeEntry.ComponentBasics);
+            tab.PickComponentForTests("U8");
+            await Until(() => tab.IsComponentOpen, "The component never opened.");
+
+            List<string> every = tab.ComponentItems.Select(item => item.BoardLabel).ToList();
+            Assert.True(every.Count > 2);
+
+            tab.TakePickFromOtherTabs(every, everyRowOfTheirs: true);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.False(tab.IsComponentOpen);
+            Assert.True(tab.IsNoComponentPageShownForTests);
+            Assert.Contains("Every component in the list is selected", tab.NoComponentTextForTests, StringComparison.Ordinal);
+            Assert.Equal(every, tab.PickedComponentsForTests);
+            Assert.Equal(every.Count, list.SelectedItems!.Count);
+
+            // Nor does a page picked afterwards open them, nor "Table" and back (second code review, 2026-11-09: a page
+            // picked afterwards opened every component of the board as one).
+            await tab.ShowEntryAsync(ContributeEntry.ComponentPinout);
+            Assert.False(tab.IsComponentOpen);
+            Assert.Contains("Every component in the list is selected", tab.NoComponentTextForTests, StringComparison.Ordinal);
+            Assert.Equal("PinoutNavButton", tab.SelectedNavEntryForTests);
+
+            await tab.ShowViewAsync(table: true);
+            await Until(() => tab.IsTableOpen, "The table never opened.");
+
+            // The table every row, as with none picked (second code review, 2026-11-09: narrowed to the labels both lists had).
+            Assert.Empty(Editor(tab).ComponentsShownForTests);
+            Assert.Contains("RowsDraggable", Editor(tab).GetControl<DataGrid>("TableGrid").Classes);
+
+            await tab.ShowViewAsync(table: false);
+            await Until(() => !tab.IsTableOpen, "The table never closed.");
+            Assert.False(tab.IsComponentOpen);
+            Assert.Equal(every, tab.PickedComponentsForTests);
+
+            // Not on a component's page as it is taken: the same once one is picked.
+            await tab.ShowEntryAsync(ContributeEntry.Overview);
+            tab.TakePickFromOtherTabs(["U8"]);
+            tab.TakePickFromOtherTabs(every, everyRowOfTheirs: true);
+            await tab.ShowEntryAsync(ContributeEntry.ComponentBasics);
+            Assert.False(tab.IsComponentOpen);
+
+            // One clicked in the list is the pick, opened as ever.
+            tab.PickComponentsForTests("C1");
+            await Until(() => tab.IsComponentOpen, "C1 never opened.");
+            Assert.Equal(["C1"], tab.ComponentPaneForTests.Labels);
+
+            tab.TakePickFromOtherTabs(["U8", "C1"]);
+            await Until(() => tab.ComponentPaneForTests.IsSeveral, "The two never opened together.");
+            Assert.Equal(["U8", "C1"], tab.ComponentPaneForTests.Labels);
+        });
+    }
+
+    // In "Table" the component sheets show the rows of the components picked alone - and "Replace" replaces in those.
+    [Fact]
+    public async Task In_the_table_the_component_sheets_show_the_rows_of_the_components_picked_and_replace_only_those()
+    {
+        WriteDraft();
+
+        await UiTest.RunAsync(async () =>
+        {
+            (TabDrafts tab, _) = TabPickingSeveral();
+
+            await tab.ShowViewAsync(table: true);
+            await tab.ShowEntryAsync(ContributeEntry.ComponentBasics);
+            await Until(() => tab.IsTableOpen, "The table never opened.");
+
+            BoardTableEditor editor = Editor(tab);
+            int label = editor.CurrentSheet!.Columns.ToList().IndexOf(BoardWorkbookSchema.ColBoardLabel);
+            List<string> Shown() => editor.RowsShownForTests.Select(row => row.Cells[label].Text).ToList();
+
+            Assert.Equal(4, Shown().Count);
+
+            tab.PickComponentsForTests("U8", "C1");
+            await Until(() => editor.ComponentsShownForTests.Count == 2, "The table never narrowed.");
+
+            Assert.Equal(["U8", "C1"], Shown());
+            Assert.True(editor.GetControl<TextBlock>("ComponentsShownText").IsVisible);
+
+            // Narrowed, a component sheet's rows do not move by their grip.
+            DataGrid grid = editor.GetControl<DataGrid>("TableGrid");
+            Assert.DoesNotContain("RowsDraggable", grid.Classes);
+
+            int friendly = editor.CurrentSheet!.Columns.ToList().IndexOf(BoardWorkbookSchema.ColFriendlyName);
+            editor.OpenReplaceBar();
+            editor.GetControl<TextBox>("ReplaceFindBox").Text = "i";
+            editor.GetControl<TextBox>("ReplaceWithBox").Text = "I";
+            editor.ReplaceAll();
+            Dispatcher.UIThread.RunJobs();
+
+            // "Filter" of C1 replaced, "VIC" of U1 - not picked - left alone.
+            Assert.Equal("FIlter", editor.CurrentSheet!.Rows.Single(row => row.Cells[label].Text == "C1").Cells[friendly].Text);
+            Assert.All(editor.CurrentSheet!.Rows.Where(row => row.Cells[label].Text == "U1"), row => Assert.Equal("VIC", row.Cells[friendly].Text));
+
+            // Another entry picked while the bar is open is the sheet shown, though "Find" finds nothing there (owner report,
+            // 2026-11-08: the table went back to a sheet "Find" had something on).
+            await tab.ShowEntryAsync(ContributeEntry.Links);
+            Assert.Equal(BoardWorkbookSchema.SheetBoardLinks, editor.CurrentSheet!.Name);
+            Assert.Equal("LinksNavButton", tab.SelectedNavEntryForTests);
+
+            // A sheet of the board as a whole is not narrowed.
+            editor.GetControl<Button>("CancelReplaceButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Dispatcher.UIThread.RunJobs();
+            Assert.Single(editor.RowsShownForTests);
+            Assert.False(editor.GetControl<TextBlock>("ComponentsShownText").IsVisible);
+
+            // ... so its rows move by their grip whatever components are picked (code review, 2026-11-09: they did not).
+            Assert.Equal(2, editor.ComponentsShownForTests.Count);
+            Assert.Contains("RowsDraggable", grid.Classes);
+        });
+    }
+
+    // ###########################################################################################
+    // A PILL WITH COMPONENTS PICKED GOES BY THE ROWS THE TABLE SHOWS (third code review, 2026-11-09): "Errors" counted over the
+    // draft left "Components: Links" on for C1's error while the table showed U8's rows alone - picked, it showed nothing.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_pill_with_a_component_picked_turns_off_the_entries_whose_rows_the_pick_hides()
+    {
+        // Errors on two sheets: U8 with no category (Basics), C1's link (Links).
+        var board = new BoardData
+        {
+            Components =
+            [
+                new ComponentEntry { BoardLabel = "U8", Category = "", FriendlyName = "CPU" },
+                new ComponentEntry { BoardLabel = "C1", Category = "Capacitor", FriendlyName = "Filter" },
+            ],
+            ComponentLinks = [new ComponentLinkEntry { BoardLabel = "C1", Name = "Bad", Url = "ftp://example.com" }],
+        };
+
+        WriteDraft(board: board);
+
+        await UiTest.RunAsync(async () =>
+        {
+            (TabDrafts tab, _) = Tab();
+
+            await tab.ShowViewAsync(table: true);
+            await tab.ShowEntryAsync(ContributeEntry.ComponentBasics);
+            await Until(() => tab.IsTableOpen, "The table never opened.");
+
+            BoardTableEditor editor = Editor(tab);
+            editor.Filter = BoardTableRowKinds.Errors;
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(BoardWorkbookSchema.SheetComponents, editor.CurrentSheet!.Name);
+            Assert.True(tab.GetControl<Button>("ComponentLinksNavButton").IsEnabled);
+
+            tab.PickComponentsForTests("U8");
+            await Until(() => editor.ComponentsShownForTests.Count == 1, "The table never narrowed.");
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.False(tab.GetControl<Button>("ComponentLinksNavButton").IsEnabled);
+
+            // C1 picked: on again.
+            tab.PickComponentsForTests("C1");
+            await Until(() => editor.ComponentsShownForTests.Contains("C1"), "The table never narrowed to C1.");
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.True(tab.GetControl<Button>("ComponentLinksNavButton").IsEnabled);
+        });
+    }
+
+    // Submit on a draft with errors shows every row with one, whichever component is picked (code review, 2026-11-09:
+    // narrowed to U8, which has none, the table opened on C1's link showing nothing under "Submit is blocked").
+    [Fact]
+    public async Task Submit_blocked_by_errors_shows_every_row_with_one_whichever_component_is_picked()
+    {
+        var board = new BoardData
+        {
+            Components =
+            [
+                new ComponentEntry { BoardLabel = "U8", Category = "IC", FriendlyName = "CPU" },
+                new ComponentEntry { BoardLabel = "C1", Category = "Capacitor", FriendlyName = "Filter" },
+            ],
+            ComponentLinks = [new ComponentLinkEntry { BoardLabel = "C1", Name = "Bad", Url = "ftp://example.com" }],
+        };
+
+        WriteDraft(board: board);
+
+        await UiTest.RunAsync(async () =>
+        {
+            (TabDrafts tab, _) = Tab();
+
+            tab.PickComponentForTests("U8");
+            await Until(() => tab.IsComponentOpen, "The component never opened.");
+
+            Assert.True(await tab.StopForErrorsAsync(Entry(), board));
+
+            BoardTableEditor editor = Editor(tab);
+            Assert.True(tab.IsTableOpen);
+            Assert.Equal(BoardTableRowKinds.Errors, editor.Filter);
+            Assert.Equal(BoardWorkbookSchema.SheetComponentLinks, editor.CurrentSheet!.Name);
+            Assert.Empty(tab.PickedComponentsForTests);
+            Assert.Empty(editor.ComponentsShownForTests);
+
+            int label = editor.CurrentSheet!.Columns.ToList().IndexOf(BoardWorkbookSchema.ColBoardLabel);
+            Assert.Equal(["C1"], editor.RowsShownForTests.Select(row => row.Cells[label].Text));
         });
     }
 }

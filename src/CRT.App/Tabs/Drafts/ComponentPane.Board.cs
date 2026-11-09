@@ -75,6 +75,7 @@ namespace CRT
         private ListRowDrag<ComponentPaneCreditRow>? thisCreditsDrag;
         private ListRowDrag<ComponentPaneSignalRow>? thisSignalsDrag;
         private ListRowDrag<ComponentPaneCategoryRow>? thisCategoriesDrag;
+        private ListRowDrag<ComponentPaneRegionRow>? thisRegionsDrag;
 
         internal PaneBoardPart? BoardPart => this.thisBoardPart;
 
@@ -93,6 +94,7 @@ namespace CRT
             this.CreditsItemsControl.ItemsSource = this.thisCredits;
             this.SignalsItemsControl.ItemsSource = this.thisSignals;
             this.CategoriesItemsControl.ItemsSource = this.thisCategories;
+            this.RegionsItemsControl.ItemsSource = this.thisRegionRows;
             this.InitializeBoardPictures();
             this.InitializeSignalSuggestions();
             this.NewComponentMarkNoteText.Text = ComponentPaneWording.NewComponentMarkNote;
@@ -108,6 +110,8 @@ namespace CRT
                 this, this.SignalsItemsControl, this.BoardPartPanel, this.thisSignals, (_, _, _) => this.CommitSignals());
             this.thisCategoriesDrag = new ListRowDrag<ComponentPaneCategoryRow>(
                 this, this.CategoriesItemsControl, this.BoardPartPanel, this.thisCategories, (_, _, _) => this.CommitCategoryOrder());
+            this.thisRegionsDrag = new ListRowDrag<ComponentPaneRegionRow>(
+                this, this.RegionsItemsControl, this.BoardPartPanel, this.thisRegionRows, (_, _, _) => this.CommitRegionOrder());
 
             // Alt+Up and Alt+Down in a row's boxes move it - ahead of the boxes, which would take the keys.
             this.BoardPartPanel.AddHandler(InputElement.KeyDownEvent, this.OnRowKeyDown, RoutingStrategies.Tunnel);
@@ -122,6 +126,7 @@ namespace CRT
             this.thisCreditsDrag?.Reset();
             this.thisSignalsDrag?.Reset();
             this.thisCategoriesDrag?.Reset();
+            this.thisRegionsDrag?.Reset();
             this.thisFilesDrag?.Reset();
             this.thisLinksDrag?.Reset();
         }
@@ -129,7 +134,7 @@ namespace CRT
         internal bool IsDraggingARowForTests =>
             this.thisBoardFilesDrag?.IsDragging == true || this.thisBoardLinksDrag?.IsDragging == true ||
             this.thisCreditsDrag?.IsDragging == true || this.thisSignalsDrag?.IsDragging == true ||
-            this.thisCategoriesDrag?.IsDragging == true ||
+            this.thisCategoriesDrag?.IsDragging == true || this.thisRegionsDrag?.IsDragging == true ||
             this.thisFilesDrag?.IsDragging == true || this.thisLinksDrag?.IsDragging == true;
 
         // ###########################################################################################
@@ -155,6 +160,8 @@ namespace CRT
 
             this.thisRegion = region?.Trim() ?? string.Empty;
             this.thisLabel = string.Empty;
+            this.thisSeveral = [];
+            this.LetGoOfSeveral();
             this.thisIsNew = false;
             this.thisBoardPart = part;
             this.CloseClonePanel();
@@ -330,7 +337,7 @@ namespace CRT
             // list of the whole board, so every row shows whatever region CRT shows.
             foreach (ComponentPaneRegionalRow row in this.thisBoardFiles.Cast<ComponentPaneRegionalRow>().Concat(this.thisBoardLinks))
             {
-                row.ShowsAppliesTo = this.thisBoardHasRegions;
+                row.UseRegions(this.thisBoardRegions);
             }
 
             this.BoardFilesAppliesToHeading.IsVisible = this.thisBoardHasRegions;
@@ -758,6 +765,7 @@ namespace CRT
                 ComponentPaneBoardLinkRow => this.BoardLinksItemsControl,
                 ComponentPaneCreditRow => this.CreditsItemsControl,
                 ComponentPaneCategoryRow => this.CategoriesItemsControl,
+                ComponentPaneRegionRow => this.RegionsItemsControl,
                 ComponentPaneSignalRow => this.SignalsItemsControl,
                 ComponentPaneFileRow => this.FilesItemsControl,
                 ComponentPaneLinkRow => this.LinksItemsControl,
@@ -778,6 +786,7 @@ namespace CRT
                 ComponentPaneCreditRow credit => this.MoveCredit(credit, by),
                 ComponentPaneSignalRow signal => this.MoveSignal(signal, by),
                 ComponentPaneCategoryRow category => this.MoveCategory(category, by),
+                ComponentPaneRegionRow region => this.MoveRegion(region, by),
                 ComponentPaneFileRow file => this.MoveFile(file, by),
                 ComponentPaneLinkRow link => this.MoveLink(link, by),
                 _ => false,
@@ -837,6 +846,12 @@ namespace CRT
         private bool MoveRow<TRow>(ObservableCollection<TRow> rows, TRow row, int by)
             where TRow : ComponentPaneDraggableRow
         {
+            // An order is each component's own - none moves while several are shown (RowsMove).
+            if (!this.RowsMove)
+            {
+                return false;
+            }
+
             this.CommitHeld();
 
             int index = rows.IndexOf(row);

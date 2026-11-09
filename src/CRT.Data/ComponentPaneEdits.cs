@@ -13,6 +13,7 @@ namespace Handlers.DataHandling
         Category,
         Package,
         Description,
+        Purpose,
     }
 
     // ###########################################################################################
@@ -37,7 +38,8 @@ namespace Handlers.DataHandling
     // ###########################################################################################
     public static class ComponentPaneEdits
     {
-        // What a field is called on the pane, and in the draft's history ("Short description of [U8]").
+        // What a field is called on the pane, and in the draft's history ("Other technical details of [U8]" - "Short
+        // description" until 2026-11-09, owner request).
         public static string NameOf(ComponentField field) => field switch
         {
             ComponentField.FriendlyName => "Friendly name",
@@ -45,7 +47,8 @@ namespace Handlers.DataHandling
             ComponentField.PartNumber => "Part number",
             ComponentField.Category => "Category",
             ComponentField.Package => "Package",
-            ComponentField.Description => "Short description",
+            ComponentField.Description => BoardWorkbookSchema.DescriptionHeading,
+            ComponentField.Purpose => BoardWorkbookSchema.ColPurpose,
             _ => throw new ArgumentOutOfRangeException(nameof(field), field, null),
         };
 
@@ -82,14 +85,23 @@ namespace Handlers.DataHandling
                 ComponentField.Category => row.Category,
                 ComponentField.Package => row.Package,
                 ComponentField.Description => row.Description,
+                ComponentField.Purpose => row.Purpose,
                 _ => throw new ArgumentOutOfRangeException(nameof(field), field, null),
             } ?? string.Empty;
         }
 
-        // A field's value as it is kept: trimmed, and on one line.
+        // ###########################################################################################
+        // A field's value as it is kept: trimmed, and on one line - but "Purpose or note", a note with formatting, keeps its
+        // lines ("\n" alone) and is trimmed as such a note is (RichNote.TrimMarkup: a first line's indent says a bullet).
+        // ###########################################################################################
         public static string Normalised(ComponentField field, string? value)
         {
             string text = value ?? string.Empty;
+
+            if (field == ComponentField.Purpose)
+            {
+                return RichNote.TrimMarkup(text.Replace("\r\n", "\n").Replace('\r', '\n'));
+            }
 
             return text.Replace("\r\n", " ").Replace('\r', ' ').Replace('\n', ' ').Trim();
         }
@@ -132,6 +144,7 @@ namespace Handlers.DataHandling
                 Category = field == ComponentField.Category ? wanted : row.Category,
                 Package = field == ComponentField.Package ? wanted : row.Package,
                 Description = field == ComponentField.Description ? wanted : row.Description,
+                Purpose = field == ComponentField.Purpose ? wanted : row.Purpose,
             };
 
             List<ComponentEntry> components = board.Components.Select(entry => ReferenceEquals(entry, row) ? changed : entry).ToList();
@@ -237,14 +250,17 @@ namespace Handlers.DataHandling
 
             string wanted = label?.Trim() ?? string.Empty;
 
+            // No region to tell it apart by, nothing is (code review, 2026-11-09): a row per region of none was no row at all,
+            // and the component went.
             if (ComponentPaneEdits.RowShown(board, wanted, region) is not ComponentEntry shown ||
-                ComponentPaneEdits.IsRegional(board, wanted) == regional)
+                ComponentPaneEdits.IsRegional(board, wanted) == regional ||
+                (regional && BoardRegions.Of(board).Count == 0))
             {
                 return board;
             }
 
             List<ComponentEntry> rows = regional
-                ? BoardRegions.All.Select(each => shown.WithRegion(each)).ToList()
+                ? BoardRegions.Of(board).Select(each => shown.WithRegion(each)).ToList()
                 : [shown.WithRegion(string.Empty)];
 
             return board.WithComponentSections(components: ComponentPaneEdits.ReplaceInScope(
@@ -275,7 +291,8 @@ namespace Handlers.DataHandling
             string wanted = label?.Trim() ?? string.Empty;
 
             if (ComponentPaneEdits.PinsAreRegional(board, wanted) == regional ||
-                !board.ComponentPins.Any(row => ComponentPaneEdits.SameLabel(row.BoardLabel, wanted)))
+                !board.ComponentPins.Any(row => ComponentPaneEdits.SameLabel(row.BoardLabel, wanted)) ||
+                (regional && BoardRegions.Of(board).Count == 0))
             {
                 return board;
             }
@@ -288,7 +305,7 @@ namespace Handlers.DataHandling
             }
 
             List<ComponentPinEntry> rows = regional
-                ? BoardRegions.All.SelectMany(each => board.ComponentPins
+                ? BoardRegions.Of(board).SelectMany(each => board.ComponentPins
                         .Where(row => ComponentPaneEdits.SameLabel(row.BoardLabel, wanted))
                         .Select(row => row.WithRegion(each)))
                     .ToList()
@@ -311,6 +328,29 @@ namespace Handlers.DataHandling
         }
 
         // ---- pins -------------------------------------------------------------------------------
+
+        // ###########################################################################################
+        // The region a NEW pin of `label` is filed under, CRT showing `region`: it joins the set it stands with - the region's
+        // own while the pins are told apart, else the one for every region - but a component that is in one region only: its
+        // pins are that region's, the region it is worked on in. Asked of each component a pin is added to (code review,
+        // 2026-11-09: with several picked the first one's was given to all of them).
+        // ###########################################################################################
+        public static string RegionForNewPin(BoardData board, string? label, string? region)
+        {
+            ArgumentNullException.ThrowIfNull(board);
+
+            List<ComponentEntry> rows = board.Components.Where(row => ComponentPaneEdits.IsOfComponent(row.BoardLabel, label)).ToList();
+
+            // A component of one region works in that region whatever region CRT shows, its pins told apart or not (second code
+            // review, 2026-11-09: picked with others and the region switched, its new pin went to a region it is not in -
+            // shown nowhere, and sent so).
+            if (rows.Count == 1 && !string.IsNullOrWhiteSpace(rows[0].Region))
+            {
+                return rows[0].Region.Trim();
+            }
+
+            return ComponentPaneEdits.PinsAreRegional(board, label) ? region?.Trim() ?? string.Empty : string.Empty;
+        }
 
         // The component's pins in `region`, as the board lists them.
         public static List<ComponentPinEntry> PinsOf(BoardData board, string? label, string? region)
@@ -687,10 +727,10 @@ namespace Handlers.DataHandling
             return wanted.Length > 0 && ComponentPaneEdits.SameLabel(rowLabel, wanted);
         }
 
-        private static string KeyOf(ComponentPinEntry pin) =>
+        internal static string KeyOf(ComponentPinEntry pin) =>
             string.Join('\u001F', ComponentPaneEdits.LabelKey(pin.BoardLabel), pin.Region?.Trim(), pin.Pin?.Trim(), pin.Name?.Trim(), pin.Direction?.Trim());
 
-        private static string KeyOf(ComponentImageEntry row) =>
+        internal static string KeyOf(ComponentImageEntry row) =>
             string.Join(
                 '\u001F',
                 ComponentPaneEdits.LabelKey(row.BoardLabel),
@@ -705,7 +745,15 @@ namespace Handlers.DataHandling
                 row.TriggerLevelVolts?.Trim(),
                 row.MachineState?.Trim());
 
-        private static string KeyOf(ComponentReplacementEntry row) =>
+        // A link and a file by every value they hold - what tells two rows apart when several components are edited
+        // together (ComponentBulk), as the keys above do there.
+        internal static string KeyOf(ComponentLinkEntry row) =>
+            string.Join('\u001F', ComponentPaneEdits.LabelKey(row.BoardLabel), row.Region?.Trim(), row.Name?.Trim(), row.Url?.Trim());
+
+        internal static string KeyOf(ComponentLocalFileEntry row) =>
+            string.Join('\u001F', ComponentPaneEdits.LabelKey(row.BoardLabel), row.Region?.Trim(), row.Name?.Trim(), row.File?.Trim());
+
+        internal static string KeyOf(ComponentReplacementEntry row) =>
             string.Join('\u001F', ComponentPaneEdits.LabelKey(row.BoardLabel), row.Region?.Trim(), row.PartNumber?.Trim(), row.Kind?.Trim(), ComponentPaneEdits.NormalisedNote(row.Note));
 
         private static bool SameRows<T>(IReadOnlyList<T> first, IReadOnlyList<T> second, Func<T, string> key) =>

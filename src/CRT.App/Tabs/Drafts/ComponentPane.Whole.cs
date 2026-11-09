@@ -46,7 +46,7 @@ namespace CRT
         private void InitializeWhole()
         {
             // The same choices as every other row's "Applies to" (owner request, 2026-11-04).
-            this.NewRegionBox.ItemsSource = ComponentPaneWording.AppliesToChoices(null);
+            this.NewRegionBox.ItemsSource = ComponentPaneWording.AppliesToChoices(BoardRegions.PalAndNtsc, null);
             this.NewRegionBox.SelectedIndex = 0;
         }
 
@@ -71,6 +71,8 @@ namespace CRT
             this.UseSession(session);
 
             this.thisLabel = string.Empty;
+            this.thisSeveral = [];
+            this.LetGoOfSeveral();
             this.thisRegion = region?.Trim() ?? string.Empty;
             this.thisPublished = published;
             this.thisPublishedBoardFile = publishedBoardFile ?? string.Empty;
@@ -89,6 +91,7 @@ namespace CRT
                 this.NewLabelBox.Text = string.Empty;
                 this.NewCategoryBox.ItemsSource = this.CategoryChoices(board);
                 this.NewCategoryBox.SelectedItem = null;
+                this.NewRegionBox.ItemsSource = ComponentPaneWording.AppliesToChoices(BoardRegions.Of(board), null);
                 this.NewRegionBox.SelectedIndex = 0;
                 this.NewRegionPanel.IsVisible = BoardRegions.Has(board);
             }
@@ -231,6 +234,7 @@ namespace CRT
             bool marked = ComponentPaneEdits.IsMarkedOnAPicture(board, this.thisLabel);
 
             this.ActionsPanel.IsVisible = true;
+            this.DeleteComponentButton.IsVisible = true;
             this.ShowOnBoardButton.IsEnabled = marked;
             ToolTip.SetTip(this.ShowOnBoardButton, ComponentPaneWording.ShowOnBoardTip(this.thisLabel, marked));
             this.DeleteComponentButton.Content = "Delete component";

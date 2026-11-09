@@ -450,7 +450,7 @@ public sealed class WorkbooksDevicesTests : IDisposable
         {
             TabWorkbooks tab = this.BuildTab();
             tab.BoardsOverrideForTests = boards;
-            tab.BoardHasRegionsOverrideForTests = _ => Task.FromResult(true);
+            tab.BoardRegionsOverrideForTests = _ => Task.FromResult<IReadOnlyList<string>>(BoardRegions.PalAndNtsc);
 
             OwnedDeviceWindow? shown = null;
             tab.ShowDeviceFormOverrideForTests = form =>
@@ -496,7 +496,7 @@ public sealed class WorkbooksDevicesTests : IDisposable
         {
             TabWorkbooks tab = this.BuildTab();
             tab.BoardsOverrideForTests = [new() { HardwareName = "Commodore 64", BoardName = this.thisBoardKey["Commodore 64|".Length..] }];
-            tab.BoardHasRegionsOverrideForTests = _ => Task.FromResult(false);
+            tab.BoardRegionsOverrideForTests = _ => Task.FromResult<IReadOnlyList<string>>([]);
             tab.ShowDeviceFormOverrideForTests = async form =>
             {
                 form.AskPhotoOverrideForTests = _ => Task.FromResult<WorklogAddPhotoWindow.PhotoResult?>(new(gone, "The front"));
@@ -555,7 +555,7 @@ public sealed class WorkbooksDevicesTests : IDisposable
         {
             TabWorkbooks tab = this.BuildTab();
             tab.BoardsOverrideForTests = [new() { HardwareName = "Commodore 64", BoardName = "250407" }];
-            tab.BoardHasRegionsOverrideForTests = _ => Task.FromResult(false);
+            tab.BoardRegionsOverrideForTests = _ => Task.FromResult<IReadOnlyList<string>>([]);
             tab.ShowDeviceFormOverrideForTests = _ => Task.FromResult<OwnedDeviceRecord?>(null);
 
             await tab.AddDeviceAsync();
@@ -658,7 +658,7 @@ public sealed class WorkbooksDevicesTests : IDisposable
             tab.RefreshWorkbooks();
 
             var form = new OwnedDeviceWindow();
-            form.InitializeForEdit(OwnedDeviceStore.Get(device.Id)!, [new() { HardwareName = "Commodore 64", BoardName = "250407" }], _ => Task.FromResult(false));
+            form.InitializeForEdit(OwnedDeviceStore.Get(device.Id)!, [new() { HardwareName = "Commodore 64", BoardName = "250407" }], _ => Task.FromResult<IReadOnlyList<string>>([]));
 
             Assert.Equal(1, DevicePhotoThumbnails.ReadsMadeForTests - readsBefore);
             Assert.Equal("Photos (1)", Text(tab, "DevicePhotosHeadingText"));
@@ -818,7 +818,7 @@ public sealed class WorkbooksDevicesTests : IDisposable
 
             OwnedDeviceStore.AddComment(device.Id, "Bought at a flea market", new DateTime(2026, 10, 1, 9, 5, 0));
             tab.BoardsOverrideForTests = [new() { HardwareName = "Commodore 64", BoardName = "250407" }];
-            tab.BoardHasRegionsOverrideForTests = _ => Task.FromResult(false);
+            tab.BoardRegionsOverrideForTests = _ => Task.FromResult<IReadOnlyList<string>>([]);
             tab.ShowDeviceFormOverrideForTests = async form =>
             {
                 form.AskCommentOverrideForTests = _ => Task.FromResult<string?>("Recapped");
@@ -1339,7 +1339,7 @@ public sealed class WorkbooksDevicesTests : IDisposable
         UiTest.Run(() =>
         {
             var window = new OwnedDeviceWindow();
-            window.Initialize(boards, "Commodore 64|250425", boardHasRegions: _ => Task.FromResult(true));
+            window.Initialize(boards, "Commodore 64|250425", boardRegions: _ => Task.FromResult<IReadOnlyList<string>>(BoardRegions.PalAndNtsc));
             window.Show();
 
             Assert.Equal("Commodore 64", window.GetControl<ComboBox>("HardwareComboBox").SelectedItem);
@@ -1374,7 +1374,7 @@ public sealed class WorkbooksDevicesTests : IDisposable
         UiTest.Run(() =>
         {
             var window = new OwnedDeviceWindow();
-            window.Initialize(boards, "Commodore 64|250407", boardHasRegions: _ => Task.FromResult(false));
+            window.Initialize(boards, "Commodore 64|250407", boardRegions: _ => Task.FromResult<IReadOnlyList<string>>([]));
             window.Show();
             window.GetControl<TextBox>("NameTextBox").Text = "Breadbin #2";
 
@@ -1407,7 +1407,7 @@ public sealed class WorkbooksDevicesTests : IDisposable
         UiTest.Run(() =>
         {
             var window = new OwnedDeviceWindow();
-            window.Initialize(boards, "Commodore 64|250407", boardHasRegions: _ => Task.FromResult(false));
+            window.Initialize(boards, "Commodore 64|250407", boardRegions: _ => Task.FromResult<IReadOnlyList<string>>([]));
             window.Show();
 
             TextBox description = window.GetControl<TextBox>("DescriptionTextBox");
@@ -1459,10 +1459,10 @@ public sealed class WorkbooksDevicesTests : IDisposable
         UiTest.Run(() =>
         {
             var window = new OwnedDeviceWindow();
-            window.Initialize(boards, "Commodore 64|250407", boardHasRegions: boardKey =>
+            window.Initialize(boards, "Commodore 64|250407", boardRegions: boardKey =>
             {
                 asked.Add(boardKey);
-                return Task.FromResult(regional.Contains(boardKey));
+                return Task.FromResult<IReadOnlyList<string>>(regional.Contains(boardKey) ? BoardRegions.PalAndNtsc : []);
             });
             window.Show();
 
@@ -1504,7 +1504,7 @@ public sealed class WorkbooksDevicesTests : IDisposable
             new() { HardwareName = "Commodore 64", BoardName = "KU-14194HB" },
         ];
 
-        var answers = new Dictionary<string, TaskCompletionSource<bool>>(StringComparer.OrdinalIgnoreCase)
+        var answers = new Dictionary<string, TaskCompletionSource<IReadOnlyList<string>>>(StringComparer.OrdinalIgnoreCase)
         {
             ["Commodore 64|250407"] = new(),
             ["Commodore 64|KU-14194HB"] = new(),
@@ -1513,14 +1513,14 @@ public sealed class WorkbooksDevicesTests : IDisposable
         await UiTest.RunAsync(async () =>
         {
             var window = new OwnedDeviceWindow();
-            window.Initialize(boards, "Commodore 64|250407", boardHasRegions: boardKey => answers[boardKey].Task);
+            window.Initialize(boards, "Commodore 64|250407", boardRegions: boardKey => answers[boardKey].Task);
             window.Show();
 
             StackPanel region = window.GetControl<StackPanel>("RegionPanel");
             Assert.False(region.IsVisible);
 
             Task first = window.RegionsFollowedForTests;
-            answers["Commodore 64|250407"].SetResult(true);
+            answers["Commodore 64|250407"].SetResult(BoardRegions.PalAndNtsc);
             await first;
             Assert.True(region.IsVisible);
 
@@ -1532,7 +1532,7 @@ public sealed class WorkbooksDevicesTests : IDisposable
             // Back on the first board, answered already - then the second's answer comes, for a board
             // not picked: nothing changes.
             window.GetControl<ComboBox>("BoardComboBox").SelectedItem = "250407";
-            answers["Commodore 64|KU-14194HB"].SetResult(false);
+            answers["Commodore 64|KU-14194HB"].SetResult([]);
             await second;
             Assert.True(region.IsVisible);
 
@@ -1550,7 +1550,7 @@ public sealed class WorkbooksDevicesTests : IDisposable
         UiTest.Run(() =>
         {
             var window = new OwnedDeviceWindow();
-            window.Initialize(boards, "Commodore 64|250407", boardHasRegions: _ => Task.FromException<bool>(new IOException("held by another program")));
+            window.Initialize(boards, "Commodore 64|250407", boardRegions: _ => Task.FromException<IReadOnlyList<string>>(new IOException("held by another program")));
             window.Show();
 
             Assert.False(window.GetControl<StackPanel>("RegionPanel").IsVisible);
@@ -1570,7 +1570,7 @@ public sealed class WorkbooksDevicesTests : IDisposable
         UiTest.Run(() =>
         {
             var window = new OwnedDeviceWindow();
-            window.InitializeForEdit(device, boards, _ => Task.FromResult(false));
+            window.InitializeForEdit(device, boards, _ => Task.FromResult<IReadOnlyList<string>>([]));
             window.Show();
 
             Assert.False(window.GetControl<StackPanel>("RegionPanel").IsVisible);
@@ -1584,25 +1584,99 @@ public sealed class WorkbooksDevicesTests : IDisposable
     }
 
     // ###########################################################################################
-    // Whether a board comes in PAL and NTSC, asked of it as CRT views it - read from its board file,
-    // by BoardRegions' rule. A board CRT does not list has none.
+    // A REGION PICKED FOR ONE BOARD IS NOT CARRIED TO ANOTHER (code review, 2026-11-09: "Japan" picked on a board in EU and
+    // Japan stayed picked on a PAL/NTSC board, listed after its regions, and was saved so). On a board without it nothing
+    // is picked; back on a board with it, it is picked once more only when picked there again.
     // ###########################################################################################
     [Fact]
-    public async Task A_board_says_whether_it_comes_in_PAL_and_NTSC_from_its_board_file()
+    public void A_region_picked_for_one_board_is_not_carried_to_a_board_without_it()
+    {
+        HardwareBoardEntry[] boards =
+        [
+            new() { HardwareName = "Bang & Olufsen", BoardName = "Beocenter" },
+            new() { HardwareName = "Bang & Olufsen", BoardName = "Beomaster" },
+        ];
+
+        UiTest.Run(() =>
+        {
+            var window = new OwnedDeviceWindow();
+            window.Initialize(boards, "Bang & Olufsen|Beocenter", boardRegions: boardKey =>
+                Task.FromResult<IReadOnlyList<string>>(boardKey.EndsWith("Beocenter", StringComparison.Ordinal) ? ["EU", "Japan"] : BoardRegions.PalAndNtsc));
+            window.Show();
+
+            ComboBox region = window.GetControl<ComboBox>("RegionComboBox");
+            region.SelectedItem = "Japan";
+
+            window.GetControl<ComboBox>("BoardComboBox").SelectedItem = "Beomaster";
+
+            Assert.Equal(["Unknown", "PAL", "NTSC"], region.Items.Cast<string>());
+            Assert.Equal("Unknown", region.SelectedItem);
+            Assert.Equal(string.Empty, window.Details().Region);
+        });
+    }
+
+    // The device's own region comes back on its own board - and on another, only where that board has it.
+    [Fact]
+    public void A_devices_own_region_comes_back_on_its_own_board()
+    {
+        OwnedDeviceRecord device = OwnedDeviceStore.Create(
+            new OwnedDeviceDetails("Beocenter", "Bang & Olufsen|Beocenter", "Japan", "S-1", "Flea market", OwnedDeviceStatus.Working))!;
+
+        HardwareBoardEntry[] boards =
+        [
+            new() { HardwareName = "Bang & Olufsen", BoardName = "Beocenter" },
+            new() { HardwareName = "Bang & Olufsen", BoardName = "Beomaster" },
+        ];
+
+        UiTest.Run(() =>
+        {
+            var window = new OwnedDeviceWindow();
+            window.InitializeForEdit(device, boards, boardKey =>
+                Task.FromResult<IReadOnlyList<string>>(boardKey.EndsWith("Beocenter", StringComparison.Ordinal) ? ["EU", "Japan"] : BoardRegions.PalAndNtsc));
+            window.Show();
+
+            ComboBox region = window.GetControl<ComboBox>("RegionComboBox");
+            ComboBox board = window.GetControl<ComboBox>("BoardComboBox");
+            Assert.Equal("Japan", region.SelectedItem);
+
+            board.SelectedItem = "Beomaster";
+            Assert.Equal("Unknown", region.SelectedItem);
+
+            // Nor is it offered there (second code review, 2026-11-09: listed after PAL and NTSC, it could be picked and saved).
+            Assert.Equal(["Unknown", "PAL", "NTSC"], region.Items.Cast<string>());
+
+            board.SelectedItem = "Beocenter";
+            Assert.Equal("Japan", region.SelectedItem);
+        });
+    }
+
+    // ###########################################################################################
+    // The regions a board comes in, asked of it as CRT views it - read from its board file, by BoardRegions' rule: PAL and
+    // NTSC, or names of its own (2026-11-09). A board CRT does not list has none.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_board_says_which_regions_it_comes_in_from_its_board_file()
     {
         string regionalKey = "Commodore 64|250407 " + Guid.NewGuid().ToString("N");
+        string ownKey = "Bang & Olufsen|Beocenter " + Guid.NewGuid().ToString("N");
         string plainKey = "ZX Spectrum|Issue 2 " + Guid.NewGuid().ToString("N");
 
         try
         {
-            PublishedBoardTree.Load(this.thisWorkspace.Path_("Regional"), regionalKey, new BoardData { Regions = [.. BoardRegions.All] });
-            bool regional = await OwnedDeviceWindow.BoardHasRegionsAsViewedAsync(regionalKey);
-            bool unlisted = await OwnedDeviceWindow.BoardHasRegionsAsViewedAsync(plainKey);
+            PublishedBoardTree.Load(this.thisWorkspace.Path_("Regional"), regionalKey, new BoardData { Regions = [.. BoardRegions.PalAndNtsc] });
+            IReadOnlyList<string> regional = await OwnedDeviceWindow.BoardRegionsAsViewedAsync(regionalKey);
+            IReadOnlyList<string> unlisted = await OwnedDeviceWindow.BoardRegionsAsViewedAsync(plainKey);
+
+            PublishedBoardTree.Load(this.thisWorkspace.Path_("Own"), ownKey, new BoardData { Regions = ["EU", "US"] });
+            IReadOnlyList<string> own = await OwnedDeviceWindow.BoardRegionsAsViewedAsync(ownKey);
 
             PublishedBoardTree.Load(this.thisWorkspace.Path_("Plain"), plainKey, new BoardData());
-            bool plain = await OwnedDeviceWindow.BoardHasRegionsAsViewedAsync(plainKey);
+            IReadOnlyList<string> plain = await OwnedDeviceWindow.BoardRegionsAsViewedAsync(plainKey);
 
-            Assert.Equal((true, false, false), (regional, unlisted, plain));
+            Assert.Equal(["PAL", "NTSC"], regional);
+            Assert.Equal(["EU", "US"], own);
+            Assert.Empty(unlisted);
+            Assert.Empty(plain);
         }
         finally
         {
@@ -1624,7 +1698,7 @@ public sealed class WorkbooksDevicesTests : IDisposable
         UiTest.Run(() =>
         {
             var window = new OwnedDeviceWindow();
-            window.InitializeForEdit(device, boards, _ => Task.FromResult(true));
+            window.InitializeForEdit(device, boards, _ => Task.FromResult<IReadOnlyList<string>>(BoardRegions.PalAndNtsc));
             window.Show();
 
             Assert.Equal("Save device", window.GetControl<Button>("SaveButton").Content);

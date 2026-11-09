@@ -143,6 +143,22 @@ public sealed class DataTreeJsonTests
     }
 
     // ###########################################################################################
+    // A component's "Purpose or note" (2026-11-09) is written only when filled too, its lines and formatting kept.
+    // ###########################################################################################
+    [Fact]
+    public void A_component_writes_its_purpose_only_when_it_has_one_and_keeps_its_lines()
+    {
+        Assert.DoesNotContain("\"purpose\":", DataTreeJson.Write(Board()), StringComparison.Ordinal);
+
+        BoardDocument board = Board();
+        board.Components[0].Purpose = "**Clock** for the CPU\n- from the VIC-II";
+
+        BoardDocument read = DataTreeJson.ReadBoard(DataTreeJson.Write(board));
+
+        Assert.Equal("**Clock** for the CPU\n- from the VIC-II", read.Components[0].Purpose);
+    }
+
+    // ###########################################################################################
     // A picture's traces' colour and both sides' opacities (2026-10-30) are written only when filled
     // too: every board published before then keeps its picture rows line for line.
     // ###########################################################################################

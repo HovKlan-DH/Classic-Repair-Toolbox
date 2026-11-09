@@ -1,6 +1,8 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Media;
+using Avalonia.Reactive;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -18,6 +20,30 @@ namespace Handlers.Theming
     // ###########################################################################################
     internal static class BoldRuns
     {
+        // ###########################################################################################
+        // A SENTENCE WITH ITS "<b>...</b>" FOR A BLOCK A TEMPLATE MAKES (2026-11-09: "Board: Regions"' "<b>2</b> rows of this
+        // board have it applied"): `theme:BoldRuns.MarkedText="{Binding Why}"`, shown as ShowMarked shows it, again whenever
+        // the bound value changes - a template has no code-behind moment holding both the block and its text. Never set Text
+        // on the block as well.
+        // ###########################################################################################
+        public static readonly AttachedProperty<string?> MarkedTextProperty =
+            AvaloniaProperty.RegisterAttached<TextBlock, string?>("MarkedText", typeof(BoldRuns));
+
+        public static void SetMarkedText(TextBlock block, string? value) => block.SetValue(MarkedTextProperty, value);
+
+        public static string? GetMarkedText(TextBlock block) => block.GetValue(MarkedTextProperty);
+
+        static BoldRuns()
+        {
+            MarkedTextProperty.Changed.Subscribe(new AnonymousObserver<AvaloniaPropertyChangedEventArgs<string?>>(args =>
+            {
+                if (args.Sender is TextBlock block)
+                {
+                    BoldRuns.ShowMarked(block, args.NewValue.GetValueOrDefault());
+                }
+            }));
+        }
+
         public static void Show(TextBlock block, IReadOnlyList<(string Text, bool IsBold)> runs)
         {
             block.Inlines?.Clear();

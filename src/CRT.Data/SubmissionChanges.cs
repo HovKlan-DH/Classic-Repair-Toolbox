@@ -41,7 +41,14 @@ namespace Handlers.DataHandling
         IReadOnlyList<SectionChanges> Sections,
         FileChanges Files,
         IReadOnlyList<string>? Reordered = null,
-        bool? RegionsNow = null);
+        bool? RegionsNow = null)
+    {
+        // The board's regions by name before and after, with RegionsNow (2026-11-09) - null in a record from before then,
+        // which means PAL and NTSC.
+        public IReadOnlyList<string>? RegionNamesBefore { get; init; }
+
+        public IReadOnlyList<string>? RegionNamesNow { get; init; }
+    }
 
     // One sheet's changes. The counts are the whole truth; the lists are the first ListedPerKind.
     public sealed record SectionChanges(
@@ -125,7 +132,11 @@ namespace Handlers.DataHandling
                 sections,
                 SubmissionChangeFacts.Files(filesAdded, filesReplaced, filesRemoved),
                 rows.ReorderedSections.Count > 0 ? [.. rows.ReorderedSections] : null,
-                rows.RegionsNow);
+                rows.RegionsNow)
+            {
+                RegionNamesBefore = rows.RegionNamesBefore,
+                RegionNamesNow = rows.RegionNamesNow,
+            };
         }
 
         // Each changed row with what moved on it alone, where a key stands more than once - else by its key.

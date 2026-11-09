@@ -8,13 +8,13 @@ From nothing to a recorded repair.
 
 ## 1. Turn it on
 
-It is on by default: you have a "My Devices" tab, and a bar above the tabs.
+It is on by default: you have a "Workbooks" tab, and a bar above the tabs.
 
-If you do not see them: "Configuration" tab -> tick **Enable "My Devices" tab**.
+If you do not see them: "Configuration" tab -> tick **Enable "Workbooks" tab**.
 
-Under the checkbox, "Scope in "My Devices" tab:" chooses which devices and workbooks the tab lists: **Show all devices**, **Show only devices for selected hardware** (every board of it), or **Show only devices for selected board**. Start with the default (selected board only).
+Under the checkbox, "Scope in "Workbooks" tab:" chooses which devices and workbooks the tab lists: **Show all workbooks and devices**, **Show only workbooks and devices for selected hardware** (every board of it), or **Show only workbooks and devices for selected board**. Start with the default (selected board only).
 
-Below it, "Sorting of devices in "My devices" list:" orders the devices in the list: **Sort automatically by name** (the default), **Sort automatically by hardware/board/name**, or **Sort manually in list (drag up/down)**.
+Below it, "Sorting of devices in "My devices" list:" orders the devices in the list: **Sort automatically by name** (the default), **Sort automatically by hardware/board/name**, or **Sort manually in list** - then each device is dragged up or down by its handle.
 
 ## 2. Select the board
 
@@ -59,7 +59,7 @@ Set the worklog to **Closed** when it is done. When the last one closes, so does
 
 ## 6. Export it
 
-"My Devices" tab -> **Export to PDF** for the write-up on its own, or **Export to ZIP** to include the original photos and files.
+"Workbooks" tab -> **Export to PDF** for the write-up on its own, or **Export to ZIP** to include the original photos and files.
 
 See [Export and your data](Workbooks-Export-and-data).
 

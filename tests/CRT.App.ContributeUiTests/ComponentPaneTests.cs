@@ -9,6 +9,7 @@ using Avalonia.VisualTree;
 using CRT;
 using Handlers.DataHandling;
 using Handlers.Geometry;
+using Handlers.Theming;
 
 namespace ClassicRepairToolbox.Tests.Ui;
 
@@ -125,7 +126,7 @@ public sealed class ComponentPaneTests : IDisposable
             pane.CommitHeld();
 
             Assert.Equal("Runs the show", U8(session).Description);
-            Assert.Equal("Short description of [U8]", session.UndoDescription);
+            Assert.Equal("Other technical details of [U8]", session.UndoDescription);
             Assert.True(Get<Border>(pane, "ChangedMark").IsVisible);
 
             Button undoChanges = Get<Button>(pane, "UndoChangesButton");
@@ -136,6 +137,88 @@ public sealed class ComponentPaneTests : IDisposable
             pane.CommitHeld();
             Assert.True(session.Undo());
             Assert.False(session.CanUndo);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // "PURPOSE OR NOTE" (owner request, 2026-11-09: "a new textfield (with formatting possibility) named "Purpose or note"
+    // ... in the 2nd column just below "Part number" ... it should always auto-expand"): its markup goes into the draft as
+    // one step, lines and formatting kept, and the box is under "Part number", in the right-hand column, with no height cap.
+    // ###########################################################################################
+    [Fact]
+    public void Purpose_or_note_goes_into_the_draft_with_its_formatting_as_one_step()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+
+            RichNoteTextBox purpose = Get<RichNoteTextBox>(pane, "PurposeBox");
+            purpose.Markup = "Feeds the **clock**\n- to the VIC-II";
+            pane.CommitHeld();
+
+            Assert.Equal("Feeds the **clock**\n- to the VIC-II", U8(session).Purpose);
+            Assert.Equal("Purpose or note of [U8]", session.UndoDescription);
+
+            // Under "Part number", in the same column, as tall as it needs.
+            var column = Assert.IsType<StackPanel>(purpose.Parent?.Parent);
+            Assert.Same(column, Get<TextBox>(pane, "PartNumberBox").Parent?.Parent);
+            Assert.True(double.IsPositiveInfinity(purpose.MaxHeight));
+
+            // Read back as it is shown again.
+            pane.Show(session, "U8", "PAL", Published());
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal("Feeds the **clock**\n- to the VIC-II", Get<RichNoteTextBox>(pane, "PurposeBox").Markup);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // "PURPOSE OR NOTE" ENDS WHERE "OTHER TECHNICAL DETAILS" ENDS (owner request, 2026-11-09: "can it vertically align to the
+    // end-border of the "Other technical details" in the 1st column?") - and still grows past it with its text, moving
+    // nothing in the left column.
+    // ###########################################################################################
+    [Fact]
+    public void Purpose_or_note_ends_where_other_technical_details_ends_and_grows_past_it_with_its_text()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+            RichNoteTextBox purpose = Get<RichNoteTextBox>(pane, "PurposeBox");
+            TextBox details = Get<TextBox>(pane, "DescriptionBox");
+
+            double BottomOf(Control box)
+            {
+                Dispatcher.UIThread.RunJobs();
+                return box.TranslatePoint(new Point(0, box.Bounds.Height), window)!.Value.Y;
+            }
+
+            double detailsBottom = BottomOf(details);
+            Assert.Equal(detailsBottom, BottomOf(purpose), 0.6);
+
+            // Many lines: taller than the details, which stay where they were.
+            purpose.Markup = string.Join("\n", Enumerable.Range(1, 12).Select(line => $"Line {line}"));
+            Assert.True(BottomOf(purpose) > detailsBottom + 40);
+            Assert.Equal(detailsBottom, BottomOf(details), 0.6);
+
+            // Emptied again, it ends where the details end once more - aligned as its column changes size, not at every
+            // layout pass of the window (code review, 2026-11-09).
+            purpose.Markup = string.Empty;
+            Assert.Equal(detailsBottom, BottomOf(purpose), 0.6);
+
+            // A line under the label moves the details down - and the box follows.
+            TextBlock labelLine = Get<TextBlock>(pane, "BoardLabelProblemText");
+            labelLine.Text = "U9 is a label another component has.";
+            labelLine.IsVisible = true;
+            double movedBottom = BottomOf(details);
+            Assert.True(movedBottom > detailsBottom + 5);
+            Assert.Equal(movedBottom, BottomOf(purpose), 0.6);
 
             window.Close();
         });
@@ -682,7 +765,8 @@ public sealed class ComponentPaneTests : IDisposable
             (ComponentPane pane, Window window) = Shown(session, "U1", "NTSC");
 
             Assert.True(Get<TextBlock>(pane, "RegionText").IsVisible);
-            Assert.StartsWith("The NTSC version", Get<TextBlock>(pane, "RegionText").Text, StringComparison.Ordinal);
+            Assert.StartsWith("The NTSC version", BoldRuns.TextOf(Get<TextBlock>(pane, "RegionText")), StringComparison.Ordinal);
+            Assert.Equal(["NTSC"], BoldRuns.BoldPiecesOf(Get<TextBlock>(pane, "RegionText")));
 
             Click(Get<Button>(pane, "AddPinButton"));
             ComponentPanePinRow pin = Get<ItemsControl>(pane, "PinsItemsControl").Items.OfType<ComponentPanePinRow>().Single();
@@ -3467,7 +3551,7 @@ public sealed class ComponentPaneTests : IDisposable
             List<CheckBox> boards = Get<StackPanel>(pane, "AlsoBoardsPanel").Children.OfType<CheckBox>().ToList();
             Assert.Equal(2, boards.Count);
             Assert.All(boards, box => Assert.True(box.IsChecked));
-            Assert.Equal(["Short description"], Get<StackPanel>(pane, "AlsoPartsPanel").Children.OfType<CheckBox>().Select(box => box.Content as string));
+            Assert.Equal(["Other technical details"], Get<StackPanel>(pane, "AlsoPartsPanel").Children.OfType<CheckBox>().Select(box => box.Content as string));
 
             boards[1].IsChecked = false;
             await pane.ChangeOtherBoardsAsync();

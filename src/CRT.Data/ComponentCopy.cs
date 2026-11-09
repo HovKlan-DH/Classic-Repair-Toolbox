@@ -215,7 +215,7 @@ namespace Handlers.DataHandling
             return part switch
             {
                 ComponentCopyPart.Package => $"Package ({source.Row.Package?.Trim()})",
-                ComponentCopyPart.Description => "Short description",
+                ComponentCopyPart.Description => BoardWorkbookSchema.DescriptionHeading,
                 ComponentCopyPart.Pins => ComponentCopy.Counted("Pins", ComponentPaneEdits.PinsOf(source.Board, source.Row.BoardLabel, region).Count),
                 ComponentCopyPart.Replacements => ComponentCopy.Counted("Replacement parts", ComponentPaneEdits.ReplacementsOf(source.Board, source.Row.BoardLabel, region).Count),
                 _ => ComponentCopy.Counted("Links", ComponentPaneEdits.LinksOf(source.Board, source.Row.BoardLabel, region).Count),
@@ -250,7 +250,7 @@ namespace Handlers.DataHandling
             // The regions besides the one shown that have this component - they show its rows for every
             // region too. Never one it is not in: "PAL" alone has no NTSC to keep anything for.
             List<string> others = shown.Length > 0 && BoardRegions.Has(board)
-                ? BoardRegions.All
+                ? BoardRegions.Of(board)
                     .Where(other => !string.Equals(other, shown, StringComparison.OrdinalIgnoreCase) &&
                                     board.Components.Any(row => ComponentPaneEdits.InScope(row.BoardLabel, row.Region, label, other)))
                     .ToList()

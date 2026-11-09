@@ -545,10 +545,29 @@ namespace CRT
         // Opens `label` of the board shown in the pane - its draft made first when it has none
         // (OnCurrentDraftAsync), the table closed first when it is open (what it holds saved).
         // ###########################################################################################
-        internal Task OpenComponentAsync(string label) =>
+        // `stillWanted`: asked as the pane is about to show it - a pick made since has overtaken it (TabDrafts.Workspace.cs).
+        internal Task OpenComponentAsync(string label, Func<bool>? stillWanted = null) =>
             this.OnCurrentDraftAsync(entry => this.OpenPaneAsync(
                 entry,
-                (session, published, publishedBoardFile) => this.ComponentPane.Show(session, label, this.thisCurrentRegion, published, publishedBoardFile)));
+                (session, published, publishedBoardFile) =>
+                {
+                    if (stillWanted?.Invoke() != false)
+                    {
+                        this.ComponentPane.Show(session, label, this.thisCurrentRegion, published, publishedBoardFile);
+                    }
+                }));
+
+        // Several components, edited as one in the pane (ComponentPane.Several.cs; owner request, 2026-11-08).
+        internal Task OpenSeveralAsync(IReadOnlyList<string> labels, Func<bool>? stillWanted = null) =>
+            this.OnCurrentDraftAsync(entry => this.OpenPaneAsync(
+                entry,
+                (session, published, publishedBoardFile) =>
+                {
+                    if (stillWanted?.Invoke() != false)
+                    {
+                        this.ComponentPane.ShowSeveral(session, labels, this.thisCurrentRegion, published, publishedBoardFile);
+                    }
+                }));
 
         // ###########################################################################################
         // "Edit component" on a popup: the component on its "Basics" page, whichever page the pane was on (owner request,

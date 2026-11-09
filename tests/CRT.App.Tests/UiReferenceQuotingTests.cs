@@ -15,7 +15,8 @@ namespace ClassicRepairToolbox.Tests;
 // ###########################################################################################
 public sealed class UiReferenceQuotingTests
 {
-    // "My Devices" is the tab that was "Workbooks" (2026-11-06); both stay, so a sentence naming either bare fails.
+    // "My Devices" was the "Workbooks" tab's name for two days (2026-11-06 to 2026-11-08); both stay, so a sentence naming
+    // either bare fails.
     private const string Tabs = "About|Configuration|Contribute|Feedback|Maintainer|Oscilloscope|Overview|Resources|Schematics|Workbooks|My Devices";
 
     // A tab named with no quote around it - "the Schematics tab", and the possessive.

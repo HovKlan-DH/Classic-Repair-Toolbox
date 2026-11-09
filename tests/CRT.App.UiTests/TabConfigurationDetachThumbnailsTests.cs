@@ -34,14 +34,21 @@ public sealed class TabConfigurationDetachThumbnailsTests : IDisposable
         this.thisWorkspace.Dispose();
     }
 
+    // ###########################################################################################
+    // The popup's two settings together, then the thumbnails': "Detach pinout image in component info window" right under
+    // "Open multiple component info windows" (owner request, 2026-11-09: "have "Detach pinout image in component info popup"
+    // just below the "Open multiple component info windows" and then actually also rename it"), and the thumbnails' detach
+    // after it.
+    // ###########################################################################################
     [Fact]
-    public void The_detach_checkbox_sits_directly_after_the_multiple_popups_checkbox()
+    public void The_pinout_detach_sits_under_the_multiple_popups_checkbox_and_the_thumbnails_detach_after_it()
     {
         UiTest.Run(() =>
         {
             var tab = new TabConfiguration();
 
             var popupsRow = tab.GetControl<CheckBox>("MultipleInstancesForComponentPopupCheckBox");
+            var pinoutRow = tab.GetControl<CheckBox>("DetachPinoutCheckBox");
             var detachRow = tab.GetControl<CheckBox>("DetachSchematicsThumbnailsCheckBox");
 
             var parent = popupsRow.GetVisualParent();
@@ -50,9 +57,10 @@ public sealed class TabConfigurationDetachThumbnailsTests : IDisposable
 
             var siblings = ((StackPanel)parent!).Children;
             int popupsIndex = siblings.IndexOf(popupsRow);
-            int detachIndex = siblings.IndexOf(detachRow);
 
-            Assert.Equal(popupsIndex + 1, detachIndex);
+            Assert.Equal(popupsIndex + 1, siblings.IndexOf(pinoutRow));
+            Assert.Equal(popupsIndex + 2, siblings.IndexOf(detachRow));
+            Assert.Equal("Detach pinout image in component info window", pinoutRow.Content);
         });
     }
 

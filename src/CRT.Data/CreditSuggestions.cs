@@ -122,7 +122,7 @@ namespace Handlers.DataHandling
         // replacement parts, the board's own files and links, its important signals and its pictures'
         // colours.
         private static bool BoardDataDiffers(BoardData before, BoardData draft) =>
-            CreditSuggestions.Differ(before.Components, draft.Components, row => string.Join('\u001F', CreditSuggestions.Key(row.BoardLabel), row.Region?.Trim(), row.FriendlyName?.Trim(), row.TechnicalNameOrValue?.Trim(), row.PartNumber?.Trim(), row.Category?.Trim(), row.Description?.Trim(), row.Package?.Trim())) ||
+            CreditSuggestions.Differ(before.Components, draft.Components, row => string.Join('\u001F', CreditSuggestions.Key(row.BoardLabel), row.Region?.Trim(), row.FriendlyName?.Trim(), row.TechnicalNameOrValue?.Trim(), row.PartNumber?.Trim(), row.Category?.Trim(), row.Description?.Trim(), row.Package?.Trim(), RichNote.TrimMarkup(row.Purpose))) ||
             CreditSuggestions.Differ(before.ComponentImages.Where(row => !ComponentImageKinds.IsScopeBaseline(row)), draft.ComponentImages.Where(row => !ComponentImageKinds.IsScopeBaseline(row)), CreditSuggestions.ImageKey) ||
             CreditSuggestions.Differ(before.ComponentLocalFiles, draft.ComponentLocalFiles, row => string.Join('\u001F', CreditSuggestions.Key(row.BoardLabel), row.Region?.Trim(), row.Name?.Trim(), CreditSuggestions.Key(row.File))) ||
             CreditSuggestions.Differ(before.ComponentLinks, draft.ComponentLinks, row => string.Join('\u001F', CreditSuggestions.Key(row.BoardLabel), row.Region?.Trim(), row.Name?.Trim(), row.Url?.Trim())) ||

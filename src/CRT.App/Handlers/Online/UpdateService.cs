@@ -66,7 +66,7 @@ namespace Handlers.OnlineHandling
                 // The normal outcome when running from "dotnet run" or a plain build output rather
                 // than a Velopack install - not an error worth alarming anyone about.
                 _lastCheckError = "Not running as an installed application";
-                Logger.Warning("Update check skipped - not running as a Velopack-installed application");
+                Logger.Warning("Application update check skipped - not running as a Velopack-installed application");
                 return null;
             }
             catch (Exception ex)

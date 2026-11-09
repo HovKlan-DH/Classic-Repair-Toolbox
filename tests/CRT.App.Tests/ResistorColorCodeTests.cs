@@ -276,4 +276,28 @@ public sealed class ResistorColorCodeTests
             Assert.NotEqual(fill, text);
         }
     }
+
+    // ###########################################################################################
+    // A resistor of 2% or closer is metal film, drawn with a light-blue body; 5%, 10% or no tolerance at all is carbon film,
+    // beige (owner, 2026-11-08: "a light-blue body for 1% and 2% resistors ... let us try this out").
+    // ###########################################################################################
+    [Theory]
+    [InlineData("1K" + Ohm + " 1%", true)]
+    [InlineData("4K7" + Ohm + " 2%", true)]
+    [InlineData("100" + Ohm + " 0.5%", true)]
+    [InlineData("560" + Ohm + " 1/4W 5%", false)]
+    [InlineData("100K" + Ohm + " 10%", false)]
+    [InlineData("3.3K" + Ohm, false)]
+    public void Two_percent_or_closer_is_metal_film(string value, bool metalFilm)
+    {
+        IReadOnlyList<ColorBand> bands = BandsOf(Resistor(value))!;
+
+        Assert.Equal(metalFilm, IsMetalFilm(bands));
+    }
+
+    [Fact]
+    public void No_bands_is_no_metal_film()
+    {
+        Assert.False(IsMetalFilm([]));
+    }
 }

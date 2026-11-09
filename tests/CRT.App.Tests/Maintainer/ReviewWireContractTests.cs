@@ -1638,7 +1638,11 @@ public sealed class ReviewWireContractTests
             Manifest: new SubmissionManifest { BoardId = "Commodore/C64/250407" },
             Contributor: new ReviewContributorFacts("c@example.com", "C", Published: 0, Waiting: 1, ChangesRequested: 0, Rejected: 0),
             Findings: [],
-            Changes: new ReviewChangeSummary(false, null, [], null, RegionsNow: true),
+            Changes: new ReviewChangeSummary(false, null, [], null, RegionsNow: true)
+            {
+                RegionNamesBefore = ["PAL", "NTSC"],
+                RegionNamesNow = ["PAL", "NTSC", "Japan"],
+            },
             PublishedFiles: [],
             PublishedHashes: new Dictionary<string, string>(),
             SchematicImages: new Dictionary<string, string>(),
@@ -1651,8 +1655,18 @@ public sealed class ReviewWireContractTests
         Assert.True(detail!.Changes!.RegionsNow);
         Assert.True(detail.Changes.HasChanges);
 
+        // The names before and after reach the Maintainer tab as the server writes them (code review, 2026-11-09: no test
+        // held the two ends of "regionNamesBefore" and "regionNamesNow" together) - and say the change in words.
+        Assert.Equal(["PAL", "NTSC"], detail.Changes.RegionNamesBefore);
+        Assert.Equal(["PAL", "NTSC", "Japan"], detail.Changes.RegionNamesNow);
+        Assert.Equal(
+            "This board now comes in PAL, NTSC and Japan versions",
+            BoardRegions.ChangedLine(true, detail.Changes.RegionNamesBefore, detail.Changes.RegionNamesNow));
+
         ReviewSubmissionDetail? older = ReviewApiParser.ParseSubmission(ReviewWireContractTests.Answer(answer with { Changes = new ReviewChangeSummary(false, null, []) }));
         Assert.Null(older!.Changes!.RegionsNow);
+        Assert.Null(older.Changes.RegionNamesBefore);
+        Assert.Null(older.Changes.RegionNamesNow);
     }
 
     // ###########################################################################################

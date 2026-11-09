@@ -164,17 +164,18 @@
 			<CheckBox x:Name="MultipleInstancesForComponentPopupCheckBox"
 					  Content="Open multiple component info windows" />
 
+			<!-- The pinout - drawing and pins - in a window of its own beside the popup, its size and place one for all
+			     (owner request, 2026-11-07; ComponentInfoWindow.Pinout.cs). Right under the popup's other setting, and
+			     "window" as that one says (owner request, 2026-11-09). -->
+			<CheckBox x:Name="DetachPinoutCheckBox"
+					  Content="Detach pinout image in component info window" />
+
 			<CheckBox x:Name="DetachSchematicsThumbnailsCheckBox"
 					  Content="Detach thumbnails into their own window" />
 
 			<CheckBox x:Name="RememberThumbnailWindowSettingsPerBoardCheckBox"
 					  Content="Remember thumbnail window settings per board"
 					  IsEnabled="False" />
-
-			<!-- The pinout - drawing and pins - in a window of its own beside the popup, its size and place one for all
-			     (owner request, 2026-11-07; ComponentInfoWindow.Pinout.cs). -->
-			<CheckBox x:Name="DetachPinoutCheckBox"
-					  Content="Detach pinout image in component info popup" />
 
 			<Border Classes="SectionHeading">
 				<TextBlock Text="Application and data updates" />
@@ -272,17 +273,17 @@
 			<CheckBox x:Name="EnableMiniproExperimentalDemoModeCheckBox"
                       Content="Enable MiniPro programmer simulated demo mode (only required for CRT development)" />
 
-			<!-- The tab is "My Devices" since 2026-11-06 (owner request, a try - "Workbooks" until then); its
-			     Wiki page keeps its name, as installed CRTs open it. -->
+			<!-- The tab is "Workbooks" (2026-11-08 - "My Devices" for two days, a try); its Wiki page kept its name all
+			     along, as installed CRTs open it. -->
 			<Border Classes="SectionHeading">
-				<TextBlock Text="My Devices" />
+				<TextBlock Text="Workbooks" />
 			</Border>
 
 			<Grid ColumnDefinitions="*,Auto"
 				  ColumnSpacing="4"
 				  HorizontalAlignment="Left">
 				<CheckBox x:Name="EnableWorklogCheckBox"
-						  Content="Enable &quot;My Devices&quot; tab"
+						  Content="Enable &quot;Workbooks&quot; tab"
 						  VerticalAlignment="Center" />
 				<Button x:Name="EnableWorklogHelpButton"
 						Grid.Column="1"
@@ -296,25 +297,25 @@
 				</Button>
 			</Grid>
 
-			<TextBlock Text="Scope in &quot;My Devices&quot; tab:"
+			<TextBlock Text="Scope in &quot;Workbooks&quot; tab:"
                        Margin="0,8,0,0" />
 
 			<!-- Not indented (owner request, 2026-10-02): the radio buttons line up with the label
-			     above them and with every check box in this section. Worded by the devices since
-			     2026-11-06, the hardware's in the middle (owner request: "This should now follow devices
-			     and not workbooks"); the workbook list follows the same choice (MyDevicesScope). -->
+			     above them and with every check box in this section. The hardware's in the middle (owner
+			     request, 2026-11-06); one choice for both lists (MyDevicesScope), so it names both - the
+			     workbooks first, as the tab is theirs again (2026-11-08) and devices may never be made. -->
 			<StackPanel Orientation="Vertical"
 						Spacing="4"
 						Margin="0,4,0,0">
 				<RadioButton x:Name="WorkbooksScopeAllBoardsRadioButton"
 							 GroupName="WorkbooksScope"
-							 Content="Show all devices" />
+							 Content="Show all workbooks and devices" />
 				<RadioButton x:Name="WorkbooksScopeCurrentHardwareRadioButton"
 							 GroupName="WorkbooksScope"
-							 Content="Show only devices for selected hardware" />
+							 Content="Show only workbooks and devices for selected hardware" />
 				<RadioButton x:Name="WorkbooksScopeCurrentBoardRadioButton"
 							 GroupName="WorkbooksScope"
-							 Content="Show only devices for selected board" />
+							 Content="Show only workbooks and devices for selected board" />
 			</StackPanel>
 
 			<!-- The order "My devices" and the worklog bar's "Device" drop-down list the devices in (owner request,
@@ -334,7 +335,7 @@
 							 Content="Sort automatically by hardware/board/name" />
 				<RadioButton x:Name="DeviceSortingManualRadioButton"
 							 GroupName="DeviceSorting"
-							 Content="Sort manually in list (drag up/down)" />
+							 Content="Sort manually in list" />
 			</StackPanel>
 
 			<TextBlock Text="Currency used for worklog costs:"
@@ -418,6 +419,27 @@
 				<TextBlock Text="Application related files" />
 			</Border>
 
+			<!-- Every error and warning since CRT started, in plain words, with "Copy all" (owner request, 2026-11-07:
+			     "the end-goal here would be not to be dependent on manually viewing that logfile"; ProblemsWindow). FIRST,
+			     with a badge per kind while the run has any - errors in the danger color, warnings in the warning color - and
+			     no tooltip on any of these buttons (owner request, 2026-11-09; ShowProblemCounts). -->
+			<Button x:Name="ShowProblemsButton"
+                    Margin="0,0,0,0"
+                    HorizontalAlignment="Left"
+                    Width="260"
+                    HorizontalContentAlignment="Center"
+                    Click="OnShowProblemsClick">
+				<StackPanel Orientation="Horizontal" Spacing="6">
+					<TextBlock Text="Show errors and warnings" VerticalAlignment="Center" />
+					<Border x:Name="ProblemsErrorBadge" Classes="NavBadge error" IsVisible="False">
+						<TextBlock x:Name="ProblemsErrorBadgeText" />
+					</Border>
+					<Border x:Name="ProblemsWarningBadge" Classes="NavBadge warning" IsVisible="False">
+						<TextBlock x:Name="ProblemsWarningBadgeText" />
+					</Border>
+				</StackPanel>
+			</Button>
+
 			<!-- Four separate buttons rather than one, because these are four different folders
 			     and three of them can be moved elsewhere - by the data-root and workbooks-root
 			     command-line switches, and the capture folder from the Oscilloscope tab. Each opens
@@ -426,11 +448,10 @@
 			     enough for the longest label, which the RootSplitGrid's MinWidth then has to fit. -->
 			<Button x:Name="OpenDataFolderButton"
                     Content="Open data folder"
-                    Margin="0,0,0,0"
+                    Margin="0,6,0,0"
                     HorizontalAlignment="Left"
                     Width="260"
                     HorizontalContentAlignment="Center"
-                    ToolTip.Tip="The hardware reference data - schematics, component images and board files"
                     Click="OnOpenDataFolderClick" />
 
 			<Button x:Name="OpenWorkbooksFolderButton"
@@ -439,7 +460,6 @@
                     HorizontalAlignment="Left"
                     Width="260"
                     HorizontalContentAlignment="Center"
-                    ToolTip.Tip="Your own workbooks - worklogs, photos and attached files"
                     Click="OnOpenWorkbooksFolderClick" />
 
 			<!-- Owner request, 2026-10-13. Opens the folder captures are saved in NOW: the one
@@ -453,7 +473,6 @@
                     HorizontalAlignment="Left"
                     Width="260"
                     HorizontalContentAlignment="Center"
-                    ToolTip.Tip="Your oscilloscope captures - the folder chosen in the &quot;Oscilloscope&quot; tab, or Oscilloscope images beside the data folder until one is chosen"
                     Click="OnOpenOscilloscopeImagesFolderClick" />
 
 			<Button x:Name="OpenLogsFolderButton"
@@ -462,19 +481,7 @@
                     HorizontalAlignment="Left"
                     Width="260"
                     HorizontalContentAlignment="Center"
-                    ToolTip.Tip="The log file, the crash log and your settings file - the files to attach when reporting a problem"
                     Click="OnOpenLogsFolderClick" />
-
-			<!-- Every error and warning since CRT started, in plain words, with "Copy all" (owner request, 2026-11-07:
-			     "the end-goal here would be not to be dependent on manually viewing that logfile"; ProblemsWindow). -->
-			<Button x:Name="ShowProblemsButton"
-                    Content="Show errors and warnings"
-                    Margin="0,6,0,0"
-                    HorizontalAlignment="Left"
-                    Width="260"
-                    HorizontalContentAlignment="Center"
-                    ToolTip.Tip="What went wrong while CRT has been running, and what was worth knowing - to read, or copy into the &quot;Feedback&quot; tab"
-                    Click="OnShowProblemsClick" />
 
 			<!-- No "Write a detailed log" (owner request, 2026-11-07: "remove this checkbox and then always write this
 			     detailed logfile") - the log always holds its debug lines (Logger). -->

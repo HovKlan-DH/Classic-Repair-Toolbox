@@ -71,7 +71,8 @@ namespace CRT
     // BoardTableFilePreview, its bytes the host's IBoardTableFileSource),
     // BoardTableEditor.ColourChange.cs (the same card on a changed color cell),
     // BoardTableEditor.SheetParts.cs (the Contribute tab's left column picking what the table shows,
-    // "Component images" in two).
+    // "Component images" in two),
+    // BoardTableEditor.Components.cs (the component sheets narrowed to the components picked in the list).
     // ###########################################################################################
     public partial class BoardTableEditor : UserControl
     {
@@ -352,7 +353,9 @@ namespace CRT
             // The rows shown, before the grid has them - and the grid told the view's filter is ours
             // once it has the view (ApplyViewFilter).
             this.thisRowInHand = null;
-            this.thisShownRows = new ShownRowList(BoardTableRowFilter.RowsShown(sheet.Rows, this.thisFilter, this.thisSearch, rowInHand: null, this.thisPart));
+            this.thisShownRows = new ShownRowList(this.NarrowedToComponents(
+                BoardTableRowFilter.RowsShown(sheet.Rows, this.thisFilter, this.thisSearch, rowInHand: null, this.thisPart),
+                rowInHand: null));
             this.thisView = new DataGridCollectionView(this.thisShownRows);
             this.TableGrid.ItemsSource = this.thisView;
             this.ApplyViewFilter();
@@ -1271,7 +1274,7 @@ namespace CRT
             {
                 this.TableGrid.Columns.Add(new BoardTableTextColumn
                 {
-                    Header = this.thisCurrentSheet.Columns[i],
+                    Header = BoardWorkbookSchema.HeadingOf(this.thisCurrentSheet.Columns[i]),
                     Binding = new Binding($"Cells[{i}].Text") { Mode = BindingMode.TwoWay },
                     DisplayPath = $"Cells[{i}].Text",
                     ColumnIndex = i,

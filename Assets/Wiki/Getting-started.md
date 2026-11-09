@@ -22,12 +22,13 @@ The board number is printed on the PCB itself - `250407`, `250469` and so on. Pi
 
 The list below the drop-downs is every component on the board. Type in the search box under it to narrow it - `U19`, `VIC`, `capacitor`.
 
-**Click one, and it lights up on the picture.** Click it again to unhighlight.
+**Click one, and it lights up on the picture** - the one you clicked alone. Hold **Ctrl** (**Cmd** on a Mac) and click to add another, or to take one away again; hold **Shift** and click to add every component between. **Clear** under the list unhighlights them all.
 
 Two filters narrow the list:
 
 * **Category** - above the list: capacitors, ICs, connectors and so on
-* **Region** - the `PAL` / `NTSC` buttons below the list, where a board has region-specific parts
+* **Region** - the `PAL` / `NTSC` buttons below the list, where a board has region-specific parts (a board that is not a computer of the
+  time can have regions of its own, such as `EU` and `US` - a button each)
 
 ## 4. Look at the board
 
@@ -49,7 +50,7 @@ If the board has [KiCad data](KiCad-folder), clicking a pin or a trace lights up
 | **Schematics** | The board, its components and its traces |
 | **Overview** | Every component as a list, and a printable bill of materials |
 | **Resources** | Datasheets, service manuals and links for this board |
-| **[My Devices](Workbooks-tab)** | Record a repair from first fault to finished write-up - and keep your own machines, each with its repairs |
+| **[Workbooks](Workbooks-tab)** | Record a repair from first fault to finished write-up - and keep your own machines, each with its repairs |
 | **Oscilloscope** | Drive a network-connected scope - see [Synchronize oscilloscope](Synchronize-oscilloscope) |
 | **Contribute** | Correct or add board data, or add a whole new board, and send it in |
 | **[Maintainer](Maintainer-tab)** | For maintainers only: review and publish what others send in |
@@ -57,13 +58,13 @@ If the board has [KiCad data](KiCad-folder), clicking a pin or a trace lights up
 | **Feedback** | Send an issue or a question to the developer |
 | **About** | Versions, links, and who contributed this board's data |
 
-**My Devices** and **Oscilloscope** can both be hidden from the "Configuration" tab if you do not use them. **Maintainer** shows only when `Enable "Maintainer" tab` is ticked there - it needs a maintainer account.
+**Workbooks** and **Oscilloscope** can both be hidden from the "Configuration" tab if you do not use them. **Maintainer** shows only when `Enable "Maintainer" tab` is ticked there - it needs a maintainer account.
 
 Each tab says what it is for as you use it. Where a setting has more to it, **Learn more** beside it opens the page about it here.
 
 ## 6. Record what you find
 
-The **My Devices** tab lets you write down each fault as you find it, mark where it is on the picture, log time and cost, attach photos, and export the finished repair as a PDF or a ZIP to keep or to share.
+The **Workbooks** tab lets you write down each fault as you find it, mark where it is on the picture, log time and cost, attach photos, and export the finished repair as a PDF or a ZIP to keep or to share.
 
 That is the one feature worth reading about before you need it - see [Workbooks](Workbooks-tab).
 

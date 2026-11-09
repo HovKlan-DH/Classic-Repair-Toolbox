@@ -30,16 +30,17 @@ namespace Handlers.DataHandling
         // signal - a sound chip's audio out, a video chip's luminance - is simply "Input" or "Output"
         // (owner request, 2026-11-02: "Analog input" and "Analog output" went again after a day, as "it
         // can be covered by the existing two choices"). "Unknown" is last: nobody has looked yet, which
-        // "Other" does not say.
+        // "Other" does not say. The order is the owner's (2026-11-09): "Not connected" first, then the signals,
+        // ground before power.
         // ###########################################################################################
         public static IReadOnlyList<string> PinDirections { get; } =
         [
+            "Not connected",
             "Input",
             "Output",
             "Input/output",
-            "Power",
             "Ground",
-            "Not connected",
+            "Power",
             "Other",
             "Unknown",
         ];

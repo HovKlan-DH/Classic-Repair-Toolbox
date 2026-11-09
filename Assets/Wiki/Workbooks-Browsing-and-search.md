@@ -29,13 +29,13 @@ The search box runs across the top of the tab and filters your devices, the work
 
 ## Ⓓ My devices
 
-On the left of the window, below **Hardware** and **Board**, in place of the component lists - the "My Devices" tab has no use for those. It lists your own machines, how many beside its heading. Each card shows the device's name and status, then its serial number (when it has one) with how many workbooks it has, then its hardware and board, with its condition in stars at the end of that line. "Sorting of devices" in "Configuration" puts them in order by name, by hardware, board and name, or by hand - dragged by the handle at each card's right edge.
+On the left of the window, below **Hardware** and **Board**, in place of the component lists - the "Workbooks" tab has no use for those. It lists your own machines, how many beside its heading. Each card shows the device's name and status, then its serial number (when it has one) with how many workbooks it has, then its hardware and board, with its condition in stars at the end of that line. "Sorting of devices" in "Configuration" puts them in order by name, by hardware, board and name, or by hand - dragged by the handle at each card's right edge.
 
 Click a device to select it: its page opens in place of the workbook, and the workbook list and the bar's **Device** drop-down show only its workbooks. Click another device to select that one instead. **Clear**, under the list, shows every workbook again - see [Devices](Workbooks-Devices).
 
 ## ① Workbook list
 
-One card per repair, newest first - with a device selected, only that device's. **Click a card** to switch to that workbook - the bar, the board and "Add worklog" all follow it, and the device it is on is selected under "My devices".
+One card per repair, newest first - with a device selected, only that device's. Until you have added a device, the list stands on the left of the window in place of "My devices", under the heading **Workbooks** with how many it lists, and the workbook itself gets the whole tab; your first device puts the list back in the tab. **Click a card** to switch to that workbook - the bar, the board and "Add worklog" all follow it, and the device it is on is selected under "My devices".
 
 **Clear**, at the bottom of the list, unselects the workbook: no workbook is worked in on the board, so the bar's **Workbook** drop-down says "No workbook picked" and **Add worklog** is hidden until you click a card or pick one in the bar.
 
@@ -134,7 +134,7 @@ It does **not** search numbers (hours, cost, dates, id numbers) or the words Ope
 
 Searching never changes which workbook you are writing into.
 
-**The filter stays until you clear it** - use the ✕ at the end of the box. It survives changing board, so with **Show all devices** you can search, click a result that lives on another board, and still see the filter and its highlighting once that board has loaded.
+**The filter stays until you clear it** - use the ✕ at the end of the box. It survives changing board, so with **Show all workbooks and devices** you can search, click a result that lives on another board, and still see the filter and its highlighting once that board has loaded.
 
 **The highlighting follows you into the worklog itself.** Open a worklog while a search is running and the matches are marked in there too - in its comments, work done, link headlines, and the comments on its photos and files. That matters when the match is not in the title: the search can find a worklog by a comment written months ago, and this is what shows you which one it was. The title and description boxes at the top are not marked, because those are editable fields.
 

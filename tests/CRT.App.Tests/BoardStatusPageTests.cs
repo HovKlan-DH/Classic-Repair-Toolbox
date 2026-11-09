@@ -171,12 +171,18 @@ public sealed class BoardStatusPageTests
 
         Assert.Equal(BoardStatusState.Optional, Part(Panels(new BoardData()), BoardStatusPart.Regions).State);
         Assert.Equal(BoardStatusState.Done, Part(Panels(with), BoardStatusPart.Regions).State);
-        Assert.Equal(["This board comes in PAL and NTSC versions"], Lines(Part(Panels(with), BoardStatusPart.Regions)));
+        Assert.Equal(["This board comes in PAL and NTSC versions."], Lines(Part(Panels(with), BoardStatusPart.Regions)));
 
-        // The owner's words (2026-11-03) - PAL and NTSC in bold, TabDrafts showing them through BoldRuns.
+        // Regions of its own named as they are, in its order (2026-11-09).
+        Assert.Equal(
+            ["This board comes in US, EU and Japan versions."],
+            Lines(Part(Panels(new BoardData { Regions = ["US", "EU", "Japan"] }), BoardStatusPart.Regions)));
+
+        // The owner's words (2026-11-03) - PAL and NTSC in bold, TabDrafts showing them through BoldRuns - with the regions
+        // of its own a board may come in since 2026-11-09.
         Assert.Equal(["No regions."], Lines(Part(Panels(new BoardData()), BoardStatusPart.Regions)));
         Assert.Equal(
-            "Whether the board comes in a <b>PAL</b> and <b>NTSC</b> version, so component information can differ between them.",
+            "Whether the board comes in a <b>PAL</b> and <b>NTSC</b> version - or in regions of its own - so component information can differ between them.",
             Part(Panels(with), BoardStatusPart.Regions).Explanation);
         Assert.Equal("Board: Regions", Part(Panels(with), BoardStatusPart.Regions).Title);
     }

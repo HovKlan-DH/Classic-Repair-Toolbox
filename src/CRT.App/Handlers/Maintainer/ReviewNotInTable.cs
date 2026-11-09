@@ -72,7 +72,7 @@ namespace Handlers.MaintainerHandling
                 // No row says this, an amendment cannot change it, and an approval publishes it (code
                 // review, 2026-11-02).
                 if (changes.RegionsNow == true)
-                    lines.Add(new ReviewNoteLine(BoardRegions.NewBoardLine, ReviewNoteKind.Change));
+                    lines.Add(new ReviewNoteLine(BoardRegions.NewBoardLine(changes.RegionNamesNow), ReviewNoteKind.Change));
             }
             else
             {
@@ -90,7 +90,7 @@ namespace Handlers.MaintainerHandling
 
                 // No row says this either - the board's regions (2026-11-01).
                 if (changes.RegionsNow is bool regions)
-                    lines.Add(new ReviewNoteLine(BoardRegions.ChangedLine(regions), ReviewNoteKind.Change));
+                    lines.Add(new ReviewNoteLine(BoardRegions.ChangedLine(regions, changes.RegionNamesBefore, changes.RegionNamesNow), ReviewNoteKind.Change));
             }
 
             foreach (ReviewFindingView finding in findings)

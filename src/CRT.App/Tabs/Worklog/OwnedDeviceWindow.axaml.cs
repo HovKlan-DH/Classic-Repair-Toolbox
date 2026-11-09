@@ -72,9 +72,9 @@ namespace CRT
 
         // Whether a board comes in PAL and NTSC, by board key - the host's question (a test's stand-in),
         // else the board as CRT views it - and the answers given, kept for the form's life.
-        private Func<string, Task<bool>> thisBoardHasRegions = BoardHasRegionsAsViewedAsync;
+        private Func<string, Task<IReadOnlyList<string>>> thisBoardRegions = BoardRegionsAsViewedAsync;
 
-        private readonly Dictionary<string, bool> thisRegionsByBoard = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<string, IReadOnlyList<string>> thisRegionsByBoard = new(StringComparer.OrdinalIgnoreCase);
 
         // Set while the code fills the drop-downs, so their own selection changes ask nothing.
         private bool thisFillingChoices;
@@ -158,16 +158,16 @@ namespace CRT
         // A new device, on `boardKey` (the board shown) when CRT lists it. `boardFixed`: the device
         // is for a repair on that board ("Add device" in "Add workbook"), so its hardware and board are
         // shown, not to be changed - a device with another board is no device for it.
-        // `boardHasRegions`: whether a board comes in PAL and NTSC - null asks the board as CRT views it.
+        // `boardRegions`: the regions a board comes in (BoardRegions.Of) - null asks the board as CRT views it.
         // ###########################################################################################
         public void Initialize(
             IReadOnlyList<HardwareBoardEntry> boards,
             string? boardKey,
             bool boardFixed = false,
-            Func<string, Task<bool>>? boardHasRegions = null)
+            Func<string, Task<IReadOnlyList<string>>>? boardRegions = null)
         {
             this.thisBoards = boards ?? [];
-            this.thisBoardHasRegions = boardHasRegions ?? BoardHasRegionsAsViewedAsync;
+            this.thisBoardRegions = boardRegions ?? BoardRegionsAsViewedAsync;
 
             // A fixed board is kept even when CRT no longer lists it (code review, 2026-10-29: the
             // locked box fell back to another board, and the device was saved there).
@@ -188,14 +188,14 @@ namespace CRT
         public void InitializeForEdit(
             OwnedDeviceRecord device,
             IReadOnlyList<HardwareBoardEntry> boards,
-            Func<string, Task<bool>>? boardHasRegions = null,
+            Func<string, Task<IReadOnlyList<string>>>? boardRegions = null,
             int workbookCount = 0)
         {
             this.thisEditing = device;
             this.thisListed = device;
             this.thisKeptBoardKey = device.BoardKey;
             this.thisBoards = boards ?? [];
-            this.thisBoardHasRegions = boardHasRegions ?? BoardHasRegionsAsViewedAsync;
+            this.thisBoardRegions = boardRegions ?? BoardRegionsAsViewedAsync;
 
             this.Title = "Edit device";
             this.HeaderText.Text = "Edit device";
@@ -221,14 +221,7 @@ namespace CRT
         // The region and status first, then the hardware and boards - whose board asks for its regions.
         private void FillChoices(string? boardKey, string region, string status)
         {
-            List<string> regions = [NoRegion, .. BoardRegions.All];
-            if (region.Trim().Length > 0 && !regions.Contains(region.Trim(), StringComparer.OrdinalIgnoreCase))
-            {
-                regions.Add(region.Trim());
-            }
-
-            this.RegionComboBox.ItemsSource = regions;
-            this.SelectRegion(region);
+            this.ListRegions(BoardRegions.PalAndNtsc, region);
 
             // A status this CRT does not offer - "Not mine any more" an earlier pre-release stored, or a later
             // CRT's - is listed after them, so opening and saving the form keeps it.
@@ -346,25 +339,25 @@ namespace CRT
 
             if (boardKey.Length == 0)
             {
-                this.ShowRegion(false);
+                this.ShowRegion([]);
                 return;
             }
 
-            if (this.thisRegionsByBoard.TryGetValue(boardKey, out bool known))
+            if (this.thisRegionsByBoard.TryGetValue(boardKey, out IReadOnlyList<string>? known))
             {
                 this.ShowRegion(known);
                 return;
             }
 
-            Task<bool> asking;
+            Task<IReadOnlyList<string>> asking;
 
             try
             {
-                asking = this.thisBoardHasRegions(boardKey);
+                asking = this.thisBoardRegions(boardKey);
             }
             catch (Exception ex)
             {
-                asking = Task.FromException<bool>(ex);
+                asking = Task.FromException<IReadOnlyList<string>>(ex);
             }
 
             if (asking.IsCompleted)
@@ -377,54 +370,97 @@ namespace CRT
         }
 
         // The answer taken on the UI thread once given - the await comes back to it.
-        private async Task TakeRegionsAnswerWhenGivenAsync(string boardKey, Task<bool> asking)
+        private async Task TakeRegionsAnswerWhenGivenAsync(string boardKey, Task<IReadOnlyList<string>> asking)
         {
-            bool hasRegions;
+            IReadOnlyList<string> regions;
 
             try
             {
-                hasRegions = await asking;
+                regions = await asking;
             }
             catch (Exception ex)
             {
-                hasRegions = NoAnswer(boardKey, ex);
+                regions = NoAnswer(boardKey, ex);
             }
 
-            this.TakeRegionsAnswer(boardKey, hasRegions);
+            this.TakeRegionsAnswer(boardKey, regions);
         }
 
         // An answer given at once - one that failed is no regions.
-        private static bool AnswerOf(string boardKey, Task<bool> asking) =>
+        private static IReadOnlyList<string> AnswerOf(string boardKey, Task<IReadOnlyList<string>> asking) =>
             asking.IsCompletedSuccessfully
                 ? asking.Result
                 : NoAnswer(boardKey, asking.Exception?.GetBaseException() ?? new OperationCanceledException());
 
         // A question that failed is no regions - said in the log, the form left without the box.
-        private static bool NoAnswer(string boardKey, Exception ex)
+        private static IReadOnlyList<string> NoAnswer(string boardKey, Exception ex)
         {
-            Logger.Warning($"Could not tell whether board [{boardKey}] comes in PAL and NTSC - [{ex.Message}]");
-            return false;
+            Logger.Warning($"Could not tell which regions board [{boardKey}] comes in - [{ex.Message}]");
+            return [];
         }
 
-        private void TakeRegionsAnswer(string boardKey, bool hasRegions)
+        private void TakeRegionsAnswer(string boardKey, IReadOnlyList<string> regions)
         {
-            this.thisRegionsByBoard[boardKey] = hasRegions;
+            this.thisRegionsByBoard[boardKey] = regions;
 
             if (string.Equals(this.SelectedBoardKey(), boardKey, StringComparison.OrdinalIgnoreCase))
             {
-                this.ShowRegion(hasRegions);
+                this.ShowRegion(regions);
             }
         }
 
-        // Shown or hidden - hidden, the region back to what the device has stored (none for a new one).
-        private void ShowRegion(bool shown)
+        // ###########################################################################################
+        // Shown with the board's regions listed (2026-11-09: names of its own since), or hidden - hidden, the region back
+        // to what the device has stored (none for a new one). What is picked stays picked only where the new list has it
+        // (code review, 2026-11-09: "Japan" picked for one board stayed picked on a PAL/NTSC board, listed after its regions,
+        // and was saved so); the device's own region comes back on its own board or one that has it, else nothing is picked.
+        // ###########################################################################################
+        private void ShowRegion(IReadOnlyList<string> regions)
         {
-            this.RegionPanel.IsVisible = shown;
+            this.RegionPanel.IsVisible = regions.Count > 0;
 
-            if (!shown)
+            string own = this.thisEditing?.Region?.Trim() ?? string.Empty;
+
+            bool Listed(string region) => regions.Contains(region, StringComparer.OrdinalIgnoreCase);
+
+            bool ownBoard = this.IsDevicesOwnBoardPicked();
+
+            string picked =
+                regions.Count == 0 ? own
+                : this.RegionComboBox.SelectedItem is string shown && shown != NoRegion && Listed(shown) ? shown
+                : Listed(own) || ownBoard ? own
+                : string.Empty;
+
+            // The device's own region is offered beside the board's only on its own board, or while the box is hidden (second
+            // code review, 2026-11-09: offered on a board without it, it could still be picked and saved there).
+            this.ListRegions(regions.Count > 0 ? regions : BoardRegions.PalAndNtsc, picked, keepOwn: regions.Count == 0 || ownBoard);
+        }
+
+        // Whether the board picked is the one the device being edited is on.
+        private bool IsDevicesOwnBoardPicked() =>
+            this.thisEditing is { } device && string.Equals(device.BoardKey, this.SelectedBoardKey(), StringComparison.OrdinalIgnoreCase);
+
+        // The drop-down's list: "Unknown", the regions, and the device's own when they do not have it (`keepOwn`) - then
+        // `region` picked.
+        private void ListRegions(IReadOnlyList<string> regions, string? region, bool keepOwn = true)
+        {
+            List<string> choices = [NoRegion, .. regions];
+            string own = keepOwn ? this.thisEditing?.Region?.Trim() ?? string.Empty : string.Empty;
+
+            foreach (string kept in new[] { own, region?.Trim() ?? string.Empty })
             {
-                this.SelectRegion(this.thisEditing?.Region ?? string.Empty);
+                if (kept.Length > 0 && !choices.Contains(kept, StringComparer.OrdinalIgnoreCase))
+                {
+                    choices.Add(kept);
+                }
             }
+
+            if (this.RegionComboBox.ItemsSource is not IReadOnlyList<string> listed || !listed.SequenceEqual(choices, StringComparer.Ordinal))
+            {
+                this.RegionComboBox.ItemsSource = choices;
+            }
+
+            this.SelectRegion(region);
         }
 
         // `region` picked in the drop-down - "Unknown" for none, or one the list does not have.
@@ -439,17 +475,17 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Whether the board `boardKey` names comes in PAL and NTSC, by BoardRegions' rule - read from
+        // The regions the board `boardKey` names comes in, by BoardRegions' rule - read from
         // its board file as CRT views it (the draft's, unless "view boards as officially published"),
         // the file chosen as DataManager chooses it, through BoardDataReader's cache (the board shown
         // is held there already). Off the UI thread. A board CRT does not list, has no file for, or
         // cannot read, has none.
         // ###########################################################################################
-        internal static Task<bool> BoardHasRegionsAsViewedAsync(string boardKey)
+        internal static Task<IReadOnlyList<string>> BoardRegionsAsViewedAsync(string boardKey)
         {
             if (Main.FindEntryForBoardKey(boardKey) is not { } entry || string.IsNullOrWhiteSpace(entry.ExcelDataFile))
             {
-                return Task.FromResult(false);
+                return Task.FromResult<IReadOnlyList<string>>([]);
             }
 
             // Read here, on the UI thread: the pool reads no setting.
@@ -462,8 +498,9 @@ namespace CRT
                 DraftBoardSource.ViewedBoard viewed = DraftBoardSource.ResolveViewed(
                     dataRoot, draftsRoot, entry.ExcelDataFile, viewOfficialOnly, entry.IsPublished);
 
-                return File.Exists(viewed.BoardFile) &&
-                       BoardRegions.Has(await BoardDataReader.LoadAsync(viewed.BoardFile, viewed.BoardFile));
+                return File.Exists(viewed.BoardFile)
+                    ? BoardRegions.Of(await BoardDataReader.LoadAsync(viewed.BoardFile, viewed.BoardFile))
+                    : [];
             });
         }
 

@@ -365,7 +365,7 @@ namespace Handlers.DataHandling
 
             if (BoardRegions.Differ(before, after))
             {
-                lines.Add(BoardRegions.ChangedLine(BoardRegions.Has(after)));
+                lines.Add(BoardRegions.ChangedLine(BoardRegions.Of(before), BoardRegions.Of(after)));
             }
 
             return lines;

@@ -10,7 +10,9 @@ Data v4/Commodore/C64/250407/board.json
 ```
 
 The file opens with the board's names and the date of its last change - and, on a board set to come
-in PAL and NTSC versions, `"regions": ["PAL", "NTSC"]` - then one list per kind of data. Each list has
+in regional versions, the regions in the order their buttons stand: `"regions": ["PAL", "NTSC"]`, or names of
+the board's own for hardware not told apart by its video standard (`["EU", "US"]` - 1 to 20 letters, digits, spaces
+and `- + / ( ) .`, each once, at most 6) - then one list per kind of data. Each list has
 one entry per line, so two versions of a board compare line by line:
 
 ```json
@@ -40,13 +42,13 @@ one entry per line, so two versions of a board compare line by line:
 | List | One entry per | What it holds |
 | --- | --- | --- |
 | `schematics` | Picture of the board | Its name, its image file, the colors and opacities components are marked in (on the picture and on its thumbnail), how lit KiCad traces are drawn on it (this side's color and opacity, the other side's color and opacity - left out until set, and then the picture's highlight is used), and the KiCad view it shows (`cadName`) |
-| `components` | Component | Board label (`U8`), friendly name, technical name or value, part number, category (every component needs one), region (`PAL`, `NTSC` or empty for both), short description - and, from CRT 4, its package |
-| `componentPins` | Pin of a component | Pin number, its name (`VCC`, `~RESET`), its direction (Input, Output, Power, Ground, Unknown ...) |
+| `components` | Component | Board label (`U8`), friendly name, technical name or value, part number, category (every component needs one), region (one of the board's, or empty for every region), its other technical details (`description`) - and, from CRT 4, its package and its purpose (`purpose` - what it is there for, a note that can carry formatting as a picture's note does; left out when there is none) |
+| `componentPins` | Pin of a component | Pin number, its name (`VCC`, `~RESET`), its direction (Not connected, Input, Output, Input/output, Ground, Power, Other, Unknown) |
 | `componentReplacements` | Replacement part | Its part number, whether it is a drop-in, needs changes or is an improvement, and a note: what to change, and where that is known from |
 | `componentImages` | Picture of a component | A photo, a pinout, a render - with its name and a note. From CRT 4 the note of a picture or an oscilloscope baseline can carry formatting, written as text: `**bold**`, `*italic*`, `__underline__`, `~~strikethrough~~`, and `- ` starting a line for a bullet (two spaces more for each level) |
 | `scopeBaselines` | Oscilloscope reading of one pin | The pin, its signal name, the reading expected, the image, the scope settings it was taken with (`timeDiv`, `voltsDiv`, `triggerLevel` - any of them may be empty), and what the machine was doing |
-| `componentFiles`, `componentLinks` | File or web page about a component | A datasheet, an article - from CRT 4, with the `region` it applies to, left out for both |
-| `boardFiles`, `boardLinks` | File or web page about the board | Service manuals, schematics, forum threads - each with a category and, from CRT 4, the `region` it applies to, left out for both, and a `note` of one or more lines saying what it is about, which the "Resources" tab shows under it (left out when there is none) |
+| `componentFiles`, `componentLinks` | File or web page about a component | A datasheet, an article - from CRT 4, with the `region` it applies to, left out for every region |
+| `boardFiles`, `boardLinks` | File or web page about the board | Service manuals, schematics, forum threads - each with a category and, from CRT 4, the `region` it applies to, left out for every region, and a `note` of one or more lines saying what it is about, which the "Resources" tab shows under it (left out when there is none) |
 | `credits` | Person thanked | What they did, their name or handle, and how to reach them |
 | `importantSignals` | Signal the "Schematics" tab's panel lists | Its name (`+5VDC`) and the KiCad net it is (`+5V`) |
 | `highlights` | Rectangle marking a component on a picture | The picture, the board label, and `x`, `y`, `width`, `height` in the picture's own pixels |
@@ -56,8 +58,8 @@ one entry per line, so two versions of a board compare line by line:
 
 A component on a board with regional variants can have one entry per region; everything that
 belongs to one component - its pins, pictures, baselines - names it by its board label and region, and
-an empty region is for both. A board without `regions` counts as having them when any entry says `PAL`
-or `NTSC`.
+an empty region is for every region. A board without `regions` counts as coming in PAL and NTSC when any entry says
+`PAL` or `NTSC`.
 
 Some entries need fields filled in: a component its category; a board file its category, name and file; a board link its
 category, name and address; a credit what it is for and the name or handle; an important signal its

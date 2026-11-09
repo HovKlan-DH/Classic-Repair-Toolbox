@@ -202,6 +202,9 @@ namespace Handlers.DataHandling
         [JsonPropertyName("lastBoardByHardware")] public Dictionary<string, string> LastBoardByHardware { get; set; } = new();
         [JsonPropertyName("lastSchematicByBoard")] public Dictionary<string, string> LastSchematicByBoard { get; set; } = new();
         [JsonPropertyName("region")] public string Region { get; set; } = "PAL";
+
+        // A region of a board's own picked on that board (2026-11-09) - "region" stays PAL or NTSC, as CRT 3.x reads it.
+        [JsonPropertyName("regionByBoard")] public Dictionary<string, string> RegionByBoard { get; set; } = new();
         [JsonPropertyName("theme")] public string ThemeVariant { get; set; } = "Light";
         [JsonPropertyName("userThemeColors")] public Dictionary<string, string> UserThemeColors { get; set; } = new();
         [JsonPropertyName("hasWindowPlacement")] public bool HasWindowPlacement { get; set; } = false;
@@ -1045,7 +1048,7 @@ namespace Handlers.DataHandling
         public static event Action? WorkbooksScopeChanged;
 
         // ###########################################################################################
-        // Which devices and workbooks the "My Devices" tab lists (MyDevicesScope): every one
+        // Which devices and workbooks the "Workbooks" tab lists (MyDevicesScope): every one
         // ("AllBoards"), those of the hardware shown ("CurrentHardware", 2026-11-06), or those of the
         // board shown ("CurrentBoard", the original and default behaviour). Set from the
         // Configuration tab's radio group below "Enable Worklog".
@@ -1438,6 +1441,31 @@ namespace Handlers.DataHandling
             {
                 _data.Region = value;
                 Logger.Info($"Setting changed: [Region] [{value}]");
+                Save();
+            }
+        }
+
+        // ###########################################################################################
+        // The region last picked on a board that is not PAL or NTSC (2026-11-09: a board may come in regions of its own) -
+        // null for none. "region" is the one CRT 3.x reads, so it only ever holds PAL or NTSC.
+        // ###########################################################################################
+        public static string? RegionOfBoard(string boardKey) =>
+            (_data.RegionByBoard ??= new()).TryGetValue(boardKey, out string? region) ? region : null;
+
+        public static void SetRegionOfBoard(string boardKey, string? region)
+        {
+            Dictionary<string, string> byBoard = _data.RegionByBoard ??= new();
+            bool changes = string.IsNullOrWhiteSpace(region)
+                ? byBoard.Remove(boardKey)
+                : !byBoard.TryGetValue(boardKey, out string? was) || !string.Equals(was, region, StringComparison.Ordinal);
+
+            if (!string.IsNullOrWhiteSpace(region))
+            {
+                byBoard[boardKey] = region;
+            }
+
+            if (changes)
+            {
                 Save();
             }
         }

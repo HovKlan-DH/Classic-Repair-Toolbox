@@ -101,6 +101,20 @@ namespace Handlers.DataHandling
         ];
 
         // ###########################################################################################
+        // Whether `bands` are a metal-film resistor's - a tolerance of 2% or closer - which the picture draws with the light-blue
+        // body such parts usually have; a carbon-film one, 5% or none, keeps the beige (owner, 2026-11-08: "ok, let us try this
+        // out", to "a light-blue body for 1% and 2% resistors"). The closer tolerances are metal film too.
+        // ###########################################################################################
+        public static bool IsMetalFilm(IReadOnlyList<ColorBand> bands)
+        {
+            ArgumentNullException.ThrowIfNull(bands);
+
+            return bands.Count > 0 &&
+                   bands[^1].Kind == BandKind.Tolerance &&
+                   Tolerances.Any(each => each.Color == bands[^1].Color && each.Percent <= 2m);
+        }
+
+        // ###########################################################################################
         // The bands a component gets drawn - null for none: a single resistor - its category "Resistor", no pack, array,
         // network, trimmer or potentiometer by its label, names or package - whose value reads (TryRead) as one the bands
         // can say.

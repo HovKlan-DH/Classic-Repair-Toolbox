@@ -60,6 +60,8 @@ namespace CRT
                 return;
             }
 
+            this._markingAll = true;
+
             try
             {
                 this.ComponentFilterListBox.SelectAll();
@@ -68,7 +70,23 @@ namespace CRT
             {
                 Logger.Debug(ex, "Failed to mark all components. The selection was too large to process");
             }
+            finally
+            {
+                this._markingAll = false;
+            }
+
+            this._markAllPressed = true;
         }
+
+        // ###########################################################################################
+        // Whether the selection is "Mark all"'s - the button pressed, nothing chosen since (OnComponentFilterSelectionChanged,
+        // ApplyNormalComponentSearchFilter). What the Contribute tab shows and never opens (IsEveryComponentRowSelected; code
+        // review, 2026-11-09: told by every row being selected, the filter box's own selecting all it finds, or Ctrl on both of
+        // two rows, closed the tab's pane and spoke of a "Mark all" nobody pressed).
+        // ###########################################################################################
+        private bool _markAllPressed;
+
+        private bool _markingAll;
 
         // ###########################################################################################
         // Switches the local region to PAL and reloads images.
@@ -97,8 +115,44 @@ namespace CRT
         // ###########################################################################################
         internal void PickRegion(string region)
         {
+            this.RememberRegionPicked(region);
+            this.ShowRegion(region);
+        }
+
+        // ###########################################################################################
+        // *** THE REGION SHOWN IS ONE OF THE BOARD'S, WHATEVER CHANGES ITS LIST (code review, 2026-11-09). *** "Board: Regions"
+        // deleting the region CRT showed left every button unlit and the list built for a region the board no longer had -
+        // a component told apart per region gone from it - until a button was pressed or the board read again. Asked as the
+        // Contribute tab's lists are read again (OnContributeListsShown), which every change of its draft does, and as the tab
+        // is entered or left (third code review, 2026-11-09: the draft the tab shows and the board on screen can come in other
+        // regions - "view boards as officially published"): a region no longer the board's - the one the buttons read
+        // (UpdateRegionButtonsState) - gives way to the one a board load would show (RegionChoice.ToShow), nobody having
+        // picked it, so nothing is remembered. True when it did - the lists were read again for it.
+        // ###########################################################################################
+        private bool FollowRegionsOfBoardShown()
+        {
+            BoardData? board = this._contributeListsShown ? this.TabDrafts.BoardForList() ?? this._currentBoardData : this._currentBoardData;
+
+            if (board is null)
+            {
+                return false;
+            }
+
+            IReadOnlyList<string> regions = BoardRegions.Of(board);
+
+            if (regions.Count == 0 || regions.Contains(this._localRegion, StringComparer.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            this.ShowRegion(RegionChoice.ToShow(regions, UserSettings.Region, UserSettings.RegionOfBoard(this.GetCurrentBoardKey())));
+            return true;
+        }
+
+        // The region CRT shows, everywhere - the buttons, the pictures, the Contribute tab and the "Resources" tab.
+        private void ShowRegion(string region)
+        {
             this._localRegion = region;
-            UserSettings.Region = region;
 
             this.UpdateRegionButtonsState();
             this.RefreshImages();
@@ -118,16 +172,101 @@ namespace CRT
         private void UpdateRegionButtonsState()
         {
             this._suppressRegionToggle = true;
-            bool isNtsc = string.Equals(this._localRegion, "NTSC", StringComparison.OrdinalIgnoreCase);
 
             // On the Contribute tab, by what it reads: the board as the draft now has it.
-            this.RegionButtonsGrid.IsVisible = BoardRegions.Has(this._contributeListsShown ? this.TabDrafts.BoardForList() ?? this._currentBoardData : this._currentBoardData);
+            IReadOnlyList<string> regions = BoardRegions.Of(this._contributeListsShown ? this.TabDrafts.BoardForList() ?? this._currentBoardData : this._currentBoardData);
 
-            this.NtscRegionButton.Classes.Set("active", isNtsc);
-            this.PalRegionButton.Classes.Set("active", !isNtsc);
+            this.RegionButtonsGrid.IsVisible = regions.Count > 0;
+
+            this.LayOutRegionButtons(regions);
+
+            foreach (Button button in this._ownRegionButtons.Prepend(this.NtscRegionButton).Prepend(this.PalRegionButton))
+            {
+                button.Classes.Set("active", string.Equals(button.Tag as string, this._localRegion, StringComparison.OrdinalIgnoreCase));
+            }
 
             this._suppressRegionToggle = false;
         }
+
+        // ###########################################################################################
+        // What was picked is remembered: PAL or NTSC as the one region picked anywhere (UserSettings.Region, which CRT 3.x
+        // reads too), a region of the board's own on that board alone (2026-11-09).
+        // ###########################################################################################
+        private void RememberRegionPicked(string region)
+        {
+            string boardKey = this.GetCurrentBoardKey();
+
+            if (BoardRegions.IsPalOrNtsc(region))
+            {
+                UserSettings.Region = region.Trim().ToUpperInvariant();
+
+                if (boardKey.Length > 0)
+                {
+                    UserSettings.SetRegionOfBoard(boardKey, null);
+                }
+            }
+            else if (boardKey.Length > 0)
+            {
+                UserSettings.SetRegionOfBoard(boardKey, region);
+            }
+        }
+
+        // The buttons of a board's own regions, made as a board needs them and kept for the next.
+        private readonly List<Button> _ownRegionButtons = new();
+
+        // ###########################################################################################
+        // THE REGION BUTTONS, ONE PER REGION OF THE BOARD, IN ITS ORDER (2026-11-09: a board may come in regions of its own):
+        // "PAL" and "NTSC" are the buttons they always were - a board in PAL and NTSC looks as it always did, two buttons
+        // side by side - and a region of the board's own a button made for it, in one of RegionChoice's colors
+        // (RegionButtonGrid.ButtonsFor, the popup's rule too). At most three to a row, 6px apart, as the panel is narrow.
+        // ###########################################################################################
+        private void LayOutRegionButtons(IReadOnlyList<string> regions)
+        {
+            List<Button> buttons = RegionButtonGrid.ButtonsFor(
+                regions,
+                this.PalRegionButton,
+                this.NtscRegionButton,
+                this._ownRegionButtons,
+                this.MakeOwnRegionButton,
+                this.RegionButtonsGrid);
+
+            // An own region's button says its name - only its text changes (code review, 2026-11-09: a new block at every
+            // read of the lists).
+            foreach (Button button in this._ownRegionButtons.Where(buttons.Contains))
+            {
+                RegionButtonGrid.ShowText(button, button.Tag as string ?? string.Empty);
+            }
+
+            RegionButtonGrid.Place(buttons);
+        }
+
+        // A button for a region of the board's own: as wide as its share of the panel, a long name wrapping.
+        private Button MakeOwnRegionButton()
+        {
+            var made = new Button
+            {
+                HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Stretch,
+                HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center,
+                FontSize = 12,
+                Padding = new Avalonia.Thickness(4),
+                Content = RegionButtonGrid.NameBlock(),
+            };
+
+            made.Click += this.OnOwnRegionClick;
+
+            return made;
+        }
+
+        private void OnOwnRegionClick(object? sender, RoutedEventArgs e)
+        {
+            if (!this._suppressRegionToggle && sender is Button { Tag: string region })
+            {
+                this.PickRegion(region);
+            }
+        }
+
+        // The regions of the board on screen, as its buttons show them (BoardRegions.Of).
+        internal IReadOnlyList<string> CurrentBoardRegions() => BoardRegions.Of(this._currentBoardData);
 
         // ###########################################################################################
         // Positions a new popup on the same screen as the main window with a slight staggered offset.
@@ -253,7 +392,7 @@ namespace CRT
             string boardShown = this.GetCurrentBoardEntry()?.ExcelDataFile ?? string.Empty;
 
             string componentKey = $"{boardLabel}\u001F{displayText}";
-            bool hasExplicitRegionComponents = BoardRegions.Has(boardData);
+            IReadOnlyList<string> regions = BoardRegions.Of(boardData);
             var images = boardData?.ComponentImages ?? new List<ComponentImageEntry>();
             var localFiles = boardData?.ComponentLocalFiles ?? new List<ComponentLocalFileEntry>();
             var links = boardData?.ComponentLinks ?? new List<ComponentLinkEntry>();
@@ -290,9 +429,9 @@ namespace CRT
                     images,
                     localFiles,
                     links,
-                    UserSettings.Region,
+                    this._localRegion,
                     DataManager.DataRoot,
-                    hasExplicitRegionComponents,
+                    regions,
                     draftBoardFolder,
                     boardIdentity,
                     pins,
@@ -335,9 +474,9 @@ namespace CRT
                 images,
                 localFiles,
                 links,
-                UserSettings.Region,
+                this._localRegion,
                 DataManager.DataRoot,
-                hasExplicitRegionComponents,
+                regions,
                 draftBoardFolder,
                 boardIdentity,
                 pins,
@@ -721,11 +860,8 @@ namespace CRT
             }
             this._suppressComponentHighlightUpdate = false;
 
-            var survivingLabels = componentItems
-                .Where(item => previouslySelectedKeys.Contains(item.SelectionKey))
-                .Select(item => item.BoardLabel)
-                .Where(l => !string.IsNullOrEmpty(l))
-                .ToList();
+            // What the list now has selected - a row found again by its label and region too (SelectInComponentList).
+            List<string> survivingLabels = this.SelectedComponentLabels();
 
             if (selectsAllItFinds)
             {
@@ -840,8 +976,10 @@ namespace CRT
         // ###########################################################################################
         private void ApplyNormalComponentSearchFilter(string searchTerm)
         {
-            // Somebody's choice, as a selection made is: nothing held comes back in its place at the next load.
+            // Somebody's choice, as a selection made is: nothing held comes back in its place at the next load - and no longer
+            // "Mark all"'s.
             this._selectionToKeep = null;
+            this._markAllPressed = false;
 
             // *** NO BOARD READ, NOTHING TO FILTER (code review, 2026-11-05). *** "Clear" comes here without
             // ApplyComponentSearchNow's check, while a board loads or when one could not be read, and an

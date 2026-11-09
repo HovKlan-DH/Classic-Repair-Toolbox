@@ -1975,7 +1975,7 @@ public sealed class WorklogManagerTests : IDisposable
         Assert.Equal(3, WorklogManager.ResolveActiveWorkbook(workbooks, null)!.Id);
     }
 
-    // "Clear" under the "My Devices" tab's workbook list saves NoWorkbookChosen: no workbook at all, not the newest
+    // "Clear" under the "Workbooks" tab's workbook list saves NoWorkbookChosen: no workbook at all, not the newest
     // (owner decision, 2026-11-06: "No workbook worked in") - ids start at 1, so it names none.
     [Fact]
     public void No_workbook_chosen_saved_is_no_workbook_at_all()

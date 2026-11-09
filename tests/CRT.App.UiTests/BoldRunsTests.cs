@@ -21,6 +21,25 @@ public sealed class BoldRunsTests
         Assert.Equal([("Added ", false), ("3", true)], BoldRuns.Marked("Added <b>3</b>"));
     }
 
+    // A block a template makes shows its marked sentence through the attached MarkedText, again as the bound value changes
+    // (2026-11-09: "Board: Regions"' "<b>2</b> rows of this board have it applied").
+    [Fact]
+    public void A_block_given_MarkedText_shows_its_bold_pieces_and_follows_a_new_value()
+    {
+        UiTest.Run(() =>
+        {
+            var block = new TextBlock();
+
+            BoldRuns.SetMarkedText(block, "<b>2</b> rows of this board have it applied");
+            Assert.Equal("2 rows of this board have it applied", BoldRuns.TextOf(block));
+            Assert.Equal(["2"], BoldRuns.BoldPiecesOf(block));
+
+            BoldRuns.SetMarkedText(block, "No bold here");
+            Assert.Equal("No bold here", BoldRuns.TextOf(block));
+            Assert.Empty(BoldRuns.BoldPiecesOf(block));
+        });
+    }
+
     [Fact]
     public void A_sentence_with_no_tags_is_one_plain_piece_and_nothing_is_no_piece()
     {

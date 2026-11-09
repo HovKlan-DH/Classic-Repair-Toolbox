@@ -8,6 +8,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using CRT;
 using Handlers.DataHandling;
+using Handlers.Theming;
 
 namespace ClassicRepairToolbox.Tests.Ui;
 
@@ -1059,14 +1060,16 @@ public sealed class ComponentPanePagesTests : IDisposable
             Assert.Equal("This data is different per region", Get<CheckBox>(pane, "BasicsRegionalCheck").Content);
             Assert.Equal("This data is different per region", Get<CheckBox>(pane, "PinsRegionalCheck").Content);
             Assert.True(line.IsVisible);
-            Assert.Equal(ComponentPaneWording.RegionShownLine("PAL"), line.Text);
+            Assert.Equal(BoldRuns.Plain(ComponentPaneWording.RegionShownLine("PAL")), BoldRuns.TextOf(line));
+            Assert.Equal(["PAL"], BoldRuns.BoldPiecesOf(line));
 
             pane.ShowPage(ComponentPage.Pinout);
             Assert.True(line.IsVisible);
 
             // The buttons switching it are CRT's own, and the line follows them.
             pane.UseRegion("NTSC");
-            Assert.Equal(ComponentPaneWording.RegionShownLine("NTSC"), line.Text);
+            Assert.Equal(BoldRuns.Plain(ComponentPaneWording.RegionShownLine("NTSC")), BoldRuns.TextOf(line));
+            Assert.Equal(["NTSC"], BoldRuns.BoldPiecesOf(line));
 
             // A component that is one and the same everywhere: the ticks, and nothing to say on those pages.
             pane.Show(session, "U8", "PAL", board);
@@ -1425,6 +1428,173 @@ public sealed class ComponentPanePagesTests : IDisposable
         });
     }
 
+    private static string[] RegionsListed(ComponentPane pane) => pane.RegionRowsForTests.Select(row => row.Name).ToArray();
+
+    // ###########################################################################################
+    // ONE TICK, "This board comes with multiple regions", AND EVERY REGION LISTED IN ITS COLORS (owner request, 2026-11-09:
+    // "have the checkbox state "This board comes with multiple regions" and then list all regions and its colors? It should
+    // be possible to reorder the list of regions up/down"). Ticked, the board comes in PAL and NTSC, listed in their own
+    // colors; regions are added by name - one step each, a name the rule refuses kept in its box with the reason - each
+    // own region in the next of four colors; one is deleted only while no row says it and more than two are left; and the
+    // list's order is the buttons' order, one step.
+    // ###########################################################################################
+    [Fact]
+    public void Board_regions_are_listed_in_their_colors_added_deleted_and_ordered()
+    {
+        DraftSession session = this.OpenDraft(new BoardData { Components = [new ComponentEntry { BoardLabel = "U8", Category = "IC" }] });
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Regions);
+            CheckBox tick = Get<CheckBox>(pane, "RegionsCheckBox");
+
+            Assert.Equal("This board comes with multiple regions", tick.Content);
+            Assert.False(Get<StackPanel>(pane, "RegionsListPanel").IsVisible);
+
+            // Ticked: PAL and NTSC, in their own colors - the last two, so neither can go.
+            Tick(tick, true);
+            Assert.Equal(["PAL", "NTSC"], session.Content.Board.Regions);
+            Assert.True(Get<StackPanel>(pane, "RegionsListPanel").IsVisible);
+            Assert.Equal(["PAL", "NTSC"], RegionsListed(pane));
+            Assert.Equal(["Schematics_Region_PAL", "Schematics_Region_NTSC"], pane.RegionRowsForTests.Select(row => row.Colors));
+            Assert.All(pane.RegionRowsForTests, row => Assert.False(row.CanDelete));
+            Assert.Equal(ComponentPaneWording.RegionsAtFewest, pane.RegionRowsForTests[0].Why);
+
+            TextBox name = Get<TextBox>(pane, "NewRegionNameBox");
+            Button add = Get<Button>(pane, "AddRegionButton");
+
+            name.Text = "EU";
+            add.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            name.Text = "US";
+            add.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+            Assert.Equal(["PAL", "NTSC", "EU", "US"], session.Content.Board.Regions);
+            Assert.Equal(DraftStepWording.Regions, session.UndoDescription);
+            Assert.Equal(["PAL", "NTSC", "EU", "US"], RegionsListed(pane));
+            Assert.Equal("Schematics_Region_Own2", pane.RegionRowsForTests[3].Colors);
+            Assert.All(pane.RegionRowsForTests, row => Assert.True(row.CanDelete));
+
+            // Refused: the name stays, the reason under it, nothing changed.
+            name.Text = "eu";
+            add.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.Equal("eu", name.Text);
+            Assert.True(Get<TextBlock>(pane, "NewRegionProblemText").IsVisible);
+            Assert.Equal(["PAL", "NTSC", "EU", "US"], session.Content.Board.Regions);
+
+            // From PAL and NTSC to regions of its own - and the last two stay.
+            pane.DeleteRegion("PAL");
+            pane.DeleteRegion("NTSC");
+            Assert.Equal(["EU", "US"], session.Content.Board.Regions);
+            Assert.Equal(["Schematics_Region_Own1", "Schematics_Region_Own2"], pane.RegionRowsForTests.Select(row => row.Colors));
+            pane.DeleteRegion("EU");
+            Assert.Equal(["EU", "US"], session.Content.Board.Regions);
+
+            // Moved up: the buttons' order, one step, the colors following the places - on the very rows, changed in place
+            // (code review, 2026-11-09: made again, the row the keyboard was in went, and its focus with it).
+            ComponentPaneRegionRow usRow = pane.RegionRowsForTests[1];
+            ComponentPaneRegionRow euRow = pane.RegionRowsForTests[0];
+            Assert.True(pane.MoveRegion(usRow, -1));
+            Assert.Equal(["US", "EU"], session.Content.Board.Regions);
+            Assert.Equal(DraftStepWording.Regions, session.UndoDescription);
+            Assert.Equal(["US", "EU"], RegionsListed(pane));
+            Assert.Same(usRow, pane.RegionRowsForTests[0]);
+            Assert.Same(euRow, pane.RegionRowsForTests[1]);
+            Assert.Equal("Schematics_Region_Own1", pane.RegionRowsForTests[0].Colors);
+            Assert.True(usRow.IsOwn1);
+            Assert.False(pane.MoveRegion(pane.RegionRowsForTests[0], -1));
+
+            // Its handle takes the keyboard, so Alt+Up and Alt+Down reach a row whose "Delete region" is off - the last two
+            // can never go (code review, 2026-11-09: nothing on such a row could hold the keyboard).
+            Border HandleOf(ComponentPaneRegionRow row)
+            {
+                Dispatcher.UIThread.RunJobs();
+
+                return Get<ItemsControl>(pane, "RegionsItemsControl")
+                    .GetRealizedContainers()
+                    .SelectMany(container => container.GetVisualDescendants().OfType<Border>())
+                    .First(border => border.Classes.Contains("RowDragHandle") && ReferenceEquals(border.DataContext, row));
+            }
+
+            Assert.True(HandleOf(euRow).Focusable);
+
+            HandleOf(euRow).RaiseEvent(new Avalonia.Input.KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Avalonia.Input.Key.Up, KeyModifiers = Avalonia.Input.KeyModifiers.Alt });
+            Assert.Equal(["EU", "US"], session.Content.Board.Regions);
+
+            HandleOf(euRow).RaiseEvent(new Avalonia.Input.KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Avalonia.Input.Key.Down, KeyModifiers = Avalonia.Input.KeyModifiers.Alt });
+            Assert.Equal(["US", "EU"], session.Content.Board.Regions);
+
+            // A row saying US: US cannot go, and says why; the tick cannot be taken away.
+            name.Text = "Japan";
+            add.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            session.Apply("U8 in US", content => content with
+            {
+                Board = content.Board.WithComponentSections(components: [new ComponentEntry { BoardLabel = "U8", Category = "IC", Region = "US" }]),
+            });
+            pane.ShowBoardPart(session, PaneBoardPart.Regions, null);
+            Dispatcher.UIThread.RunJobs();
+
+            ComponentPaneRegionRow us = Assert.Single(pane.RegionRowsForTests, row => row.Name == "US");
+            Assert.False(us.CanDelete);
+            // The count said once, under it, bold (owner request, 2026-11-09).
+            Assert.StartsWith("<b>1</b> row of this board has it applied, so it stays", us.Why, StringComparison.Ordinal);
+            TextBlock why = Get<ItemsControl>(pane, "RegionsItemsControl")
+                .GetRealizedContainers()
+                .SelectMany(container => container.GetVisualDescendants().OfType<TextBlock>())
+                .First(block => BoldRuns.TextOf(block).StartsWith("1 row of this board has it applied", StringComparison.Ordinal));
+            Assert.Equal(["1"], BoldRuns.BoldPiecesOf(why));
+            Assert.True(Assert.Single(pane.RegionRowsForTests, row => row.Name == "EU").CanDelete);
+            Assert.False(tick.IsEnabled);
+
+            window.Close();
+        });
+    }
+
+    // Every region's row has a handle to drag it by, Alt+Up and Alt+Down on its row moving it as well.
+    [Fact]
+    public void A_regions_row_moves_by_alt_and_the_arrow_keys()
+    {
+        DraftSession session = this.OpenDraft(new BoardData
+        {
+            Regions = ["EU", "US", "Japan"],
+            Components = [new ComponentEntry { BoardLabel = "U8", Category = "IC" }],
+        });
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Regions);
+            Dispatcher.UIThread.RunJobs();
+
+            Button delete = Get<ItemsControl>(pane, "RegionsItemsControl")
+                .GetRealizedContainers()
+                .Select(container => container.GetVisualDescendants().OfType<Button>().First())
+                .ElementAt(2);
+            delete.Focus();
+            window.KeyPressQwerty(PhysicalKey.ArrowUp, RawInputModifiers.Alt);
+
+            Assert.Equal(["EU", "Japan", "US"], session.Content.Board.Regions);
+
+            window.Close();
+        });
+    }
+
+    // "Applies to" lists the board's regions, its own too, after "All regions".
+    [Fact]
+    public void Applies_to_lists_the_boards_own_regions()
+    {
+        var row = new ComponentPaneLinkRow();
+
+        row.UseRegions(["EU", "US"]);
+
+        Assert.True(row.ShowsAppliesTo);
+        Assert.Equal(["All regions", "EU", "US"], row.AppliesToChoices);
+
+        row.AppliesTo = "US";
+        Assert.Equal("US", row.Region);
+
+        row.UseRegions([]);
+        Assert.False(row.ShowsAppliesTo);
+    }
+
     [Fact]
     public void Board_regions_cannot_be_unticked_while_a_row_says_a_region_and_says_why()
     {
@@ -1437,7 +1607,8 @@ public sealed class ComponentPanePagesTests : IDisposable
             Assert.True(Get<CheckBox>(pane, "RegionsCheckBox").IsChecked);
             Assert.False(Get<CheckBox>(pane, "RegionsCheckBox").IsEnabled);
             Assert.True(Get<TextBlock>(pane, "RegionsInUseText").IsVisible);
-            Assert.Contains("2 rows", Get<TextBlock>(pane, "RegionsInUseText").Text, StringComparison.Ordinal);
+            Assert.StartsWith("2 rows of this board have a region applied", BoldRuns.TextOf(Get<TextBlock>(pane, "RegionsInUseText")), StringComparison.Ordinal);
+            Assert.Equal(["2"], BoldRuns.BoldPiecesOf(Get<TextBlock>(pane, "RegionsInUseText")));
 
             window.Close();
         });
@@ -1932,7 +2103,7 @@ public sealed class ComponentPanePagesTests : IDisposable
             {
                 pane.ShowPage(page);
                 Assert.True(line.IsVisible, page.ToString());
-                Assert.Equal(ComponentPaneWording.RegionShownLine("PAL"), line.Text);
+                Assert.Equal(BoldRuns.Plain(ComponentPaneWording.RegionShownLine("PAL")), BoldRuns.TextOf(line));
             }
 
             foreach (ComponentPage page in new[] { ComponentPage.Files, ComponentPage.Links })

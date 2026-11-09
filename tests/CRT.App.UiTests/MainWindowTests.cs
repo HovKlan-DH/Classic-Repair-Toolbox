@@ -522,6 +522,117 @@ public sealed class MainWindowTests : IDisposable
         }
     }
 
+    // ###########################################################################################
+    // A BOARD OF ITS OWN REGIONS HAS A BUTTON PER REGION, IN ITS ORDER (2026-11-09: "do the region steps 1-9, so we are
+    // prepared for other regions"): PAL and NTSC hidden when it has neither, three to a row, each in its color; the region
+    // picked on such a board is that board's alone - "region", which CRT 3.x reads, stays PAL or NTSC. A board in PAL and
+    // NTSC is the two halves it always was.
+    // ###########################################################################################
+    [Fact]
+    public void A_board_of_its_own_regions_has_a_button_per_region_and_remembers_the_one_picked_on_it()
+    {
+        this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
+
+        UiTest.Run(() =>
+        {
+            var main = new CRT.Main { BoardKeyOverrideForTests = "Bang & Olufsen|Beocenter 9000" };
+            var entry = new HardwareBoardEntry { HardwareName = "Bang & Olufsen", BoardName = "Beocenter 9000", ExcelDataFile = "Bang & Olufsen/Beocenter/9000/board.json" };
+            Grid grid = main.GetControl<Grid>("RegionButtonsGrid");
+
+            main.UseBoardForTests(entry, new BoardData { Regions = ["EU", "US", "UK", "Japan"], Components = [new ComponentEntry { BoardLabel = "IC1", Category = "IC" }] });
+
+            // A region of the board's own says its name in a block that wraps; PAL's and NTSC's are words.
+            static string? NameOf(Button button) => button.Content as string ?? (button.Content as TextBlock)?.Text;
+
+            List<Button> shown = grid.Children.OfType<Button>().Where(button => button.IsVisible).ToList();
+            Assert.True(grid.IsVisible);
+            Assert.Equal(["EU", "US", "UK", "Japan"], shown.OrderBy(Grid.GetRow).ThenBy(Grid.GetColumn).Select(NameOf));
+            Assert.False(main.GetControl<Button>("PalRegionButton").IsVisible);
+
+            // Four stand two by two, in the grid's fixed six columns (RegionButtonLayout - its definitions never change).
+            Assert.Equal(6, grid.ColumnDefinitions.Count);
+            Button japan = shown.Single(button => NameOf(button) == "Japan");
+            Assert.Equal((1, 3, 3), (Grid.GetRow(japan), Grid.GetColumn(japan), Grid.GetColumnSpan(japan)));
+            Assert.Contains("Own1", shown.Single(button => NameOf(button) == "EU").Classes);
+
+            // The four colors kept once, outside the theme dictionaries, and found in both themes (code review, 2026-11-09).
+            foreach (Avalonia.Styling.ThemeVariant theme in new[] { Avalonia.Styling.ThemeVariant.Light, Avalonia.Styling.ThemeVariant.Dark })
+            {
+                for (int own = 1; own <= 4; own++)
+                {
+                    Assert.True(Avalonia.Application.Current!.TryGetResource($"Schematics_Region_Own{own}_Bg", theme, out object? brush) && brush is Avalonia.Media.ISolidColorBrush);
+                }
+            }
+
+            // The name's block is made once with its button - the buttons laid out again change only its text (code review,
+            // 2026-11-09: a new one at every read of the lists).
+            object? euName = shown.Single(button => NameOf(button) == "EU").Content;
+            main.UseBoardForTests(entry, new BoardData { Regions = ["EU", "US", "UK", "Japan"], Components = [new ComponentEntry { BoardLabel = "IC1", Category = "IC" }] });
+            Assert.Same(euName, shown.Single(button => NameOf(button) == "EU").Content);
+
+            RaiseClick(shown.Single(button => NameOf(button) == "UK"));
+            Assert.Equal("UK", main.LocalRegion);
+            Assert.Contains("active", shown.Single(button => NameOf(button) == "UK").Classes);
+            Assert.Equal("UK", UserSettings.RegionOfBoard("Bang & Olufsen|Beocenter 9000"));
+            Assert.NotEqual("UK", UserSettings.Region);
+
+            // A board in PAL and NTSC: the two halves, as they always were.
+            main.UseBoardForTests(entry, new BoardData { Regions = ["PAL", "NTSC"] });
+            Assert.True(main.GetControl<Button>("PalRegionButton").IsVisible);
+            Assert.True(main.GetControl<Button>("NtscRegionButton").IsVisible);
+            Assert.Equal(6, grid.ColumnDefinitions.Count);
+            Assert.Equal(2, grid.Children.OfType<Button>().Count(button => button.IsVisible));
+            Assert.Equal((0, 3, 3), (Grid.GetRow(main.GetControl<Button>("NtscRegionButton")), Grid.GetColumn(main.GetControl<Button>("NtscRegionButton")), Grid.GetColumnSpan(main.GetControl<Button>("NtscRegionButton"))));
+        });
+    }
+
+    // ###########################################################################################
+    // THE REGION BUTTONS LAID OUT AS ONE BOARD FOLLOWS ANOTHER, IN A WINDOW SHOWN (owner report, 2026-11-09: "Launching CRT
+    // app now gives me a stack trace directly" - an ArgumentOutOfRangeException in Grid.GetMeasureSizeForRange as the
+    // C128 310378 loaded). Avalonia 12.1.4's Grid keeps each child's cell as it was when last laid out and does NOT look
+    // again when its definitions change - only a child or its Grid.Row/Column changing makes it - so a grid that lost rows
+    // or columns measured a button against a row or column it no longer has. Every board change here lays the window out.
+    // ###########################################################################################
+    [Fact]
+    public void The_region_buttons_are_laid_out_as_boards_of_every_kind_follow_each_other()
+    {
+        this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
+
+        UiTest.Run(() =>
+        {
+            var main = new CRT.Main { BoardKeyOverrideForTests = "Bang & Olufsen|Beocenter 9000" };
+            var entry = new HardwareBoardEntry { HardwareName = "Bang & Olufsen", BoardName = "Beocenter 9000", ExcelDataFile = "Bang & Olufsen/Beocenter/9000/board.json" };
+            Grid grid = main.GetControl<Grid>("RegionButtonsGrid");
+            main.Show();
+
+            BoardData[] boards =
+            [
+                new BoardData(),
+                new BoardData { Regions = ["PAL", "NTSC"] },
+                new BoardData { Regions = ["EU", "US", "UK", "Japan", "PAL", "NTSC"] },
+                new BoardData { Regions = ["PAL", "NTSC"] },
+                new BoardData { Regions = ["EU", "US", "UK", "Japan"] },
+                new BoardData(),
+                new BoardData { Regions = ["EU", "US", "UK", "Japan", "Korea"] },
+                new BoardData { Regions = ["PAL", "NTSC"] },
+            ];
+
+            foreach (BoardData board in boards)
+            {
+                board.Components.Add(new ComponentEntry { BoardLabel = "IC1", Category = "IC" });
+                main.UseBoardForTests(entry, board);
+                Dispatcher.UIThread.RunJobs();
+                main.UpdateLayout();
+
+                Assert.Equal(board.Regions.Count, grid.Children.OfType<Button>().Count(button => button.IsVisible));
+            }
+
+            main.Close();
+        });
+    }
+
     // The region toggle area hides itself entirely when the current board has no explicit PAL/NTSC
     // components - and a freshly built window has no board data at all, which is that same case.
     [Fact]

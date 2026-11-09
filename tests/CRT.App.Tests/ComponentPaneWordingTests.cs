@@ -17,13 +17,58 @@ public sealed class ComponentPaneWordingTests
         Assert.Equal("Component: R1", ComponentPaneWording.Title(new ComponentEntry { BoardLabel = "R1" }));
     }
 
-    // Said only for a component with a row of its own per region.
+    // ###########################################################################################
+    // Why a region stays on "Board: Regions": how many rows have it applied, the count bold and said once (owner request,
+    // 2026-11-09: "remove the first "2 rows say it" as it is both bad English and double-wording ... change this to "<b>2</b>
+    // rows of this board have it applied, so it .."").
+    // ###########################################################################################
+    [Fact]
+    public void A_region_in_use_says_how_many_rows_have_it_applied_the_count_bold()
+    {
+        Assert.Equal(
+            "<b>2</b> rows of this board have it applied, so it stays until they apply to another region or to all of them.",
+            ComponentPaneWording.RegionInUse(2));
+        Assert.Equal(
+            "<b>1</b> row of this board has it applied, so it stays until that row applies to another region or to all of them.",
+            ComponentPaneWording.RegionInUse(1));
+        Assert.StartsWith("<b>10</b> rows of this board have a region applied, so this stays ticked", ComponentPaneWording.RegionsInUse(10), StringComparison.Ordinal);
+
+        // What goes with a region deleted is said too (code review, 2026-11-09: it went without a word).
+        Assert.Equal(
+            "Deleting it takes <b>4</b> rows with it - components' own data for this region. \"Undo\" brings them back.",
+            ComponentPaneWording.RegionTakesRows(4));
+        Assert.StartsWith("Deleting it takes <b>1</b> row with it", ComponentPaneWording.RegionTakesRows(1), StringComparison.Ordinal);
+    }
+
+    // Said only for a component with a row of its own per region, the region in bold (owner request, 2026-11-09).
     [Fact]
     public void The_region_line_names_the_region_of_a_regional_row_only()
     {
         Assert.Equal(string.Empty, ComponentPaneWording.RegionLine(""));
         Assert.Equal(string.Empty, ComponentPaneWording.RegionLine(null));
-        Assert.StartsWith("The PAL version", ComponentPaneWording.RegionLine(" PAL "), StringComparison.Ordinal);
+        Assert.StartsWith("The <b>PAL</b> version", ComponentPaneWording.RegionLine(" PAL "), StringComparison.Ordinal);
+
+        // A region typed in a table cell with a mark of its own bolds nothing wrong (code review, 2026-11-09) - nor in the line
+        // saying which region a page shows.
+        Assert.StartsWith("The <b>EUx</b> version", ComponentPaneWording.RegionLine("</b>EU<b>x"), StringComparison.Ordinal);
+        Assert.StartsWith("Showing <b>NTSCx</b> - ", ComponentPaneWording.RegionShownLine("NTSC</b>x"), StringComparison.Ordinal);
+    }
+
+    // The line saying which region a page shows names the board's buttons - word for word as before on a PAL and NTSC board,
+    // its own on a board of its own regions (2026-11-09) - and the region shown in bold, nothing else (owner request,
+    // 2026-11-09: "please bold the selected region").
+    [Fact]
+    public void The_region_shown_line_names_the_boards_own_buttons()
+    {
+        Assert.Equal(
+            "Showing <b>PAL</b> - the \"PAL\" and \"NTSC\" buttons under the component list switch it.",
+            ComponentPaneWording.RegionShownLine("PAL"));
+        Assert.Equal(
+            "Showing <b>US</b> - the \"EU\", \"US\" and \"Japan\" buttons under the component list switch it.",
+            ComponentPaneWording.RegionShownLine("US", ["EU", "US", "Japan"]));
+        Assert.Equal(
+            "Showing <b>EU</b> - the \"EU\" button under the component list switches it.",
+            ComponentPaneWording.RegionShownLine("EU", ["EU"]));
     }
 
     // A section's heading says how many it holds, as the plan draws the pane.
@@ -125,12 +170,12 @@ public sealed class ComponentPaneWordingTests
             [
                 "<b>U7 | PLA</b>",
                 "<b>Category:</b> IC",
-                "<b>Short description:</b> Glue logic",
+                "<b>Other technical details:</b> Glue logic",
             ],
             lines.Take(3));
 
         Assert.Equal(
-            [("Short description:", true), (" Glue logic", false)],
+            [("Other technical details:", true), (" Glue logic", false)],
             Handlers.Theming.BoldRuns.Marked(lines[2]));
     }
 

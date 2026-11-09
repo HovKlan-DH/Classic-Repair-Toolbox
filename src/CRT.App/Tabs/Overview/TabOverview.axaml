@@ -178,7 +178,7 @@
 							<Grid RowDefinitions="Auto,Auto">
 								<TextBlock Grid.Row="0"
 								           Classes="OverviewHeaderText"
-								           Text="Short description"
+								           Text="Other technical details"
 								           Margin="8,0,8,0" />
 								<Border Grid.Row="1"
 								        Height="1"

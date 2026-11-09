@@ -6,7 +6,7 @@ Your own machines, each with its workbooks, comments and photos.
 
 A **device** is one computer you own - "Breadbin #2", "The C128 from the flea market". Its repairs are ordinary workbooks that say which device they are on, so a machine you have fixed three times over the years keeps all three together.
 
-Devices live in the "My Devices" tab and need the Workbooks feature switched on (see [Getting started](Workbooks-Getting-started)).
+Devices live in the "Workbooks" tab and need the Workbooks feature switched on (see [Getting started](Workbooks-Getting-started)).
 
 ## Add a device
 
@@ -19,7 +19,7 @@ The form is laid out like the worklog editor: what the device is and its comment
 | Name | What you call it - `Breadbin #2` |
 | Hardware and Board | The board inside it, from CRT's own lists - any board, not only the one shown. Locked while the device has workbooks, as a workbook belongs to a device of its own board |
 | Status | Unknown, Working, Faulty, In repair or For parts |
-| Region | Unknown, PAL or NTSC - only offered for a board that comes in both |
+| Region | Unknown, or one of the regions the board comes in (PAL and NTSC, or its own) - only offered for a board that comes in regions |
 | Condition | 0 to 5 stars - click a star; click the same star again for none |
 | Serial number or unique identifier | Optional |
 | Description | Optional, as many lines as you like - where it came from, what came with it. It can be formatted - see [Formatting your text](Workbooks-Daily-use#formatting-your-text) |
@@ -36,7 +36,7 @@ On a device you edit, links, comments and photos are saved as soon as you add, c
 
 ## My devices
 
-On the "My Devices" tab, "My devices" stands on the left of the window, below **Hardware** and **Board**, with how many devices it lists beside the heading. Each device's card shows its name and status, then its serial number (when it has one) with how many workbooks it has, then its hardware and board - with its condition in stars at the end of that line. Which devices are listed is the scope setting in "Configuration", and the search box above the workbooks finds devices too - by name, serial number or anything typed on them.
+On the "Workbooks" tab, "My devices" stands on the left of the window, below **Hardware** and **Board**, with how many devices it lists beside the heading. Each device's card shows its name and status, then its serial number (when it has one) with how many workbooks it has, then its hardware and board - with its condition in stars at the end of that line. Which devices are listed is the scope setting in "Configuration", and the search box above the workbooks finds devices too - by name, serial number or anything typed on them.
 
 **Sorting of devices**, in "Configuration" under the scope setting, puts them in order: by name (the default), by hardware, board and name, or by hand - then each card has a handle at its right edge to drag it up or down. A device added while sorting by hand goes last.
 
@@ -61,7 +61,7 @@ Buttons on the page:
 ## Repairs on a device
 
 * **Add workbook** always asks **Associate workbook to device**: None, or one of your devices with the board shown. **Add device** beside it adds one there and then, on that board.
-* Under a workbook's title in the "My Devices" tab, **Associate workbook to device** moves an existing workbook onto a device (or off it).
+* Under a workbook's title in the "Workbooks" tab, **Associate workbook to device** moves an existing workbook onto a device (or off it).
 
 ## The device drop-down
 
@@ -69,7 +69,7 @@ The bar at the top starts with a **Device** drop-down - the same choice as the d
 
 **While a device is picked, you work only in its workbooks.** The **Workbook** drop-down lists only its workbooks, and **Add worklog** writes into the one picked there. With none of its workbooks on the board shown, the **Workbook** drop-down says so and **Add worklog** is hidden until **Add workbook** makes one.
 
-Pick a device and CRT goes to its repair: the newest open one on any board, else the newest on its board - switching board first. A device with no workbook to work on has its own board shown and its page opened in the "My Devices" tab; **Add workbook** in the bar starts one on it.
+Pick a device and CRT goes to its repair: the newest open one on any board, else the newest on its board - switching board first. A device with no workbook to work on has its own board shown and its page opened in the "Workbooks" tab; **Add workbook** in the bar starts one on it.
 
 Working in a workbook of another device picks that device. A workbook on no device - or switching to a board with none of the device's workbooks - goes back to **Show workbooks for all devices**.
 
@@ -101,7 +101,7 @@ As with workbooks, a deleted device's number is never handed out again, and copy
 | --- | --- |
 | The **Device** drop-down is greyed out | No device added yet |
 | No bar at the top at all | The Workbooks feature is off in "Configuration" |
-| No **Region** in the device's form | The board picked does not come in PAL and NTSC versions |
+| No **Region** in the device's form | The board picked does not come in regional versions |
 | A device is not offered in **Add workbook** | It is on another board - only devices with the board shown are offered |
 | Picking a device opens its page instead of a workbook | It has no workbook yet, or only on a board unticked in the "Configuration" tab's list of boards shown |
 | The **Device** drop-down went back to **Show workbooks for all devices** | You worked in a workbook on no device, or switched to a board with none of the device's workbooks |

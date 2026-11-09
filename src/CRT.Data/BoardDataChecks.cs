@@ -607,23 +607,41 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // *** Security (code review, 2026-11-01): WHAT A BOARD SAYS ABOUT ITS REGIONS IS PAL AND NTSC, OR
-        // NOTHING. *** A submission's "regions" reaches the publish as sent, and a reviewer reads only whether
-        // the board has any: "x" turned the PAL/NTSC switch on unseen, and a JSON null made every Approve of
-        // it throw once the stored files were written. CRT itself only ever writes BoardRegions.All.
+        // *** Security (code review, 2026-11-01): WHAT A BOARD SAYS ABOUT ITS REGIONS IS NAMES BoardRegions.NameProblem
+        // TAKES. *** A submission's "regions" reaches the publish as sent: a JSON null made every Approve of it throw once
+        // the stored files were written. PAL and NTSC alone until 2026-11-09 (owner request: "so we are prepared for other
+        // regions") - any name of the rule since, each once, at most BoardRegions.MostRegions.
         // ###########################################################################################
         private static void CheckRegions(Context context)
         {
+            var taken = new List<string>();
+
             foreach (string? region in context.Rows.Regions ?? [])
             {
-                if (!BoardRegions.IsRegion(region))
+                if (BoardRegions.NameProblem(region, taken) is { } problem)
                 {
                     context.Error(
                         "regions.unknown",
                         region ?? string.Empty,
-                        $"The board says it comes in [{region}], which is no region. A board comes in PAL and NTSC, or in no regions at all.",
+                        $"The board says it comes in [{region}], which cannot be a region: {problem}",
                         null, -1, null);
                 }
+                else
+                {
+                    taken.Add(region!.Trim());
+                }
+            }
+
+            // A board with regions comes in two at least (BoardRegions.FewestRegions - code review, 2026-11-09: one region
+            // passed and was published, a board CRT's own "Board: Regions" never makes - one button, nothing to switch to).
+            // Said of a list of that one alone: a second name refused above is said there.
+            if (taken.Count is > 0 and < BoardRegions.FewestRegions && (context.Rows.Regions?.Count ?? 0) == taken.Count)
+            {
+                context.Error(
+                    "regions.unknown",
+                    taken[0],
+                    $"The board says it comes in [{taken[0]}] alone: a board told apart by region comes in {BoardRegions.FewestRegions} at least - or none.",
+                    null, -1, null);
             }
         }
 
@@ -917,7 +935,7 @@ namespace Handlers.DataHandling
                     context.Warning(
                         "component.long_description",
                         (component.BoardLabel ?? string.Empty).Trim(),
-                        $"The short description of [{(component.BoardLabel ?? string.Empty).Trim()}] is {description.Length} characters; the popup has room for " +
+                        $"\"{BoardWorkbookSchema.DescriptionHeading}\" of [{(component.BoardLabel ?? string.Empty).Trim()}] is {description.Length} characters; the popup has room for " +
                         $"{ComponentVocabulary.ShortDescriptionLimit}. Shorten it.",
                         BoardWorkbookSchema.SheetComponents, i, BoardWorkbookSchema.ColDescription);
                 }
@@ -1006,16 +1024,20 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         private static void CheckFileAndLinkRegions(Context context)
         {
+            // The board's regions as these rows say them - its own list, or PAL and NTSC where it names none.
+            List<string> regions = BoardRegions.Cleaned(context.Rows.Regions);
+            IReadOnlyList<string> known = regions.Count > 0 ? regions : BoardRegions.PalAndNtsc;
+
             void Check(string? region, string sheet, int index)
             {
                 string word = (region ?? string.Empty).Trim();
 
-                if (word.Length > 0 && !BoardRegions.IsRegion(word))
+                if (word.Length > 0 && !known.Contains(word, StringComparer.OrdinalIgnoreCase))
                 {
                     context.Warning(
                         "row.region",
                         word,
-                        $"Region [{word}] is no region, so this row shows in neither. Write PAL or NTSC, or leave it empty for every region.",
+                        $"Region [{word}] is not one the board comes in, so this row shows in none. Write {BoardRegions.Joined(known, "or")}, or leave it empty for every region.",
                         sheet, index, BoardWorkbookSchema.ColRegion);
                 }
             }

@@ -629,11 +629,19 @@ namespace Handlers.MaintainerHandling
                 }
             }
 
+            // The regions by name (2026-11-09) - null from a server that does not say them, which means PAL and NTSC.
+            IReadOnlyList<string>? Names(string name) =>
+                element.TryGetProperty(name, out JsonElement names) && names.ValueKind == JsonValueKind.Array ? ReviewApiParser.Strings(element, name) : null;
+
             return new ReviewChangeSummaryView(
                 ReviewApiParser.Bool(element, "isNewBoard") ?? false,
                 sections,
                 ReviewApiParser.Strings(element, "reorderedSections"),
-                ReviewApiParser.Bool(element, "regionsNow"));
+                ReviewApiParser.Bool(element, "regionsNow"))
+            {
+                RegionNamesBefore = Names("regionNamesBefore"),
+                RegionNamesNow = Names("regionNamesNow"),
+            };
         }
 
         private static ReviewSectionView? ParseSection(JsonElement element)

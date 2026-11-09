@@ -55,7 +55,9 @@ namespace CRT
             }
 
             this.thisKiCadPins = pins ?? [];
-            this.ShowKiCadPins();
+
+            // Drawn again with the nets - a regulator's legs are told apart by them (ShowPinout shows the pins' nets too).
+            this.ShowPinout();
         }
 
         // Another component, a board part or nothing shown: the KiCad pins are another's.
@@ -140,11 +142,16 @@ namespace CRT
         // ###########################################################################################
         private void ShowKiCadPins()
         {
-            this.FillFromKiCadButton.IsVisible = this.thisKiCadPins.Count > 0;
+            // The pins of one component's footprint - not offered while several are shown.
+            this.FillFromKiCadButton.IsVisible = this.thisKiCadPins.Count > 0 && !this.IsSeveral;
             ToolTip.SetTip(this.FillFromKiCadButton, ComponentPaneWording.FillFromKiCadTip(this.thisLabel));
             ToolTip.SetTip(this.PinNetHeading, ComponentPaneWording.NetHeadingTip);
 
-            Dictionary<string, string> nets = KiCadComponentPins.NetsByPin(this.thisKiCadPins);
+            // The nets of one component's footprint - never beside the pins several share (code review, 2026-11-09: the first
+            // one's nets were shown on every shared pin, as if each of them were on those nets).
+            Dictionary<string, string> nets = this.IsSeveral
+                ? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+                : KiCadComponentPins.NetsByPin(this.thisKiCadPins);
 
             foreach (ComponentPanePinRow row in this.thisPins)
             {
@@ -163,7 +170,7 @@ namespace CRT
         // ###########################################################################################
         internal bool FillFromKiCad()
         {
-            if (this.thisSession is null || this.thisKiCadPins.Count == 0)
+            if (this.thisSession is null || this.thisKiCadPins.Count == 0 || this.IsSeveral)
             {
                 return false;
             }

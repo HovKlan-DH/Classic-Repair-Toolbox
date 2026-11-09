@@ -57,7 +57,7 @@ namespace Handlers.DataHandling
 
             if (BoardRegions.Has(board))
             {
-                wanted.AddRange(BoardRegions.All.Select(region => new CreditEntry { Category = NewBoardCredits.OscilloscopeBaseline, SubCategory = region }));
+                wanted.AddRange(BoardRegions.Of(board).Select(region => new CreditEntry { Category = NewBoardCredits.OscilloscopeBaseline, SubCategory = region }));
             }
             else
             {

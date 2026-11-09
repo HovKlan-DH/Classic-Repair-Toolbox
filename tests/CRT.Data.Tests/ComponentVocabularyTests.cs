@@ -161,11 +161,12 @@ public sealed class ComponentVocabularyTests
     }
 
     // "Analog input" and "Analog output" went again (owner request, 2026-11-02: "it can be covered by
-    // the existing two choices") - a board already holding one keeps it, shown as it is.
+    // the existing two choices") - a board already holding one keeps it, shown as it is. In the owner's order
+    // (2026-11-09).
     [Fact]
     public void A_pin_carrying_a_voltage_level_is_an_input_or_an_output()
     {
-        Assert.Equal(["Input", "Output", "Input/output", "Power", "Ground", "Not connected", "Other", "Unknown"], ComponentVocabulary.PinDirections);
+        Assert.Equal(["Not connected", "Input", "Output", "Input/output", "Ground", "Power", "Other", "Unknown"], ComponentVocabulary.PinDirections);
     }
 
     // One rule for "the same pin" - the popup lighting the pin of its image, a new baseline taking its

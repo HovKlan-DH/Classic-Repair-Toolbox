@@ -487,7 +487,9 @@ namespace CRT
             if (shown && this.thisNoComponentPage is { } page)
             {
                 this.NoComponentTitle.Text = ContributeBoardParts.NoComponentTitle(page);
-                this.NoComponentText.Text = ContributeBoardParts.NoComponentPicked(page);
+                this.NoComponentText.Text = this.IsEveryTakenOver
+                    ? ContributeBoardParts.EveryComponentSelected(page)
+                    : ContributeBoardParts.NoComponentPicked(page);
             }
         }
 
@@ -867,6 +869,15 @@ namespace CRT
                 return;
             }
 
+            // The table's rows follow the components picked, whatever is open (BoardTableEditor.Components.cs).
+            this.TableEditor.ShowOnlyComponents(this.IsTableOpen ? this.TableLabels : []);
+
+            if (this.thisPickedSeveral.Count > 1)
+            {
+                this.ShowSeveralSelected(list);
+                return;
+            }
+
             string label = this.thisPickedComponent;
             ComponentListItem? selected = label.Length == 0
                 ? null
@@ -874,7 +885,7 @@ namespace CRT
 
             // A selection the keys moved, waiting to open, is left where the keys put it - the pane
             // follows it once they pause (OpenKeyPickedComponent).
-            if (ReferenceEquals(list.SelectedItem, selected) || this.thisComponentKeyTimer?.IsEnabled == true)
+            if ((ReferenceEquals(list.SelectedItem, selected) && list.SelectedItems?.Count <= 1) || this.thisComponentKeyTimer?.IsEnabled == true)
             {
                 return;
             }
@@ -961,6 +972,12 @@ namespace CRT
         {
             this.thisComponentKeyTimer?.Stop();
 
+            if (this.thisComponentList is { IsKeyboardFocusWithin: true } && this.SelectedInList() is { Count: > 1 } several)
+            {
+                this.OpenPickedComponents(several);
+                return;
+            }
+
             if (this.thisComponentList is { IsKeyboardFocusWithin: true, SelectedItem: ComponentListItem item })
             {
                 this.OpenPickedComponent(item);
@@ -972,8 +989,28 @@ namespace CRT
 
         private void OnComponentsListSelectionChanged(object? sender, SelectionChangedEventArgs e)
         {
-            if (this.thisFollowingComponentSelection ||
-                this.thisComponentList?.SelectedItem is not ComponentListItem item ||
+            if (this.thisFollowingComponentSelection)
+            {
+                return;
+            }
+
+
+            // Several selected - Ctrl or Shift with a click, Shift with the keys - edited as one (owner request, 2026-11-08).
+            if (this.SelectedInList() is { Count: > 1 } several)
+            {
+                if (this.thisComponentKeyMoving && this.thisComponentKeyTimer is { } waiting)
+                {
+                    waiting.Stop();
+                    waiting.Start();
+                    return;
+                }
+
+                this.thisComponentKeyTimer?.Stop();
+                this.OpenPickedComponents(several);
+                return;
+            }
+
+            if (this.thisComponentList?.SelectedItem is not ComponentListItem item ||
                 item.BoardLabel.Length == 0)
             {
                 return;
@@ -1007,37 +1044,80 @@ namespace CRT
             string label = item.BoardLabel;
 
             this.thisPickedComponent = label;
+            this.thisPickedSeveral = [];
 
             // One click is a selection changed and then a tap, each coming here - in the table too (code
-            // review, 2026-11-04: the table was read and built twice).
-            if (string.Equals(this.thisOpeningComponent, label, StringComparison.OrdinalIgnoreCase) ||
-                (!this.thisTableMode && this.IsPaneOnComponent(label)))
+            // review, 2026-11-04: the table was read and built twice). Only while that open, or what the pane shows, is the
+            // latest pick (code review, 2026-11-09): a Shift+click opening several in between, a click on the one still
+            // opening was dropped, and the several - ending last - took the pick back.
+            bool sameOpenUnderWay = string.Equals(this.thisOpeningComponent, label, StringComparison.OrdinalIgnoreCase) &&
+                                    this.thisOpeningGeneration == this.thisPickGeneration;
+            bool shownAlready = !this.thisTableMode && this.IsPaneOnComponent(label) && this.thisPicksOpening == 0;
+
+            if (sameOpenUnderWay || shownAlready)
             {
                 return;
             }
 
             this.thisOpeningComponent = label;
 
+            int generation = ++this.thisPickGeneration;
+            this.thisOpeningGeneration = generation;
+            this.thisPicksOpening++;
+
             this.RunGuarded(async () =>
             {
                 try
                 {
-                    await this.OpenPickedInTheViewPickedAsync(label);
+                    if (this.HoldOpeningForTests is { } hold)
+                    {
+                        await hold;
+                    }
+
+                    await this.OpenPickedInTheViewPickedAsync(label, () => generation == this.thisPickGeneration);
                 }
                 finally
                 {
-                    this.thisOpeningComponent = null;
+                    // A newer open of its own leaves its mark.
+                    if (this.thisOpeningGeneration == generation)
+                    {
+                        this.thisOpeningComponent = null;
+                    }
+
+                    this.thisPicksOpening--;
                 }
 
                 this.ShowNavSelection();
             }, "Open component");
         }
 
-        private Task OpenPickedInTheViewPickedAsync(string label)
+        // The pick the open of thisOpeningComponent was started for.
+        private int thisOpeningGeneration;
+
+        // ###########################################################################################
+        // *** A PICK OVERTAKEN BY A NEWER ONE OPENS NOTHING (2026-11-08: a Shift+click failed now and then). *** Opening goes
+        // through the BusyOverlay and reads the draft off the UI thread, so a click and a Shift+click right after it each open
+        // - and the first, ending last, put the pane on its one component and the pick back to it. Each pick takes the next
+        // number; an open shows only while its number is the latest, and while any is under way the tab does not follow what
+        // the pane shows (FollowPickedComponent).
+        // ###########################################################################################
+        private int thisPickGeneration;
+
+        private int thisPicksOpening;
+
+        // For a test: what an open from the list waits for first, so a newer pick can be made while it is under way.
+        internal Task? HoldOpeningForTests { get; set; }
+
+        private Task OpenPickedInTheViewPickedAsync(string label, Func<bool> stillWanted)
         {
+            if (!stillWanted())
+            {
+                return Task.CompletedTask;
+            }
+
             if (!this.thisTableMode)
             {
-                return this.OpenComponentAsync(label);
+                return this.OpenComponentAsync(label, stillWanted);
             }
 
             ContributeEntry entry = this.EntryOpen() is { } shown && ContributeEntries.PageOf(shown) is not null
@@ -1045,6 +1125,33 @@ namespace CRT
                 : ContributeEntries.OfPage(this.ComponentPane.Page);
 
             return this.ShowEntryInTableAsync(entry, takeFocus: false);
+        }
+
+        // Several picked in the list, as Ctrl+click picks them - for a test.
+        internal void PickComponentsForTests(params string[] labels)
+        {
+            if (this.thisComponentList is not { SelectedItems: { } selected } list)
+            {
+                return;
+            }
+
+            this.thisFollowingComponentSelection = true;
+
+            try
+            {
+                selected.Clear();
+
+                foreach (ComponentListItem item in this.thisComponentItems.Where(item => labels.Contains(item.BoardLabel, StringComparer.OrdinalIgnoreCase)))
+                {
+                    selected.Add(item);
+                }
+            }
+            finally
+            {
+                this.thisFollowingComponentSelection = false;
+            }
+
+            this.OnComponentsListSelectionChanged(list, new SelectionChangedEventArgs(Avalonia.Controls.Primitives.SelectingItemsControl.SelectionChangedEvent, Array.Empty<object>(), Array.Empty<object>()));
         }
 
         // A component picked in the list, as a click on it picks it - for a test, whose tab has no list unless

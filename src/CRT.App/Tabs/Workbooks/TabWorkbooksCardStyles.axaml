@@ -2,7 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
 	<!-- ###########################################################################################
-	     THE "My Devices" TAB'S CARDS AND MUTED TEXT, in a file of their own (2026-11-06): the tab's list of devices
+	     THE "Workbooks" TAB'S CARDS AND MUTED TEXT, in a file of their own (2026-11-06): the tab's list of devices
 	     and workbooks stands in Main's left panel while the tab is shown (owner request: "I want the 'My devices'
 	     list and the 'Workbooks' list to show in the left-side panel"), out of the tab, where a style of the tab no
 	     longer reaches it. So the tab and that list both include these (TabWorkbooks.axaml), and the cards look

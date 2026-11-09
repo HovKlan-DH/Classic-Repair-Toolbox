@@ -167,8 +167,24 @@
 			<!-- The list scrolls; "Clear" under it stays in sight - no workbook worked in (owner request, 2026-11-06:
 			     'a similar button named "Clear" (like for the "My devices" panel in left-side) that will clear the
 			     selection of the workbook'; TabWorkbooks.ClearWorkbookPick). -->
-			<Grid RowDefinitions="*,Auto">
-			<ScrollViewer Margin="9,9,9,0" VerticalScrollBarVisibility="Auto">
+			<!-- With no device made, this whole list stands in Main's left panel in place of "My devices" (owner request,
+			     2026-11-08: "the list of workbooks should move into the left-side panel, as there are no devices to display
+			     there. This would make the content area larger for the actual worklogs"; TabWorkbooks.PlaceWorkbookList) -
+			     looking as "My devices" does there: its heading and count over a frame, "Clear" under it. So its card
+			     styles go with it, as "My devices"'s do. -->
+			<Grid x:Name="WorkbookListArea" RowDefinitions="Auto,*,Auto">
+			<Grid.Styles>
+				<StyleInclude Source="avares://Classic-Repair-Toolbox/Tabs/Workbooks/TabWorkbooksCardStyles.axaml" />
+			</Grid.Styles>
+			<StackPanel x:Name="WorkbookListHeading" Orientation="Horizontal" Spacing="6" IsVisible="False">
+				<TextBlock Text="Workbooks"
+						   FontSize="11"
+						   VerticalAlignment="Center"
+						   Foreground="{DynamicResource Fg}" />
+				<Decorator x:Name="WorkbookCountHost" VerticalAlignment="Center" />
+			</StackPanel>
+			<Border x:Name="WorkbookListFrame" Grid.Row="1">
+			<ScrollViewer x:Name="WorkbookListScroller" Margin="9,9,9,0" VerticalScrollBarVisibility="Auto">
 				<StackPanel Spacing="5">
 
 					<!-- "My devices" (CRT 4.0 step 4): the computers the user owns, as the Configuration tab's
@@ -267,12 +283,13 @@
 
 				</StackPanel>
 			</ScrollViewer>
+			</Border>
 
 			<!-- 15px from the tab's foot, one more being the right panel's border: 16px from the window's, as the
 			     left panel's padding puts the "Clear" under "My devices" - the two stand level (owner request,
-			     2026-11-07: "vertically align the two buttons"). -->
+			     2026-11-07: "vertically align the two buttons"). In the left panel, as that "Clear" stands. -->
 			<Button x:Name="ClearWorkbookButton"
-					Grid.Row="1"
+					Grid.Row="2"
 					Content="Clear"
 					HorizontalAlignment="Stretch"
 					HorizontalContentAlignment="Center"

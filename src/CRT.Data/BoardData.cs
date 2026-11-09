@@ -99,6 +99,15 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         public string Package { get; init; } = string.Empty;
 
+        // ###########################################################################################
+        // WHAT THE COMPONENT IS THERE FOR, as a note with formatting (owner request, 2026-11-09: "a new textfield (with
+        // formatting possibility) named "Purpose or note", and the idea is then that the user can give a text describing
+        // the purpose of this component - why is it there etc."). Never in the Excel generations; a board file writes it
+        // only when it is filled. Shown in the component popup.
+        // ###########################################################################################
+        [RichNoteMarkup]
+        public string Purpose { get; init; } = string.Empty;
+
         // This row of a relabelled component, every other value as it was. BoardSchematicEntryTests
         // compares every property by reflection.
         public ComponentEntry WithBoardLabel(string boardLabel) => this.With(boardLabel, this.Region, this.Category);
@@ -119,6 +128,7 @@ namespace Handlers.DataHandling
             Region = region,
             Description = this.Description,
             Package = this.Package,
+            Purpose = this.Purpose,
         };
     }
 

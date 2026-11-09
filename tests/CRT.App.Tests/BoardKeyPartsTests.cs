@@ -23,7 +23,7 @@ public sealed class BoardKeyPartsTests
         Assert.Equal((hardware, board), BoardKeyParts.Split(boardKey));
     }
 
-    // The three that split a key go by it: the "My Devices" scope, and Main's names for a key no drop-down lists.
+    // The three that split a key go by it: the "Workbooks" tab's scope, and Main's names for a key no drop-down lists.
     [Fact]
     public void The_scope_and_Mains_names_go_by_the_one_rule()
     {

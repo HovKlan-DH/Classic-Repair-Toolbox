@@ -251,6 +251,11 @@ namespace Handlers.MaintainerHandling
     {
         public IReadOnlyList<string> ReorderedSections { get; init; } = ReorderedSections ?? [];
 
+        // The board's regions by name before and after (2026-11-09) - null from a server that does not say: PAL and NTSC.
+        public IReadOnlyList<string>? RegionNamesBefore { get; init; }
+
+        public IReadOnlyList<string>? RegionNamesNow { get; init; }
+
         public int TotalChanges => this.Sections.Sum(section => section.TotalChanges);
 
         public bool HasChanges => this.TotalChanges > 0 || this.ReorderedSections.Count > 0 || this.RegionsNow is not null;

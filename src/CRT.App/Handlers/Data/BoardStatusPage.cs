@@ -254,18 +254,19 @@ namespace Handlers.DataHandling
             };
         }
 
-        // Whether the board comes in PAL and NTSC versions - either is an answer, so nothing to do.
+        // Whether the board comes in versions for several regions, and which - either is an answer, so nothing to do.
         private static BoardStatusPanel RegionsPanel(BoardData board)
         {
-            bool has = BoardRegions.Has(board);
+            IReadOnlyList<string> regions = BoardRegions.Of(board);
+            bool has = regions.Count > 0;
 
             return new BoardStatusPanel(
                 BoardStatusPart.Regions,
                 has ? BoardStatusState.Done : BoardStatusState.Optional,
                 ComponentPaneWording.Title(PaneBoardPart.Regions),
-                "Whether the board comes in a <b>PAL</b> and <b>NTSC</b> version, so component information can differ between them.",
+                "Whether the board comes in a <b>PAL</b> and <b>NTSC</b> version - or in regions of its own - so component information can differ between them.",
                 RegionsAction,
-                [new BoardStatusLine(has ? ComponentPaneWording.RegionsHasOnBoard : "No regions.")]);
+                [new BoardStatusLine(has ? ComponentPaneWording.RegionsOfBoard(regions) : "No regions.")]);
         }
 
         // What the components are sorted under. The ones with none are its error (PartOf).

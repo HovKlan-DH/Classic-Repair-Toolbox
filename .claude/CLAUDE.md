@@ -447,6 +447,15 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
 - **No button label has "..."** (owner rule, 2026-10-03). A button says what it does in plain words,
   whether or not it opens a window. Status lines and placeholders are not buttons. **Machine-checked:**
   `ButtonLabelTests`. A Wiki page naming a button uses the same label.
+- **On the Contribute tab every entry that moves up and down stands in a frame of its own** (owner request, 2026-11-08:
+  "everything that can be moved up/down must have its own panel with a border"): `Border.MovableRow` around the row of
+  every list with a drag handle - a component's files and links, the board's files, links, credits, important signals and
+  categories - and `Grid.MovableRowHeadings` on the headings over it, inset by the frame's edge and padding (9px) so they stay
+  over their boxes. **Machine-checked:** `ContributeMovableRowsTests` (every `RowDragHandle` in `Tabs/Drafts/*.axaml`).
+- **A focus moved by a posted handler asks `IsKeyboardFocusWithin` first** (owner report, 2026-11-08: the component popup's
+  "Edit component" needed two clicks): Avalonia's `Button` lets go of its press when it loses the focus, and the popup's
+  `Activated` handler - raised by the very press that brought it to the front - moved the focus after the press put it on
+  the button. `ComponentInfoWindowTests.Edit_component_clicks_on_the_press_that_brings_the_popup_to_the_front`.
 - **Buttons side by side are 6px apart, everywhere** (owner request, 2026-10-30: "the same horizontal
   spacing ... everywhere in UI"): a row's `Spacing`/`ItemSpacing` is 6, a row spaced by margins has a
   right margin of 6, two buttons in a Grid stand either side of a 6px column; code uses
@@ -529,6 +538,9 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
   card came back as soon as it was closed; CRT.Data's since 2026-11-08, so a damaged board file too - `BoardDataReader`,
   `BoardFiles`). A test of CRT.App.Tests watching the lines logged (`LoggedLines`) sees CRT.Data's at CRT's own levels. Errors logged before the window was there are said as it opens, **taken with what
   comes after in ONE step** (`ProblemsLog.Watch` - listening, then reading, counted an error logged in between twice).
+  **"Show errors and warnings" is the FIRST of the "Configuration" tab's buttons, with a badge per kind while the run has any** - errors
+  in the danger color, warnings in the warning color (owner request, 2026-11-09; `TabConfiguration.WatchProblems`, from `Main.WatchProblems`
+  - NavBadge's "error" and "warning"); none of those five buttons has a tooltip (owner request, same day).
   **"Errors and warnings"** (`ProblemsWindow`, from the card's "Show details" and the
   "Configuration" tab's "Show errors and warnings") lists them newest first, with "Copy all" for the "Feedback" tab. **A fatal
   crash is said at the NEXT launch, once** ("CRT closed unexpectedly" - `CrashReports.LatestFatal` over the crash file,
@@ -577,7 +589,7 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
   has a character such as "·".
 - **A tab, a menu or a button named in the UI is in quotes** (owner request, 2026-11-01: "when there is a reference to a
   tab, a menu or a button then it must be encapsulated with """): `the "Schematics" tab`, `under "Schematic images"`, `press
-  "Align KiCad data"`, `"Undo" takes it back` - sentences, tooltips, a label's own words (`Enable "My Devices" tab`) and the
+  "Align KiCad data"`, `"Undo" takes it back` - sentences, tooltips, a label's own words (`Enable "Workbooks" tab`) and the
   server's. A name that only opens a heading or a title ("Align KiCad data on [Top]") is the label itself. **Machine-checked:**
   `UiReferenceQuotingTests` (every tab, and a list of names that cannot be anything else, a sentence carried over to the next
   line read as one); a word that is also plain English
@@ -612,7 +624,7 @@ One folder per tab - `About`, `Configuration`, `Drafts` (the Contribute tab), `F
 `UserControl` with its logic in code-behind. `Worklog/` holds the worklog's dialog windows (the
 component editor's window, `Contribute/`, went in CRT 4.0's step 2 - the component pane replaced it).
 **Conditional tabs:**
-Oscilloscope (`ApplyOscilloscopeTabVisibility`), "My Devices" (the Workbooks tab, below) with the worklog bar
+Oscilloscope (`ApplyOscilloscopeTabVisibility`), "Workbooks" (below) with the worklog bar
 (`ApplyWorklogBarVisibility`), Maintainer (`EnableMaintainerTab`, off by default). Hiding a selected
 tab moves the selection to the first visible one. **Code asks for a tab by its TabItem, never its header**
 (`ReferenceEquals(..., this.WorkbooksTabItem)`): "Workbooks" was compared as text in two places, and the tab was
@@ -690,15 +702,53 @@ be possible to select at a time"; a search and a list beside the tab's column un
 and every review found another way to lose a selection in it): **showing the tab changes only which are visible**
 (`FollowContributeTabInLists`), the keyboard in "the filter box" staying in it. The tab's show its `ComponentItems`/`CategoryItems`, which
 follow the draft as it is edited (`BoardForList`) - the board on screen is read again only once the pane closes - and **the Schematics tab, the
-Overview and the rest read only `ComponentFilterListBox`/`CategoryFilterListBox`, whichever tab is shown**. **EVERY CATEGORY IS
-TICKED THE FIRST TIME, AND WHAT IS DONE TO THE LISTS HERE STAYS** (owner request, 2026-11-03: "should select all in the 'Category' list
-... but only the first time ... if I switch between contribute and schematics tab, then I do not want it to reset every time ... same for
-the component selected"; `ContributeListState`, per board for the run): the categories UNTICKED and the words typed, so a category the
-draft makes is ticked by itself (`ShowContributeTicks`; a category going as the lists are read again is nobody's choice -
+Overview and the rest read only `ComponentFilterListBox`/`CategoryFilterListBox`, whichever tab is shown**. **ONE SELECTION FOR BOTH
+TABS' LISTS** (owner request, 2026-11-08: "always keep the same selection for the left-side panel "Category" and "Component" lists,
+meaning it should not change selections when shifting between e.g. "Schematics" tab and "Contribute" tab" - every category ticked the
+first time and the tab's own pick until then). **AND THE SAME LISTS** (owner request, 2026-11-09: "Toggling between tabs (e.g.
+"Contribute" and "Schematics") should keep the exact same components and categories selected, and it should not change position in the
+lists ... it should be the exact same lists" - only what was chosen on the tab went back until then, each filter box its own and each list
+at its own place): entering the tab takes EVERYTHING the other tabs' lists show - the categories ticked, the word in the filter box (it
+narrows here), the components selected (`TakeListsIntoContribute`, `TabDrafts.TakePickFromOtherTabs` - opened where a component's page or its
+table shows) - and leaving it gives everything back (`GiveListsBackFromContribute`): the ticks as the board's saved filter, as a tick there
+is, the word narrowing their list WITHOUT selecting all it finds (typed there it does), the components picked selected and lit, and held
+for the load that follows (`_selectionToKeep`). **Each list opens where the one shown before it stood** - the same row at its top
+(`ListPosition`, `StandOf`/`PutAt`; the tab's component list has `AutoScrollToSelectedItem` off too, or a pick scrolled it after). **A side
+nothing was done on hands nothing over** (`_contributeSaidAtEntry`, `_othersSaidAtExit` - `ListsSaid`): lists that are the same stay
+exactly as they were, a pick a word hides on the tab included, which the other list cannot hold. Nothing is handed across while either set of
+lists is of another board, or still being read (`ListsAreOfOneBoard`) - entered then, the tab takes them as its lists come
+(`OnContributeListsShown`). What is ticked and typed here is kept per board for the run (`ContributeListState`): the categories UNTICKED and
+the words typed, so a category the draft makes is ticked by itself, and a board shown here before keeps what its lists said here
+(`ContributeListState.Kept`) through another board shown and back (`ShowContributeTicks`; a category going as the lists are read again is nobody's choice -
 `IsReadingComponentLists`). A component with no category has no tick to hide it by, and stays listed. **CRT sets the filter boxes only through
 `ShowComponentSearchText` and `ShowContributeSearchText`** (code review, 2026-11-04; measured): Avalonia POSTS `TextChanged`, so a flag
-around `Text =` has been lifted when it comes, and 200 ms later the filter replaced the lists and let go of the selection. A `TextChanged` saying what the lists show (`_componentSearchInEffect`, `_contributeSearchInEffect`) is nothing to do. **A word in the tab's box is filed under the board it was typed for** (`_contributeListsBoard`, moved as soon as another board is chosen - `FollowBoardInContributeLists`), **and a load ending leaves a word not taken yet and takes it** (`UseContributeListsOfBoardShown`). One component at a time, "Mark all" off; **the categories and the filter box only narrow the list, and a category is NEVER
-saved as the board's filter**; "Clear" goes back to how the tab starts - every category, nothing typed, no component picked, its page
+around `Text =` has been lifted when it comes, and 200 ms later the filter replaced the lists and let go of the selection. A `TextChanged` saying what the lists show (`_componentSearchInEffect`, `_contributeSearchInEffect`) is nothing to do. **A word in the tab's box is filed under the board it was typed for** (`_contributeListsBoard`, moved as soon as another board is chosen - `FollowBoardInContributeLists`), **and a load ending leaves a word not taken yet and takes it** (`UseContributeListsOfBoardShown`). **SEVERAL COMPONENTS ARE PICKED WITH Ctrl OR Shift AND EDITED AS ONE** (owner request, 2026-11-08: "I want to be able to mark multiple
+components and when doing that I am bulk editing whatever data I changes"; the proposal agreed the same day - one at a time until then;
+`SelectionMode="Multiple"`, `TabDrafts.thisPickedSeveral`/`PickedLabels`, `ComponentPane.Several.cs`, every rule CRT.Data's `ComponentBulk`):
+a khaki bar names them - **the number and each name in bold, nothing between them** ("Editing **2** components: **RP7**, **RP8**";
+owner requests, 2026-11-09) - and says every change reaches all of them, its second line what only some have on a list page or why a page is
+held back, nothing on "Basics" ("1 field here differs ..." went the same day: "no need for that"; `SeveralComponentsWording`); the label is
+off; a field they differ in is EMPTY, "Differs - N values" in it, so nothing is set until something is typed or picked, then on all - **and
+WHILE IT HAS THE FOCUS, never under the pointer, their values are listed under it, each once with whose it is, narrowed to what is typed**
+(owner requests, 2026-11-09: "show the values in a drop-down when I hover that field - just in the same way as in "Board: Links" for the
+"Category" field", then "I do not want that mouse hover will trigger that list ... Only when cursor is active in a field it should show the
+list ... where I can start typing also and then it will filter the list"; `DiffersPopup`, `ComponentPaneDifferingValue.Matching` - a note
+with formatting listed and found by its words; the empty value too, which nothing typed could say): one clicked, or lit by Down/Up and
+picked by Enter, is set on all of them - **the lines take no focus**, so the box keeps it and a click is no box left; **what is typed there
+waits for Enter, a pick or the box being left, no typing pause** (half a word would go to all of them while the list is read), and the
+list's keys are taken by the pane's own tunnelling key handler first (`TakeDifferingListKey` - its Enter would otherwise commit the typed
+filter); a drop-down list's values come by the keyboard only, its own list opening on a click; a list page lists the rows ALL of them have (compared without
+the label), a row changed, removed or added there is changed, removed or added on every one, and what only some have stays - no row of
+several moves; **"Make all have the same data as [one] *1"** ("Make all like" until 2026-11-09 - owner request: "make it clear ... that it
+then will affect only this data on this page"; the "*1" small, bold and raised, `FootnoteMark`) makes the page shown the same on all, ONE
+step, the note under it saying the button changes this page alone (`MakeAllLikeNote`); **"This data is different per region" stays with
+several picked** (owner request, 2026-11-09: "Can't it still have this, even if selecting multiple components?"): ticked for all, unticked
+for none, half-ticked for some, a click making all of them so as ONE step (`ComponentPane.AllOrNone`, `SetRegional`); Pinout only while they share a package, Oscilloscope
+baseline never (measured on one component) - neither offers "Make all like" then; nothing acting on one component as a whole is offered.
+Each change is one step named after them all. **A click with Ctrl, Shift or Cmd is no click on the one picked** (owner report, 2026-11-08: "I cannot mark multiple components when I am in "Contribute" tab" - the list's Tapped, which opens again the one clicked, put the selection back to it after every Ctrl+click; `OnComponentsListTapped`), **and a pick overtaken by a newer one opens nothing** (`thisPickGeneration`, `thisPicksOpening` - opening is under the BusyOverlay and reads off the UI thread, so a click and a Shift+click right after it each opened, and the first, ending last, took the pick back to one; `HoldOpeningForTests`). **The other tabs' component list picks the same way** (owner request, 2026-11-08: "in "Schematics" then clicking one component only will TOGGLE that component on/off? I want it to work like "Contribute""): `ComponentFilterListBox` is `Multiple` - a click selects the one clicked alone, Ctrl+click adds or takes away, Shift+click a range. It was `Multiple,Toggle` from the first commit (2026-03-07), every click toggling. The category lists stay `Multiple,Toggle`: their rows are ticks. Tests of picking use real presses (`MainContributeListsTests.Ctrl_click_and_Shift_click_pick_several_on_the_tab`): `PickComponentsForTests` goes round the click. A page's problems are every picked one's (`ContributeProblems.OnEntry(..., selected)`).
+**In "Table" the component sheets show the picked components' rows alone** (`BoardTableEditor.Components.cs`, `ShowOnlyComponents` - a
+line over the table says whose; a sheet of the board as a whole is not narrowed), which narrows as a pill does - so "Replace" replaces in
+them alone, a paste adds no rows, nothing moves. "Mark all" stays off on the tab. "Clear" goes back to how the tab starts - every category, nothing typed, no component picked, its page
 saying where to pick one; the region buttons read `BoardForList` too, so ticking "Board: Regions" shows them at once. **THE OTHER TABS' LISTS STAY BEHIND THEM AS THEY WERE**, selection and scroll with them - **only a board read again reaches them, which drops a selection as any load does, so what was selected as the tab was entered is held** (`_selectionToKeep`, `HoldSelectionOfTheOtherTabs`; through every load while the tab is shown and the first after it is left - `LetGoOfSelectionShown` - until somebody chooses or types), **before all that a word in the box finds, nothing selected too** (`ShowListsOfBoard`, `ApplyRegionFilterAsync`; code review, 2026-11-04). **The board on screen read again keeps its rows until the new ones come, and those come selected in ONE go, the list where it stood** (owner report, 2026-11-05: "it slowly populated the list of components ... and then marked all components"; `LetGoOfListsForLoad`, `SelectInComponentList`; measured, 276 scrolls for 300 rows): row by row, each asked the list to scroll to it, a layout pass apiece. The list's `AutoScrollToSelectedItem` is off in the markup, as Avalonia also scrolls to a row not reached yet as the list comes back into view, so the one selection that must be seen asks for it (`SelectComponentByBoardLabel`). Rows kept like that have no board behind them for the moment `_currentBoardData` is null, so **whatever acts on the lists asks for it first** ("Clear" ended CRT; code review, 2026-11-05), and a read that finds no board lets them go (`LetGoOfOtherTabsLists`). **The rows kept take no click until the new ones come** (`OtherTabsListsTakeClicks`, looking the same - greyed out, the flicker would be back; second code review, 2026-11-05: a tick or a pick then was dropped without a word), **and take clicks again however the load ends** (`LoadSelectedBoardAsync` around `ReadSelectedBoardAsync`), or the lists would never take one again. **A load's last step lights up what the list has selected by then, whichever tab is shown** (`ShowHighlightsOfSelectionAfterLoad`), **and the end of the KiCad load lights its traces** (`LoadKiCadProjectForCurrentBoardAsync`; code review, 2026-11-05: that load lets go of them, and a selection kept came back with rectangles alone). **BACK ON THE TAB EVERYTHING STANDS WHERE IT STOOD** (owner request, 2026-11-04: "navigate to the
 exact same position ... if toggling between the main tabs"): a tab not shown is only detached, so the pane, the left column and the table keep their
 page, entry and scroll by themselves - measured, and held by `TabDraftsPositionTests`, as anything reading them again on the way back would lose it - and the lists are only hidden.
@@ -786,17 +836,47 @@ there, and `await` on a finished task looped for ever on the UI thread. A tool f
   in its box with the reason; an undo of it finds the component again (`FollowRelabelInDraft`, below); the rows are not read again
   (`ShowRelabelled` - a pin just added and a baseline held back went with them, code review 2026-11-01). Worklogs on this
   machine keep the old label, as for a rename in the table.
+- **A BOARD MAY COME IN REGIONS OF ITS OWN** (owner request, 2026-11-09: "do the region steps 1-9, so we are prepared for other
+  regions" - for hardware no computer of the time: a stereo, a console sold as "EU" and "US"; `BoardRegions.Of`, THE ONE RULE): the board
+  file's `regions` lists them in the board's order, PAL and NTSC or names of its own; a board that lists none comes in PAL and NTSC when a row
+  says either, as before - a row's other word never makes a region. **Every published board looks exactly as it did.** A name is 1 to 20
+  letters, digits, spaces and "- + / ( ) .", never "All regions", each once, at most 6 (`BoardRegions.NameProblem` - the pane, the table and
+  the server's `regions.unknown` alike, server 10.2.0). **"Board: Regions" is ONE tick, "This board comes with multiple regions", and every
+  region listed in its button's colors** (owner request, 2026-11-09: "have the checkbox state "This board comes with multiple regions" and
+  then list all regions and its colors? It should be possible to reorder the list of regions up/down" - a PAL and NTSC tick with the board's
+  own regions under it until then; `ComponentPaneRegionRow`, its pill `Border.RegionPill` styled by a class per set so the theme and a
+  color set for PAL and NTSC follow): ticked on a board with none it comes in PAL and NTSC, unticked in none - not while a row says a region
+  (`BoardRegions.WithRegions`); "Delete region" only while no row says it and more than `FewestRegions` (2) are left
+  (`BoardRegions.CanDelete` - the last two go by unticking), why not said ONCE under it, its count bold ("**2** rows of this board have it
+  applied, so it stays ..." - owner request, 2026-11-09: a count beside the pill too was "double-wording"; `theme:BoldRuns.MarkedText`, the
+  attached property a template's block shows a marked sentence by), a drag handle or Alt+Up/Down on its row for the buttons' order, ONE step
+  (`BoardRegions.InOrder`), "Add region" by name under the list. **The buttons under the component list are one per region, in the
+  board's order** (`Main.LayOutRegionButtons`; PAL's and NTSC's are the named buttons they always were, a board's own made for it, three to a
+  row - `RegionButtonLayout`, `Controls/RegionButtonGrid`). **Their grids' rows and columns are FIXED in the markup, never changed in code**
+  (owner report, 2026-11-09: CRT threw at launch, `ArgumentOutOfRangeException` in `Grid.GetMeasureSizeForRange`): **Avalonia 12.1.4's
+  Grid keeps each child's cell as last laid out and does not look again when its definitions change** - only a child added or removed,
+  or its Grid.Row/Column, makes it - so a grid that lost a column measured a hidden button against it. The list's is six equal columns
+  6px apart (`ColumnSpacing`), a button spanning three (the halves "*,6,*" gave) or two, over two rows; the popup's two Auto columns.
+  A new grid whose definitions would change at run time is built the same way (`MainWindowTests`, `ComponentInfoWindowTests` lay them out
+  shown, board after board). **And so on the popup** (stacked from its footer's bottom, PAL and NTSC where they
+  always stood - `PopupCellOf`), each own region in one of four colors (`RegionChoice.ColorsOf`, `Schematics_Region_Own1..4`, the label over
+  the picture too). "Applies to" lists the board's regions (`ComponentPaneRegionalRow.UseRegions`, `AppliesToChoices(regions, ...)`), a
+  component told apart per region gets a row in each, and the device form lists them (`OwnedDeviceWindow.BoardRegionsAsViewedAsync`). **The
+  region shown** is the one picked on that board when it is one of its own (`UserSettings.RegionOfBoard`, `regionByBoard`), else the one
+  picked anywhere - `region`, which CRT 3.x reads, so it only ever holds PAL or NTSC - else the board's first (`RegionChoice.ToShow`, as a
+  board loads). A change of the list is said by name ("This board now comes in PAL, NTSC and Japan versions" - `BoardRegions.ChangedLine`;
+  the review's summary and the history carry `regionNamesBefore`/`regionNamesNow`, null from before meaning PAL and NTSC).
 - **REGIONS** (owner decisions, 2026-11-01: PAL and NTSC or none, stored and published, on a page of their own;
   `BoardRegions` - THE ONE RULE, replacing `HasExplicitRegionComponents`, which asked the component rows alone, so regional
   baselines on a board with no regional component hid the buttons and one region's baselines for good). "Board: Regions" is
   one tick, `regions` in the board file (written only when set - every other board keeps its bytes; no conversion: a board
   without it is worked out from its rows), not removable while a row says a region. It travels as `SubmissionRows.Regions`
-  (null keeps what is published, as the pins; anything but PAL or NTSC in it is the error `regions.unknown` on both sides -
+  (null keeps what is published, as the pins; a name `BoardRegions.NameProblem` refuses - anything but PAL or NTSC until 2026-11-09 - is the error `regions.unknown` on both sides -
   code review, 2026-11-01, Security: it reached the publish as sent, server 7.0.0), counts as a change of the draft (`DraftOtherChanges`, retirement, "made only
   to look") and is said in "Review changes", the review and the board's history (`RegionsNow`). **THE REGION IS SWITCHED BY THE BUTTONS
   UNDER CRT'S COMPONENT LIST, no others** (owner request, 2026-11-03: "use the regions from the left-side instead of adding new region
-  buttons in the component pages"; `Main.PickRegion` -> `TabDrafts.UseRegion`): a line says which region a page shows where it depends on it
-  (`ComponentPane.ShowRegionShown`) - **Basics and Pinout while their tick is ticked, always on
+  buttons in the component pages"; `Main.PickRegion` -> `TabDrafts.UseRegion`): a line says which region a page shows where it depends on it, **the region in bold**, as a
+  regional row's "The **PAL** version" line (owner request, 2026-11-09: "please bold the selected region"; `ComponentPane.ShowRegionShown`) - **Basics and Pinout while their tick is ticked, always on
   Replacement parts, Pictures and Oscilloscope baseline**, each listing what the region shown shows.
   **"Files" and "Links" LIST EVERY ROW of the component** (owner request, 2026-11-03: "the complete list can be viewed and
   sorted ... it should work in same was as 'Board: Files' and 'Board: Links'"; `ComponentPaneEdits.AllFilesOf`/`WithAllFiles`, `AllLinksOf`/`WithAllLinks`):
@@ -856,7 +936,14 @@ there, and `await` on a finished task looped for ever on the UI thread. A tool f
   maximized window"). **Its headline is "Component: " and the popup's title, "Component: U8 | CPU | 6510"** (owner requests, 2026-11-04;
   `ComponentPopupContent.TitleOf`, the one rule; the popup itself has no "Component:"). Basics (in the owner's order, 2026-11-04: board
   label, friendly name, technical name and short description down the left, category and part number on the right, every box one column
-  wide; the short description with its counter to `ShortDescriptionLimit` and, past it, a warning in words right under the box, the counter
+  wide - **"Purpose or note" under "Part number"** (owner request, 2026-11-09: "a new textfield (with formatting possibility) named "Purpose
+  or note" ... why is it there etc." - `ComponentEntry.Purpose`, `[RichNoteMarkup]`, `purpose` in the board file written only when filled,
+  a sheet's note column; a `RichNoteTextBox` with no height cap, each column of Basics a stack of its own so it grows down its own; **its bottom
+  edge meets "Other technical details"'s in the left column** (owner request, 2026-11-09: "vertically align to the end-border of the "Other
+  technical details""; a least height worked out after each layout pass, `ComponentPane.AlignPurposeWithDescription`, `BoxAlignment`); shown
+  in the popup, `PurposeSection`) - and **the short description reads "Other technical details" wherever a person reads it** (owner request,
+  2026-11-09; `BoardWorkbookSchema.DescriptionHeading`, the table's heading by `HeadingOf` - its stored names, `description` and the Excel
+  header, stay); the short description with its counter to `ShortDescriptionLimit` and, past it, a warning in words right under the box, the counter
   beside it (owner reports, 2026-11-03: the counter's color was not seen, and 2026-11-04; `ComponentPaneWording.DescriptionTooLong`) - repair notes went on 2026-11-02, owner request: "no need for
   it", everywhere, as no released CRT ever read them). **"This data is different per region" tells the fields apart, never the board
   label** (owner report, 2026-11-04: typed "C1 PAL", then "C1 NTSC", and both read "C1 NTSC"): a label names ONE component, what every row of it is filed under,
@@ -947,14 +1034,21 @@ there, and `await` on a finished task looped for ever on the UI thread. A tool f
   pointer only where it draws, so it fills itself with Transparent; owner request, 2026-11-02: **the pin of the image shown stays
   lit on both**, `ShowViewedPin`, `PinoutDrawing.MarkPin` - `HoverPin` for the pointer in the list), replacement parts,
   a baseline's machine state (`ComponentPopupContent`); the Overview has a Package column and
-  its Notes are the first image's note (`OverviewHtmlBuilder.BuildRows`). **"Detach pinout image in component info popup"**
+  its Notes are the first image's note (`OverviewHtmlBuilder.BuildRows`). **"Detach pinout image in component info window"** ("... popup" until 2026-11-09, right under "Open multiple component info windows" since)
   (owner request, 2026-11-07; `ComponentInfoWindow.Pinout.cs`) moves the popup's pinout section into a window of its own,
   870x960 the first time, its size and place one for all. **The section is taken out at once and put in only after the window
   it left has had its layout** (`PlaceSectionAfterLayoutOf`; owner report, 2026-11-07: CRT ended on "Attempt to call
   InvalidateArrange on wrong LayoutManager") - Avalonia keeps a control queued for the old window's layout, and arranging it
   there once it stands in another throws. **A resistor's color bands are drawn
-  under the pinout, read off its value** (owner request, 2026-11-07, after the owner's own hand-made picture;
-  the rule `ResistorColorCode`, every position `ResistorBandsGeometry`, the drawing `ResistorBandsDrawing`):
+  IN THE PINOUT'S PLACE, read off its value** (owner requests, 2026-11-07, after the owner's own hand-made picture - under the pinout
+  until 2026-11-09: "should be in the pinout instead (like the other components you are drawing, including the explanation of colors";
+  `Controls/ResistorPicture` - the drawing, the value and the colors in words - the popup's `InfoResistorPicture` in the pinout, so it
+  detaches with it, and the pane's `PinoutResistorPicture` on "Pinout", never for several; **UNDER the pin list, never beside it**
+  (owner request, 2026-11-09: "I want the pinout table to be shown first and then the image and explanation afterwards" - the grids'
+  second row, `ComponentInfoWindow.PlacePinList` putting the list across the first);
+  the rule `ResistorColorCode`, every position `ResistorBandsGeometry`, the drawing `ResistorBandsDrawing` - a part lying on
+  the page since 2026-11-08, owner request "more real": a soft shadow, round metal leads, the body and its bands shaded as a
+  cylinder, the narrower middle over its own height):
   the values as the published data writes them ("560Ω", "4K7Ω", "1.5KΩ 1/4W 5%" - 116 spellings measured),
   **and a number alone, "100", "3.3k", "100 K", as KiCad data writes them** (owner request, 2026-11-07 - only a
   "Resistor" gets bands, so its number is ohms; nothing but a rating and tolerance may follow it),
@@ -963,6 +1057,35 @@ there, and `await` on a finished task looped for ever on the UI thread. A tool f
   each, the tolerance's last) under it. **A wrong picture is worse than none**: a resistor pack ("RP", "Resistor
   pack" - printed with a number code), a trimmer, an array or network, "wire", "N/A", a lower-case "m" and a
   tolerance no band stands for draw nothing. The colors are IEC 60062's, the same in both themes.
+  **The other leaded parts are drawn as they look, in the same style** (owner request, 2026-11-09: "could you also draw an axial
+  and radial electrolytic capacitor in same style... and a disc capacitor ... And how about transistors? And diodes? Actually all
+  of the current components for all boards"; the rule `PartPicture`, every position `PartPictureGeometry`, the drawing
+  `Controls/PartPictureDrawing` - the popup's `InfoPartDrawing` in the case's place, and the pane's `PinoutPartDrawing`, never for
+  several): radial electrolytics with their minus stripe and the PLUS leg the longer, axial ones with NO minus band but the groove pressed
+  round the can by the plus end, its outline pinched (owner requests, 2026-11-09: "its "plus" leg is longer"; "I have only seen capacitors
+  with an "indention ring" at the plus-side"), a disc FLAT and matte with its edge showing - never a shiny ball (owner report, 2026-11-09:
+  "looks more like a round bubble") - dipped and axial capacitors, DO-35/DO-41 diodes with the
+  cathode band, **their leads named "Cathode" and "Anode" in full, in English, whatever the data abbreviates them to** ("K", "KATODE";
+  owner request, 2026-11-09 - a capacitor's typed names stay as typed), a TO-92 seen from its flat side and a little above, the D of its
+  top over its face, its thin legs leaving the case together and bending out (owner request, 2026-11-09: "it does not look like a
+  transistor"; `PartPictureGeometry.LegPath`), a TO-220 with each leg named - **a transistor's letters explained under it, "E = Emitter",
+  "C = Collector", "B = Base"** (owner request, 2026-11-09; G, D, S for a field-effect one - `PartPicture.LegendOf`, only when every named
+  lead is one of a set's letters), **a 78xx regulator by ROLE - INPUT, GROUND, OUTPUT from left to right, as every maker's stands, "IN = Input",
+  "GND = Ground", "OUT = Output, +12 V" under it - numbered AS THE BOARD NUMBERS IT** (owner question, 2026-11-09: "is it always implied that
+  1=Input, 2=Ground, 3=Output?"; `PartPicture.RegulatorOf`): the C128 310378's U59 is 1, 2, 3, but the C64 250407's and KU-14194HB's KiCad
+  footprint numbers VR1 and VR2 1 = input, 2 = output, 3 = ground (the middle leg and the tab) - measured from the pads' places - so the pins'
+  names say which is which, else the board's KiCad nets (ground's by name, the output's naming the voltage; `PartPicture.Of(..., nets)` - the
+  popup's `_pinNets`, the pane's KiCad pins, drawn again as they arrive), else the datasheet's 1, 2, 3; what does not settle it draws nothing
+  - crystals, ferrite beads and coils, EMI filters, resistor packs and pin headers. **A part lying across
+  has leads only as long as their labels need** (owner request, 2026-11-09: "there is no reason to have such long legs, as it does take
+  space from the right-side table/info" - `PartPictureGeometry.AxialLeadOut`; 250 wide whatever the body until then) -
+  each lead with its pin number and name, clickable as the chip drawing's pins are. **The shape comes from the PACKAGE** (a capacitor
+  with none only when its friendly name says the shape), **electrolytic from the friendly name and the value, never the description**,
+  **polarity from the pins' names, else KiCad's convention** (a polarised capacitor's pin 1 is +, a diode's pin 1 the cathode -
+  checked against the boards' KiCad nets, and again 2026-11-09 on the C128 310378: KiCad's DO-35/DO-41 footprints make pad 1 the square
+  one, the cathode's, and every diode there to ground has pad 2 on it); a doubt, a contradiction or a pin with no lead draws nothing - a trimmer too (Open128's C20,
+  "Trimmer" 4pF-40pF, is no disc). Measured on the converted boards: 750 of 2,906 components drawn; the rest have no package - setting one
+  draws them.
   **The board's own lists open in the pane too** (slice 4a, 2026-10-26; `ComponentPane.Board.cs`,
   `TabDrafts.OpenBoardPartAsync`): the left column's "Files", "Links", "Credits" and "Important
   signals" show one of them in place of a component (`PaneBoardPart`) - Schematic images too since
@@ -1982,7 +2105,10 @@ value in its tooltip), red + strike-through deleted, shown where the row used to
   as another is shown is made again for it. **Home and End go to the row's first and last DATA column, Ctrl with them to the first and last row shown**
   (`MoveToRowEnd`; owner report, 2026-11-07): the grid's own Home went to the marker column, no cell of the board, and left
   the table scrolled. **"Find" starts with what the search box
-  filtered by, the cursor after it, nothing selected** (owner request, 2026-11-07). **Its "Find" IS the
+  filtered by, the cursor after it, nothing selected** (owner request, 2026-11-07) - trimmed, as the search read it, **and the
+  bar opens ON THE SHEET SHOWN** (owner report, 2026-11-08: "Replace" on "Schematic images" searched for "128" went to "Board:
+  Files" - columns unticked there earlier, or a space after the word, left "Find" nothing on it; `OpenReplaceBar`, and the
+  posted `TextChanged` of the text it opened with is no new search). **Its "Find" IS the
   table's search while the bar is open, as typed** (owner request, 2026-11-07: "only search for the string
   as-is and do not 'AND' multiple words or exclude with minus"; `WorklogSearchQuery.Literal`,
   `BoardTableSearch.Literal`, the cells split by `BoardTableReplaceText`): it narrows and marks the rows as
@@ -2013,11 +2139,21 @@ value in its tooltip), red + strike-through deleted, shown where the row used to
 - No "Restore row"/"Revert cell" buttons (owner request, once undo existed); the model keeps them for
   the Maintainer tab.
 
-#### Workbooks (`Tabs/Workbooks/`, the "My Devices" tab) and the worklog
+#### Workbooks (`Tabs/Workbooks/`) and the worklog
 
-**The tab reads "My Devices" since 2026-11-06** (owner request: "Can we try and rename the 'Workbooks' tab to 'My Devices' -
-I want to see if this is better" - a try; every name in code, the settings and the Wiki page `Workbooks-tab`, which
-installed CRTs open, keep "Workbooks").
+**The tab reads "Workbooks"** - "My Devices" from 2026-11-06 (owner request, a try) to 2026-11-08 (owner request: "When we
+can have cases where there might never be created any devices, then its most significant meaning of this tab is about
+workbooks"; the Configuration tab too) - and only what shows devices says devices: the "My devices" list, the device form,
+the bar's "Device" drop-down. The scope's choices name both lists, the workbooks first ("Show all workbooks and devices").
+
+**WITH NO DEVICE MADE, THE WORKBOOK LIST STANDS IN MAIN'S LEFT PANEL IN PLACE OF "My devices" (below)** (owner request, 2026-11-08: "when there are no devices
+created, then the list of workbooks should move into the left-side panel, as there are no devices to display there. This
+would make the content area larger for the actual worklogs"; `TabWorkbooks.PlaceWorkbookList`, called at every device
+refresh): the tab's `WorkbookListArea` - its own card styles included - goes into `DeviceListHost` in place of
+`DeviceListArea`, looking as that does there (`WorkbookListHeading`, "Workbooks" with its count badge, over a framed list,
+"Clear" under it; the tab's "N workbooks" line hidden), and the tab's list column and splitter shut (width 0, the saved width
+untouched and put back - `ApplySplitterWidths` leaves the column alone meanwhile). The first device made puts both back.
+`MainDeviceListTests.With_no_device_the_workbooks_stand_in_the_left_panel_and_the_first_device_puts_them_back`.
 
 **WHILE THE TAB IS SHOWN, ITS "My devices" STANDS IN MAIN'S LEFT PANEL, THE WORKBOOKS IN THE TAB** (owner requests,
 2026-11-06: "when in the 'My Devices' tab, I want the 'My devices' list and the 'Workbooks' list to show in the left-side
@@ -2235,7 +2371,10 @@ repair on one board; it holds worklogs.
   show all workbooks"; `UserSettings.WorklogBarDeviceId`, null for all): its lines are `BarDeviceChoice`s, "Show workbooks
   for all devices" first, then every device, **each with how many workbooks it holds, an outlined badge last on the line,
   after the status** ("a counter for number of workbooks", then "I actually did mean an outlined badge, and please show
-  that as the last, right of the status"; `WorklogInfoPillBuilder.BuildCountPill`); greyed out with no device. All devices lists EVERY workbook, a device its
+  that as the last, right of the status"; `WorklogInfoPillBuilder.BuildCountPill`). **A drop-down with nothing ever made for it is not there, its label with it**
+  (owner request, 2026-11-08: "if no devices or workbooks exists yet ... then its drop-down boxes should not show either";
+  greyed out until then; `FillBarPickers`) - the device one with no device, the workbook one with no workbook on any board -
+  and the other has the room. All devices lists EVERY workbook, a device its
   own (`OwnedDeviceRepairs.Of`), on any board. **IT IS ONE CHOICE WITH THE DEVICE MARKED IN "My devices"** (owner request,
   2026-11-06: a device selected there "will only show the workbooks for this device in the 2 workbooks lists", and a
   workbook selected there "I want that device selected in both the drop-down and in the 'My devices' panel"): a card clicked
@@ -2259,11 +2398,11 @@ repair on one board; it holds worklogs.
   device, or all for one on none - a workbook "Add workbook" made on another device is the one worked in; **and so does the
   workbook shown, put on another device or none under its title** (`TabWorkbooks.PutShownWorkbookOnDevice`; code review,
   2026-11-08: it dropped out of both lists, another workbook worked in). The workbook
-  drop-down says "No workbook on this board yet" in its place with none on the board shown and all devices picked, greyed
-  out with nothing to list. **A device picked** works on the repair `OwnedDeviceRepairs.RepairToWorkOn` names (newest OPEN,
+  drop-down says "Select a workbook" in its place with none on the board shown and all devices picked; with no workbook
+  at all it is not there (above). **A device picked** works on the repair `OwnedDeviceRepairs.RepairToWorkOn` names (newest OPEN,
   any board; else newest on its board now - only on a board CRT can show, `Main.CanShowBoard`), its board selected first,
   and is remembered; **one with no repair to work on has its own board shown (`SwitchToBoard`, a board CRT lists) and its
-  page opened on the "My Devices" tab** (owner request: "it should not open the 'create new workbook' modal, but instead it
+  page opened on the "Workbooks" tab** (owner request: "it should not open the 'create new workbook' modal, but instead it
   should go to the 'My Devices' tab and select that device"), and stays picked. All devices picked changes no workbook.
   **"Clear" under the tab's workbook list leaves NO WORKBOOK WORKED IN on the board** (owner request, 2026-11-06: 'a similar
   button named "Clear" ... that will clear the selection of the workbook'; asked, "No workbook worked in"; `ClearWorkbookButton`,

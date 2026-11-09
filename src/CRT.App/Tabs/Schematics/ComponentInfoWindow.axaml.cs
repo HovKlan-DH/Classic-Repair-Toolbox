@@ -70,6 +70,8 @@ namespace CRT
     //   ComponentInfoWindow.axaml.cs   - everything but what follows
     //   ComponentInfoWindow.Pinout.cs  - the pinout in a window of its own, "Detach pinout image in component info
     //                                    popup" (owner request, 2026-11-07)
+    //   ComponentInfoWindow.Regions.cs - the region buttons in the footer, one per region of the board, and the region
+    //                                    label over the picture
     // ###########################################################################################
     public partial class ComponentInfoWindow : Window
     {
@@ -109,7 +111,6 @@ namespace CRT
         private IReadOnlyList<(string Region, ComponentLocalFileItem Note)> _allMeasuringNotes = [];
         private IReadOnlyList<ComponentLocalFileItem> _measuringNotes = [];
         private bool _suppressThumbnailSelection = false;
-        private bool _suppressRegionToggle = false;
         private double _normalWidth = 680.0;
         private double _normalHeight = 420.0;
         private int _normalX;
@@ -172,9 +173,16 @@ namespace CRT
             this.EditComponentButton.Content = PictureToolWording.EditComponent;
             ToolTip.SetTip(this.EditComponentButton, PictureToolWording.EditComponentTip);
 
-            // Aggressively steal focus from the Main window's TextBox when interacting with this window
+            // Aggressively steal focus from the Main window's TextBox when interacting with this window - but never from a
+            // control IN it, which a press may be on (RestoreKeyboardFocusToPopup says why).
             this.PointerPressed += (_, _) => this.Focus();
-            this.PointerEntered += (_, _) => this.Focus();
+            this.PointerEntered += (_, _) =>
+            {
+                if (!this.IsKeyboardFocusWithin)
+                {
+                    this.Focus();
+                }
+            };
 
             this.Opened += (_, _) => this.RestoreKeyboardFocusToPopup();
             this.Activated += (_, _) => this.RestoreKeyboardFocusToPopup();
@@ -322,12 +330,18 @@ namespace CRT
         // ###########################################################################################
         // Restores a keyboard focus target inside the popup whenever it opens or becomes active.
         // This keeps Escape and other keyboard shortcuts working after clicking the native window frame.
+        //
+        // *** NEVER WHEN THE FOCUS IS IN THE POPUP ALREADY (owner report, 2026-11-08: "Edit component" needed a second
+        // click). *** A press on a button in the popup while CRT's window is in front activates the popup with that very
+        // press, and this runs AFTER it - posted - once the press has put the focus on the button: moved away, the button
+        // let go of its press (Avalonia's Button.OnLostFocus) and the release clicked nothing. The keys reach the popup
+        // whatever in it has the focus (OnWindowKeyDown, on the tunnel route).
         // ###########################################################################################
         private void RestoreKeyboardFocusToPopup()
         {
             Dispatcher.UIThread.Post(() =>
             {
-                if (!this.IsVisible)
+                if (!this.IsVisible || this.IsKeyboardFocusWithin)
                     return;
 
                 this.Focus();
@@ -823,7 +837,11 @@ namespace CRT
             List<ComponentLinkEntry> links,
             string region,
             string dataRoot,
-            bool hasExplicitRegionComponents,
+
+            // The board's regions (BoardRegions.Of; 2026-11-09: names of its own since) - none for a board without them. Its
+            // only say in the matter since 2026-11-09 (code review: a flag beside it, "has regions", was written and then
+            // overwritten from these, its own reading used by no caller).
+            IReadOnlyList<string> regions,
             string draftBoardFolder = "",
             string boardIdentity = "",
             IReadOnlyList<ComponentPinEntry>? pins = null,
@@ -837,6 +855,8 @@ namespace CRT
             // Schematics tab has it loaded (KiCadComponentPins.NetsByPin); null without.
             IReadOnlyDictionary<string, string>? pinNets = null)
         {
+            ArgumentNullException.ThrowIfNull(regions);
+
             this.ClearTemporaryCapturedOscilloscopeImage();
             this._allPins = pins ?? [];
             this._allReplacements = replacements ?? [];
@@ -867,7 +887,8 @@ namespace CRT
             this._draftBoardFolder = draftBoardFolder;
             this._boardIdentity = boardIdentity;
             this._localRegion = region;
-            this._hasExplicitRegionComponents = hasExplicitRegionComponents;
+            this._regions = regions;
+            this._hasExplicitRegionComponents = this._regions.Count > 0;
             this.UpdateRegionButtonsState();
 
             // Reset selection on initial load so a lingering pin from a previous component
@@ -1304,19 +1325,6 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Updates the PAL and NTSC button captions with per-region image counters.
-        // Empty image regions are included in both counters.
-        // ###########################################################################################
-        private void UpdateRegionButtonCounters()
-        {
-            int palCount = ComponentImageQueries.CountImagesForRegion(this._allComponentImages, this._boardLabel, "PAL");
-            int ntscCount = ComponentImageQueries.CountImagesForRegion(this._allComponentImages, this._boardLabel, "NTSC");
-
-            this.PalRegionButton.Content = $"PAL ({palCount})";
-            this.NtscRegionButton.Content = $"NTSC ({ntscCount})";
-        }
-
-        // ###########################################################################################
         // Re-filters the stored image list for the current local region and triggers an async reload.
         // Entries without a File value are excluded from the thumbnail gallery.
         // ###########################################################################################
@@ -1338,91 +1346,6 @@ namespace CRT
                 .ToList();
 
             this.LoadImagesAsync(matchingEntries, this._dataRoot, currentPin);
-        }
-
-        // ###########################################################################################
-        // Switches the local region to PAL and reloads images without touching the global setting.
-        // ###########################################################################################
-        private void OnPalRegionClick(object? sender, RoutedEventArgs e)
-        {
-            if (this._suppressRegionToggle)
-                return;
-            this._localRegion = "PAL";
-            this.UpdateRegionButtonsState();
-            this.RefreshImages();
-        }
-
-        // ###########################################################################################
-        // Switches the local region to NTSC and reloads images without touching the global setting.
-        // ###########################################################################################
-        private void OnNtscRegionClick(object? sender, RoutedEventArgs e)
-        {
-            if (this._suppressRegionToggle)
-                return;
-            this._localRegion = "NTSC";
-            this.UpdateRegionButtonsState();
-            this.RefreshImages();
-        }
-
-        // ###########################################################################################
-        // Updates the region toggle and button states to match the current local region.
-        // Hides only the region buttons when the board has no explicit PAL/NTSC components,
-        // while keeping the switches and Close button visible.
-        // ###########################################################################################
-        private void UpdateRegionButtonsState()
-        {
-            this._suppressRegionToggle = true;
-            bool isNtsc = string.Equals(this._localRegion, "NTSC", StringComparison.OrdinalIgnoreCase);
-
-            this.PalRegionButton.IsVisible = this._hasExplicitRegionComponents;
-            this.NtscRegionButton.IsVisible = this._hasExplicitRegionComponents;
-            this.UpdateRegionButtonCounters();
-
-            if (this.PalRegionButton.Parent is Grid footerGrid && footerGrid.ColumnDefinitions.Count >= 5)
-            {
-                footerGrid.ColumnDefinitions[0].Width = this._hasExplicitRegionComponents
-                    ? GridLength.Auto
-                    : new GridLength(0, GridUnitType.Pixel);
-
-                footerGrid.ColumnDefinitions[1].Width = this._hasExplicitRegionComponents
-                    ? new GridLength(12, GridUnitType.Pixel)
-                    : new GridLength(0, GridUnitType.Pixel);
-            }
-
-            this.NtscRegionButton.Classes.Set("active", isNtsc);
-            this.PalRegionButton.Classes.Set("active", !isNtsc);
-
-            this._suppressRegionToggle = false;
-            this.UpdateRegionLabel();
-        }
-
-        // ###########################################################################################
-        // Updates the region label overlay in the top-left corner using the same color schema
-        // as the region label in the Schematics tab, bound dynamically to the current local region.
-        // ###########################################################################################
-        private void UpdateRegionLabel()
-        {
-            string colorPrefix = this._localRegion.ToUpperInvariant() switch
-            {
-                "PAL" => "Schematics_Region_PAL",
-                "NTSC" => "Schematics_Region_NTSC",
-                _ => "SchematicsRegion"
-            };
-
-            this.InfoRegionText.Text = this._localRegion;
-            this.InfoRegionBorder.IsVisible = this._hasExplicitRegionComponents;
-
-            this.InfoRegionBorder.Bind(
-                Border.BackgroundProperty,
-                this.GetResourceObservable($"{colorPrefix}_Bg"));
-
-            this.InfoRegionBorder.Bind(
-                Border.BorderBrushProperty,
-                this.GetResourceObservable($"{colorPrefix}_Border"));
-
-            this.InfoRegionText.Bind(
-                TextBlock.ForegroundProperty,
-                this.GetResourceObservable($"{colorPrefix}_Fg"));
         }
 
         // ###########################################################################################
@@ -1452,6 +1375,11 @@ namespace CRT
             this.OneLinerSection.IsVisible = hasDescription;
             this.InfoDescription.Text = hasDescription ? description.Trim() : string.Empty;
 
+            // What it is there for, formatted as typed (2026-11-09).
+            string purpose = RichNote.TrimMarkup(entry?.Purpose);
+            this.PurposeSection.IsVisible = purpose.Length > 0;
+            this.InfoPurpose.Markup = purpose;
+
             this.RefreshCrt4Data(entry);
             this.UpdateTestAffordance(entry);
         }
@@ -1460,12 +1388,30 @@ namespace CRT
         // CRT 4.0's new component data, of the region shown (step 2, slice 3c): the pinout - the case
         // drawn when CRT can draw it, and every pin listed beside it with its signal name and direction -
         // and the replacement parts. A section with nothing in it is hidden, as every other one is.
+        //
+        // A LEADED PART IS DRAWN AS IT LOOKS (owner request, 2026-11-09; PartPicture decides, PartPictureDrawing paints):
+        // in the place of its case drawn as a box - a TO-92, a TO-220, a resistor pack - and for a part with no pins
+        // listed too, its leads numbered as the case numbers them.
         // ###########################################################################################
         private void RefreshCrt4Data(ComponentEntry? entry)
         {
-            this.InfoPinoutDrawing.Show(entry?.Package, ComponentPopupContent.PinEntriesOf(this._allPins, this._boardLabel, this._localRegion));
+            List<ComponentPinEntry> pins = ComponentPopupContent.PinEntriesOf(this._allPins, this._boardLabel, this._localRegion);
+            PartPicture.Picture? part = entry is null ? null : PartPicture.Of(entry, pins, this._pinNets);
+
+            this.InfoPinoutDrawing.Show(entry?.Package, pins);
+            this.InfoPartDrawing.Show(part);
+
+            // A single resistor is its color bands, in the same place (owner request, 2026-11-09; ResistorPicture).
+            bool resistor = this.InfoResistorPicture.Show(part is null ? entry : null);
+
+            if (part is not null || resistor)
+            {
+                this.InfoPinoutDrawing.IsVisible = false;
+            }
+
             this.ShowViewedPin(this.ThumbnailList.SelectedItem as ComponentImageItem);
-            this.PinoutSection.IsVisible = this._pinRows.Count > 0;
+            this.PinoutSection.IsVisible = this._pinRows.Count > 0 || part is not null || resistor;
+            this.InfoPinsPanel.IsVisible = this._pinRows.Count > 0;
             this.InfoPinsNetHeading.IsVisible = this._pinRows.Any(pin => pin.HasNet);
             this.PlacePinList(this.PinoutGrid.Bounds.Width);
 
@@ -1473,63 +1419,8 @@ namespace CRT
             this.ReplacementsSection.IsVisible = replacements.Count > 0;
             this.InfoReplacementsItemsControl.ItemsSource = replacements;
 
-            this.ShowResistorBands(entry);
             this.FollowPinoutDetachment();
         }
-
-        // ###########################################################################################
-        // A single resistor's color bands under the pinout, drawn from its value, and the value in words - "560 Ohms 5%"
-        // - with its power rating when typed (owner request, 2026-11-07; ResistorColorCode decides, and hides it for
-        // anything it cannot say).
-        // ###########################################################################################
-        private void ShowResistorBands(ComponentEntry? entry)
-        {
-            IReadOnlyList<ResistorColorCode.ColorBand>? bands = entry is null ? null : ResistorColorCode.BandsOf(entry);
-
-            this.ResistorSection.IsVisible = bands is not null;
-
-            if (bands is null || !ResistorColorCode.TryRead(entry!.TechnicalNameOrValue, out ResistorColorCode.Reading? reading))
-            {
-                this.InfoResistorDrawing.Bands = [];
-                this.InfoResistorColorsPanel.Children.Clear();
-                return;
-            }
-
-            this.InfoResistorDrawing.Bands = bands;
-            this.InfoResistorValueText.Text = ResistorColorCode.ValueText(reading!);
-            this.InfoResistorPowerText.Text = reading!.Power.Length > 0 ? "Power rating: " + reading.Power : string.Empty;
-            this.InfoResistorPowerText.IsVisible = reading.Power.Length > 0;
-
-            this.InfoResistorColorsPanel.Children.Clear();
-
-            IReadOnlyList<string> names = ResistorColorCode.ColorNames(bands);
-
-            for (int i = 0; i < bands.Count; i++)
-            {
-                var line = new StackPanel { Orientation = Avalonia.Layout.Orientation.Horizontal, Spacing = 6 };
-
-                line.Children.Add(new Border
-                {
-                    Width = 12,
-                    Height = 12,
-                    CornerRadius = new CornerRadius(2),
-                    BorderThickness = new Thickness(1),
-                    BorderBrush = new SolidColorBrush(Color.FromArgb(0x66, 0, 0, 0)),
-                    Background = new SolidColorBrush(Color.Parse(ResistorColorCode.ColorsOf(bands[i].Color).Fill)),
-                    VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center,
-                });
-
-                line.Children.Add(new TextBlock { Text = names[i], FontSize = 12, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Center });
-                this.InfoResistorColorsPanel.Children.Add(line);
-            }
-        }
-
-        // The band colors listed under the resistor's value, in words - for the tests.
-        internal IReadOnlyList<string> ResistorColorsShownForTests =>
-            this.InfoResistorColorsPanel.Children
-                .OfType<StackPanel>()
-                .Select(line => line.Children.OfType<TextBlock>().First().Text ?? string.Empty)
-                .ToList();
 
         // ###########################################################################################
         // THE PIN OF THE IMAGE SHOWN IS LIT, on the drawing and in the list beside it (owner request,
@@ -1547,6 +1438,7 @@ namespace CRT
                 (row, wanted) => row == wanted);
 
             this.InfoPinoutDrawing.MarkPin(ComponentVocabulary.PinNumberOf(pin));
+            this.InfoPartDrawing.MarkPin(ComponentVocabulary.PinNumberOf(pin));
         }
 
         // ###########################################################################################
@@ -1574,10 +1466,15 @@ namespace CRT
             if (sender is Control { Tag: ComponentPopupPin pin })
             {
                 this.InfoPinoutDrawing.HoverPin(ComponentVocabulary.PinNumberOf(pin.Pin));
+                this.InfoPartDrawing.HoverPin(ComponentVocabulary.PinNumberOf(pin.Pin));
             }
         }
 
-        private void OnPinRowExited(object? sender, PointerEventArgs e) => this.InfoPinoutDrawing.HoverPin(null);
+        private void OnPinRowExited(object? sender, PointerEventArgs e)
+        {
+            this.InfoPinoutDrawing.HoverPin(null);
+            this.InfoPartDrawing.HoverPin(null);
+        }
 
         internal void GoToPin(string? pin)
         {
@@ -1598,14 +1495,22 @@ namespace CRT
         // The pin list beside the drawing while the popup has the room for it, else under it.
         private void OnPinoutGridSizeChanged(object? sender, SizeChangedEventArgs e) => this.PlacePinList(e.NewSize.Width);
 
+        // ###########################################################################################
+        // The pin list beside the drawing when both fit, else under it - and a RESISTOR'S LIST FIRST, its picture under it
+        // (owner request, 2026-11-09: "I want the pinout table to be shown first and then the image and explanation
+        // afterwards"): the list across the top row, the picture in the second (its place in the markup).
+        // ###########################################################################################
         private void PlacePinList(double width)
         {
-            double drawing = this.InfoPinoutDrawing.IsVisible ? this.InfoPinoutDrawing.LayoutForTests?.Size.Width ?? 0 : 0;
-            bool beside = PinoutGeometry.ListFitsBeside(width, drawing);
+            double drawing = this.InfoPinoutDrawing.IsVisible ? this.InfoPinoutDrawing.LayoutForTests?.Size.Width ?? 0
+                : this.InfoPartDrawing.IsVisible ? this.InfoPartDrawing.NaturalSize.Width
+                : 0;
+            bool first = this.InfoResistorPicture.IsVisible;
+            bool beside = !first && PinoutGeometry.ListFitsBeside(width, drawing);
 
             Grid.SetColumn(this.InfoPinsPanel, beside ? 1 : 0);
             Grid.SetColumnSpan(this.InfoPinsPanel, beside ? 1 : 2);
-            Grid.SetRow(this.InfoPinsPanel, beside ? 0 : 1);
+            Grid.SetRow(this.InfoPinsPanel, beside || first ? 0 : 1);
         }
 
         private IcTestEntry? _activeTestEntry;

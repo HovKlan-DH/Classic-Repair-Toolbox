@@ -3,7 +3,7 @@ using System;
 namespace Handlers.DataHandling
 {
     // ###########################################################################################
-    // WHAT THE "My Devices" TAB LISTS - the Configuration tab's "Scope in "My Devices" tab" (owner request,
+    // WHAT THE "Workbooks" TAB LISTS - the Configuration tab's "Scope in "Workbooks" tab" (owner request,
     // 2026-11-06: "This should now follow devices and not workbooks, so the two choices should be: Show all devices,
     // Show only devices for selected board. And then add a new option (in the middle) for 'Show only devices for
     // selected hardware'"; and asked, "Follow the same scope" - the workbook list narrows as the devices do):

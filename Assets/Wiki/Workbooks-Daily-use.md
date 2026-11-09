@@ -20,13 +20,13 @@ The strip above the tabs, visible on every tab.
 
 The **Workbook** drop-down lists every workbook, on every board - or, with a device picked, that device's workbooks. One on another board names that board, `#3 | No video (C64/250407)`, and picking it switches the application to that board first.
 
-The device picked is the same choice as the device selected under "My devices" on the "My Devices" tab - picking it in one place picks it in the other. CRT remembers it. **While a device is picked, you work only in its workbooks**: with none of them on the board shown, the **Workbook** drop-down says so and **Add worklog** is hidden until **Add workbook** makes one. Working in a workbook of another device picks that device; a workbook on no device - or switching to a board with none of the device's workbooks - puts the drop-down back on **Show workbooks for all devices**.
+The device picked is the same choice as the device selected under "My devices" on the "Workbooks" tab - picking it in one place picks it in the other. CRT remembers it. **While a device is picked, you work only in its workbooks**: with none of them on the board shown, the **Workbook** drop-down says so and **Add worklog** is hidden until **Add workbook** makes one. Working in a workbook of another device picks that device; a workbook on no device - or switching to a board with none of the device's workbooks - puts the drop-down back on **Show workbooks for all devices**.
 
 Both drop-downs are as wide as their text. When the window is too narrow for both, the shorter one keeps its text whole and the longer one is cut short.
 
-After **Clear** under the workbooks on the "My Devices" tab, the drop-down reads "No workbook picked" and **Add worklog** is hidden until you pick one.
+After **Clear** under the workbooks on the "Workbooks" tab, the drop-down reads "No workbook picked" and **Add worklog** is hidden until you pick one.
 
-On a board with no workbook yet, the drop-down reads "Select a workbook" when you have workbooks on other boards to pick from, or "No workbook on this board yet" when you have none at all, and **Show worklogs** and **Add worklog** stay hidden until you pick or create one. With no device yet, the **Device** drop-down is greyed out.
+On a board with no workbook yet, the drop-down reads "Select a workbook" when you have workbooks on other boards to pick from, and **Show worklogs** and **Add worklog** stay hidden until you pick or create one. Until you have made your first workbook, there is no **Workbook** drop-down at all, and until you have added your first device there is no **Device** drop-down - only the buttons to add them.
 
 ## Adding a worklog
 
@@ -150,7 +150,7 @@ If the section is missing entirely, the board data has not finished loading, or 
 
 ## Filing an oscilloscope capture
 
-After a capture, the "Saved image as [...]" banner in the component popup has an **Attach image to worklog** button. It only appears when the "My Devices" tab is enabled and the board has a workbook, and the image goes into the workbook shown in the bar.
+After a capture, the "Saved image as [...]" banner in the component popup has an **Attach image to worklog** button. It only appears when the "Workbooks" tab is enabled and the board has a workbook, and the image goes into the workbook shown in the bar.
 
 The dialog shows the image and the workbook, asks which worklog, and takes a comment. Worklogs that already have the component you were probing in scope are listed first, under "Worklogs with [U8] in scope", then "All other worklogs". The first one is preselected - so probing U8 while working a fault on U8 is one click on **Attach to existing worklog**.
 

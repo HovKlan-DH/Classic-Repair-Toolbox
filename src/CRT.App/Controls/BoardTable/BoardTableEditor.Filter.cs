@@ -226,6 +226,19 @@ namespace CRT
                 }
             }
 
+            // Narrowed to the components picked as well: a sheet showing none of theirs gives way to the first that does,
+            // where any does (third code review, 2026-11-09).
+            if (this.IsFilteredByPillsOrSearch &&
+                this.thisDocument is { } document &&
+                this.thisCurrentSheet is { } current &&
+                document.Sheets.Contains(current) &&
+                !this.ShowsRowsOfPicked(current, this.thisPart, this.thisFilter, this.thisSearch) &&
+                document.SheetsShown(this.thisFilter, this.thisSearch, current: null)
+                    .FirstOrDefault(sheet => this.ShowsRowsOfPicked(sheet, BoardTableSheetPart.Whole, this.thisFilter, this.thisSearch)) is { } withRows)
+            {
+                this.SelectSheet(withRows);
+            }
+
             this.ShowAPartWithRowsShown();
         }
 
@@ -253,7 +266,9 @@ namespace CRT
 
             if (this.thisShownRows is { } shown && this.thisCurrentSheet is { } sheet)
             {
-                List<BoardTableRow> rows = BoardTableRowFilter.RowsShown(sheet.Rows, this.thisFilter, this.thisSearch, rowInHand: null, this.thisPart);
+                List<BoardTableRow> rows = this.NarrowedToComponents(
+                    BoardTableRowFilter.RowsShown(sheet.Rows, this.thisFilter, this.thisSearch, rowInHand: null, this.thisPart),
+                    rowInHand: null);
 
                 if (!rows.SequenceEqual(shown))
                 {
@@ -303,7 +318,9 @@ namespace CRT
 
             this.RowsShownAskedForTests++;
 
-            BoardTableSheet.SyncRows(shown, BoardTableRowFilter.RowsShown(sheet.Rows, this.thisFilter, this.thisSearch, this.thisRowInHand, this.thisPart));
+            BoardTableSheet.SyncRows(shown, this.NarrowedToComponents(
+                BoardTableRowFilter.RowsShown(sheet.Rows, this.thisFilter, this.thisSearch, this.thisRowInHand, this.thisPart),
+                this.thisRowInHand));
         }
 
         // How many times the sheet has been gone over for the rows to show - for tests.

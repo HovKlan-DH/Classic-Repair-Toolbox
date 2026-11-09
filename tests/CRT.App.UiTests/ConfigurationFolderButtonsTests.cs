@@ -90,6 +90,65 @@ public sealed class ConfigurationFolderButtonsTests
         });
     }
 
+    // ###############################################################################################
+    // "Show errors and warnings" comes FIRST, and none of the five buttons has a tooltip (owner request, 2026-11-09:
+    // "remove the tooltips for the 5 bottom buttons. Also do move the "Show errors and warnings" as the first button").
+    // ###############################################################################################
+    [Fact]
+    public void Show_errors_and_warnings_comes_first_and_no_button_has_a_tooltip()
+    {
+        UiTest.Run(() =>
+        {
+            var tab = new TabConfiguration();
+            var problems = tab.GetControl<Button>("ShowProblemsButton");
+            var parent = Assert.IsType<StackPanel>(problems.Parent);
+
+            Assert.Equal(parent.Children.IndexOf(tab.GetControl<Button>(DataButton)) - 1, parent.Children.IndexOf(problems));
+
+            foreach (string name in AllButtons.Append("ShowProblemsButton"))
+            {
+                Assert.Null(ToolTip.GetTip(tab.GetControl<Button>(name)));
+            }
+
+            Assert.Equal(problems.Width, tab.GetControl<Button>(DataButton).Width);
+        });
+    }
+
+    // ###############################################################################################
+    // ITS BADGES COUNT WHAT THE RUN HOLDS (owner request, 2026-11-09: "show a badge if it has any errors or warnings
+    // (danger color for errors and warning color for warning)") - none while there is none, each kind in its own color
+    // (NavBadge's "error" and "warning"), following each one as it is logged. A log of the test's own: the run's is
+    // never filled in a test (Logger.Initialize).
+    // ###############################################################################################
+    [Fact]
+    public void The_problems_button_counts_the_errors_and_warnings_in_badges_of_their_own()
+    {
+        UiTest.Run(() =>
+        {
+            var tab = new TabConfiguration();
+            var log = new ProblemsLog();
+            var errors = tab.GetControl<Border>("ProblemsErrorBadge");
+            var warnings = tab.GetControl<Border>("ProblemsWarningBadge");
+
+            log.Add(new LoggedProblem(DateTime.Now, ProblemLevel.Warning, "Application update check skipped"));
+            tab.WatchProblems(log);
+
+            Assert.False(errors.IsVisible);
+            Assert.True(warnings.IsVisible);
+            Assert.Equal("1", tab.GetControl<TextBlock>("ProblemsWarningBadgeText").Text);
+            Assert.Contains("error", errors.Classes);
+            Assert.Contains("warning", warnings.Classes);
+
+            log.Add(new LoggedProblem(DateTime.Now, ProblemLevel.Error, "Could not save the settings"));
+            log.Add(new LoggedProblem(DateTime.Now, ProblemLevel.Error, "Could not open the file"));
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            Assert.True(errors.IsVisible);
+            Assert.Equal("2", tab.GetControl<TextBlock>("ProblemsErrorBadgeText").Text);
+            Assert.Equal("1", tab.GetControl<TextBlock>("ProblemsWarningBadgeText").Text);
+        });
+    }
+
     // Asked for explicitly. A Left-aligned Button sizes to its own text, so without an explicit
     // width these four would each be a different length and read as a ragged stack rather than as
     // one group of related actions.
@@ -213,24 +272,6 @@ public sealed class ConfigurationFolderButtonsTests
             foreach (string name in AllButtons)
             {
                 Assert.Equal(HorizontalAlignment.Left, tab.GetControl<Button>(name).HorizontalAlignment);
-            }
-        });
-    }
-
-    // Each button says what it opens. These are folders whose names alone do not say what is
-    // in them - "data" in particular means nothing to someone who has never opened it.
-    [Fact]
-    public void Each_button_explains_what_is_in_the_folder()
-    {
-        UiTest.Run(() =>
-        {
-            var tab = new TabConfiguration();
-
-            foreach (string name in AllButtons)
-            {
-                var tip = ToolTip.GetTip(tab.GetControl<Button>(name)) as string;
-
-                Assert.False(string.IsNullOrWhiteSpace(tip), $"{name} has no tooltip");
             }
         });
     }

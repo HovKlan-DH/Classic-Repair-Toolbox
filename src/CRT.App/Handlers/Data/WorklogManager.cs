@@ -963,14 +963,14 @@ namespace Handlers.DataHandling
         //
         // "workbooks" is expected newest-first, which is GetWorkbooksForBoard's own order.
         //
-        // NoWorkbookChosen saved is NO workbook - "Clear" under the "My Devices" tab's workbook list (owner decision,
+        // NoWorkbookChosen saved is NO workbook - "Clear" under the "Workbooks" tab's workbook list (owner decision,
         // 2026-11-06, asked: "No workbook worked in") - until one is picked, activated or made.
         // ###########################################################################################
         public const int NoWorkbookChosen = 0;
 
         public static WorkbookRecord? ResolveActiveWorkbook(IReadOnlyList<WorkbookRecord> workbooks, int? savedActiveId)
         {
-            // "Clear" under the "My Devices" tab's workbook list: no workbook worked in on the board, till one is picked
+            // "Clear" under the "Workbooks" tab's workbook list: no workbook worked in on the board, till one is picked
             // (owner decision, 2026-11-06: "No workbook worked in"). Ids start at 1, so it is never a workbook's.
             if (workbooks == null || workbooks.Count == 0 || savedActiveId == NoWorkbookChosen)
             {

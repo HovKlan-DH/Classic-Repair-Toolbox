@@ -320,7 +320,7 @@ namespace Handlers.DataHandling
         // The headings of "What's missing", counted.
         public static string NotInKiCadHeading(int count) => $"Not in the KiCad data - their traces cannot light up ({BoardReadiness.Count(count)})";
 
-        public static string WithoutDescriptionHeading(int count) => $"No short description ({BoardReadiness.Count(count)})";
+        public static string WithoutDescriptionHeading(int count) => $"No \"{BoardWorkbookSchema.DescriptionHeading}\" ({BoardReadiness.Count(count)})";
 
         // The warning "component.no_highlight" is, said once for them all: each component is a button.
         public static string UnmarkedHeading(int count) => count == 1

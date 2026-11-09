@@ -638,7 +638,7 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Persists which scope the "My Devices" tab's lists use - every device and workbook, the
+        // Persists which scope the "Workbooks" tab's lists use - every device and workbook, the
         // selected hardware's, or only the currently selected board's (MyDevicesScope) - when a radio
         // button is toggled.
         //
@@ -802,8 +802,42 @@ namespace CRT
         {
             if (TopLevel.GetTopLevel(this) is Window owner)
             {
-                ProblemsWindow.ShowFor(owner);
+                ProblemsWindow.ShowFor(owner, this.thisProblemsWatched);
             }
+        }
+
+        // The log the button's badges count (Main hands over the run's - WatchProblems).
+        private ProblemsLog? thisProblemsWatched;
+
+        // ###########################################################################################
+        // THE BUTTON SAYS HOW MANY THE RUN HAS (owner request, 2026-11-09: "show a badge if it has any errors or warnings
+        // (danger color for errors and warning color for warning)") - counted again from what the log holds as each one
+        // comes, so the badges count exactly what "Errors and warnings" lists. Watched once.
+        // ###########################################################################################
+        internal void WatchProblems(ProblemsLog log)
+        {
+            ArgumentNullException.ThrowIfNull(log);
+
+            if (this.thisProblemsWatched is not null)
+            {
+                return;
+            }
+
+            this.thisProblemsWatched = log;
+            log.Watch(_ => Dispatcher.UIThread.Post(this.ShowProblemCounts));
+            this.ShowProblemCounts();
+        }
+
+        private void ShowProblemCounts()
+        {
+            IReadOnlyList<LoggedProblem> held = this.thisProblemsWatched?.Newest() ?? [];
+            int errors = held.Count(problem => problem.IsError);
+            int warnings = held.Count - errors;
+
+            this.ProblemsErrorBadge.IsVisible = errors > 0;
+            this.ProblemsErrorBadgeText.Text = errors.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            this.ProblemsWarningBadge.IsVisible = warnings > 0;
+            this.ProblemsWarningBadgeText.Text = warnings.ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
 
         // Where oscilloscope captures are saved (owner request, 2026-10-13): the folder chosen in the

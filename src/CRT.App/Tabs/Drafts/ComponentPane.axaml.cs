@@ -6,6 +6,7 @@ using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Handlers.DataHandling;
+using Handlers.Theming;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -75,6 +76,8 @@ namespace CRT
     //   ComponentPane.Copy.cs   - "Clone component from another board": everything of one picked there;
     //                             "Also on other boards": this draft's change of the part, and the
     //                             files it replaced, onto the other boards' own drafts
+    //   ComponentPane.Several.cs - several components picked, edited as one: the khaki bar, a field that
+    //                             differs, the rows all of them have, "Make all like"
     // ###########################################################################################
     public partial class ComponentPane : UserControl
     {
@@ -153,6 +156,56 @@ namespace CRT
             this.AddHandler(SelectingItemsControl.SelectionChangedEvent, this.OnAnySelectionChanged, handledEventsToo: true);
             this.AddHandler(InputElement.KeyDownEvent, this.OnPaneKeyDown, RoutingStrategies.Tunnel);
             this.AddHandler(InputElement.PointerWheelChangedEvent, this.OnPaneWheel, RoutingStrategies.Tunnel);
+
+            this.thisPurposeFloor = this.PurposeBox.MinHeight;
+            this.BasicsLeftColumn.SizeChanged += (_, _) => this.WantPurposeAligned();
+            this.BasicsRightColumn.SizeChanged += (_, _) => this.WantPurposeAligned();
+        }
+
+        // ###########################################################################################
+        // "PURPOSE OR NOTE" ENDS WHERE "OTHER TECHNICAL DETAILS" ENDS, in the column beside it (owner request, 2026-11-09: "can
+        // it vertically align to the end-border of the "Other technical details" in the 1st column?"): its least height is
+        // what takes its bottom edge down to that box's, never under its own; its text still makes it taller. After the
+        // layout pass in which either column changed size - a line under the label, the warning under the details, a box
+        // grown - and only while it changes something, so a pass that changes nothing asks for no other. Never on every
+        // layout pass of the window (code review, 2026-11-09: LayoutUpdated is raised for all of them).
+        // ###########################################################################################
+        private readonly double thisPurposeFloor;
+
+        // Whether an alignment waits for the layout pass under way to end.
+        private bool thisPurposeAlignmentWanted;
+
+        private void WantPurposeAligned()
+        {
+            if (!this.thisPurposeAlignmentWanted)
+            {
+                this.thisPurposeAlignmentWanted = true;
+                this.PurposeBox.LayoutUpdated += this.OnLayoutAfterBasicsChanged;
+            }
+        }
+
+        // The pass ended: every box where it now stands.
+        private void OnLayoutAfterBasicsChanged(object? sender, EventArgs e)
+        {
+            this.PurposeBox.LayoutUpdated -= this.OnLayoutAfterBasicsChanged;
+            this.thisPurposeAlignmentWanted = false;
+            this.AlignPurposeWithDescription();
+        }
+
+        private void AlignPurposeWithDescription()
+        {
+            if (!this.PurposeBox.IsEffectivelyVisible || !this.DescriptionBox.IsEffectivelyVisible ||
+                this.DescriptionBox.TranslatePoint(new Point(0, this.DescriptionBox.Bounds.Height), this.PurposeBox) is not { } bottom)
+            {
+                return;
+            }
+
+            double wanted = Handlers.Geometry.BoxAlignment.MinHeightToMeet(bottom.Y, this.thisPurposeFloor);
+
+            if (!Handlers.Geometry.BoxAlignment.IsAlready(this.PurposeBox.MinHeight, wanted))
+            {
+                this.PurposeBox.MinHeight = wanted;
+            }
         }
 
         // ---- what the host sees -----------------------------------------------------------------
@@ -243,7 +296,11 @@ namespace CRT
         // that exists only as a draft - and `publishedBoardFile` its file, whose list of files the
         // draft's is compared with. What the pane held for another component goes in first.
         // ###########################################################################################
-        internal void Show(DraftSession session, string label, string? region, BoardData? published, string publishedBoardFile = "")
+        internal void Show(DraftSession session, string label, string? region, BoardData? published, string publishedBoardFile = "") =>
+            this.ShowLabels(session, [label], region, published, publishedBoardFile);
+
+        // One component, or several edited as one (ComponentPane.Several.cs) - what the pane held goes in first, as it was held.
+        private void ShowLabels(DraftSession session, IReadOnlyList<string> labels, string? region, BoardData? published, string publishedBoardFile)
         {
             ArgumentNullException.ThrowIfNull(session);
 
@@ -258,15 +315,24 @@ namespace CRT
 
             this.UseSession(session);
 
-            string shown = label?.Trim() ?? string.Empty;
+            List<string> wanted = labels
+                .Select(each => each?.Trim() ?? string.Empty)
+                .Where(each => each.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            string shown = wanted.FirstOrDefault() ?? string.Empty;
 
             // Another component, not the same one read again (code review, 2026-11-02) - asked after what
-            // the pane held went in, which may have renamed the one it was on.
-            if (!string.Equals(shown, this.thisLabel, StringComparison.OrdinalIgnoreCase))
+            // the pane held went in, which may have renamed the one it was on. Other components picked with it are
+            // others too.
+            if (!string.Equals(shown, this.thisLabel, StringComparison.OrdinalIgnoreCase) ||
+                !wanted.SequenceEqual(this.Labels, StringComparer.OrdinalIgnoreCase))
             {
                 this.LetGoOfWhatIsOfTheComponentShown();
             }
 
+            this.thisSeveral = wanted.Count > 1 ? wanted : [];
             this.thisLabel = shown;
             this.thisRegion = region?.Trim() ?? string.Empty;
             this.thisPublished = published;
@@ -311,6 +377,8 @@ namespace CRT
             this.thisTypingTimer.Stop();
             this.UseSession(null);
             this.thisLabel = string.Empty;
+            this.thisSeveral = [];
+            this.LetGoOfSeveral();
             this.thisIsNew = false;
             this.thisBoardPart = null;
             this.thisNetChoices = null;
@@ -425,6 +493,15 @@ namespace CRT
                 return;
             }
 
+            // Several picked, edited as one (ComponentPane.Several.cs).
+            if (this.IsSeveral)
+            {
+                this.ShowSeveralComponents(session);
+                return;
+            }
+
+            this.LetGoOfSeveral();
+
             BoardData board = session.Content.Board;
 
             ComponentEntry? row = ComponentPaneEdits.RowShown(board, this.thisLabel, this.thisRegion);
@@ -437,7 +514,7 @@ namespace CRT
             if (row is null)
             {
                 this.TitleText.Text = ComponentPaneWording.Title(this.thisLabel);
-                this.RegionText.Text = string.Empty;
+                BoldRuns.ShowMarked(this.RegionText, string.Empty);
                 this.RegionText.IsVisible = false;
                 this.GoneText.Text = ComponentPaneWording.NotOnBoard(this.thisLabel);
                 this.ShowChangedState();
@@ -487,8 +564,8 @@ namespace CRT
                 this.ShowImagesAndFiles(board);
 
                 this.TitleText.Text = ComponentPaneWording.Title(row);
-                this.RegionText.Text = ComponentPaneWording.RegionLine(this.thisRowRegion);
-                this.RegionText.IsVisible = this.RegionText.Text.Length > 0;
+                BoldRuns.ShowMarked(this.RegionText, ComponentPaneWording.RegionLine(this.thisRowRegion));
+                this.RegionText.IsVisible = BoldRuns.TextOf(this.RegionText).Length > 0;
                 this.ShowRegionChoices(board);
             }
             finally
@@ -520,13 +597,16 @@ namespace CRT
             ComponentField.TechnicalNameOrValue => this.TechnicalNameBox,
             ComponentField.PartNumber => this.PartNumberBox,
             ComponentField.Description => this.DescriptionBox,
+            ComponentField.Purpose => this.PurposeBox,
             _ => null,
         };
 
+        // A note with formatting is read and written as its markup, never its Text (CLAUDE.md, RichNoteTextBox).
         private string BoxText(ComponentField field) => field switch
         {
             ComponentField.Category => this.CategoryBox.SelectedItem as string ?? string.Empty,
             ComponentField.Package => this.PackageBox.Text ?? string.Empty,
+            ComponentField.Purpose => this.PurposeBox.Markup ?? string.Empty,
             _ => this.BoxOf(field)?.Text ?? string.Empty,
         };
 
@@ -535,10 +615,23 @@ namespace CRT
             switch (field)
             {
                 case ComponentField.Category:
+                    // A spelling the list does not hold - a value several components differ in by capitals alone, the list
+                    // holding the board's first spelling - is put in first (code review, 2026-11-09): selected from nothing, the
+                    // box read back as no category, and every component picked lost its own.
+                    if (value.Length > 0 &&
+                        this.thisSession is { } session &&
+                        (this.CategoryBox.ItemsSource as IEnumerable<string> ?? []).Contains(value, StringComparer.Ordinal) == false)
+                    {
+                        this.CategoryBox.ItemsSource = this.CategoryChoicesWith(session.Content.Board, value);
+                    }
+
                     this.CategoryBox.SelectedItem = value.Length > 0 ? value : null;
                     break;
                 case ComponentField.Package:
                     this.PackageBox.Text = value;
+                    break;
+                case ComponentField.Purpose:
+                    this.PurposeBox.Markup = value;
                     break;
                 default:
                     if (this.BoxOf(field) is { } box)
@@ -562,17 +655,47 @@ namespace CRT
             this.DescriptionTooLongText.IsVisible = length > ComponentVocabulary.ShortDescriptionLimit;
         }
 
-        // The case drawn with the pins as the pane holds them, and the offer to add the case's pins.
+        // ###########################################################################################
+        // The case drawn with the pins as the pane holds them, and the offer to add the case's pins. A leaded part is drawn
+        // as it looks instead, from what the boxes say (owner request, 2026-11-09; PartPicture decides) - never for several
+        // components at once, whose fields may differ under one empty box.
+        // ###########################################################################################
         private void ShowPinout()
         {
             string package = this.PackageBox.Text ?? string.Empty;
             List<ComponentPinEntry> pins = this.thisPins.Select(row => row.ToEntry()).ToList();
 
+            // As the boxes now read - one component's, never several's.
+            ComponentEntry? shown = this.IsSeveral ? null : new ComponentEntry
+            {
+                BoardLabel = this.thisLabel,
+                FriendlyName = this.BoxText(ComponentField.FriendlyName),
+                TechnicalNameOrValue = this.BoxText(ComponentField.TechnicalNameOrValue),
+                PartNumber = this.BoxText(ComponentField.PartNumber),
+                Category = this.BoxText(ComponentField.Category),
+                Description = this.BoxText(ComponentField.Description),
+                Package = package,
+            };
+
+            // The board's KiCad nets tell a regulator's legs apart where its pins have no names (PartPicture.RegulatorOf).
+            PartPicture.Picture? part = shown is null ? null : PartPicture.Of(shown, pins, KiCadComponentPins.NetsByPin(this.thisKiCadPins));
+
             this.PinoutPicture.Show(package, pins);
+            this.PinoutPartDrawing.Show(part);
+
+            // A single resistor is its color bands, in the same place (owner request, 2026-11-09; ResistorPicture).
+            bool resistor = this.PinoutResistorPicture.Show(part is null ? shown : null);
+
+            if (part is not null || resistor)
+            {
+                this.PinoutPicture.IsVisible = false;
+            }
 
             int missing = ComponentPaneWording.MissingCasePins(package, pins);
 
-            this.AddCasePinsButton.IsVisible = missing > 0;
+            // Never for several (code review, 2026-11-09): the pins listed are those ALL of them have, so a case's pins missing
+            // from that list may be pins one of them has - added to every one, U1 with pins 1-14 got 1-14 again.
+            this.AddCasePinsButton.IsVisible = !this.IsSeveral && missing > 0;
             this.AddCasePinsButton.Content = ComponentPaneWording.AddCasePins(package, missing, pins.Count == 0);
             this.ShowKiCadPins();
             this.ShowPinProblems();
@@ -594,6 +717,15 @@ namespace CRT
         // "Draft", and "Undo changes to <label>", while the draft changes the component.
         private void ShowChangedState()
         {
+            // Several: nothing that acts on one of them (ComponentPane.Several.cs).
+            if (this.IsSeveral)
+            {
+                this.ChangedMark.IsVisible = false;
+                this.UndoChangesButton.IsVisible = false;
+                this.AlsoOnOtherBoardsButton.IsVisible = false;
+                return;
+            }
+
             bool changed = this.IsComponentChanged;
 
             this.ChangedMark.IsVisible = changed;
@@ -645,6 +777,14 @@ namespace CRT
 
             foreach (ComponentField field in Enum.GetValues<ComponentField>())
             {
+                // A field several differ in, being typed in, waits for Enter, a pick or its box being left - never a pause,
+                // which typing in another box can have started (code review, 2026-11-09: what was typed to narrow its list
+                // went to all of them as the other box's pause ended).
+                if (fromTyping && this.IsDifferingFieldInFocus(field))
+                {
+                    continue;
+                }
+
                 this.CommitField(field);
             }
 
@@ -675,6 +815,12 @@ namespace CRT
 
         private void CommitField(ComponentField field)
         {
+            if (this.IsSeveral)
+            {
+                this.CommitFieldOfSeveral(field);
+                return;
+            }
+
             string text = this.BoxText(field);
             string wanted = ComponentPaneEdits.Normalised(field, text);
 
@@ -702,6 +848,12 @@ namespace CRT
 
         private void CommitPins()
         {
+            if (this.IsSeveral)
+            {
+                this.CommitPinsOfSeveral();
+                return;
+            }
+
             List<ComponentPinEntry> pins = this.thisPins.Select(row => row.ToEntry()).ToList();
 
             this.Apply(
@@ -711,6 +863,12 @@ namespace CRT
 
         private void CommitReplacements()
         {
+            if (this.IsSeveral)
+            {
+                this.CommitReplacementsOfSeveral();
+                return;
+            }
+
             List<ComponentReplacementEntry> replacements = this.thisReplacements.Where(row => !this.IsWaitingToBeTyped(row)).Select(row => row.ToEntry()).ToList();
 
             this.Apply(
@@ -720,6 +878,12 @@ namespace CRT
 
         private void CommitLinks()
         {
+            if (this.IsSeveral)
+            {
+                this.CommitLinksOfSeveral();
+                return;
+            }
+
             List<ComponentLinkEntry> links = this.thisLinks.Select(row => row.ToEntry()).ToList();
 
             this.Apply(
@@ -833,6 +997,14 @@ namespace CRT
                 return;
             }
 
+            // Typed into a field several components differ in: the list of their values narrows to it, and what is typed
+            // waits for Enter, a pick or the box being left - a pause would set half a word on all of them while the list
+            // is still being read (ComponentPane.Several.cs).
+            if (this.FollowTypingInDifferingField(e.Source))
+            {
+                return;
+            }
+
             this.thisTypingTimer.Stop();
             this.thisTypingTimer.Start();
         }
@@ -848,7 +1020,9 @@ namespace CRT
         // has reached the row.
         private void OnAnySelectionChanged(object? sender, SelectionChangedEventArgs e)
         {
-            if (this.thisShowing || this.thisSession is null || e.Source is not ComboBox)
+            // Which component "Make all like" copies is no data of the draft (code review, 2026-11-09: each refill of its list
+            // posted a commit of every list of every component picked, which changed nothing).
+            if (this.thisShowing || this.thisSession is null || e.Source is not ComboBox || ReferenceEquals(e.Source, this.MakeAllLikeSourceBox))
             {
                 return;
             }
@@ -889,10 +1063,11 @@ namespace CRT
             }
         }
 
-        // Enter in a one-line box takes what it says into the draft at once.
+        // Enter in a one-line box takes what it says into the draft at once - unless the list of what several components
+        // have takes the key first (ComponentPane.Several.cs: Enter there picks the line lit).
         private void OnPaneKeyDown(object? sender, KeyEventArgs e)
         {
-            if (this.AddOnEnter(e))
+            if (this.TakeDifferingListKey(e) || this.AddOnEnter(e))
             {
                 return;
             }
@@ -998,7 +1173,7 @@ namespace CRT
 
         internal void AddCasePins()
         {
-            if (ComponentVocabulary.PinCountOf(this.PackageBox.Text) is not int count)
+            if (this.IsSeveral || ComponentVocabulary.PinCountOf(this.PackageBox.Text) is not int count)
             {
                 return;
             }
@@ -1050,7 +1225,13 @@ namespace CRT
 
         // A link dragged by its handle, or moved by Alt+Up and Alt+Down, as the board's are (owner request,
         // 2026-11-02: "the reordering is missing in the component part").
-        private void OnLinkHandlePressed(object? sender, PointerPressedEventArgs e) => this.thisLinksDrag?.Press(sender, e);
+        private void OnLinkHandlePressed(object? sender, PointerPressedEventArgs e)
+        {
+            if (this.RowsMove)
+            {
+                this.thisLinksDrag?.Press(sender, e);
+            }
+        }
 
         internal bool MoveLink(ComponentPaneLinkRow row, int by)
         {

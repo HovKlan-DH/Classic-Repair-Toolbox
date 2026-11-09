@@ -294,7 +294,7 @@ namespace CRT
             this.ApplyMaintainerLayoutForSelection(e);
 
             // The Contribute tab has lists of its own on the far left, in place of the other tabs' (Main.ContributeLists.cs),
-            // and the "My Devices" tab its "My devices" there (Main.DeviceList.cs).
+            // and the "Workbooks" tab its "My devices" there (Main.DeviceList.cs).
             this.FollowContributeTabInLists();
             this.FollowWorkbooksTabInLeftPanel();
 
@@ -505,7 +505,7 @@ namespace CRT
         // ###########################################################################################
         // "Add device" on the bar (owner request, 2026-11-06: with no device and no workbook "all you see in
         // that top-bar is 'Create new workbook' - you do not have an option to create a new device"): the
-        // "My Devices" tab's own "Add device" - the form on any hardware and board, no workbook made, shown
+        // "Workbooks" tab's own "Add device" - the form on any hardware and board, no workbook made, shown
         // over CRT's window whichever tab is shown - and, once one is added, that tab shown on the device's
         // page, where "New repair" starts its first.
         // ###########################################################################################

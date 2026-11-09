@@ -27,7 +27,7 @@ namespace CRT
     // step 4's slice 4c).
     //
     // THE DEVICE DROP-DOWN IS THE DEVICE PICKED, REMEMBERED (UserSettings.WorklogBarDeviceId) - ONE CHOICE WITH THE
-    // DEVICE MARKED IN "My devices" on the "My Devices" tab (owner request, 2026-11-06: a device selected there shows
+    // DEVICE MARKED IN "My devices" on the "Workbooks" tab (owner request, 2026-11-06: a device selected there shows
     // "only the workbooks for this device", a workbook selected there "I want that device selected in both the
     // drop-down and in the 'My devices' panel", and its "Clear" shows all again): "Show workbooks for all devices"
     // first - every workbook, whatever device it is on - then every device, each line with how many workbooks it has
@@ -42,7 +42,7 @@ namespace CRT
     //
     // Picking a device - here or in "My devices" (PickDevice) - works on its repair (OwnedDeviceRepairs.RepairToWorkOn),
     // its board selected first when another is shown; one with no repair to work on has its own board shown and
-    // its page opened on the "My Devices" tab. "Show workbooks for all devices" picked changes no workbook.
+    // its page opened on the "Workbooks" tab. "Show workbooks for all devices" picked changes no workbook.
     //
     // Each line of the workbook drop-down ends in Open or Closed (BuildStatePill), and one on another board than the
     // one shown names that board, as picking it switches there.
@@ -53,15 +53,12 @@ namespace CRT
     // ###########################################################################################
     public partial class Main
     {
-        // The workbook picker's words with no workbook at all to list.
-        internal const string NoWorkbookOnBoardText = "No workbook on this board yet";
-
-        // ... and with "Show workbooks for all devices" picked and workbooks to list, none of them on the board shown (owner
-        // request, 2026-11-07: 'instead of this placeholder text, "No workbook on this board yet" then change that to
-        // "Please select a workbook"', and then 2026-11-07 again: "Select a workbook").
+        // The workbook picker's words with "Show workbooks for all devices" picked and workbooks to list, none of them on the
+        // board shown (owner request, 2026-11-07: "Select a workbook"). With no workbook at all there is no picker
+        // (FillBarPickers; owner request, 2026-11-08 - "No workbook on this board yet" until then).
         internal const string SelectWorkbookText = "Select a workbook";
 
-        // ... and with workbooks there but none worked in - "Clear" under the "My Devices" tab's workbook list.
+        // ... and with workbooks there but none worked in - "Clear" under the "Workbooks" tab's workbook list.
         internal const string NoWorkbookPickedText = "No workbook picked";
 
         // Set while RefreshWorklogBar fills the picker, so its own selection is no pick.
@@ -270,8 +267,19 @@ namespace CRT
             {
                 this.DevicePickerComboBox.ItemsSource = choices;
                 this.DevicePickerComboBox.SelectedItem = choices.First(choice => choice.Device?.Id == filter?.Id);
-                this.DevicePickerComboBox.IsEnabled = devices.Count > 0;
 
+                // *** A DROP-DOWN WITH NOTHING EVER MADE FOR IT IS NOT THERE (owner request, 2026-11-08: "if no devices or
+                // workbooks exists yet, because the user has not created any yet, then its drop-down boxes should not show
+                // either"). *** Its label goes with it, and the other has the room (BarPickersPanel lays out what is shown).
+                // A workbook on any board counts: the drop-down lists every board's.
+                bool anyDevice = devices.Count > 0;
+                bool anyWorkbook = allWorkbooks.Count > 0;
+                this.DevicePickerHeadingText.IsVisible = anyDevice;
+                this.DevicePickerComboBox.IsVisible = anyDevice;
+                this.WorkbookPickerHeadingText.IsVisible = anyWorkbook;
+                this.WorkbookPickerHeadingText.Margin = new Thickness(anyDevice ? 16 : 0, 0, 8, 0);
+
+                this.WorklogJobBox.IsVisible = anyWorkbook;
                 this.WorklogJobBox.ItemsSource = workbooks;
                 this.WorklogJobBox.SelectedItem = activeWorkbook == null ? null : workbooks.FirstOrDefault(workbook => workbook.Id == activeWorkbook.Id);
                 this.WorklogJobBox.IsEnabled = workbooks.Count > 0;
@@ -280,7 +288,7 @@ namespace CRT
                     : noneChosen
                         ? NoWorkbookPickedText
                         : filter is null
-                            ? (workbooks.Count == 0 ? NoWorkbookOnBoardText : SelectWorkbookText)
+                            ? SelectWorkbookText
                             : workbooks.Count == 0 ? OwnedDeviceWording.NoWorkbookOfDeviceYet : OwnedDeviceWording.NoWorkbookOfDeviceOnBoard;
             }
             finally
@@ -382,7 +390,7 @@ namespace CRT
         // has), or added: remembered, and worked on as the plan has it ("Choosing a machine selects its board
         // and its open repair") - the repair OwnedDeviceRepairs.RepairToWorkOn names activated on its board.
         // With none to work on, its own board is shown (a board CRT lists), where no workbook is active - CRT
-        // works only in the device's (owner decision, 2026-11-06) - and its page opened on the "My Devices" tab.
+        // works only in the device's (owner decision, 2026-11-06) - and its page opened on the "Workbooks" tab.
         // ###########################################################################################
         internal void PickDevice(OwnedDeviceRecord device, bool showPage)
         {
@@ -421,7 +429,7 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // NO WORKBOOK WORKED IN on the board shown - "Clear" under the "My Devices" tab's workbook list (owner decision,
+        // NO WORKBOOK WORKED IN on the board shown - "Clear" under the "Workbooks" tab's workbook list (owner decision,
         // 2026-11-06, asked: "No workbook worked in"; WorklogManager.NoWorkbookChosen): the bar's "Workbook" drop-down
         // empty and "Add worklog" hidden till a workbook is picked, activated or made. Remembered per board; an area
         // being marked for the workbook let go of is called off, as activating another calls it off.
@@ -440,7 +448,7 @@ namespace CRT
             this.RefreshWorklogBar();
         }
 
-        // The "My Devices" tab shown on a device's page.
+        // The "Workbooks" tab shown on a device's page.
         private void ShowDevicePage(int deviceId)
         {
             this.TabWorkbooks.ShowDevicePage(deviceId);

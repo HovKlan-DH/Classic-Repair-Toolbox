@@ -355,6 +355,10 @@ namespace CRT
 
             this._currentBoardData = boardData;
 
+            // The region shown on this board: the one picked on it when it is a region of its own, else the one picked
+            // anywhere, else its first (RegionChoice; 2026-11-09 - a board may come in regions of its own).
+            this._localRegion = RegionChoice.ToShow(BoardRegions.Of(boardData), UserSettings.Region, UserSettings.RegionOfBoard(boardKey));
+
             // The VIEWED draft folder: empty under "view boards as officially published", so the
             // schematic images follow the workbook the toggle chose rather than the draft's. Read
             // once for the whole load (code review, 2026-10-29: twice, each a marker file read).
@@ -400,7 +404,7 @@ namespace CRT
             this.RefreshWorklogBar();
 
             // The Contribute tab's lists follow it as the board is shown there, below (Main.ContributeLists.cs).
-            this.ShowListsOfBoard(boardData, boardKey, UserSettings.Region);
+            this.ShowListsOfBoard(boardData, boardKey, this._localRegion);
 
             this.LetGoOfSelectionShown(boardKey);
             this._suppressCategoryFilterSave = false;
@@ -418,7 +422,7 @@ namespace CRT
             // take; now they copy on the pool while the thumbnails decode (KiCadRawPathsFor).
             // ###########################################################################################
             var uncheckedKeys = UserSettings.CatalogueUncheckedKeysSnapshot;
-            string region = UserSettings.Region;
+            string region = this._localRegion;
             string dataRoot = DataManager.DataRoot;
             string excelDataFile = entry.ExcelDataFile;
             string thumbnailSetKey = $"{boardKey}\u001F{draftBoardFolder}";
@@ -621,8 +625,10 @@ namespace CRT
             if (this._suppressComponentHighlightUpdate)
                 return;
 
-            // The user chose: what was held for a load to select again is no longer wanted.
+            // The user chose: what was held for a load to select again is no longer wanted - nor is it "Mark all"'s, unless that
+            // is what is choosing.
             this._selectionToKeep = null;
+            this._markAllPressed = this._markingAll;
 
             this.TabSchematicsControl.UpdateHighlightsForComponents(this.SelectedComponentLabels());
             this.TabOverview.ApplyFilter(this.ComponentSearchTextBox?.Text ?? string.Empty);

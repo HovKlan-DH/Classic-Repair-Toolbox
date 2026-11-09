@@ -95,10 +95,14 @@ public sealed class MainContributeListsTests : IDisposable
         Dispatcher.UIThread.RunJobs();
     }
 
-    // Every category ticked the first time and every component listed, one at a time - and what the other
-    // tabs had comes back.
+    // ###########################################################################################
+    // ONE SELECTION FOR BOTH (owner request, 2026-11-08: "always keep the same selection for the left-side panel "Category"
+    // and "Component" lists, meaning it should not change selections when shifting between e.g. "Schematics" tab and
+    // "Contribute" tab" - an empty list on this tab until then). What the other tabs select is picked here, several at a
+    // time with Ctrl or Shift; what is picked here is what they select once the tab is left. "Mark all" stays off here.
+    // ###########################################################################################
     [Fact]
-    public void Entering_the_tab_ticks_every_category_and_leaving_it_brings_the_selection_back()
+    public void Entering_the_tab_keeps_the_selection_and_a_pick_there_is_the_selection_back_on_the_other_tabs()
     {
         UiTest.Run(() =>
         {
@@ -111,19 +115,27 @@ public sealed class MainContributeListsTests : IDisposable
             ShowContribute(window);
 
             Assert.True(window.ContributeListsShownForTests);
-            Assert.Empty(Selected(window));
+            Assert.Equal(["U1"], Selected(window));
+            Assert.Equal(["U1"], window.TabDrafts.PickedComponentsForTests);
             Assert.Equal(["IC", "Capacitor"], SelectedCategories(window));
-            Assert.Equal(SelectionMode.Single, ListShown(window).SelectionMode);
+            Assert.Equal(SelectionMode.Multiple, ListShown(window).SelectionMode);
             Assert.False(window.GetControl<Button>("MarkAllComponentsButton").IsEnabled);
             Assert.Equal(["U1", "U2", "C1"], Listed(window));
+
+            window.TabDrafts.PickComponentsForTests("U2", "C1");
+            Dispatcher.UIThread.RunJobs();
 
             ShowSchematics(window);
 
             Assert.False(window.ContributeListsShownForTests);
-            Assert.Equal(["U1"], Selected(window));
+            Assert.Equal(["U2", "C1"], Selected(window));
             Assert.Equal(["IC", "Capacitor"], SelectedCategories(window));
-            Assert.Equal(SelectionMode.Multiple | SelectionMode.Toggle, ListShown(window).SelectionMode);
+            Assert.Equal(SelectionMode.Multiple, ListShown(window).SelectionMode);
             Assert.True(window.GetControl<Button>("MarkAllComponentsButton").IsEnabled);
+
+            ShowContribute(window);
+
+            Assert.Equal(["U2", "C1"], Selected(window));
         });
     }
 
@@ -386,6 +398,51 @@ public sealed class MainContributeListsTests : IDisposable
     }
 
     // ###########################################################################################
+    // *** THE LIST STANDS WHERE THE ONE SHOWN BEFORE STOOD (owner request, 2026-11-09: "Toggling between tabs ... it should
+    // not change position in the lists"). *** The Contribute tab's list opens where the other tabs' stood, and the other
+    // tabs' opens where it was left on the Contribute tab - the same row at the top. A shown window: nothing scrolls in
+    // one never laid out.
+    // ###########################################################################################
+    [Fact]
+    public void Each_list_opens_where_the_one_shown_before_it_stood()
+    {
+        UiTest.Run(() =>
+        {
+            var board = new BoardData
+            {
+                Components = [.. Enumerable.Range(1, 200).Select(i => new ComponentEntry { BoardLabel = $"U{i}", FriendlyName = $"Part {i}", Category = "IC" })],
+            };
+
+            var window = new CRT.Main { BoardKeyOverrideForTests = MainContributeListsTests.BoardKey, Width = 1300, Height = 800 };
+
+            window.UseBoardForTests(new HardwareBoardEntry { HardwareName = "Commodore 64", BoardName = "250407", ExcelDataFile = "Commodore/C64/250407/board.json" }, board);
+
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            ScrollViewer others = window.ComponentFilterListBox.GetVisualDescendants().OfType<ScrollViewer>().First();
+            others.Offset = new Avalonia.Vector(0, 300);
+            Dispatcher.UIThread.RunJobs();
+
+            ShowContribute(window);
+            Dispatcher.UIThread.RunJobs();
+
+            ScrollViewer contribute = window.ContributeComponentListBox.GetVisualDescendants().OfType<ScrollViewer>().First();
+            Assert.Equal(300, contribute.Offset.Y, 1);
+
+            contribute.Offset = new Avalonia.Vector(0, 900);
+            Dispatcher.UIThread.RunJobs();
+
+            ShowSchematics(window);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(900, others.Offset.Y, 1);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
     // LISTS OF ITS OWN IN THAT PLACE (code review, 2026-11-04): nothing done on the tab reaches the other tabs'
     // lists, so there is nothing to bring back. Lent, one pair held both, and every switch swapped it.
     // ###########################################################################################
@@ -523,6 +580,109 @@ public sealed class MainContributeListsTests : IDisposable
     }
 
     // ###########################################################################################
+    // A COMPONENT RENAMED ON THE TAB STAYS SELECTED AS THE BOARD IS READ AGAIN (code review, 2026-11-09): what is handed back
+    // is held by its row's key, which holds its names - read again with the new name, no row had it, U1 was neither selected
+    // nor lit up, and coming back to the tab closed its pane. A key no row has is found by its label and region.
+    // ###########################################################################################
+    [Fact]
+    public void A_component_renamed_on_the_tab_stays_selected_as_the_board_is_read_again()
+    {
+        UiTest.Run(() =>
+        {
+            CRT.Main window = WindowOnBoard();
+            var entry = new HardwareBoardEntry { HardwareName = "Commodore 64", BoardName = "250407", ExcelDataFile = "Commodore/C64/250407/board.json" };
+
+            ShowContribute(window);
+            Assert.Equal(["U1"], Selected(window));
+
+            ShowSchematics(window);
+
+            // The board read again with U1's friendly name changed there.
+            BoardData renamed = Board();
+            renamed.Components[0] = new ComponentEntry { BoardLabel = "U1", FriendlyName = "Processor", Category = "IC" };
+            window.LetGoOfListsForLoad();
+            window.UseBoardForTests(entry, renamed);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(["U1"], Selected(window));
+
+            // Back on the tab it is still the pick.
+            ShowContribute(window);
+            Assert.Equal(["U1"], window.TabDrafts.PickedComponentsForTests);
+        });
+    }
+
+    // ###########################################################################################
+    // "MARK ALL" ON THE OTHER TABS IS TOLD BY THEIR LIST ITSELF, and opens nothing on the tab (third code review, 2026-11-09):
+    // compared with the tab's own list, which lets through a component with no category theirs does not, it missed - and the
+    // pane opened on all of them as one.
+    // ###########################################################################################
+    [Fact]
+    public async Task Mark_all_on_the_other_tabs_is_told_by_their_list_and_opens_nothing_on_the_tab()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var window = new CRT.Main { BoardKeyOverrideForTests = MainContributeListsTests.BoardKey };
+            BoardData board = Board();
+            board.Components.Add(new ComponentEntry { BoardLabel = "R9", FriendlyName = "Pull-up" });
+
+            window.UseBoardForTests(
+                new HardwareBoardEntry { HardwareName = "Commodore 64", BoardName = "250407", ExcelDataFile = "Commodore/C64/250407/board.json" },
+                board);
+
+            window.MarkAllComponentsButton.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Dispatcher.UIThread.RunJobs();
+            Assert.DoesNotContain("R9", Selected(window));
+
+            ShowContribute(window);
+            await window.TabDrafts.ShowEntryAsync(ContributeEntry.ComponentBasics);
+
+            Assert.False(window.TabDrafts.IsComponentOpen);
+            Assert.Contains("Every component in the list is selected", window.TabDrafts.NoComponentTextForTests, StringComparison.Ordinal);
+        });
+    }
+
+    // Every row selected without "Mark all" - picked with Ctrl, or found by the filter box - is no "Mark all": the tab opens
+    // them together as it opens any several (code review, 2026-11-09: it spoke of a "Mark all" nobody pressed).
+    [Fact]
+    public async Task Every_row_selected_without_Mark_all_is_opened_as_any_several()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            CRT.Main window = WindowOnItsDraft(Board());
+
+            ShowContribute(window);
+            await window.TabDrafts.ShowEntryAsync(ContributeEntry.ComponentBasics);
+            ShowSchematics(window);
+
+            ListShown(window).SelectAll();
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(3, Selected(window).Count);
+
+            ShowContribute(window);
+
+            for (int attempt = 0; attempt < 200 && !window.TabDrafts.ComponentPaneForTests.IsSeveral; attempt++)
+            {
+                Dispatcher.UIThread.RunJobs();
+                await Task.Delay(10);
+            }
+
+            Assert.True(window.TabDrafts.IsComponentOpen);
+            Assert.Equal(3, window.TabDrafts.ComponentPaneForTests.Labels.Count);
+        });
+    }
+
+    // A row's key as its label and region alone - what stays as its names change.
+    [Theory]
+    [InlineData("U1\u001FCPU\u001F6510\u001FPAL", "U1\u001FPAL")]
+    [InlineData("U8\u001FCPU\u001F6510\u001F", "U8\u001F")]
+    [InlineData("U8", "U8")]
+    public void A_rows_key_without_its_names_is_its_label_and_region(string key, string expected)
+    {
+        Assert.Equal(expected, CRT.Main.LabelAndRegionOf(key));
+    }
+
+    // ###########################################################################################
     // THE REGION SWITCHED ON THE TAB LEAVES WHAT IS HELD, as a load does: under a word the other tabs' list
     // selected all it found, a component unticked among them too, with nobody having chosen anything.
     // ###########################################################################################
@@ -649,6 +809,87 @@ public sealed class MainContributeListsTests : IDisposable
     }
 
     // ###########################################################################################
+    // THE REGION SHOWN GOES WITH THE REGION DELETED (code review, 2026-11-09): "Board: Regions" deleting the region CRT showed
+    // left every button unlit and the list built for a region the board no longer had. The one a board load would show is
+    // shown instead, its button lit - and the tab's own region with it.
+    // ###########################################################################################
+    [Fact]
+    public async Task Deleting_the_region_shown_shows_another_of_the_boards()
+    {
+        var board = new BoardData
+        {
+            Regions = ["PAL", "NTSC", "Japan"],
+            Components = [new ComponentEntry { BoardLabel = "U1", FriendlyName = "CPU", Category = "IC" }],
+        };
+
+        await UiTest.RunAsync(async () =>
+        {
+            CRT.Main window = WindowOnItsDraft(board);
+
+            window.PickRegion(BoardRegions.Pal);
+            ShowContribute(window);
+
+            await window.TabDrafts.ShowEntryAsync(ContributeEntry.Regions);
+            window.TabDrafts.ComponentPaneForTests.DeleteRegion("PAL");
+
+            for (int attempt = 0; attempt < 200 && window.LocalRegion == BoardRegions.Pal; attempt++)
+            {
+                Dispatcher.UIThread.RunJobs();
+                await Task.Delay(10);
+            }
+
+            Assert.Equal(BoardRegions.Ntsc, window.LocalRegion);
+            Assert.False(window.GetControl<Button>("PalRegionButton").IsVisible);
+            Assert.Contains("active", window.GetControl<Button>("NtscRegionButton").Classes);
+            Assert.Equal(BoardRegions.Ntsc, window.TabDrafts.ComponentPaneForTests.RegionShownForTests);
+        });
+    }
+
+    // ###########################################################################################
+    // THE REGION SHOWN FOLLOWS THE BOARD READ AS THE TAB IS ENTERED AND LEFT (third code review, 2026-11-09): the draft the tab
+    // shows and the board on screen can come in other regions - "view boards as officially published" - and entering the tab
+    // left the region one only the board on screen had, every button unlit.
+    // ###########################################################################################
+    [Fact]
+    public async Task The_region_shown_follows_the_board_read_as_the_tab_is_entered_and_left()
+    {
+        var draft = new BoardData
+        {
+            Regions = ["EU", "US"],
+            Components = [new ComponentEntry { BoardLabel = "U1", FriendlyName = "CPU", Category = "IC" }],
+        };
+
+        var published = new BoardData
+        {
+            Regions = ["PAL", "NTSC"],
+            Components = [new ComponentEntry { BoardLabel = "U1", FriendlyName = "CPU", Category = "IC" }],
+        };
+
+        await UiTest.RunAsync(async () =>
+        {
+            CRT.Main window = WindowOnItsDraft(draft);
+            window.UseBoardForTests(window.TabDrafts.HardwareBoardsOverrideForTests![0], published);
+            window.PickRegion(BoardRegions.Pal);
+
+            // The draft's own part open: the tab reads the draft.
+            ShowContribute(window);
+            await window.TabDrafts.ShowEntryAsync(ContributeEntry.Regions);
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal("EU", window.LocalRegion);
+
+            // Left: the board on screen's.
+            ShowSchematics(window);
+            Assert.Equal(BoardRegions.Pal, window.LocalRegion);
+            Assert.Contains("active", window.GetControl<Button>("PalRegionButton").Classes);
+
+            // Entered again: the draft's once more.
+            ShowContribute(window);
+            Assert.Equal("EU", window.LocalRegion);
+            Assert.False(window.GetControl<Button>("PalRegionButton").IsVisible);
+        });
+    }
+
+    // ###########################################################################################
     // ON THE TAB, EACH COMPONENT'S ROW SAYS WHAT IS WRONG WITH IT (owner request, 2026-11-04: "this should
     // also show on each component in the component list in the left-side") - in sight however long its name
     // is, which is what they are looked for by. On no other tab: the list is that tab's again.
@@ -725,9 +966,10 @@ public sealed class MainContributeListsTests : IDisposable
         });
     }
 
-    // Whatever the board's own filter says elsewhere: the first time here is every category.
+    // One selection for both (owner request, 2026-11-08): a category unticked on the other tabs is unticked here too -
+    // every category ticked the first time here until then.
     [Fact]
-    public void A_category_unticked_on_the_other_tabs_is_ticked_the_first_time_on_this_one()
+    public void A_category_unticked_on_the_other_tabs_is_unticked_on_this_one_too()
     {
         UiTest.Run(() =>
         {
@@ -739,8 +981,8 @@ public sealed class MainContributeListsTests : IDisposable
 
             ShowContribute(window);
 
-            Assert.Equal(["IC", "Capacitor"], SelectedCategories(window));
-            Assert.Equal(["U1", "U2", "C1"], Listed(window));
+            Assert.Equal(["Capacitor"], SelectedCategories(window));
+            Assert.Equal(["C1"], Listed(window));
 
             ShowSchematics(window);
 
@@ -749,18 +991,18 @@ public sealed class MainContributeListsTests : IDisposable
     }
 
     // ###########################################################################################
-    // ONLY THE FIRST TIME (owner request, 2026-11-03: "if I switch between contribute and schematics tab,
-    // then I do not want it to reset every time I go into contribute tab again"): what was unticked and typed
-    // here is here again - and never the board's saved filter, which would come back as an empty list on
-    // every other tab.
+    // A CATEGORY UNTICKED HERE IS UNTICKED ON THE OTHER TABS - the board's filter, as a tick there is (owner request,
+    // 2026-11-08: one selection for both; never the board's filter until then) - AND THE WORD TYPED HERE IS THEIRS TOO
+    // (owner request, 2026-11-09: "it should be the exact same lists"; each box its own until then): it narrows their list
+    // as it narrows this one, selecting nothing - a component picked here that it hides is selected nowhere there. Back
+    // here with nothing done there, this tab's lists are as they were, that pick included.
     // ###########################################################################################
     [Fact]
-    public void What_is_done_to_the_lists_on_the_tab_stays_and_is_never_saved_as_the_boards_filter()
+    public void A_category_unticked_and_a_word_typed_on_the_tab_are_the_other_tabs_too()
     {
         UiTest.Run(() =>
         {
             CRT.Main window = WindowOnBoard();
-            IReadOnlyList<string>? saved = UserSettings.GetSelectedCategories(MainContributeListsTests.BoardKey);
 
             ShowContribute(window);
 
@@ -768,7 +1010,6 @@ public sealed class MainContributeListsTests : IDisposable
             Dispatcher.UIThread.RunJobs();
 
             Assert.Equal(["C1"], Listed(window));
-            Assert.Equal(saved, UserSettings.GetSelectedCategories(MainContributeListsTests.BoardKey));
 
             BoxShown(window).Text = "filter";
             Dispatcher.UIThread.RunJobs();
@@ -776,15 +1017,19 @@ public sealed class MainContributeListsTests : IDisposable
 
             ShowSchematics(window);
 
-            Assert.Equal(["IC", "Capacitor"], SelectedCategories(window));
-            Assert.Equal(["U1", "U2", "C1"], Listed(window));
-            Assert.True(string.IsNullOrEmpty(BoxShown(window).Text));
+            Assert.Equal(["Capacitor"], SelectedCategories(window));
+            Assert.Equal(["Capacitor"], UserSettings.GetSelectedCategories(MainContributeListsTests.BoardKey));
+            Assert.Equal(["C1"], Listed(window));
+            Assert.Equal("filter", BoxShown(window).Text);
+            Assert.Empty(Selected(window));
+            Assert.False(window.IsComponentSearchPendingForTests);
 
             ShowContribute(window);
 
             Assert.Equal(["Capacitor"], SelectedCategories(window));
             Assert.Equal("filter", BoxShown(window).Text);
             Assert.Equal(["C1"], Listed(window));
+            Assert.Equal(["U1"], window.TabDrafts.PickedComponentsForTests);
         });
     }
 
@@ -825,19 +1070,20 @@ public sealed class MainContributeListsTests : IDisposable
             Assert.Equal("filter", BoxShown(window).Text);
             Assert.Equal(["C1"], Listed(window));
 
+            // One selection for both (2026-11-08): what was unticked here is the renamed board's on the other tabs too.
             ShowSchematics(window);
 
-            Assert.Equal(["U1"], Selected(window));
+            Assert.Equal(["Capacitor"], SelectedCategories(window));
         });
     }
 
     // ###########################################################################################
-    // A word typed just before leaving the tab, its timer still waiting: it is the tab's, and the lists given
-    // back are left alone (code review, 2026-11-04: it fired after they were back, replaced them and let go of
-    // the selection just brought back - and the word was never kept).
+    // A word typed just before leaving the tab, its timer still waiting: it is taken then, and goes across with the rest
+    // (owner request, 2026-11-09: "the exact same lists") - and no timer runs after the lists are given back (code review,
+    // 2026-11-04: it fired after they were back, replaced them and let go of the selection just brought back).
     // ###########################################################################################
     [Fact]
-    public void A_word_typed_just_before_leaving_the_tab_is_kept_and_leaves_the_lists_given_back_alone()
+    public void A_word_typed_just_before_leaving_the_tab_is_taken_and_goes_across_with_no_timer_left()
     {
         UiTest.Run(() =>
         {
@@ -852,9 +1098,9 @@ public sealed class MainContributeListsTests : IDisposable
             ShowSchematics(window);
 
             Assert.False(window.IsComponentSearchPendingForTests);
-            Assert.Equal(["U1"], Selected(window));
-            Assert.Equal(["U1", "U2", "C1"], Listed(window));
-            Assert.True(string.IsNullOrEmpty(BoxShown(window).Text));
+            Assert.Equal(["C1"], Listed(window));
+            Assert.Equal("filter", BoxShown(window).Text);
+            Assert.Empty(Selected(window));
 
             ShowContribute(window);
 
@@ -864,13 +1110,13 @@ public sealed class MainContributeListsTests : IDisposable
     }
 
     // ###########################################################################################
-    // A word in the box, however long ago it was typed: what the other tabs had selected stays. Avalonia posts
-    // TextChanged, so setting the box back behind a flag started the filter's timer all the same, and 200 ms
-    // later it replaced the lists and let go of the selection (code review, 2026-11-04; the owner's "Leaving
-    // takes them back" did not hold for 200 ms).
+    // A word in the box, however long ago it was typed: what is given back stays. Avalonia posts TextChanged, so setting
+    // the box behind a flag started the filter's timer all the same, and 200 ms later it replaced the lists and let go of
+    // the selection (code review, 2026-11-04; the owner's "Leaving takes them back" did not hold for 200 ms) - and on the
+    // other tabs a word applied selects all it finds. So the box the word is given to starts no timer.
     // ###########################################################################################
     [Fact]
-    public void Leaving_the_tab_with_a_word_in_the_filter_leaves_what_the_other_tabs_had_selected()
+    public void Leaving_the_tab_with_a_word_in_the_filter_starts_no_filter_on_the_other_tabs()
     {
         UiTest.Run(() =>
         {
@@ -884,11 +1130,14 @@ public sealed class MainContributeListsTests : IDisposable
             BoxShown(window).Text = "filter";
             Dispatcher.UIThread.RunJobs();
             window.FlushComponentSearchForTests();
+            window.TabDrafts.PickComponentsForTests("C1");
+            Dispatcher.UIThread.RunJobs();
 
             ShowSchematics(window);
+            Dispatcher.UIThread.RunJobs();
 
             Assert.False(window.IsComponentSearchPendingForTests);
-            Assert.Equal(["U1"], Selected(window));
+            Assert.Equal(["C1"], Selected(window));
 
             // And back again, its word with it: nothing waits there either.
             ShowContribute(window);
@@ -1223,9 +1472,9 @@ public sealed class MainContributeListsTests : IDisposable
         });
     }
 
-    // What was typed before the tab comes back with the rest.
+    // What was typed on the other tabs is the tab's word too - narrowing, what it found picked - and comes back with the rest.
     [Fact]
-    public void A_filter_typed_before_the_tab_comes_back_after_it()
+    public void A_filter_typed_before_the_tab_is_its_word_too_and_comes_back_after_it()
     {
         UiTest.Run(() =>
         {
@@ -1237,8 +1486,9 @@ public sealed class MainContributeListsTests : IDisposable
 
             ShowContribute(window);
 
-            Assert.Equal(string.Empty, BoxShown(window).Text);
-            Assert.Equal(["U1", "U2", "C1"], Listed(window));
+            Assert.Equal("cpu", BoxShown(window).Text);
+            Assert.Equal(["U1"], Listed(window));
+            Assert.Equal(["U1"], window.TabDrafts.PickedComponentsForTests);
 
             ShowSchematics(window);
 
@@ -1449,8 +1699,134 @@ public sealed class MainContributeListsTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // CTRL+CLICK AND SHIFT+CLICK PICK SEVERAL ON THE TAB ITSELF - real presses (owner report, 2026-11-08: "I cannot mark
+    // multiple components when I am in "Contribute" tab ... it is not possible from within the tab itself"). The click's
+    // Tapped, which opens again the one component clicked when no selection changes, took a Ctrl+click as that and put the
+    // list back to the one clicked.
+    // ###########################################################################################
     [Fact]
-    public void Only_one_component_can_be_selected_on_the_tab()
+    public void Ctrl_click_and_Shift_click_pick_several_on_the_tab()
+    {
+        UiTest.Run(() =>
+        {
+            var entry = new HardwareBoardEntry { HardwareName = "Commodore 64", BoardName = "250407", ExcelDataFile = "Commodore/C64/250407/board.json" };
+            var window = new CRT.Main { BoardKeyOverrideForTests = MainContributeListsTests.BoardKey, Width = 1300, Height = 800 };
+
+            window.UseBoardForTests(entry, Board());
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            ShowContribute(window);
+            window.UpdateLayout();
+
+            // Each press once the open the one before started has ended: it runs under CRT's "please wait" cover, which takes
+            // every click meanwhile by design (BusyOverlay) - under the full suite's load a press came while it was still up.
+            void Press(int row, RawInputModifiers modifiers = RawInputModifiers.None)
+            {
+                BusyOverlay overlay = BusyOverlay.For(window)!;
+
+                for (int wait = 0; wait < 600 && overlay.IsBusy; wait++)
+                {
+                    Dispatcher.UIThread.RunJobs();
+                    Thread.Sleep(5);
+                }
+
+                Assert.False(overlay.IsBusy, "An open never ended.");
+
+                ListBox list = window.ContributeComponentListBox;
+                Control container = list.ContainerFromIndex(row)!;
+                Avalonia.Point centre = container.TranslatePoint(new Avalonia.Point(container.Bounds.Width / 2, container.Bounds.Height / 2), window)!.Value;
+
+                window.MouseMove(centre, modifiers);
+                window.MouseDown(centre, MouseButton.Left, modifiers);
+                window.MouseUp(centre, MouseButton.Left, modifiers);
+                Dispatcher.UIThread.RunJobs();
+            }
+
+            Press(0);
+            Assert.Equal(["U1"], Selected(window));
+
+            Press(2, RawInputModifiers.Control);
+            Assert.Equal(["U1", "C1"], Selected(window));
+            Assert.Equal(["U1", "C1"], window.TabDrafts.PickedComponentsForTests);
+
+            // A plain click picks the one clicked alone again.
+            Press(1);
+            Assert.Equal(["U2"], Selected(window));
+            Assert.Equal(["U2"], window.TabDrafts.PickedComponentsForTests);
+
+            Press(2, RawInputModifiers.Shift);
+            Assert.Equal(["U2", "C1"], Selected(window));
+            Assert.Equal(["U2", "C1"], window.TabDrafts.PickedComponentsForTests);
+
+            window.IsApplicationShuttingDownForTests = true;
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // THE OTHER TABS' COMPONENT LIST PICKS AS THE CONTRIBUTE TAB'S DOES (owner request, 2026-11-08: "in "Schematics" then
+    // clicking one component only will TOGGLE that component on/off? I want it to work like "Contribute""): a click selects
+    // the one clicked alone, Ctrl+click adds or takes one away, Shift+click a range. "Multiple,Toggle" since the first
+    // commit (2026-03-07) - every click toggled. The categories stay ticks, a click turning one on or off.
+    // ###########################################################################################
+    [Fact]
+    public void On_the_other_tabs_a_click_selects_one_and_Ctrl_and_Shift_add_as_on_the_Contribute_tab()
+    {
+        UiTest.Run(() =>
+        {
+            var entry = new HardwareBoardEntry { HardwareName = "Commodore 64", BoardName = "250407", ExcelDataFile = "Commodore/C64/250407/board.json" };
+            var window = new CRT.Main { BoardKeyOverrideForTests = MainContributeListsTests.BoardKey, Width = 1300, Height = 800 };
+
+            window.UseBoardForTests(entry, Board());
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            window.UpdateLayout();
+
+            void Press(ListBox list, int row, RawInputModifiers modifiers = RawInputModifiers.None)
+            {
+                Control container = list.ContainerFromIndex(row)!;
+                Avalonia.Point centre = container.TranslatePoint(new Avalonia.Point(container.Bounds.Width / 2, container.Bounds.Height / 2), window)!.Value;
+
+                window.MouseMove(centre, modifiers);
+                window.MouseDown(centre, MouseButton.Left, modifiers);
+                window.MouseUp(centre, MouseButton.Left, modifiers);
+                Dispatcher.UIThread.RunJobs();
+            }
+
+            ListBox components = window.ComponentFilterListBox;
+
+            Press(components, 0);
+            Assert.Equal(["U1"], Selected(window));
+
+            Press(components, 1);
+            Assert.Equal(["U2"], Selected(window));
+
+            Press(components, 2, RawInputModifiers.Control);
+            Assert.Equal(["U2", "C1"], Selected(window));
+
+            Press(components, 2, RawInputModifiers.Control);
+            Assert.Equal(["U2"], Selected(window));
+
+            Press(components, 0);
+            Press(components, 2, RawInputModifiers.Shift);
+            Assert.Equal(["U1", "U2", "C1"], Selected(window));
+
+            // The categories are ticks: a click turns one off, and on again.
+            Press(window.CategoryFilterListBox, 1);
+            Assert.Equal(["IC"], SelectedCategories(window));
+            Press(window.CategoryFilterListBox, 1);
+            Assert.Equal(["IC", "Capacitor"], SelectedCategories(window));
+
+            window.IsApplicationShuttingDownForTests = true;
+            window.Close();
+        });
+    }
+
+    // Several components selected on the tab are picked together, edited as one (owner request, 2026-11-08) - one at a
+    // time until then.
+    [Fact]
+    public void Several_components_selected_on_the_tab_are_picked_together()
     {
         UiTest.Run(() =>
         {
@@ -1462,7 +1838,8 @@ public sealed class MainContributeListsTests : IDisposable
             ListShown(window).Selection.Select(1);
             Dispatcher.UIThread.RunJobs();
 
-            Assert.True(Selected(window).Count <= 1);
+            Assert.Equal(["U1", "U2"], Selected(window));
+            Assert.Equal(["U1", "U2"], window.TabDrafts.PickedComponentsForTests);
         });
     }
 

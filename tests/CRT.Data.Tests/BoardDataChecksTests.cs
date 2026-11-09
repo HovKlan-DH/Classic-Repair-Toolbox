@@ -916,15 +916,16 @@ public sealed class BoardDataChecksTests
     }
 
     // ###########################################################################################
-    // *** Security (code review, 2026-11-01): A SUBMISSION'S REGIONS REACH THE PUBLISH AS SENT, and a
-    // reviewer reads only whether the board has any. *** "x" turned the PAL/NTSC switch on unseen, and a
-    // JSON null made every Approve of it throw. Refused where every rule is, so the table says it too.
+    // *** Security (code review, 2026-11-01): A SUBMISSION'S REGIONS REACH THE PUBLISH AS SENT. *** A JSON null made every
+    // Approve of it throw. Refused where every rule is, so the table says it too. A board may name regions of its own since
+    // 2026-11-09 ("x" was refused until then) - by BoardRegions.NameProblem's rule, each once.
     // ###########################################################################################
     [Theory]
-    [InlineData("x")]
+    [InlineData("x|y")]
+    [InlineData("pal")]
     [InlineData("")]
     [InlineData(null)]
-    public void A_region_that_is_neither_PAL_nor_NTSC_is_refused(string? region)
+    public void A_region_name_the_rule_refuses_is_refused(string? region)
     {
         var submitted = new SubmissionRows { Regions = ["PAL", region!] };
 
@@ -936,6 +937,29 @@ public sealed class BoardDataChecksTests
 
         Assert.Contains(
             BoardDataChecks.Check(BoardCheckRows.From(new BoardData { Regions = ["PAL", region!] }), null, BoardCheckScope.Everything),
+            found => found.Code == "regions.unknown");
+    }
+
+    // ###########################################################################################
+    // A BOARD WITH REGIONS COMES IN TWO AT LEAST (code review, 2026-11-09): one region passed and was published - a board
+    // CRT's own "Board: Regions" never makes (BoardRegions.FewestRegions). Refused on both sides, as a name is.
+    // ###########################################################################################
+    [Fact]
+    public void A_board_of_one_region_alone_is_refused()
+    {
+        BoardDataProblem problem = Assert.Single(
+            BoardDataChecks.Check(BoardCheckRows.From(new SubmissionRows { Regions = ["EU"] }), null, BoardCheckScope.Submission),
+            found => found.Code == "regions.unknown");
+
+        Assert.Equal(BoardProblemLevel.Error, problem.Level);
+        Assert.Contains("[EU] alone", problem.Message, StringComparison.Ordinal);
+
+        Assert.Contains(
+            BoardDataChecks.Check(BoardCheckRows.From(new BoardData { Regions = ["EU"] }), null, BoardCheckScope.Everything),
+            found => found.Code == "regions.unknown");
+
+        Assert.DoesNotContain(
+            BoardDataChecks.Check(BoardCheckRows.From(new SubmissionRows { Regions = ["EU", "US"] }), null, BoardCheckScope.Submission),
             found => found.Code == "regions.unknown");
     }
 

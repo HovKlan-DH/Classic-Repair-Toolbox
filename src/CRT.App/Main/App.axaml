@@ -525,6 +525,20 @@
 
 			</ResourceDictionary>
 		</ResourceDictionary.ThemeDictionaries>
+		<!-- A board's own regions (2026-11-09; RegionChoice): four colors they take turns with - the same in both themes, so
+		     ONCE, outside the theme dictionaries (code review, 2026-11-09: word for word in each, to drift apart). -->
+		<SolidColorBrush x:Key="Schematics_Region_Own1_Bg">#2E8B57</SolidColorBrush>
+		<SolidColorBrush x:Key="Schematics_Region_Own1_Fg">White</SolidColorBrush>
+		<SolidColorBrush x:Key="Schematics_Region_Own1_Border">Black</SolidColorBrush>
+		<SolidColorBrush x:Key="Schematics_Region_Own2_Bg">#7E57C2</SolidColorBrush>
+		<SolidColorBrush x:Key="Schematics_Region_Own2_Fg">White</SolidColorBrush>
+		<SolidColorBrush x:Key="Schematics_Region_Own2_Border">Black</SolidColorBrush>
+		<SolidColorBrush x:Key="Schematics_Region_Own3_Bg">#E0912F</SolidColorBrush>
+		<SolidColorBrush x:Key="Schematics_Region_Own3_Fg">Black</SolidColorBrush>
+		<SolidColorBrush x:Key="Schematics_Region_Own3_Border">Black</SolidColorBrush>
+		<SolidColorBrush x:Key="Schematics_Region_Own4_Bg">#3A7CA5</SolidColorBrush>
+		<SolidColorBrush x:Key="Schematics_Region_Own4_Fg">White</SolidColorBrush>
+		<SolidColorBrush x:Key="Schematics_Region_Own4_Border">Black</SolidColorBrush>
 	</ResourceDictionary>
 </Application.Resources>
 
@@ -995,6 +1009,62 @@
 			<Setter Property="FontSize" Value="9" />
 			<Setter Property="Foreground" Value="{DynamicResource Draft_Chip_Fg}" />
 			<Setter Property="VerticalAlignment" Value="Center" />
+		</Style>
+
+		<!-- THE REGION BUTTONS - under Main's component list and on the component popup, ONE copy for both (code review,
+		     2026-11-09: word for word in each window, to drift apart). The one picked is lit in its region's colors:
+		     PAL's and NTSC's buttons by name, a board's own regions in one of four (2026-11-09; RegionChoice.ColorsOf,
+		     RegionButtonGrid.UseOwnColors). -->
+		<Style Selector="Button.RegionToggle.active">
+			<Setter Property="BorderThickness" Value="2" />
+		</Style>
+		<Style Selector="Button#PalRegionButton.RegionToggle.active">
+			<Setter Property="Foreground" Value="{DynamicResource Schematics_Region_PAL_Fg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_PAL_Bg}" />
+		</Style>
+		<Style Selector="Button#PalRegionButton.RegionToggle.active /template/ ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Schematics_Region_PAL_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_PAL_Bg}" />
+		</Style>
+		<Style Selector="Button#NtscRegionButton.RegionToggle.active">
+			<Setter Property="Foreground" Value="{DynamicResource Schematics_Region_NTSC_Fg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_NTSC_Bg}" />
+		</Style>
+		<Style Selector="Button#NtscRegionButton.RegionToggle.active /template/ ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Schematics_Region_NTSC_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_NTSC_Bg}" />
+		</Style>
+		<Style Selector="Button.RegionToggle.active.Own1">
+			<Setter Property="Foreground" Value="{DynamicResource Schematics_Region_Own1_Fg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_Own1_Bg}" />
+		</Style>
+		<Style Selector="Button.RegionToggle.active.Own1 /template/ ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Schematics_Region_Own1_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_Own1_Bg}" />
+		</Style>
+		<Style Selector="Button.RegionToggle.active.Own2">
+			<Setter Property="Foreground" Value="{DynamicResource Schematics_Region_Own2_Fg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_Own2_Bg}" />
+		</Style>
+		<Style Selector="Button.RegionToggle.active.Own2 /template/ ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Schematics_Region_Own2_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_Own2_Bg}" />
+		</Style>
+		<Style Selector="Button.RegionToggle.active.Own3">
+			<Setter Property="Foreground" Value="{DynamicResource Schematics_Region_Own3_Fg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_Own3_Bg}" />
+		</Style>
+		<Style Selector="Button.RegionToggle.active.Own3 /template/ ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Schematics_Region_Own3_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_Own3_Bg}" />
+		</Style>
+		<Style Selector="Button.RegionToggle.active.Own4">
+			<Setter Property="Foreground" Value="{DynamicResource Schematics_Region_Own4_Fg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_Own4_Bg}" />
+		</Style>
+		<Style Selector="Button.RegionToggle.active.Own4 /template/ ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Schematics_Region_Own4_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_Own4_Bg}" />
 		</Style>
 
     </Application.Styles>

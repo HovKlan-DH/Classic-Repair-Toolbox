@@ -113,6 +113,20 @@ namespace Handlers.DataHandling
         // two new sheets (Direction; Kind, and the Note every image row has too). The files' and links'
         // Region (2026-11-02) is ColRegion, as on every other sheet - last, as they are written last.
         public const string ColPackage = "Package";
+
+        // What a component is there for (2026-11-09), a note with formatting - so one of the sheet's NoteColumns.
+        public const string ColPurpose = "Purpose or note";
+
+        // ###########################################################################################
+        // WHAT A COLUMN IS CALLED WHERE A PERSON READS IT - the table's heading. Only the short description is said
+        // otherwise (owner request, 2026-11-09: "do change the "Short description" to "Other technical details""): its
+        // name here is the Excel generations' header, which their reader matches, so it stays.
+        // ###########################################################################################
+        public const string DescriptionHeading = "Other technical details";
+
+        public static string HeadingOf(string column) =>
+            string.Equals(column, BoardWorkbookSchema.ColDescription, StringComparison.Ordinal) ? BoardWorkbookSchema.DescriptionHeading : column;
+
         public const string ColMachineState = "Machine state";
         public const string ColDirection = "Direction";
         public const string ColKind = "Kind";
@@ -196,13 +210,15 @@ namespace Handlers.DataHandling
                 BoardWorkbookSchema.ColCategory,
                 BoardWorkbookSchema.ColRegion,
                 BoardWorkbookSchema.ColDescription,
-                BoardWorkbookSchema.ColPackage
+                BoardWorkbookSchema.ColPackage,
+                BoardWorkbookSchema.ColPurpose
             ],
             [
                 BoardWorkbookSchema.ColBoardLabel,
                 BoardWorkbookSchema.ColFriendlyName,
                 BoardWorkbookSchema.ColTechnicalNameOrValue
-            ]);
+            ],
+            [BoardWorkbookSchema.ColPurpose]);
 
         public static readonly SheetDefinition ComponentImages = new(
             BoardWorkbookSchema.SheetComponentImages,
@@ -374,7 +390,8 @@ namespace Handlers.DataHandling
                     (BoardWorkbookSchema.ColCategory, entry.Category),
                     (BoardWorkbookSchema.ColRegion, entry.Region),
                     (BoardWorkbookSchema.ColDescription, entry.Description),
-                    (BoardWorkbookSchema.ColPackage, entry.Package)))];
+                    (BoardWorkbookSchema.ColPackage, entry.Package),
+                    (BoardWorkbookSchema.ColPurpose, entry.Purpose)))];
             }
 
             if (sheet.SheetName == BoardWorkbookSchema.SheetComponentImages)
@@ -536,7 +553,8 @@ namespace Handlers.DataHandling
                 Category = Val(r, BoardWorkbookSchema.ColCategory),
                 Region = Val(r, BoardWorkbookSchema.ColRegion),
                 Description = Val(r, BoardWorkbookSchema.ColDescription),
-                Package = Val(r, BoardWorkbookSchema.ColPackage)
+                Package = Val(r, BoardWorkbookSchema.ColPackage),
+                Purpose = Val(r, BoardWorkbookSchema.ColPurpose)
             }).ToList();
 
         public static List<ComponentImageEntry> MapComponentImages(IEnumerable<IReadOnlyDictionary<string, string>> rows)

@@ -144,6 +144,42 @@ public sealed class ComponentCloneTests
         Assert.Equal("NTSC", Assert.Single(board.ComponentLinks, link => link.BoardLabel == "U8").Region);
     }
 
+    // ###########################################################################################
+    // A BOARD IN OTHER REGIONS (code review, 2026-11-09): a PAL/NTSC chip cloned onto a board in EU and US came filed as PAL
+    // and NTSC, which that board shows in no region. What the region of its own there shows - the one shown here when that
+    // board has it, else its first - comes for every region here.
+    // ###########################################################################################
+    [Fact]
+    public void In_every_region_on_boards_of_other_regions_it_comes_as_one_region_there_for_every_region_here()
+    {
+        BoardData target = new BoardData
+        {
+            Components =
+            [
+                new ComponentEntry { BoardLabel = "U8", Region = "EU", FriendlyName = "Old EU", Category = "IC" },
+                new ComponentEntry { BoardLabel = "U8", Region = "US", FriendlyName = "Old US", Category = "IC" },
+            ],
+        }.WithRegions(["EU", "US"]);
+
+        BoardData board = ComponentClone.Apply(target, "U8", Regional(), "U7", "EU", NoFiles);
+
+        ComponentEntry row = Assert.Single(board.Components, entry => entry.BoardLabel == "U8");
+        Assert.Equal(string.Empty, row.Region);
+        Assert.Equal("VIC PAL", row.FriendlyName);
+        Assert.Equal([":P", ":VCC"], board.ComponentPins.Where(pin => pin.BoardLabel == "U8").Select(pin => $"{pin.Region}:{pin.Name}").Order(StringComparer.Ordinal));
+        Assert.Empty(board.ComponentLinks);
+
+        // The facts say so: one region read, the other left out.
+        ComponentCloneFacts facts = ComponentClone.FactsOf(target, "U8", Regional(), "U7", "EU")!;
+        Assert.Equal("PAL", facts.Region);
+        Assert.True(facts.OtherRegionsLeftOut);
+
+        // The region shown here, when that board has it: NTSC on a board in NTSC and Japan.
+        BoardData ntscAndJapan = target.WithRegions(["NTSC", "Japan"]);
+        BoardData fromNtsc = ComponentClone.Apply(ntscAndJapan, "U8", Regional(), "U7", "NTSC", NoFiles);
+        Assert.Equal("VIC NTSC", Assert.Single(fromNtsc.Components, entry => entry.BoardLabel == "U8").FriendlyName);
+    }
+
     // A PAL-only chip there must not take this component out of NTSC, where it stands too.
     [Fact]
     public void Of_one_region_there_and_every_region_here_it_comes_for_every_region()

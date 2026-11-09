@@ -191,12 +191,13 @@ namespace CRT.Data.Tests
                 finding => finding.Code == "file.unreferenced");
         }
 
-        // The server's own way in: a submission naming a region that is none cannot be queued.
+        // The server's own way in: a submission naming a region the rule refuses cannot be queued (any name of the rule since
+        // 2026-11-09 - BoardRegions.NameProblem).
         [Fact]
-        public void A_region_that_is_neither_PAL_nor_NTSC_is_an_error()
+        public void A_region_the_rule_refuses_is_an_error()
         {
             SubmissionManifest manifest = SubmissionValidatorTests.Valid();
-            manifest.Rows.Regions = ["x"];
+            manifest.Rows.Regions = ["<b>x</b>"];
 
             IReadOnlyList<ValidationFinding> findings = SubmissionValidatorTests.Validate(manifest);
 

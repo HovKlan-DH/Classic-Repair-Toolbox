@@ -77,7 +77,7 @@ public sealed class ContributeProblemsTests
     {
         var board = new BoardData
         {
-            Regions = ["PAL", "PLUTO"],
+            Regions = ["PAL", "PLUTO|X"],
             Components =
             [
                 new ComponentEntry { BoardLabel = "U8", FriendlyName = "CPU", Category = "IC", Package = "DIP-40" },
@@ -103,7 +103,7 @@ public sealed class ContributeProblemsTests
         Assert.Contains(placed, item => item.Problem.Code == "row.required_empty" && item.Entry == ContributeEntry.Credits && item.ComponentLabel.Length == 0);
         Assert.Contains(placed, item => item.Problem.Code == "row.required_empty" && item.Entry == ContributeEntry.Links);
 
-        Dictionary<ContributeEntry, BoardProblemCounts> counts = ContributeProblems.CountsShown(placed, string.Empty);
+        Dictionary<ContributeEntry, BoardProblemCounts> counts = ContributeProblems.CountsShown(placed, []);
 
         Assert.Equal(read.Counts, counts[ContributeEntry.Overview]);
         Assert.False(counts.ContainsKey(ContributeEntry.Name));
@@ -132,14 +132,14 @@ public sealed class ContributeProblemsTests
             Placed(ContributeEntry.Credits, string.Empty),
         ];
 
-        Dictionary<ContributeEntry, BoardProblemCounts> u8 = ContributeProblems.CountsShown(placed, "u8");
+        Dictionary<ContributeEntry, BoardProblemCounts> u8 = ContributeProblems.CountsShown(placed, ["u8"]);
 
         Assert.Equal(new BoardProblemCounts(1, 0), u8[ContributeEntry.ComponentBasics]);
         Assert.False(u8.ContainsKey(ContributeEntry.ComponentLinks));
         Assert.Equal(new BoardProblemCounts(1, 0), u8[ContributeEntry.Credits]);
         Assert.Equal(new BoardProblemCounts(3, 1), u8[ContributeEntry.Overview]);
 
-        Dictionary<ContributeEntry, BoardProblemCounts> none = ContributeProblems.CountsShown(placed, string.Empty);
+        Dictionary<ContributeEntry, BoardProblemCounts> none = ContributeProblems.CountsShown(placed, []);
 
         Assert.Equal(new BoardProblemCounts(1, 1), none[ContributeEntry.ComponentBasics]);
         Assert.Equal(new BoardProblemCounts(1, 0), none[ContributeEntry.ComponentLinks]);
@@ -156,16 +156,31 @@ public sealed class ContributeProblemsTests
             Placed(ContributeEntry.Credits, string.Empty),
         ];
 
-        Assert.Equal(["U8"], ContributeProblems.OnEntry(placed, ContributeEntry.ComponentPinout, "U8").Select(item => item.ComponentLabel));
-        Assert.Equal(2, ContributeProblems.OnEntry(placed, ContributeEntry.ComponentPinout, string.Empty).Count);
-        Assert.Single(ContributeProblems.OnEntry(placed, ContributeEntry.Credits, "U8"));
-        Assert.Empty(ContributeProblems.OnEntry(placed, ContributeEntry.ComponentLinks, null));
+        Assert.Equal(["U8"], ContributeProblems.OnEntry(placed, ContributeEntry.ComponentPinout, ["U8"]).Select(item => item.ComponentLabel));
+        Assert.Equal(2, ContributeProblems.OnEntry(placed, ContributeEntry.ComponentPinout, []).Count);
+        Assert.Single(ContributeProblems.OnEntry(placed, ContributeEntry.Credits, ["U8"]));
+        Assert.Empty(ContributeProblems.OnEntry(placed, ContributeEntry.ComponentLinks, []));
+    }
+
+    // Several picked, edited as one (owner request, 2026-11-08): a page shows the problems of every one of them, and no other's.
+    [Fact]
+    public void With_several_picked_a_page_shows_the_problems_of_every_one_of_them()
+    {
+        List<EntryProblem> placed =
+        [
+            Placed(ContributeEntry.ComponentPinout, "R21"),
+            Placed(ContributeEntry.ComponentPinout, "R22"),
+            Placed(ContributeEntry.ComponentPinout, "U8"),
+        ];
+
+        Assert.Equal(["R21", "R22"], ContributeProblems.OnEntry(placed, ContributeEntry.ComponentPinout, ["r21", "R22"]).Select(item => item.ComponentLabel));
+        Assert.Equal(new BoardProblemCounts(2, 0), ContributeProblems.CountsShown(placed, ["R21", "R22"])[ContributeEntry.ComponentPinout]);
     }
 
     [Fact]
     public void Nothing_wrong_has_no_badge_at_all()
     {
-        Assert.Empty(ContributeProblems.CountsShown([], "U8"));
+        Assert.Empty(ContributeProblems.CountsShown([], ["U8"]));
     }
 
     // Its row in the list says all its pages together, its label in any capitals; what is of no component is

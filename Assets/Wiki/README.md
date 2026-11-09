@@ -128,7 +128,7 @@ These six Wiki pages are opened by seven buttons in the shipped application - "?
 
 | Page | Opened from |
 | --- | --- |
-| `Workbooks-tab` | Configuration tab, beside "Enable "My Devices" tab" (the tab was "Workbooks" until 2026-11-06; the page keeps its name) |
+| `Workbooks-tab` | Configuration tab, beside "Enable "Workbooks" tab" (the tab was "My Devices" from 2026-11-06 to 2026-11-08; the page kept its name) |
 | `MiniPro-programmer` | Configuration tab, beside "Enable MiniPro programmer functionality"; and the component popup, beside "Test IC with MiniPro programmer" |
 | `Controlling-oscilloscope-with-keyboard` | Component popup, beside "Numpad controls oscilloscope" |
 | `Synchronize-oscilloscope` | Component popup, beside "Synchronize oscilloscope" |

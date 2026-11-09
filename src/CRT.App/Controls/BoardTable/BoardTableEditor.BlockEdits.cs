@@ -201,10 +201,12 @@ namespace CRT
 
             // What the table was filtered by is what "Find" starts with, the cursor after it and nothing selected (owner
             // request, 2026-11-07: 'it should not "mark all text" in the "Find" input field. It should just place (with
-            // focus) the cursor at the end of the text, which should match the filtering text').
-            string searched = this.SearchBox.Text ?? string.Empty;
+            // focus) the cursor at the end of the text, which should match the filtering text'). As the search READ it:
+            // a space before or after the words filters nothing, and "Find" looks for what it holds as typed - "128 " found
+            // none of the rows "128" had shown (owner report, 2026-11-08).
+            string searched = (this.SearchBox.Text ?? string.Empty).Trim();
 
-            if (searched.Trim().Length > 0)
+            if (searched.Length > 0)
             {
                 this.ReplaceFindBox.Text = searched;
             }
@@ -212,7 +214,13 @@ namespace CRT
             this.ReplaceBar.IsVisible = true;
             this.SearchBox.Text = string.Empty;
             this.SearchBox.IsEnabled = false;
-            this.ApplyReplaceFind();
+
+            // *** ON THE SHEET IT WAS OPENED ON (owner report, 2026-11-08: "Schematic images" searched for "128", "Replace" went
+            // to "Board: Files" and turned "Schematic images" off). *** "Replace all" acts on the sheet shown alone, so that is
+            // the sheet it is for - even where "Find" shows none of its rows, as with columns unticked there earlier, kept while
+            // CRT runs: the rows shown say so, and "Columns" is right there. Typing in "Find" afterwards may still move it, as
+            // the search box does.
+            this.ApplyReplaceFind(stayOnSheet: true);
             this.ReplaceFindBox.Focus();
             this.ReplaceFindBox.ClearSelection();
             this.ReplaceFindBox.CaretIndex = this.ReplaceFindBox.Text?.Length ?? 0;
@@ -266,6 +274,14 @@ namespace CRT
                 return;
             }
 
+            // Saying what "Find" applies already is nothing to do: Avalonia POSTS TextChanged, so the text the bar opened
+            // with arrives after it was applied - and applied again, the sheet it opened on was left (owner report, 2026-11-08).
+            if (this.thisSearchIsLiteral && string.Equals(this.ReplaceFindBox.Text ?? string.Empty, this.thisSearchText, StringComparison.Ordinal))
+            {
+                this.thisReplaceFindTimer?.Stop();
+                return;
+            }
+
             if (this.thisReplaceFindTimer is null)
             {
                 this.thisReplaceFindTimer = new DispatcherTimer { Interval = BoardTableEditor.SearchDelay };
@@ -308,7 +324,13 @@ namespace CRT
             BoardTableRow? inHand = this.thisRowInHand;
             BoardTableSheetPart part = this.thisPart;
 
-            return row => (ReferenceEquals(row, inHand) || BoardTableSheetParts.Shows(part, row)) && BoardTableRowFilter.Shows(kinds, search, inHand, row, part);
+            // ... and of the components picked, on a component sheet (BoardTableEditor.Components.cs; owner request, 2026-11-08:
+            // 'the "Replace" will only work on those filtered rows').
+            Func<BoardTableRow, bool> ofPicked = this.ShowsComponentOf();
+
+            return row => (ReferenceEquals(row, inHand) || BoardTableSheetParts.Shows(part, row)) &&
+                          BoardTableRowFilter.Shows(kinds, search, inHand, row, part) &&
+                          (ReferenceEquals(row, inHand) || ofPicked(row));
         }
 
         private IReadOnlyList<int> ColumnsReplaced(BoardTableSheet sheet) => this.ColumnsTickedFor(sheet, this.PartReplacedIn(sheet));
@@ -379,7 +401,7 @@ namespace CRT
             foreach (int index in BoardTableSheetParts.ColumnsShown(this.thisPart, sheet))
             {
                 string name = sheet.Columns[index];
-                var box = new CheckBox { Content = name, IsChecked = ticked.Contains(index), Tag = name };
+                var box = new CheckBox { Content = BoardWorkbookSchema.HeadingOf(name), IsChecked = ticked.Contains(index), Tag = name };
                 box.IsCheckedChanged += (_, _) => this.TickReplaceColumn(name, box.IsChecked == true);
                 this.ReplaceColumnsPanel.Children.Add(box);
             }
@@ -548,6 +570,7 @@ namespace CRT
             string Find,
             string With,
             string Columns,
+            string Components,
             int Revision);
 
         private ReplaceCountKey? thisReplaceCountFor;
@@ -582,6 +605,7 @@ namespace CRT
                 this.ReplaceFindBox.Text ?? string.Empty,
                 this.ReplaceWithBox.Text ?? string.Empty,
                 string.Join(",", this.ColumnsReplaced(sheet)),
+                this.ComponentsShownKey,
                 this.thisContentRevision);
 
             if (this.thisReplaceCountFor == key)
@@ -675,6 +699,9 @@ namespace CRT
             // does the "Columns" label, of the sheet shown, and the list's ticks while it is open.
             this.UpdateReplaceCount();
             this.ShowReplaceColumnsLabel();
+
+            // Whose rows a component sheet shows, as the sheet shown changes too.
+            this.ShowComponentsShownLine();
 
             if (this.ReplaceColumnsButton.Flyout is { IsOpen: true } &&
                 (!ReferenceEquals(this.thisReplaceColumnsMadeFor.Sheet, this.thisCurrentSheet) || this.thisReplaceColumnsMadeFor.Part != this.thisPart))
