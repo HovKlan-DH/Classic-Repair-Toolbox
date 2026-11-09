@@ -776,6 +776,18 @@ services; its check in step 5 then names `crt-server.service`.
   goes to `/etc/polkit-1/rules.d/` the same way, but that folder is root's, so the updater never sees it
   there: put the marker after it, `sudo touch $S/releases/<version>/system-files-installed`. The marker
   is also how to say you keep changes of your own in an installed file on purpose.
+- **"... did not come up (activating (exit 147)), so ... runs again"** - the service could not read the
+  new build's own files (.NET's "invalid config file", 0x80008093). The updaters of server 10.3.0 to 10.3.2
+  unpacked builds so: their files came in `crt-deploy`'s group, not `crt-data`. Such an updater unpacks
+  the next build too, so once, give every folder of the builds a default ACL letting the service's group
+  read what is made in it - then the next build goes in, and its own updater unpacks correctly:
+
+  ```bash
+  sudo find $S/releases -type d -exec setfacl -m d:g:crt-data:rX {} +
+  getfacl -p $S/releases/.updater | grep default:group:crt-data     # default:group:crt-data:r-x
+  ```
+
+  A build already marked failed is not tried again by itself; a newer one is, or `--retry-failed` (below).
 - **"... did not come up (failed (exit 78)), so ... runs again"** - the new build would not start:
   usually a new setting it needs (VERSION.md says so, its journal names it). Add it to
   `settings/appsettings.Production.json`, then try that build again:

@@ -1,6 +1,7 @@
 using System.Formats.Tar;
 using System.IO.Compression;
 using System.Text;
+using System.Text.RegularExpressions;
 using CRT.Server.Handlers.Updates;
 
 namespace CRT.Server.Tests
@@ -112,6 +113,62 @@ namespace CRT.Server.Tests
                 .ToArray();
 
             Assert.Throws<InvalidDataException>(() => ServerArchive.Extract(this.Archive(entries), this.Into));
+        }
+
+        // ###########################################################################################
+        // *** A FOLDER IS GIVEN ITS MODE AS IT IS MADE, NEVER AFTER (the test instance, 2026-11-09). *** Linux
+        // takes the setgid bit off a folder re-moded by a user outside its group, silently, and the updater is
+        // never in the service's group: re-moded folders made their files in the updater's own group, the service
+        // could not read its runtimeconfig (dotnet exit 147) and 10.3.1 went back to 10.3.0. No test user stands
+        // outside its own folder's group, so the source holds it: the one mode set after the fact is a file's.
+        // ###########################################################################################
+        [Fact]
+        public void A_folder_is_given_its_mode_as_it_is_made_and_never_after()
+        {
+            string source = File.ReadAllText(
+                Path.Combine(ServerRouteTable.RepositoryRoot(), "src", "CRT.Server", "Handlers", "Updates", "ServerArchive.cs"));
+
+            List<string> remoded = Regex.Matches(source, @"SetUnixFileMode\(\s*([^,]+),")
+                .Select(match => match.Groups[1].Value.Trim())
+                .ToList();
+
+            Assert.Equal(["file"], remoded);
+        }
+
+        // And as unpacked on Linux under a setgid folder, as the releases folder is: every folder keeps the bit
+        // (so the service's group), 0750 apart from it; every file 0640. The CI runner checks it.
+        [Fact]
+        public void Unpacked_under_a_setgid_folder_every_folder_keeps_the_bit_and_files_are_0640()
+        {
+            // An explicit guard, which the platform analyzer (CA1416) understands.
+            if (OperatingSystem.IsWindows())
+            {
+                Assert.Skip("Unix file modes - checked on the Linux CI runner.");
+                return;
+            }
+
+            string releases = Path.Combine(this.thisRoot, "releases");
+            Directory.CreateDirectory(releases);
+            File.SetUnixFileMode(releases, ServerArchive.FolderMode | UnixFileMode.SetGroup);
+
+            string archive = Path.Combine(this.thisRoot, "build.tar.gz");
+            File.WriteAllBytes(archive, ServerBuilds.Build("10.3.0"));
+            string build = Path.Combine(releases, "build");
+
+            ServerArchive.Extract(archive, build);
+
+            const UnixFileMode others = UnixFileMode.OtherRead | UnixFileMode.OtherWrite | UnixFileMode.OtherExecute;
+
+            foreach (string folder in new[] { build, Path.Combine(build, "Migrations") })
+            {
+                UnixFileMode mode = File.GetUnixFileMode(folder);
+                Assert.True(mode.HasFlag(UnixFileMode.SetGroup), $"[{folder}] lost its setgid bit: {mode}");
+                Assert.True(mode.HasFlag(UnixFileMode.GroupRead | UnixFileMode.GroupExecute), $"[{folder}]: {mode}");
+                Assert.Equal((UnixFileMode)0, mode & others);
+            }
+
+            Assert.Equal(ServerArchive.FileWrittenMode, File.GetUnixFileMode(Path.Combine(build, "CRT.Server.dll")));
+            Assert.Equal(ServerArchive.FileWrittenMode, File.GetUnixFileMode(Path.Combine(build, "Migrations", "0001_first.sql")));
         }
 
         [Theory]

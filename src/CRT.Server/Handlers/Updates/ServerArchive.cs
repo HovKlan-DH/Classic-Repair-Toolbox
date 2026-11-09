@@ -15,6 +15,12 @@ namespace CRT.Server.Handlers.Updates
     //   - At most MaxEntries entries and MaxBytes unpacked - an archive that grows past either is refused.
     //   - Files are written readable by the service's group and nobody else (0640, folders 0750), owned by
     //     whoever unpacks it - the updater's user, never the service, which cannot rewrite its own program.
+    //   - *** A FOLDER IS GIVEN ITS MODE AS IT IS MADE, NEVER AFTER. *** The releases folder is setgid to the
+    //     service's group, so what is made under it is in that group though the updater is not. But Linux
+    //     takes the setgid bit off a folder whose mode is changed by a user outside its group - silently - and
+    //     the updater is always outside it: each folder it re-moded made its files in the updater's own group,
+    //     and the service could not read its own CRT.Server.runtimeconfig.json (dotnet's exit 147, 0x80008093),
+    //     so the first build the test instance's updater unpacked, 10.3.1, did not come up (2026-11-09).
     //
     // Refused, it throws InvalidDataException and leaves what it wrote for the caller to delete.
     // ###########################################################################################
@@ -23,11 +29,17 @@ namespace CRT.Server.Handlers.Updates
         public const int MaxEntries = 5_000;
         public const long MaxBytes = 600L * 1024 * 1024;
 
+        // The mode a folder is made with - the setgid bit comes from the folder it is made in.
+        internal const UnixFileMode FolderMode =
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.GroupRead | UnixFileMode.GroupExecute;
+
+        // The mode a file is given once written.
+        internal const UnixFileMode FileWrittenMode = UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead;
+
         public static void Extract(string archivePath, string destinationFolder)
         {
             string root = Path.GetFullPath(destinationFolder);
-            Directory.CreateDirectory(root);
-            ServerArchive.SetMode(root, isFolder: true);
+            ServerArchive.CreateFolder(root);
 
             using FileStream file = File.OpenRead(archivePath);
             using var gzip = new GZipStream(file, CompressionMode.Decompress);
@@ -81,7 +93,7 @@ namespace CRT.Server.Handlers.Updates
                             entry.DataStream?.CopyTo(output);
                         }
 
-                        ServerArchive.SetMode(target, isFolder: false);
+                        ServerArchive.SetFileMode(target);
                         break;
 
                     default:
@@ -136,27 +148,24 @@ namespace CRT.Server.Handlers.Updates
             if (!Directory.Exists(folder))
             {
                 ServerArchive.MakeFolder(root, Path.GetDirectoryName(folder)!);
-                Directory.CreateDirectory(folder);
-                ServerArchive.SetMode(folder, isFolder: true);
+                ServerArchive.CreateFolder(folder);
             }
         }
 
-        // ###########################################################################################
-        // 0750 for a folder, 0640 for a file - KEEPING a folder's setgid bit. The releases folder is setgid to
-        // the service's group (INSTALLING.md), so everything made under it is in that group though the updater
-        // is not; a folder that lost the bit would make the next ones in the updater's own group, and the
-        // service could not read its own migrations.
-        // ###########################################################################################
-        private static void SetMode(string path, bool isFolder)
+        // A folder made with its mode in the one mkdir - never changed after, which would cost it its setgid bit.
+        private static void CreateFolder(string folder)
         {
             if (OperatingSystem.IsWindows())
-                return;
+                Directory.CreateDirectory(folder);
+            else
+                Directory.CreateDirectory(folder, ServerArchive.FolderMode);
+        }
 
-            UnixFileMode keep = isFolder ? File.GetUnixFileMode(path) & UnixFileMode.SetGroup : 0;
-
-            File.SetUnixFileMode(path, keep | (isFolder
-                ? UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute | UnixFileMode.GroupRead | UnixFileMode.GroupExecute
-                : UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead));
+        // A file the updater wrote: 0640. A file has no setgid bit to lose; its group came from its folder.
+        private static void SetFileMode(string file)
+        {
+            if (!OperatingSystem.IsWindows())
+                File.SetUnixFileMode(file, ServerArchive.FileWrittenMode);
         }
     }
 }

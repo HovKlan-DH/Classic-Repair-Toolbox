@@ -2962,7 +2962,11 @@ service to the 4.0 trees"). CRT reads a main file only at or below its own versi
   files is a step for the project owner, said in VERSION.md. **The updater reads the installed copy as
   `crt-deploy`, so a unit is installed `install -m 0644`, never `cp`** (2026-11-09: cp gave it the build's
   0640, and 10.3.1 stayed held with its unit in place); the polkit folder is root's, so a changed rule
-  always needs the marker. The held status says the commands (`ServerUpdater.HeldForSystemFiles`). The decisions are `ServerUpdater`'s against
+  always needs the marker. The held status says the commands (`ServerUpdater.HeldForSystemFiles`). **A folder the
+  updater makes gets its mode IN THE MKDIR, never after** (`ServerArchive`; 2026-11-09): Linux takes the setgid bit
+  off a folder re-moded by a user outside its group, which `crt-deploy` always is, so 10.3.1's files came in
+  `crt-deploy`'s group and the service died on its runtimeconfig (exit 147) - `ServerArchiveTests` holds it by the
+  source, as no test user is outside its own group. The decisions are `ServerUpdater`'s against
   `IServerUpdateHost` (tests: a fake host, virtual time); `ServerUpdateHost` is the thin Linux part.
 - **Step 1's foundation, `DraftSession`** (2026-10-25, CRT.Data - used by the Contribute tab's table and,
   through `DraftEdits`, by every other draft editor since the same day): a
