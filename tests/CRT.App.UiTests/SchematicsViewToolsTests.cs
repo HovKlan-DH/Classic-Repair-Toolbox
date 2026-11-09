@@ -397,7 +397,12 @@ public sealed class SchematicsViewToolsTests : IDisposable
             main.BoardKeyOverrideForTests = board;
 
             TraceStorage.LoadFrom(this.thisWorkspace.Path_("traces.json"));
-            TraceStorage.SaveTraces(board, "B", [new TraceModel { Color = "#FF0000", Nodes = [new() { X = 1, Y = 2 }, new() { X = 3, Y = 4 }] }]);
+            // B has TWO traces, A will have one: so the count tells A's left behind from B's own, read early.
+            TraceStorage.SaveTraces(board, "B",
+            [
+                new TraceModel { Color = "#FF0000", Nodes = [new() { X = 1, Y = 2 }, new() { X = 3, Y = 4 }] },
+                new TraceModel { Color = "#00FF00", Nodes = [new() { X = 5, Y = 6 }, new() { X = 7, Y = 8 }] },
+            ]);
             string bStored = System.Text.Json.JsonSerializer.Serialize(TraceStorage.GetTraces(board, "B"));
 
             try
@@ -424,8 +429,10 @@ public sealed class SchematicsViewToolsTests : IDisposable
 
                 tab.SelectedThumbnail = b;
 
-                // At once - before the next picture (if any) is read: A's traces are let go.
-                Assert.Equal(0, tab.polylineManager!.TraceCountForTests);
+                // At once: A's traces are let go - none held, or B's own two when B's file was read before the
+                // switch even returned (a file read on a free pool thread can end first; CI, 2026-11-09). A picture with no
+                // file never reads traces, so then none at all (code review, 2026-11-09: {0, 2} for both let that go).
+                Assert.Contains(tab.polylineManager!.TraceCountForTests, nextHasAFile ? new[] { 0, 2 } : new[] { 0 });
 
                 main.MouseMove(At(main, tab, 270, 340));
                 main.MouseUp(At(main, tab, 270, 340), MouseButton.Left);
@@ -737,6 +744,12 @@ public sealed class SchematicsViewToolsTests : IDisposable
 
             void Press(Visual visual, Point at)
             {
+                // A press is hit-tested against the last frame DRAWN, not the layout: a panel just shown or
+                // moved is not there until a frame is (measured - the worklog badge canvas under it took the
+                // press; Linux CI drew none in between, 2026-11-08 and 2026-11-09).
+                AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+                Dispatcher.UIThread.RunJobs();
+
                 Point inWindow = visual.TranslatePoint(at, main)!.Value;
                 main.MouseDown(inWindow, MouseButton.Left);
                 main.MouseUp(inWindow, MouseButton.Left);

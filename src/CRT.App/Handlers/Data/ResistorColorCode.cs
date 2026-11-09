@@ -35,7 +35,9 @@ namespace Handlers.DataHandling
     // ###########################################################################################
     public static class ResistorColorCode
     {
-        // The colors, as a resistor is printed - IEC 60062. Fixed, as the code is: the drawing is of the part.
+        // The colors, as a resistor is printed - IEC 60062. Fixed, as the code is: the drawing is of the part. Unknown is a
+        // band the part has whose color the data does not say - an axial ceramic capacitor's fifth band, or its tolerance
+        // when none is typed (CapacitorColorCode) - drawn as an outline.
         public enum Band
         {
             Black,
@@ -50,6 +52,7 @@ namespace Handlers.DataHandling
             White,
             Gold,
             Silver,
+            Unknown,
         }
 
         // One band: its color, what it stands for as the picture's label says it, and what kind it is.
@@ -60,6 +63,9 @@ namespace Handlers.DataHandling
             Digit,
             Multiplier,
             Tolerance,
+
+            // An axial ceramic capacitor's fifth band, after its tolerance - not the same from maker to maker (CapacitorColorCode).
+            Extra,
         }
 
         // What was read: the resistance in ohms, the tolerance in percent (null: none typed), the power rating as typed.
@@ -119,16 +125,27 @@ namespace Handlers.DataHandling
         // network, trimmer or potentiometer by its label, names or package - whose value reads (TryRead) as one the bands
         // can say.
         // ###########################################################################################
-        public static IReadOnlyList<ColorBand>? BandsOf(ComponentEntry entry)
+        public static IReadOnlyList<ColorBand>? BandsOf(ComponentEntry entry) => TryBandsOf(entry, out IReadOnlyList<ColorBand>? bands, out _) ? bands : null;
+
+        // ###########################################################################################
+        // BandsOf, with the reading the bands were made from - the value read once (code review, 2026-11-09: the picture
+        // read it again after asking for the bands).
+        // ###########################################################################################
+        public static bool TryBandsOf(ComponentEntry entry, out IReadOnlyList<ColorBand>? bands, out Reading? reading)
         {
             ArgumentNullException.ThrowIfNull(entry);
 
-            if (!string.Equals(entry.Category?.Trim(), "Resistor", StringComparison.OrdinalIgnoreCase) || IsNoSingleResistor(entry))
+            bands = null;
+            reading = null;
+
+            if (!string.Equals(entry.Category?.Trim(), "Resistor", StringComparison.OrdinalIgnoreCase) || IsNoSingleResistor(entry) ||
+                !TryRead(entry.TechnicalNameOrValue, out reading))
             {
-                return null;
+                return false;
             }
 
-            return TryRead(entry.TechnicalNameOrValue, out Reading? reading) ? Bands(reading!) : null;
+            bands = Bands(reading!);
+            return bands is not null;
         }
 
         private static bool IsNoSingleResistor(ComponentEntry entry)
@@ -178,11 +195,7 @@ namespace Handlers.DataHandling
                 return false;
             }
 
-            // A comma before exactly three digits may as well be a thousands separator as a decimal comma (code review,
-            // 2026-11-08: "1,000" and "2,200 Ohm" were drawn as 1 and 2.2 ohms) - a guess, so no bands. One or two digits
-            // after it ("4,7K", "0,47") are a decimal.
-            if (match.Groups["fraction"].Success && match.Groups["fraction"].Value.Length == 3 &&
-                value[match.Groups["fraction"].Index - 1] == ',')
+            if (CommaMayBeThousands(value, match.Groups["fraction"]))
             {
                 return false;
             }
@@ -220,23 +233,56 @@ namespace Handlers.DataHandling
                 return false;
             }
 
-            decimal? tolerance = null;
-            Match percent = TolerancePattern.Match(rest);
-
-            if (percent.Success)
+            if (!TryReadTolerance(rest, typed => Tolerances.Any(each => each.Percent == typed), out decimal? tolerance))
             {
-                if (!decimal.TryParse(percent.Groups["percent"].Value.Replace(',', '.'), NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out decimal typed) ||
-                    !Tolerances.Any(each => each.Percent == typed))
-                {
-                    return false;
-                }
-
-                tolerance = typed;
+                return false;
             }
 
             Match power = PowerPattern.Match(rest);
 
             reading = new Reading(ohms, tolerance, power.Success ? power.Groups["power"].Value + "W" : string.Empty);
+            return true;
+        }
+
+        // ###########################################################################################
+        // *** A COMMA BEFORE EXACTLY THREE DIGITS MAY AS WELL BE A THOUSANDS SEPARATOR AS A DECIMAL COMMA *** (code review,
+        // 2026-11-08: "1,000" and "2,200 Ohm" were drawn as 1 and 2.2 ohms; and 2026-11-09: "10,000pF" read as 10 pF) - a
+        // guess, so no value. One or two digits after it ("4,7K", "0,47") are a decimal. `fraction` is the digits after the
+        // separator, as matched in `value`. The resistor's reading and a capacitor's (PartPicture.Picofarads) alike.
+        // ###########################################################################################
+        internal static bool CommaMayBeThousands(string value, Group fraction)
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            ArgumentNullException.ThrowIfNull(fraction);
+
+            return fraction.Success && fraction.Value.Length == 3 && fraction.Index > 0 && value[fraction.Index - 1] == ',';
+        }
+
+        // ###########################################################################################
+        // The tolerance typed in `text` - "5%", "0,5 %" - null when none is; false when one is typed that `hasBand` says no
+        // band stands for, or that is no number. The resistor's reading and a capacitor's (CapacitorColorCode), each with
+        // its own colors.
+        // ###########################################################################################
+        internal static bool TryReadTolerance(string text, Func<decimal, bool> hasBand, out decimal? tolerance)
+        {
+            ArgumentNullException.ThrowIfNull(text);
+            ArgumentNullException.ThrowIfNull(hasBand);
+
+            tolerance = null;
+            Match percent = TolerancePattern.Match(text);
+
+            if (!percent.Success)
+            {
+                return true;
+            }
+
+            if (!decimal.TryParse(percent.Groups["percent"].Value.Replace(',', '.'), NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out decimal typed) ||
+                !hasBand(typed))
+            {
+                return false;
+            }
+
+            tolerance = typed;
             return true;
         }
 
@@ -361,10 +407,19 @@ namespace Handlers.DataHandling
         {
             ArgumentNullException.ThrowIfNull(bands);
 
-            return bands.Select(band => band.Color.ToString()).ToList();
+            return bands.Select(band => band.Color == Band.Unknown ? UnknownName(band.Kind) : band.Color.ToString()).ToList();
         }
 
-        private static string Number(decimal value) => value.ToString("0.###", CultureInfo.InvariantCulture);
+        // A band whose color the data does not say, in words - "Not known (5th band)", "Not known (tolerance)".
+        private static string UnknownName(BandKind kind) => kind switch
+        {
+            BandKind.Extra => "Not known (5th band)",
+            BandKind.Tolerance => "Not known (tolerance)",
+            _ => "Not known",
+        };
+
+        // A number as the pictures write it - "8.2", "0.25", "360" - a capacitor's too (CapacitorColorCode).
+        internal static string Number(decimal value) => value.ToString("0.###", CultureInfo.InvariantCulture);
 
         // ###########################################################################################
         // A band's color as the picture draws it, and the color its label is written in on it - white on the dark ones,
@@ -384,6 +439,9 @@ namespace Handlers.DataHandling
             Band.White => ("#F5F5F5", "#1E1E1E"),
             Band.Gold => ("#C1872B", "#FFFFFF"),
             Band.Silver => ("#B8B8B8", "#1E1E1E"),
+
+            // Not known: no color of its own - the drawing outlines it; its pill light, its words dark.
+            Band.Unknown => ("#F5F5F5", "#1E1E1E"),
             _ => ("#8A8A8A", "#FFFFFF"),
         };
     }

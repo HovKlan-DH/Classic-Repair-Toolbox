@@ -244,6 +244,24 @@ public sealed class ResistorColorCodeTests
         Assert.Equal(["Grey", "Red", "Red", "Gold"], ColorNames(Bands(reading!)!));
     }
 
+    // ###########################################################################################
+    // A band whose color the data does not say is named for what it is (2026-11-09; an axial ceramic capacitor's, from
+    // CapacitorColorCode): "Not known (5th band)", "Not known (tolerance)" - never "Unknown", the enum's name.
+    // ###########################################################################################
+    [Fact]
+    public void A_band_not_known_is_named_for_what_it_is()
+    {
+        ColorBand[] bands =
+        [
+            new(Band.Red, "2", BandKind.Digit),
+            new(Band.Unknown, "± ?", BandKind.Tolerance),
+            new(Band.Unknown, "?", BandKind.Extra),
+            new(Band.Unknown, "?", BandKind.Digit),
+        ];
+
+        Assert.Equal(["Red", "Not known (tolerance)", "Not known (5th band)", "Not known"], ColorNames(bands));
+    }
+
     // Two digits exactly, at the power of ten that makes them - or none when it takes more.
     [Theory]
     [InlineData(560, 2, "56", 1)]

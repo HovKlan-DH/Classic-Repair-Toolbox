@@ -61,6 +61,10 @@ public sealed class TabConfigurationDetachThumbnailsTests : IDisposable
             Assert.Equal(popupsIndex + 1, siblings.IndexOf(pinoutRow));
             Assert.Equal(popupsIndex + 2, siblings.IndexOf(detachRow));
             Assert.Equal("Detach pinout image in component info window", pinoutRow.Content);
+
+            // It detaches only a pinout the popup has no room for (2026-11-09), so a tick over a small one does nothing to
+            // see: the tooltip says why (code review, 2026-11-09).
+            Assert.Contains("no room for", Assert.IsType<string>(ToolTip.GetTip(pinoutRow)), StringComparison.Ordinal);
         });
     }
 

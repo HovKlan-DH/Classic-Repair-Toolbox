@@ -683,7 +683,8 @@ namespace CRT
             this.PinoutPicture.Show(package, pins);
             this.PinoutPartDrawing.Show(part);
 
-            // A single resistor is its color bands, in the same place (owner request, 2026-11-09; ResistorPicture).
+            // A single resistor, or an axial ceramic capacitor, is its color bands, in the same place (owner requests, 2026-11-09;
+            // ResistorPicture).
             bool resistor = this.PinoutResistorPicture.Show(part is null ? shown : null);
 
             if (part is not null || resistor)

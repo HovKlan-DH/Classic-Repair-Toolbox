@@ -142,6 +142,34 @@ public sealed class PartPictureTests
         Assert.Equal(shape, PartPicture.Of(Part("Capacitor", string.Empty, friendly, "10uF 16V"), Pins("", ""))?.Shape);
     }
 
+    // ###########################################################################################
+    // An axial ceramic whose value its color code says is drawn with its bands (CapacitorColorCode, shown by ResistorPicture),
+    // so no plain tube beside them (owner request, 2026-11-09) - and one the bands cannot say, or a film one, keeps the tube.
+    // ###########################################################################################
+    [Fact]
+    public void A_banded_axial_ceramic_is_not_also_drawn_as_the_plain_tube()
+    {
+        Assert.Null(PartPicture.Of(Part("Capacitor", "Axial", "Ceramic", "82pF 5%"), []));
+        Assert.Equal(PartPicture.Shape.AxialCapacitor, PartPicture.Of(Part("Capacitor", "Axial", "Ceramic", "4.7pF"), [])!.Shape);
+        Assert.Equal(PartPicture.Shape.AxialCapacitor, PartPicture.Of(Part("Capacitor", "Axial", "Film", "16pF 5%"), [])!.Shape);
+    }
+
+    // ###########################################################################################
+    // A comma before exactly three digits is no capacitance (code review, 2026-11-09: "10,000pF" read as 10 pF) - a thousands
+    // separator or a decimal comma, a guess; one or two digits after it are a decimal. So a disc's printed code is not a
+    // thousand times out either.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("10,000pF", null)]
+    [InlineData("4,700 pF", null)]
+    [InlineData("4,7nF", "4700")]
+    [InlineData("0,47uF", "470000")]
+    [InlineData("10000pF", "10000")]
+    public void A_comma_before_three_digits_is_no_capacitance(string value, string? picofarads)
+    {
+        Assert.Equal(picofarads, PartPicture.Picofarads(value)?.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture));
+    }
+
     // Shapes that vary too much to draw - a trimmer, a tantalum bead, a bipolar electrolytic - draw nothing.
     [Theory]
     [InlineData("Trimmer")]

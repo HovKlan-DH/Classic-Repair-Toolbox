@@ -991,11 +991,17 @@ public sealed class TabDraftsTests : IDisposable
             var board = new BoardData { Components = [new ComponentEntry { BoardLabel = "U0", Category = "IC" }] };
             CachedWorkbooks.Write(DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, TabDraftsTests.TableBoardA), board);
 
+            // The check held on its pool thread: a board this small is checked at once, and on a busy machine
+            // it ended before the test looked (CI, 2026-11-09) - no proof of anything either way.
+            var hold = new TaskCompletionSource();
+            tab.HoldErrorCheckForTests = hold.Task;
+
             Task<bool> stopping = tab.StopForErrorsAsync(EntryA(tab), board);
 
             Assert.False(stopping.IsCompleted);
             Assert.True(overlay.IsBusy);
 
+            hold.SetResult();
             Assert.False(await stopping);
             Assert.False(overlay.IsBusy);
 

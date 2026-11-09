@@ -1338,15 +1338,22 @@ namespace CRT
             // unless this is a full component reset where selection should always start at index 0.
             var currentPin = resetSelection ? null : (this.ThumbnailList.SelectedItem as ComponentImageItem)?.Pin;
 
-            var matchingEntries = this._allComponentImages
-                .Where(img =>
-                    string.Equals(img.BoardLabel, this._boardLabel, StringComparison.OrdinalIgnoreCase) &&
-                    ComponentImageQueries.HasDisplayableImageFile(img) &&
-                    ComponentImageQueries.IsImageVisibleInRegion(img, this._localRegion))
-                .ToList();
+            List<ComponentImageEntry> matchingEntries = this.ImageEntriesShown();
+
+            // Where the pinout stands, decided with every section of this component in - its files and links too - and the
+            // notes of the images it is about to show, once what Main does after this is done (ComponentInfoWindow.Pinout.cs).
+            this.FollowPinoutDetachmentSoon();
 
             this.LoadImagesAsync(matchingEntries, this._dataRoot, currentPin);
         }
+
+        // The images of the component shown, in the region shown, that have a picture to show.
+        private List<ComponentImageEntry> ImageEntriesShown() => this._allComponentImages
+            .Where(img =>
+                string.Equals(img.BoardLabel, this._boardLabel, StringComparison.OrdinalIgnoreCase) &&
+                ComponentImageQueries.HasDisplayableImageFile(img) &&
+                ComponentImageQueries.IsImageVisibleInRegion(img, this._localRegion))
+            .ToList();
 
         // ###########################################################################################
         // Updates all region-sensitive text fields (title, category/part-number, description)
@@ -1401,7 +1408,8 @@ namespace CRT
             this.InfoPinoutDrawing.Show(entry?.Package, pins);
             this.InfoPartDrawing.Show(part);
 
-            // A single resistor is its color bands, in the same place (owner request, 2026-11-09; ResistorPicture).
+            // A single resistor, or an axial ceramic capacitor, is its color bands, in the same place (owner requests, 2026-11-09;
+            // ResistorPicture).
             bool resistor = this.InfoResistorPicture.Show(part is null ? entry : null);
 
             if (part is not null || resistor)
@@ -1418,8 +1426,6 @@ namespace CRT
             List<ComponentPopupReplacement> replacements = ComponentPopupContent.ReplacementsOf(this._allReplacements, this._boardLabel, this._localRegion);
             this.ReplacementsSection.IsVisible = replacements.Count > 0;
             this.InfoReplacementsItemsControl.ItemsSource = replacements;
-
-            this.FollowPinoutDetachment();
         }
 
         // ###########################################################################################

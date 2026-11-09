@@ -452,10 +452,13 @@
 								 Margin="0,0,0,8"
 								 IsVisible="False" />
 
-			<ScrollViewer Grid.Row="2"
+			<!-- Named for the pinout's room in it: a pinout goes into a window of its own only when this would have to scroll
+			     with it in (ComponentInfoWindow.Pinout.cs, owner request 2026-11-09). -->
+			<ScrollViewer x:Name="InfoScrollViewer"
+						  Grid.Row="2"
 						  HorizontalScrollBarVisibility="Disabled"
 						  VerticalScrollBarVisibility="Auto">
-				<StackPanel Spacing="8">
+				<StackPanel x:Name="InfoSectionsPanel" Spacing="8">
 
 					<!-- IC test (shown only for ICs with a test-catalogue entry) -->
 					<StackPanel x:Name="TestSection" IsVisible="False" Spacing="4" Margin="0,8,0,0">

@@ -500,6 +500,59 @@ public class ComponentInfoWindowTests : IDisposable
     }
 
     // ###########################################################################################
+    // AN AXIAL CERAMIC CAPACITOR IS ITS COLOR BANDS TOO (owner request, 2026-11-09: "since that has color rings, would it then
+    // be possible to show and translate those also, just alike a resistor?"): 250407's C83 as the data has it - "Ceramic",
+    // "Axial", "82pF 5%" - in the pinout's place, as the owner's own parts carry their bands (CapacitorColorCode): the digits,
+    // the multiplier, the tolerance in the resistor's colors, and a fifth band not known and said so, on the light-green body;
+    // the plain tube not drawn beside it. A film one keeps the tube.
+    // ###########################################################################################
+    [Fact]
+    public void An_axial_ceramic_capacitor_shows_its_color_bands_with_its_fifth_band_not_known()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+            ComponentPinEntry[] pins =
+            [
+                new ComponentPinEntry { BoardLabel = BoardLabel, Pin = "1", Name = "", Direction = "" },
+                new ComponentPinEntry { BoardLabel = BoardLabel, Pin = "2", Name = "", Direction = "" },
+            ];
+
+            SetComponent(
+                window,
+                new[] { new ComponentEntry { BoardLabel = BoardLabel, Category = "Capacitor", FriendlyName = "Ceramic", TechnicalNameOrValue = "82pF 5%", Package = "Axial" } },
+                pins: pins);
+
+            ResistorPicture bands = ControlOf<ResistorPicture>(window, "InfoResistorPicture");
+            Assert.True(bands.IsVisible);
+            Assert.False(ControlOf<Control>(window, "InfoPartDrawing").IsVisible);
+            Assert.Equal(
+                [ResistorColorCode.Band.Grey, ResistorColorCode.Band.Red, ResistorColorCode.Band.Black, ResistorColorCode.Band.Gold, ResistorColorCode.Band.Unknown],
+                bands.BandsShownForTests.Select(band => band.Color));
+            Assert.Equal("Capacitor value:", bands.HeadingShownForTests);
+            Assert.Equal("82 pF 5%", bands.ValueShownForTests);
+            Assert.Equal(["Grey", "Red", "Black", "Gold", "Not known (5th band)"], bands.ColorsShownForTests);
+            Assert.Contains("5th band", bands.UnknownBandsNoteShownForTests, StringComparison.Ordinal);
+            Assert.NotNull(bands.BodyColorForTests);
+
+            // A film one has no color code: the plain tube, no bands.
+            SetComponent(
+                window,
+                new[] { new ComponentEntry { BoardLabel = BoardLabel, Category = "Capacitor", FriendlyName = "Film", TechnicalNameOrValue = "16pF 5%", Package = "Axial" } },
+                pins: pins);
+            Assert.False(bands.IsVisible);
+            Assert.True(ControlOf<Control>(window, "InfoPartDrawing").IsVisible);
+
+            // A resistor after it: a resistor's heading, body and no line about bands not known.
+            SetComponent(window, new[] { new ComponentEntry { BoardLabel = BoardLabel, Category = "Resistor", TechnicalNameOrValue = "560Ω 1/4W 5%" } });
+            Assert.Equal("Resistor value:", bands.HeadingShownForTests);
+            Assert.Equal(string.Empty, bands.UnknownBandsNoteShownForTests);
+            Assert.Null(bands.BodyColorForTests);
+            Assert.Equal("Power rating: 1/4W", bands.PowerShownForTests);
+        });
+    }
+
+    // ###########################################################################################
     // "DETACH PINOUT IMAGE IN COMPONENT INFO POPUP" (owner request, 2026-11-07: "do show the pinout and its information in
     // another popup window and do make sure to save size and location etc. (one global, and not per component/board)"):
     // the popup's pinout section stands in a window of its own while the component has pins, back in the popup when it
@@ -510,8 +563,9 @@ public class ComponentInfoWindowTests : IDisposable
     {
         UiTest.Run(() =>
         {
-            ComponentPinEntry[] pins = [new ComponentPinEntry { BoardLabel = BoardLabel, Pin = "1", Name = "VCC", Direction = "Power" }];
-            ComponentEntry[] chip = [new ComponentEntry { BoardLabel = BoardLabel, Category = "IC", Package = "DIP-8" }];
+            // Forty pins: more than the popup has room for, so the window is wanted (PinoutFitsInPopup).
+            ComponentPinEntry[] pins = FortyPins();
+            ComponentEntry[] chip = [new ComponentEntry { BoardLabel = BoardLabel, Category = "IC", Package = "DIP-40" }];
 
             UserSettings.DetachPinoutInComponentPopup = true;
 
@@ -532,8 +586,10 @@ public class ComponentInfoWindowTests : IDisposable
             // Its size the first time (owner request, 2026-11-07: "aprox 870x960px").
             Assert.Equal((ComponentPinoutWindow.DefaultWidth, ComponentPinoutWindow.DefaultHeight), (pinout.Width, pinout.Height));
 
-            // No pins: no window, the section back in the popup.
+            // No pins: no window, the section back in the popup - decided once the caller is done with the popup, before
+            // anything is drawn (the jobs at Normal; the section's move is a Background job of its own).
             SetComponent(window, new[] { Component() });
+            Dispatcher.UIThread.RunJobs(DispatcherPriority.Normal);
             Assert.Null(window.PinoutWindowForTests);
             Assert.False(pinout.IsVisible);
             Dispatcher.UIThread.RunJobs();
@@ -541,6 +597,7 @@ public class ComponentInfoWindowTests : IDisposable
 
             // Unticked while open: back in the popup.
             SetComponent(window, chip, pins: pins);
+            Dispatcher.UIThread.RunJobs(DispatcherPriority.Normal);
             Assert.NotNull(window.PinoutWindowForTests);
             UserSettings.DetachPinoutInComponentPopup = false;
             Dispatcher.UIThread.RunJobs();
@@ -600,6 +657,9 @@ public class ComponentInfoWindowTests : IDisposable
             {
                 var window = CreateWindow();
                 window.Width = 320;
+
+                // At its lowest the popup has room for none of these pinouts, so each goes into its window (PinoutFitsInPopup).
+                window.Height = window.MinHeight;
                 SetComponent(window, new[] { Component() });
                 window.Show();
                 Settle();
@@ -610,6 +670,7 @@ public class ComponentInfoWindowTests : IDisposable
                 // under the drawing, a window that wide beside it, so the move changes the section's layout. Taken out at
                 // once, it stands in neither window until the popup has had its layout.
                 SetComponent(window, resistor, pins: resistorPins);
+                Dispatcher.UIThread.RunJobs(DispatcherPriority.Normal);
                 Assert.Null(section.Parent);
                 Assert.NotNull(window.PinoutWindowForTests);
                 Settle();
@@ -640,6 +701,166 @@ public class ComponentInfoWindowTests : IDisposable
             }
         });
     }
+
+    // ###########################################################################################
+    // *** ONLY A PINOUT THE POPUP HAS NO ROOM FOR GETS A WINDOW OF ITS OWN (owner request, 2026-11-09: "if no vertical
+    // scrolling will be implied with this info inside of component info popup, then you will not open a new window").
+    // *** With the setting ticked, a small pinout stays in the popup, which then has nothing to scroll; forty pins get the
+    // window; and the small one shown after them comes back into the popup, measured while it stood in the window.
+    // ###########################################################################################
+    [Fact]
+    public void Only_a_pinout_the_popup_has_no_room_for_gets_a_window_of_its_own()
+    {
+        UiTest.Run(() =>
+        {
+            ComponentEntry[] small = [new ComponentEntry { BoardLabel = BoardLabel, Category = "IC", Package = "DIP-8" }];
+            ComponentPinEntry[] smallPins =
+            [
+                new ComponentPinEntry { BoardLabel = BoardLabel, Pin = "1", Name = "VCC", Direction = "Power" },
+                new ComponentPinEntry { BoardLabel = BoardLabel, Pin = "8", Name = "GND", Direction = "Power" },
+            ];
+            ComponentEntry[] large = [new ComponentEntry { BoardLabel = BoardLabel, Category = "IC", Package = "DIP-40" }];
+
+            UserSettings.DetachPinoutInComponentPopup = true;
+
+            try
+            {
+                var window = CreateWindow();
+                window.Height = 900;
+                window.Show();
+                Dispatcher.UIThread.RunJobs();
+
+                Control section = ControlOf<Control>(window, "PinoutSection");
+                ScrollViewer info = ControlOf<ScrollViewer>(window, "InfoScrollViewer");
+
+                SetComponent(window, small, pins: smallPins);
+                Dispatcher.UIThread.RunJobs();
+                window.UpdateLayout();
+
+                Assert.Null(window.PinoutWindowForTests);
+                Assert.Same(window, TopLevel.GetTopLevel(section));
+                Assert.True(section.IsVisible);
+                Assert.True(info.Extent.Height <= info.Viewport.Height, $"{info.Extent.Height} > {info.Viewport.Height}");
+
+                SetComponent(window, large, pins: FortyPins());
+                Dispatcher.UIThread.RunJobs();
+
+                Assert.NotNull(window.PinoutWindowForTests);
+                Assert.Same(window.PinoutWindowForTests, TopLevel.GetTopLevel(section));
+
+                SetComponent(window, small, pins: smallPins);
+                Dispatcher.UIThread.RunJobs();
+
+                Assert.Null(window.PinoutWindowForTests);
+                Assert.Same(window, TopLevel.GetTopLevel(section));
+
+                window.Close();
+            }
+            finally
+            {
+                UserSettings.DetachPinoutInComponentPopup = false;
+            }
+        });
+    }
+
+    // ###########################################################################################
+    // *** THE TALLEST NOTE OF ITS IMAGES COUNTS (owner request, 2026-11-09: "so the user can always see the pins when
+    // navigating in the oscilloscope baseline"). *** The images' notes are shown one at a time as they are gone through,
+    // so a pinout with room beside the first image's note can be pushed out of sight by a longer one further on: the
+    // longest decides, before any image is shown, and the window is there from the start.
+    // ###########################################################################################
+    [Fact]
+    public void The_longest_note_among_the_images_decides_so_the_pins_stay_in_sight_on_every_image()
+    {
+        UiTest.Run(() =>
+        {
+            ComponentEntry[] chip = [new ComponentEntry { BoardLabel = BoardLabel, Category = "IC", Package = "DIP-8" }];
+            ComponentPinEntry[] pins = [new ComponentPinEntry { BoardLabel = BoardLabel, Pin = "1", Name = "VCC", Direction = "Power" }];
+            string longNote = string.Join("\n", Enumerable.Range(1, 60).Select(line => $"- What pin {line} reads when the machine is on"));
+
+            ComponentImageEntry Image(string file, string note, string pin = "") =>
+                new() { BoardLabel = BoardLabel, Name = file, File = file, Note = note, Pin = pin };
+
+            UserSettings.DetachPinoutInComponentPopup = true;
+
+            try
+            {
+                var window = CreateWindow();
+                window.Height = 900;
+                window.Show();
+                Dispatcher.UIThread.RunJobs();
+
+                Control section = ControlOf<Control>(window, "PinoutSection");
+
+                // A short note on every image: room enough.
+                SetComponent(window, chip, pins: pins, images: [Image("pinout.png", "Seen from above"), Image("vcc.png", "5 V", pin: "1")]);
+                Dispatcher.UIThread.RunJobs();
+
+                Assert.Null(window.PinoutWindowForTests);
+                Assert.Same(window, TopLevel.GetTopLevel(section));
+
+                // The second image's note, sixty lines long, would push the pins out of sight there.
+                SetComponent(window, chip, pins: pins, images: [Image("pinout.png", "Seen from above"), Image("vcc.png", longNote, pin: "1")]);
+                Dispatcher.UIThread.RunJobs();
+
+                Assert.NotNull(window.PinoutWindowForTests);
+                Assert.Same(window.PinoutWindowForTests, TopLevel.GetTopLevel(section));
+
+                window.Close();
+            }
+            finally
+            {
+                UserSettings.DetachPinoutInComponentPopup = false;
+            }
+        });
+    }
+
+    // ###########################################################################################
+    // *** DECIDED ONCE THE CALLER IS DONE WITH THE POPUP, BEFORE ANYTHING IS DRAWN (code review, 2026-11-09). *** Main calls
+    // OfferEdit and UpdateOscilloscopeSessionTitleState after SetComponent, and "Edit component" shown takes room from the
+    // title row: decided inside SetComponent, the pinout was judged against a popup that then changed. So nothing is decided
+    // while SetComponent and what follows it run, and the decision comes at Normal - above Render, so before the next frame.
+    // ###########################################################################################
+    [Fact]
+    public void Where_the_pinout_stands_is_decided_after_what_follows_SetComponent_and_before_drawing()
+    {
+        UiTest.Run(() =>
+        {
+            ComponentEntry[] large = [new ComponentEntry { BoardLabel = BoardLabel, Category = "IC", Package = "DIP-40" }];
+
+            UserSettings.DetachPinoutInComponentPopup = true;
+
+            try
+            {
+                var window = CreateWindow();
+                window.Show();
+                Dispatcher.UIThread.RunJobs();
+
+                SetComponent(window, large, pins: FortyPins());
+                window.OfferEdit(_ => { }, string.Empty);
+
+                // Not yet: what follows SetComponent may still change the room.
+                Assert.Null(window.PinoutWindowForTests);
+
+                Dispatcher.UIThread.RunJobs(DispatcherPriority.Normal);
+                Assert.NotNull(window.PinoutWindowForTests);
+
+                // Run ahead of layout and drawing.
+                Assert.True(DispatcherPriority.Normal > DispatcherPriority.Render);
+
+                window.Close();
+            }
+            finally
+            {
+                UserSettings.DetachPinoutInComponentPopup = false;
+            }
+        });
+    }
+
+    private static ComponentPinEntry[] FortyPins() =>
+        Enumerable.Range(1, 40)
+            .Select(pin => new ComponentPinEntry { BoardLabel = BoardLabel, Pin = pin.ToString(System.Globalization.CultureInfo.InvariantCulture), Name = $"P{pin}", Direction = "Input" })
+            .ToArray();
 
     // The pins of the region shown are listed, the case drawn; switching the popup's region lists
     // that region's.
@@ -1155,13 +1376,14 @@ public class ComponentInfoWindowTests : IDisposable
         IReadOnlyList<ComponentPinEntry>? pins = null,
         IReadOnlyList<ComponentReplacementEntry>? replacements = null,
         IReadOnlyDictionary<string, string>? pinNets = null,
-        IReadOnlyList<string>? regions = null)
+        IReadOnlyList<string>? regions = null,
+        IEnumerable<ComponentImageEntry>? images = null)
     {
         window.SetComponent(
             BoardLabel,
             displayText,
             entries.ToList(),
-            new List<ComponentImageEntry>(),
+            (images ?? Array.Empty<ComponentImageEntry>()).ToList(),
             (localFiles ?? Array.Empty<ComponentLocalFileEntry>()).ToList(),
             (links ?? Array.Empty<ComponentLinkEntry>()).ToList(),
             region,

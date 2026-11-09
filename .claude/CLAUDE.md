@@ -1036,7 +1036,19 @@ there, and `await` on a finished task looped for ever on the UI thread. A tool f
   a baseline's machine state (`ComponentPopupContent`); the Overview has a Package column and
   its Notes are the first image's note (`OverviewHtmlBuilder.BuildRows`). **"Detach pinout image in component info window"** ("... popup" until 2026-11-09, right under "Open multiple component info windows" since)
   (owner request, 2026-11-07; `ComponentInfoWindow.Pinout.cs`) moves the popup's pinout section into a window of its own,
-  870x960 the first time, its size and place one for all. **The section is taken out at once and put in only after the window
+  870x960 the first time, its size and place one for all - **only when the popup has no room for it** (owner request,
+  2026-11-09: "if no vertical scrolling will be implied with this info inside of component info popup, then you will not open
+  a new window"; `PinoutFitsInPopup`): measured before a window opens, the popup's other sections, the pinout at the popup's
+  width and the TALLEST image note and baseline section among the component's images (so the pins stay in sight on every
+  image; measured apart, and of each only the `MeasuredAtMost` (3) wordings with the most lines and characters - forty
+  baselines with notes of their own cost 135 ms a click, measured), against the info column's room; decided when a component
+  or region is shown, the popup opens or the setting is ticked - never while images are gone through or the popup is
+  resized. **A component shown is decided once Main is done with the popup** (`FollowPinoutDetachmentSoon`, posted at Normal,
+  above Render; code review, 2026-11-09): Main calls `OfferEdit` and `UpdateOscilloscopeSessionTitleState` after
+  `SetComponent`, and "Edit component" takes room from the title row - a test asserting on the window right after
+  `SetComponent` runs `Dispatcher.UIThread.RunJobs(DispatcherPriority.Normal)` first. **A section is measured AFRESH**
+  (`MeasuredAfresh`, every part invalidated): Avalonia keeps a control's measure while only something inside it changed, and
+  a note section with a new note measured at the same width kept its old height. **The section is taken out at once and put in only after the window
   it left has had its layout** (`PlaceSectionAfterLayoutOf`; owner report, 2026-11-07: CRT ended on "Attempt to call
   InvalidateArrange on wrong LayoutManager") - Avalonia keeps a control queued for the old window's layout, and arranging it
   there once it stands in another throws. **A resistor's color bands are drawn
@@ -1057,6 +1069,20 @@ there, and `await` on a finished task looped for ever on the UI thread. A tool f
   each, the tolerance's last) under it. **A wrong picture is worse than none**: a resistor pack ("RP", "Resistor
   pack" - printed with a number code), a trimmer, an array or network, "wire", "N/A", a lower-case "m" and a
   tolerance no band stands for draw nothing. The colors are IEC 60062's, the same in both themes.
+  **An axial ceramic capacitor is drawn the same way, its bands AS THE OWNER READ THEM ON HIS OWN 250407** (owner request,
+  2026-11-09: "since that has color rings, would it then be possible to show and translate those also, just alike a
+  resistor?"; asked: "Every axial ceramic", a band the data does not say "Show it as not known"; `CapacitorColorCode`, shown
+  by `ResistorPicture`, `PartPicture.IsAxialCeramicCapacitor` - whose plain tube it then replaces): C23 "360pF 50V 10%" is
+  orange | blue | brown | silver | silver, C36 "20pF 50V" red | black | black | gold | white - FIVE bands: two digits, the
+  multiplier in pF and the tolerance in the RESISTOR'S colors (brown 1%, red 2%, gold 5%, silver 10%), then a fifth that
+  differs from part to part (both are 50 V, so no voltage - most likely the temperature coefficient). **A band the data does
+  not say is drawn as a dashed outline, `Band.Unknown`, never guessed**: the fifth always (`BandKind.Extra`), the tolerance
+  when none is typed; a line under the colors says so (`NoteOf`). **Do not go back to the ceramic capacitor code** (a
+  temperature band FIRST, green 5%, white 10%): the first version read the board's photo so, and the owner's parts proved
+  it wrong - read digits first, the photo is 51 pF, the board's C38. Only what is certain: 10 pF or more, two digits, black
+  x1 to yellow x10 nF, a typed tolerance with a color - else the plain tube with its printed code. A light-green body, as
+  the photo's; the voltage where a resistor's power rating stands. 26 rows on the published boards (VIC-20 324003's eight
+  100 nF "Ceramic Axial" among them).
   **The other leaded parts are drawn as they look, in the same style** (owner request, 2026-11-09: "could you also draw an axial
   and radial electrolytic capacitor in same style... and a disc capacitor ... And how about transistors? And diodes? Actually all
   of the current components for all boards"; the rule `PartPicture`, every position `PartPictureGeometry`, the drawing

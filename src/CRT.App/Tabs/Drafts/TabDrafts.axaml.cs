@@ -835,7 +835,16 @@ namespace CRT
         // ###########################################################################################
         internal async Task<bool> StopForErrorsAsync(HardwareBoardEntry entry, BoardData board)
         {
-            int errors = await BusyOverlay.RunLocalAsync(this, CrtWaitWording.CheckingBoard, () => Task.Run(() => TabDrafts.CountErrors(entry, board)));
+            Task? hold = this.HoldErrorCheckForTests;
+            int errors = await BusyOverlay.RunLocalAsync(this, CrtWaitWording.CheckingBoard, () => Task.Run(async () =>
+            {
+                if (hold != null)
+                {
+                    await hold;
+                }
+
+                return TabDrafts.CountErrors(entry, board);
+            }));
 
             if (errors == 0)
             {
@@ -845,6 +854,10 @@ namespace CRT
             await this.ShowErrorsBeforeSubmitAsync(entry, errors);
             return true;
         }
+
+        // For a test: what Submit's check waits for first, off the UI thread - so the test sees it under way
+        // (a check of a small board on a free pool thread could end before the test looked; CI, 2026-11-09).
+        internal Task? HoldErrorCheckForTests { get; set; }
 
         // The errors in the board a submit of this draft would send - the table's own checks.
         private static int CountErrors(HardwareBoardEntry entry, BoardData board) =>

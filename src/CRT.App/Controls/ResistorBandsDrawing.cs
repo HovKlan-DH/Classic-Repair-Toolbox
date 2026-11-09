@@ -17,7 +17,8 @@ namespace CRT
     // the picture the owner made by hand per value - "560 Ohms 5%": a beige body with wider end caps, the lead stubs,
     // the bands, and a faint stem from each band to a pill in its color naming what it stands for). The bands are
     // ResistorColorCode's, every position ResistorBandsGeometry's; this only paints. Its own colors, a picture of the
-    // part, on either theme.
+    // part, on either theme. An axial ceramic capacitor's too (CapacitorColorCode, 2026-11-09): its body color given, and
+    // a band the data does not say - its fifth, and its tolerance when none is typed - outlined dashed, no color.
     // ###########################################################################################
     internal sealed class ResistorBandsDrawing : Control
     {
@@ -40,7 +41,23 @@ namespace CRT
             }
         }
 
-        private bool WithTolerance => this.thisBands.Count > 0 && this.thisBands[^1].Kind == ResistorColorCode.BandKind.Tolerance;
+        // The body's color, as "#RRGGBB" - null for a resistor's, by its film (ResistorColorCode.IsMetalFilm). An axial ceramic
+        // capacitor's is light green, as the board's own picture of one shows (CapacitorColorCode, 2026-11-09).
+        public string? BodyColor
+        {
+            get => this.thisBodyColor;
+            set
+            {
+                this.thisBodyColor = value;
+                this.InvalidateVisual();
+            }
+        }
+
+        private string? thisBodyColor;
+
+        // The last band stands apart near the right end: a resistor's tolerance, or a capacitor's fifth band after its tolerance.
+        private bool WithTolerance => this.thisBands.Count > 0 &&
+                                      this.thisBands[^1].Kind is ResistorColorCode.BandKind.Tolerance or ResistorColorCode.BandKind.Extra;
 
         protected override Size MeasureOverride(Size availableSize)
         {
@@ -66,17 +83,30 @@ namespace CRT
             DrawLead(context, layout.LeftLead);
             DrawLead(context, layout.RightLead);
 
-            // Metal film light blue, carbon film beige (ResistorColorCode.IsMetalFilm).
-            context.DrawGeometry(new SolidColorBrush(Color.Parse(ResistorColorCode.IsMetalFilm(this.thisBands) ? "#93C3EA" : "#E2CFAA")), null, body);
+            // Metal film light blue, carbon film beige (ResistorColorCode.IsMetalFilm) - or the body color given.
+            string bodyColor = this.thisBodyColor ?? (ResistorColorCode.IsMetalFilm(this.thisBands) ? "#93C3EA" : "#E2CFAA");
+            context.DrawGeometry(new SolidColorBrush(Color.Parse(bodyColor)), null, body);
 
             using (context.PushGeometryClip(body))
             {
                 for (int i = 0; i < this.thisBands.Count; i++)
                 {
-                    context.DrawRectangle(BrushOf(this.thisBands[i].Color), null, layout.Bands[i]);
+                    // A band whose color is not known is no color: its place outlined, dashed, after the shading below.
+                    if (this.thisBands[i].Color != ResistorColorCode.Band.Unknown)
+                    {
+                        context.DrawRectangle(BrushOf(this.thisBands[i].Color), null, layout.Bands[i]);
+                    }
                 }
 
                 DrawRoundness(context, layout);
+
+                for (int i = 0; i < this.thisBands.Count; i++)
+                {
+                    if (this.thisBands[i].Color == ResistorColorCode.Band.Unknown)
+                    {
+                        context.DrawRectangle(null, UnknownPen(), layout.Bands[i].Deflate(0.75));
+                    }
+                }
             }
 
             context.DrawGeometry(null, new Pen(new SolidColorBrush(Color.FromArgb(0x8C, 0x5E, 0x50, 0x3A)), 1), body);
@@ -100,13 +130,14 @@ namespace CRT
                 Rect band = layout.Bands[i];
                 Color fill = ColorOf(this.thisBands[i].Color);
 
-                // The stem: the band's color, faint, from the body's foot to the pill.
+                // The stem: the band's color, faint, from the body's foot to the pill - grey for a band not known.
+                bool unknown = this.thisBands[i].Color == ResistorColorCode.Band.Unknown;
                 double stemTop = ResistorBandsGeometry.StemTop(layout, band);
                 var stem = new Rect(band.X + band.Width * 0.1, stemTop, band.Width * 0.8, Math.Max(0, layout.PillTop - stemTop));
-                context.DrawRectangle(new SolidColorBrush(fill, 0.22), null, stem);
+                context.DrawRectangle(new SolidColorBrush(unknown ? Color.Parse("#8A8A8A") : fill, 0.22), null, stem);
 
                 var pill = new Rect(lefts[i], layout.PillTop, widths[i], ResistorBandsGeometry.PillHeight);
-                context.DrawRectangle(new SolidColorBrush(fill), new Pen(new SolidColorBrush(Color.FromArgb(0x55, 0, 0, 0)), 1), pill, 3, 3);
+                context.DrawRectangle(new SolidColorBrush(fill), unknown ? UnknownPen() : new Pen(new SolidColorBrush(Color.FromArgb(0x55, 0, 0, 0)), 1), pill, 3, 3);
 
                 FormattedText text = texts[i];
                 context.DrawText(text, new Point(pill.X + (pill.Width - text.Width) / 2, pill.Y + (pill.Height - text.Height) / 2));
@@ -257,6 +288,9 @@ namespace CRT
 
             return geometry;
         }
+
+        // A band or pill whose color is not known: a dashed dark outline.
+        private static Pen UnknownPen() => new(new SolidColorBrush(Color.FromArgb(0xB3, 0x30, 0x30, 0x30)), 1.2, new DashStyle([2, 2], 0));
 
         private static Color ColorOf(ResistorColorCode.Band band) => Color.Parse(ResistorColorCode.ColorsOf(band).Fill);
 

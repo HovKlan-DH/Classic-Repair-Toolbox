@@ -20,7 +20,8 @@ namespace Handlers.DataHandling
     // category is a ferrite bead or a coil by its names. A capacitor with NO package is drawn only when its friendly name
     // says the shape ("Electrolytic Radial", "Ceramic Axial") - the 540 "Ceramic" ones with none may be a disc, a dipped
     // or an axial part, and a wrong picture is worse than none (as the KiCad import leaves "CAP_P5.08mm" without one).
-    // DIPs are PinoutDrawing's, a single resistor ResistorColorCode's: neither is drawn here.
+    // DIPs are PinoutDrawing's, a single resistor ResistorColorCode's and an axial ceramic capacitor whose value its color
+    // code says CapacitorColorCode's: none is drawn here.
     //
     // ELECTROLYTIC OR NOT, by the FRIENDLY NAME and the value, never the description (a description on the C128DCR says
     // "not 1uF electrolytic listed on parts list" of a ceramic one): "Electrolytic" (also "elyt", "elko", "elco") is
@@ -122,8 +123,15 @@ namespace Handlers.DataHandling
         private const RegexOptions Words = RegexOptions.CultureInvariant | RegexOptions.IgnoreCase;
 
         private static readonly Regex ElectrolyticWords = new(@"electrolyt|\belyt|\belko|\belco", Words);
-        private static readonly Regex NotPolarisedWords = new(@"ceramic|film|polyester|mylar|polystyrene|polypropylene|\bmica\b|styroflex|\bmkt\b|\bmkp\b", Words);
+        // The dielectrics that are not polarised: ceramic, and the others - one list, so the axial ceramic's rule
+        // (IsAxialCeramicCapacitor) and the not-polarised one never disagree (code review, 2026-11-09).
+        private const string Ceramic = "ceramic";
+        private const string OtherDielectrics = @"film|polyester|mylar|polystyrene|polypropylene|\bmica\b|styroflex|\bmkt\b|\bmkp\b";
+
+        private static readonly Regex NotPolarisedWords = new(Ceramic + "|" + OtherDielectrics, Words);
         private static readonly Regex NotDrawnCapacitorWords = new(@"trimmer|variable|adjustable|tantal|bipolar|non-?polar|\bNP\b|\bBP\b", Words);
+        private static readonly Regex CeramicWords = new(Ceramic, Words);
+        private static readonly Regex OtherDielectricWords = new(OtherDielectrics, Words);
         private static readonly Regex NotDrawnDiodeWords = new(@"bridge|array|\bLED\b|light.emitting|photo", Words);
         private static readonly Regex RectifierDiodes = new(@"\b1N400[1-7]\b|\b1N5[348]\d\d\b|\bBY\d|\bUF400\d|rectifier", Words);
         private static readonly Regex FerriteWords = new(@"ferrite|\bbead", Words);
@@ -217,6 +225,13 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         private static Picture? CapacitorOf(ComponentEntry entry, string package, string names, PinNames numbered)
         {
+            // An axial ceramic one its color code says is drawn with its bands instead, as a resistor is (CapacitorColorCode,
+            // shown by ResistorPicture).
+            if (CapacitorColorCode.BandsOf(entry) is not null)
+            {
+                return null;
+            }
+
             string shape = package.Length > 0 ? package : ShapeWordIn(entry.FriendlyName);
             decimal? picofarads = Picofarads(entry.TechnicalNameOrValue);
             string volts = Voltage(entry.TechnicalNameOrValue);
@@ -528,10 +543,14 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         internal static decimal? Picofarads(string? value)
         {
-            Match match = CapacitancePattern.Match(value ?? string.Empty);
+            string text = value ?? string.Empty;
+            Match match = CapacitancePattern.Match(text);
 
+            // "10,000pF" may be ten thousand or ten (code review, 2026-11-09 - read as 10 pF, its bands and printed code a
+            // thousand times out): no value, as a resistor's "1,000" (ResistorColorCode.CommaMayBeThousands).
             if (!match.Success || (match.Groups["whole"].Length == 0 && !match.Groups["fraction"].Success) ||
-                (match.Groups["after"].Success && match.Groups["fraction"].Success))
+                (match.Groups["after"].Success && match.Groups["fraction"].Success) ||
+                ResistorColorCode.CommaMayBeThousands(text, match.Groups["fraction"]))
             {
                 return null;
             }
@@ -657,6 +676,32 @@ namespace Handlers.DataHandling
             string word = (value ?? string.Empty).Trim().Split([' ', ',', ';', '/'], StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? string.Empty;
 
             return word.Length <= 10 ? word : string.Empty;
+        }
+
+        // ###########################################################################################
+        // Whether `entry` is an axial ceramic capacitor - its package "Axial", or with none its friendly name saying so as
+        // CapacitorOf reads it; "Ceramic" in its names and no other dielectric, no electrolytic, nothing CapacitorOf draws
+        // nothing of (a trimmer). The kind CapacitorColorCode reads bands for (owner decision, 2026-11-09: "Every axial
+        // ceramic").
+        // ###########################################################################################
+        internal static bool IsAxialCeramicCapacitor(ComponentEntry entry)
+        {
+            ArgumentNullException.ThrowIfNull(entry);
+
+            if (!Is((entry.Category ?? string.Empty).Trim(), "Capacitor"))
+            {
+                return false;
+            }
+
+            string package = (entry.Package ?? string.Empty).Trim().ToLowerInvariant();
+            string shape = package.Length > 0 ? package : ShapeWordIn(entry.FriendlyName);
+            string names = $"{entry.FriendlyName} {entry.TechnicalNameOrValue}";
+
+            return shape == Axial &&
+                   CeramicWords.IsMatch(names) &&
+                   !OtherDielectricWords.IsMatch(names) &&
+                   !ElectrolyticWords.IsMatch(names) &&
+                   !NotDrawnCapacitorWords.IsMatch(names);
         }
 
         // The shape a friendly name says, when it says exactly one - "Electrolytic Radial" - else "".

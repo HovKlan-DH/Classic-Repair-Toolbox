@@ -3,13 +3,14 @@
              xmlns:local="clr-namespace:CRT"
              x:Class="CRT.ResistorPicture">
 
-	<!-- A single resistor drawn with its color bands, the value they say and each band's color in words - in the pinout's
-	     place, the component popup's and the "Pinout" page's (ResistorPicture.axaml.cs). -->
+	<!-- A single resistor, or an axial ceramic capacitor, drawn with its color bands, the value they say and each band's
+	     color in words - in the pinout's place, the component popup's and the "Pinout" page's (ResistorPicture.axaml.cs). -->
 	<StackPanel Spacing="4">
 		<local:ResistorBandsDrawing x:Name="BandsDrawing"
 									HorizontalAlignment="Left"
 									Margin="0,4,0,0" />
-		<TextBlock Text="Resistor value:"
+		<TextBlock x:Name="ValueHeading"
+				   Text="Resistor value:"
 				   FontSize="12"
 				   Margin="0,6,0,0"
 				   Foreground="{DynamicResource Fg}" />
@@ -29,5 +30,13 @@
 				   Margin="0,6,0,0"
 				   Foreground="{DynamicResource Fg}" />
 		<StackPanel x:Name="ColorsPanel" Spacing="2" Margin="8,0,0,0" />
+		<!-- A capacitor's bands the data does not say (CapacitorColorCode.NoteOf). -->
+		<TextBlock x:Name="UnknownBandsNote"
+				   TextWrapping="Wrap"
+				   FontSize="11"
+				   Opacity="0.75"
+				   Margin="0,4,0,0"
+				   IsVisible="False"
+				   Foreground="{DynamicResource Fg}" />
 	</StackPanel>
 </UserControl>
