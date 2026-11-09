@@ -2959,7 +2959,10 @@ service to the 4.0 trees"). CRT reads a main file only at or below its own versi
   version within two minutes, else the build before goes back. **A build shipping a changed systemd unit,
   timer or the polkit rule (`50-crt-server-update.rules`, restart of the two services only) is HELD** until
   the installed copy matches or `system-files-installed` is put in its folder - a change to any of those
-  files is a step for the project owner, said in VERSION.md. The decisions are `ServerUpdater`'s against
+  files is a step for the project owner, said in VERSION.md. **The updater reads the installed copy as
+  `crt-deploy`, so a unit is installed `install -m 0644`, never `cp`** (2026-11-09: cp gave it the build's
+  0640, and 10.3.1 stayed held with its unit in place); the polkit folder is root's, so a changed rule
+  always needs the marker. The held status says the commands (`ServerUpdater.HeldForSystemFiles`). The decisions are `ServerUpdater`'s against
   `IServerUpdateHost` (tests: a fake host, virtual time); `ServerUpdateHost` is the thin Linux part.
 - **Step 1's foundation, `DraftSession`** (2026-10-25, CRT.Data - used by the Contribute tab's table and,
   through `DraftEdits`, by every other draft editor since the same day): a

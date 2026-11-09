@@ -354,6 +354,13 @@ namespace CRT.Server.Tests
             Assert.Contains("crt-server.service", this.Status.Message, StringComparison.Ordinal);
             Assert.True(File.Exists(Path.Combine(this.Releases, "10.3.0", "crt-server.service")));
 
+            // The command that installs it readable to everybody - copied with cp it came out root's alone on the
+            // owner's box, and the updater, reading it as its own user, held the build on (2026-11-09).
+            string build = Path.Combine(this.Releases, "10.3.0");
+            Assert.Contains($"sudo install -m 0644 {build}/crt-server.service /etc/systemd/system/ && sudo systemctl daemon-reload",
+                this.Status.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain(ServerUpdater.SystemFilesInstalledMarker, this.Status.Message, StringComparison.Ordinal);
+
             // Still waiting at the next minute, with no download again.
             int downloads = this.thisHost.Downloads;
             Assert.True(await this.Updater().RunAsync(CancellationToken.None));
@@ -378,10 +385,31 @@ namespace CRT.Server.Tests
             await this.Updater().RunAsync(CancellationToken.None);
             Assert.Equal(ServerUpdateOutcomes.Held, this.Status.Outcome);
 
+            // The rule's folder is root's, so the updater never sees it installed: the message says to put the marker.
+            string build = Path.Combine(this.Releases, "10.3.0");
+            Assert.Contains($"sudo install -m 0644 {build}/{ServerUpdater.PolkitRuleFile} /etc/polkit-1/rules.d/", this.Status.Message, StringComparison.Ordinal);
+            Assert.Contains($"sudo touch {build}/{ServerUpdater.SystemFilesInstalledMarker}", this.Status.Message, StringComparison.Ordinal);
+            Assert.DoesNotContain("/etc/systemd/system/", this.Status.Message, StringComparison.Ordinal);
+
             File.WriteAllText(Path.Combine(this.Releases, "10.3.0", ServerUpdater.SystemFilesInstalledMarker), string.Empty);
 
             Assert.True(await this.Updater().RunAsync(CancellationToken.None));
             Assert.Equal("10.3.0", this.thisHost.Current);
+        }
+
+        // Several units held at once: one command installing them all, said of "them".
+        [Fact]
+        public void Several_held_units_are_installed_by_one_command()
+        {
+            string message = ServerUpdater.HeldForSystemFiles("10.3.2", "main at [abc1234]", "10.3.1", "/srv/crt-server-test/releases/10.3.2",
+                ["crt-server-test.service", "crt-server-test-update.timer"]);
+
+            Assert.Equal(
+                "10.3.2 (main at [abc1234]) waits for you: it ships crt-server-test.service, crt-server-test-update.timer changed, which only " +
+                "root installs. Install them readable to everybody, as this updater reads them to see they are in: sudo install -m 0644 " +
+                "/srv/crt-server-test/releases/10.3.2/crt-server-test.service /srv/crt-server-test/releases/10.3.2/crt-server-test-update.timer " +
+                "/etc/systemd/system/ && sudo systemctl daemon-reload. The next minute installs it. 10.3.1 runs meanwhile.",
+                message);
         }
 
         // The build running published by hand on Windows ("\r\n"), the next by a workflow ("\n"): no change, no hold.

@@ -318,12 +318,7 @@ namespace CRT.Server.Handlers.Updates
             IReadOnlyList<string> waiting = this.SystemFilesWaiting(target, Path.Combine(this.ReleasesFolder, running));
 
             if (waiting.Count > 0)
-            {
-                return this.Finish(status, ServerUpdateOutcomes.Held,
-                    $"{version} ({source}) waits for you: it ships {string.Join(", ", waiting)} changed, which only root installs. " +
-                    $"Copy them from [{target}] to /etc (units to /etc/systemd/system, the polkit rule to /etc/polkit-1/rules.d), and the " +
-                    $"next minute installs it. {running} runs meanwhile.");
-            }
+                return this.Finish(status, ServerUpdateOutcomes.Held, ServerUpdater.HeldForSystemFiles(version, source, running, target, waiting));
 
             if (this.thisOptions.DryRun)
             {
@@ -426,6 +421,34 @@ namespace CRT.Server.Handlers.Updates
             }
 
             return waiting;
+        }
+
+        // ###########################################################################################
+        // What a build held for its systemd or polkit files says: the very commands that install them. A unit
+        // is installed READABLE TO EVERYBODY (owner's box, 2026-11-09: copied with `cp` it came out 0640
+        // root:root - the build's own mode - and this updater, which reads it as its own user to see it is in,
+        // held 10.3.1 on with the unit installed). The polkit rule's folder is root's alone, so a rule
+        // installed there is never seen from here: the marker says it is in.
+        // ###########################################################################################
+        internal static string HeldForSystemFiles(string version, string source, string running, string target, IReadOnlyList<string> waiting)
+        {
+            string[] units = waiting.Where(name => name != ServerUpdater.PolkitRuleFile).ToArray();
+            string message = $"{version} ({source}) waits for you: it ships {string.Join(", ", waiting)} changed, which only root installs.";
+
+            if (units.Length > 0)
+            {
+                message += $" Install {(units.Length == 1 ? "it" : "them")} readable to everybody, as this updater reads " +
+                    $"{(units.Length == 1 ? "it" : "them")} to see {(units.Length == 1 ? "it is" : "they are")} in: sudo install -m 0644 " +
+                    string.Join(" ", units.Select(name => $"{target}/{name}")) + " /etc/systemd/system/ && sudo systemctl daemon-reload.";
+            }
+
+            if (waiting.Contains(ServerUpdater.PolkitRuleFile))
+            {
+                message += $" The polkit rule: sudo install -m 0644 {target}/{ServerUpdater.PolkitRuleFile} /etc/polkit-1/rules.d/ - " +
+                    $"its folder is root's, so this updater cannot see it there: then sudo touch {target}/{ServerUpdater.SystemFilesInstalledMarker}.";
+            }
+
+            return message + $" The next minute installs it. {running} runs meanwhile.";
         }
 
         // ###########################################################################################

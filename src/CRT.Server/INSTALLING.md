@@ -311,7 +311,7 @@ names the four folders from step 3, and nothing else on the box is writable to t
 publishing to stable, remove `.../public_html/app-data` from that line first) - then:
 
 ```bash
-sudo cp /mydir/http/classic-repair-toolbox.dk/crt-server/app/crt-server.service /etc/systemd/system/
+sudo install -m 0644 /mydir/http/classic-repair-toolbox.dk/crt-server/app/crt-server.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now crt-server
 ```
@@ -659,7 +659,7 @@ Then on the box, each step in the same shell:
    sudo find $S/releases -type d -exec chmod 2750 {} +
    sudo find $S/releases -type f -exec chmod 0640 {} +
    sudo setfacl -m u:crt-deploy:x $S
-   sudo cp $S/app/crt-server-test.service /etc/systemd/system/
+   sudo install -m 0644 $S/app/crt-server-test.service /etc/systemd/system/
    sudo systemctl daemon-reload
    sudo systemctl start crt-server-test
    ```
@@ -684,8 +684,7 @@ Then on the box, each step in the same shell:
 5. **The polkit rule** that lets `crt-deploy` restart the two services and nothing else:
 
    ```bash
-   sudo cp $S/app/50-crt-server-update.rules /etc/polkit-1/rules.d/
-   sudo chmod 0644 /etc/polkit-1/rules.d/50-crt-server-update.rules
+   sudo install -m 0644 $S/app/50-crt-server-update.rules /etc/polkit-1/rules.d/
    sudo systemctl restart polkit
    cd /
    sudo -u crt-deploy systemctl --no-ask-password restart crt-server-test.service && echo "Restart allowed (correct)"
@@ -697,7 +696,7 @@ Then on the box, each step in the same shell:
 6. **The updater's unit and timer:**
 
    ```bash
-   sudo cp $S/app/crt-server-test-update.service $S/app/crt-server-test-update.timer /etc/systemd/system/
+   sudo install -m 0644 $S/app/crt-server-test-update.service $S/app/crt-server-test-update.timer /etc/systemd/system/
    sudo systemctl daemon-reload
    ```
 
@@ -768,11 +767,15 @@ services; its check in step 5 then names `crt-server.service`.
 ### When an update waits for you, or failed
 
 - **"... waits for you: it ships crt-server.service changed ..."** - a new build changed a unit, the
-  timer or the polkit rule, which only root installs. The build is unpacked in `releases/<version>/`.
-  Read VERSION.md for why, copy the named files from there to `/etc/systemd/system/` (the polkit rule
-  to `/etc/polkit-1/rules.d/`) and run `sudo systemctl daemon-reload`; the next look installs the
-  build. If you keep changes of your own in an installed file on purpose, merge them in, or tell the
-  updater you have looked: `sudo touch $S/releases/<version>/system-files-installed`.
+  timer or the polkit rule, which only root installs. The build is unpacked in `releases/<version>/`,
+  and the message gives the commands. Read VERSION.md for why, then install the named files from there
+  with `sudo install -m 0644 <file> /etc/systemd/system/` and run `sudo systemctl daemon-reload`; the
+  next look installs the build. **Never a plain `cp`**: it gives a new file the build's own mode, 0640,
+  root's alone - and the updater, which reads the installed unit as `crt-deploy` to see it is in, holds
+  the build on for ever (this box, 2026-11-09; `sudo chmod 0644` on the file mends it). The polkit rule
+  goes to `/etc/polkit-1/rules.d/` the same way, but that folder is root's, so the updater never sees it
+  there: put the marker after it, `sudo touch $S/releases/<version>/system-files-installed`. The marker
+  is also how to say you keep changes of your own in an installed file on purpose.
 - **"... did not come up (failed (exit 78)), so ... runs again"** - the new build would not start:
   usually a new setting it needs (VERSION.md says so, its journal names it). Add it to
   `settings/appsettings.Production.json`, then try that build again:
@@ -1152,7 +1155,7 @@ What it publishes is test data, seen by CRT's alphas and betas only.
    the five that say which instance it is (port 5198, its own folders, its own data trees):
 
    ```bash
-   sudo cp /mydir/http/classic-repair-toolbox.dk/crt-server-test/app/crt-server-test.service /etc/systemd/system/
+   sudo install -m 0644 /mydir/http/classic-repair-toolbox.dk/crt-server-test/app/crt-server-test.service /etc/systemd/system/
    sudo systemctl daemon-reload
    sudo systemctl enable --now crt-server-test
    ss -ltnp | grep 5198                          # 127.0.0.1:5198 - NOT 0.0.0.0
@@ -1208,11 +1211,13 @@ itself the minute after:
      -e 's#\.dk/app-data-v4-BETA/Data#.dk/app-data-v4-test-BETA/Data#g' \
      -e 's#\.dk/app-data-v4/Data#.dk/app-data-v4-test/Data#g' \
      $F
-   sudo grep -o 'app-data[^"]*' $F               # seven lines, every one app-data-v4-test...
+   # The seven settings alone (the file's "//..." lines are notes, and still name the Excel trees):
+   sudo grep -E '"(DataTreeRoot|ManifestPath|PublicDataBaseUrl|ProductionTreeRoot|ProductionDataTreeRoot|ProductionManifestPath|ProductionPublicDataBaseUrl)"' $F
+   # seven lines, every one app-data-v4-test...
    ```
 
 4. Install 10.3.1's unit and start the test instance - still the build before, now on its own trees:
-   `sudo cp .../crt-server-test/releases/10.3.1/crt-server-test.service /etc/systemd/system/ && sudo
+   `sudo install -m 0644 .../crt-server-test/releases/10.3.1/crt-server-test.service /etc/systemd/system/ && sudo
    systemctl daemon-reload && sudo systemctl start crt-server-test`.
 5. The next minute the updater installs 10.3.1 and restarts it: `update-status.json` says `"installed"`.
 
