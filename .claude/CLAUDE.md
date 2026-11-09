@@ -1034,7 +1034,7 @@ there, and `await` on a finished task looped for ever on the UI thread. A tool f
   pointer only where it draws, so it fills itself with Transparent; owner request, 2026-11-02: **the pin of the image shown stays
   lit on both**, `ShowViewedPin`, `PinoutDrawing.MarkPin` - `HoverPin` for the pointer in the list), replacement parts,
   a baseline's machine state (`ComponentPopupContent`); the Overview has a Package column and
-  its Notes are the first image's note (`OverviewHtmlBuilder.BuildRows`). **"Detach pinout image in component info window"** ("... popup" until 2026-11-09, right under "Open multiple component info windows" since)
+  its Notes are the first image's note (`OverviewHtmlBuilder.BuildRows`). **"Show pinout in its own window when the component info window would scroll"** (owner's choice of words, 2026-11-09 - "Detach pinout image in component info popup", then "... window", until then; right under "Open multiple component info windows" since)
   (owner request, 2026-11-07; `ComponentInfoWindow.Pinout.cs`) moves the popup's pinout section into a window of its own,
   870x960 the first time, its size and place one for all - **only when the popup has no room for it** (owner request,
   2026-11-09: "if no vertical scrolling will be implied with this info inside of component info popup, then you will not open

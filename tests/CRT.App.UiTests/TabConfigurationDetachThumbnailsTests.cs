@@ -35,7 +35,8 @@ public sealed class TabConfigurationDetachThumbnailsTests : IDisposable
     }
 
     // ###########################################################################################
-    // The popup's two settings together, then the thumbnails': "Detach pinout image in component info window" right under
+    // The popup's two settings together, then the thumbnails': "Show pinout in its own window when the component info window
+    // would scroll" ("Detach pinout image in component info window" until 2026-11-09) right under
     // "Open multiple component info windows" (owner request, 2026-11-09: "have "Detach pinout image in component info popup"
     // just below the "Open multiple component info windows" and then actually also rename it"), and the thumbnails' detach
     // after it.
@@ -60,11 +61,10 @@ public sealed class TabConfigurationDetachThumbnailsTests : IDisposable
 
             Assert.Equal(popupsIndex + 1, siblings.IndexOf(pinoutRow));
             Assert.Equal(popupsIndex + 2, siblings.IndexOf(detachRow));
-            Assert.Equal("Detach pinout image in component info window", pinoutRow.Content);
-
             // It detaches only a pinout the popup has no room for (2026-11-09), so a tick over a small one does nothing to
-            // see: the tooltip says why (code review, 2026-11-09).
-            Assert.Contains("no room for", Assert.IsType<string>(ToolTip.GetTip(pinoutRow)), StringComparison.Ordinal);
+            // see: the label says when (owner's choice, 2026-11-09), no tooltip beside it.
+            Assert.Equal("Show pinout in its own window when the component info window would scroll", pinoutRow.Content);
+            Assert.Null(ToolTip.GetTip(pinoutRow));
         });
     }
 

@@ -16,7 +16,8 @@ namespace CRT
     // do make sure to save size and location etc. (one global, and not per component/board)').
     //
     // The popup's own pinout section - the case drawn and every pin beside it, its clicks going to the pin's images as
-    // they do in the popup - is MOVED into the window while "Detach pinout image in component info popup" is ticked, the
+    // they do in the popup - is MOVED into the window while "Show pinout in its own window when the component info window
+    // would scroll" ("Detach pinout image in component info popup" until 2026-11-09) is ticked, the
     // component has pins and the popup has no room for them (below, PinoutFitsInPopup), and put back where it stood
     // otherwise: one section, never a copy kept in step. The window
     // goes with its popup, shows the popup's title, and takes no focus as it opens. Closed by the person, the pinout comes

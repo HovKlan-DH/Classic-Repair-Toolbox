@@ -68,8 +68,8 @@ namespace CRT
     //
     // File map:
     //   ComponentInfoWindow.axaml.cs   - everything but what follows
-    //   ComponentInfoWindow.Pinout.cs  - the pinout in a window of its own, "Detach pinout image in component info
-    //                                    popup" (owner request, 2026-11-07)
+    //   ComponentInfoWindow.Pinout.cs  - the pinout in a window of its own, "Show pinout in its own window when the
+    //                                    component info window would scroll" (owner requests, 2026-11-07 and 2026-11-09)
     //   ComponentInfoWindow.Regions.cs - the region buttons in the footer, one per region of the board, and the region
     //                                    label over the picture
     // ###########################################################################################

@@ -167,11 +167,11 @@
 			<!-- The pinout - drawing and pins - in a window of its own beside the popup, its size and place one for all
 			     (owner request, 2026-11-07; ComponentInfoWindow.Pinout.cs). Right under the popup's other setting, and
 			     "window" as that one says (owner request, 2026-11-09). Only a pinout the popup has no room for since
-			     2026-11-09 (owner request) - said in the tooltip, the label being the owner's (code review, 2026-11-09: ticked
-			     over a small pinout, nothing happened and nothing said why). -->
+			     2026-11-09, and the label says so (owner's choice, 2026-11-09: "Show pinout in its own window when the
+			     component info window would scroll" - "Detach pinout image in component info window" until then, with a
+			     tooltip saying it; code review: ticked over a small pinout, nothing happened and nothing said why). -->
 			<CheckBox x:Name="DetachPinoutCheckBox"
-					  Content="Detach pinout image in component info window"
-					  ToolTip.Tip="Only a pinout the component info window has no room for opens in a window of its own" />
+					  Content="Show pinout in its own window when the component info window would scroll" />
 
 			<CheckBox x:Name="DetachSchematicsThumbnailsCheckBox"
 					  Content="Detach thumbnails into their own window" />

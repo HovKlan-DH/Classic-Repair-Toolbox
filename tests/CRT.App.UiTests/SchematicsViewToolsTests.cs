@@ -737,10 +737,22 @@ public sealed class SchematicsViewToolsTests : IDisposable
                     () => UserSettings.SchematicsImportantSignalsPanelExpanded),
             };
 
-            // Each shows only with something in it; here it is simply shown.
-            panel.IsVisible = true;
+            // Each shows only with something in it; here it is simply shown - ALONE, so it stands at the left. Side by side,
+            // the last, "Important KiCad signals", ended 73 px short of the picture's right edge here and past it on Linux's
+            // wider fonts: its button clipped, the press on it went elsewhere (CI, 2026-11-08 and 2026-11-09).
+            foreach (Border each in new[] { tab.GlobalSettingsPanel, tab.LabelsPanel, tab.ImportantSignalsPanel })
+            {
+                each.IsVisible = ReferenceEquals(each, panel);
+            }
+
             main.UpdateLayout();
             Dispatcher.UIThread.RunJobs();
+
+            // The whole panel inside the picture, nothing of it clipped - else a press may land elsewhere.
+            var inPicture = new Rect(panel.TranslatePoint(new Point(0, 0), tab.SchematicsContainer)!.Value, panel.Bounds.Size);
+            Assert.True(
+                new Rect(tab.SchematicsContainer.Bounds.Size).Contains(inPicture),
+                $"The panel at {inPicture} is not wholly inside the picture, {tab.SchematicsContainer.Bounds.Size}.");
 
             void Press(Visual visual, Point at)
             {
