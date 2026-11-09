@@ -4,7 +4,7 @@ Wants=network-online.target
 After=network-online.target crt-server.service
 
 # ONE LOOK FOR A NEWER SERVER BUILD (owner request, 2026-11-09), started by crt-server-update.timer.
-# It installs the server build a CRT RELEASE carries once GitHub's attestation proves this repository's
+# It installs the server build a REAL CRT RELEASE carries once GitHub's attestation proves this repository's
 # release workflow built it, restarts crt-server.service and goes back to the build before when the new
 # one does not answer - see INSTALLING.md, "Automatic updates from GitHub". Its own user, never the
 # service's: the service cannot rewrite its program, and this user can do nothing but install builds and

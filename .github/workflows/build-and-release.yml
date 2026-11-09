@@ -328,18 +328,17 @@ jobs:
   ###############################################################
   # THE CONTRIBUTION SERVICE, BUILT AND ATTESTED
   ###############################################################
-  # The server rides on every CRT release (owner decisions, 2026-11-09: server builds come "With CRT
-  # releases", proven by "GitHub attestations"). Its updater on the box (CRT.Server's update-server,
-  # INSTALLING.md "Automatic updates from GitHub") installs the build a RELEASE carries on the live
-  # service, and the newest of releases and PRE-RELEASES on the test instance - so each CRT talks to a
-  # server built from the same commit as itself.
+  # The server rides on every CRT release (owner decisions, 2026-11-09: "the REAL version should work on a
+  # release ... But ALPHA/BETA works on commit"; proven by "GitHub attestations"). Its updater on the box
+  # (CRT.Server's update-server, INSTALLING.md "Automatic updates from GitHub") installs on the LIVE service the
+  # build a REAL release carries - found through GitHub's newest release, which a pre-release never is - so the
+  # live service runs the server built with the newest released CRT. The test instance takes every commit to
+  # main instead (build-and-unittest.yml); a pre-release's build here is only a record of what came with it.
   #
-  # The box installs nothing GitHub's attestation does not tie to THIS workflow, in this repository, run
-  # from main, on a GITHUB-HOSTED runner - so this job must stay on ubuntu-latest (the self-hosted Windows
-  # runner is refused there) and in this file. The build says what it is in crt-server-release.json, inside
-  # the attested bytes: the box reads the version and pre-release from there, never from the release's
-  # name or flag. The attestation's bundle is attached beside the build, so the box checks it with no
-  # GitHub login.
+  # The box installs nothing GitHub's attestation does not tie to THIS workflow, in this repository, run from
+  # main, on a GITHUB-HOSTED runner - so this job must stay on ubuntu-latest (the self-hosted Windows runner is
+  # refused there) and in this file. The build itself is made by the shared step .github/actions/crt-server-build,
+  # the push workflow's too.
   build-server:
     needs: [test, determine-version]
     name: Build the contribution service (linux-x64, attested)
@@ -357,43 +356,12 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Publish the server
-        run: dotnet publish src/CRT.Server/CRT.Server.csproj -c Release -r linux-x64 --self-contained false -o publish-server
-
-      - name: Describe the build
-        env:
-          CRT_VERSION: ${{ needs.determine-version.outputs.version }}
-          IS_PRERELEASE: ${{ needs.determine-version.outputs.is_prerelease }}
-        run: |
-          SERVER_VERSION=$(dotnet msbuild src/CRT.Server/CRT.Server.csproj -getProperty:InformationalVersion -nologo)
-          jq -n \
-            --arg server "$SERVER_VERSION" \
-            --arg crt "$CRT_VERSION" \
-            --arg commit "$GITHUB_SHA" \
-            --argjson pre "$IS_PRERELEASE" \
-            '{serverVersion: $server, crtVersion: $crt, commit: $commit, preRelease: $pre}' \
-            > publish-server/crt-server-release.json
-          cat publish-server/crt-server-release.json
-
-          # What the box needs, and what must never travel: the settings are the box's own.
-          test -f publish-server/CRT.Server.dll
-          test -d publish-server/Migrations
-          test -f publish-server/crt-server.service
-          test -f publish-server/crt-server-update.service
-          test -f publish-server/50-crt-server-update.rules
-          test ! -e publish-server/appsettings.Production.json
-
-      - name: Pack the server
-        run: tar -czf crt-server-linux-x64.tar.gz -C publish-server .
-
-      - name: Attest where it was built
-        id: attest
-        uses: actions/attest-build-provenance@v4.2.2
+      - name: Build, attest and point at the server
+        uses: ./.github/actions/crt-server-build
         with:
-          subject-path: crt-server-linux-x64.tar.gz
-
-      - name: Keep the attestation beside the build
-        run: cp "${{ steps.attest.outputs.bundle-path }}" crt-server-linux-x64.tar.gz.sigstore.json
+          crt-version: ${{ needs.determine-version.outputs.version }}
+          pre-release: ${{ needs.determine-version.outputs.is_prerelease }}
+          tag: ${{ needs.determine-version.outputs.version }}
 
       - name: Upload the server build
         uses: actions/upload-artifact@v7
@@ -402,6 +370,7 @@ jobs:
           path: |
             crt-server-linux-x64.tar.gz
             crt-server-linux-x64.tar.gz.sigstore.json
+            crt-server-linux-x64.json
 
   ###############################################################
   # MACOS BUILD (arm64 + x64 with self-contained .NET10)
@@ -749,8 +718,11 @@ jobs:
             release-assets/assets.*.json
             release-assets/crt-server-linux-x64.tar.gz
             release-assets/crt-server-linux-x64.tar.gz.sigstore.json
+            release-assets/crt-server-linux-x64.json
 
       # Leaves at most one pre-release standing, and none at all once a full release ships.
+      # "crt-server-main" - the standing pre-release carrying the newest server build of main for the test
+      # server (build-and-unittest.yml) - is no CRT release, and is always left alone.
       # Deliberately ungated so one step covers both kinds of run - the "keep the current tag"
       # check is what lets a single rule do both jobs:
       #
@@ -795,6 +767,8 @@ jobs:
             | while read tag; do
                 if [ "$tag" = "$CURRENT_TAG" ]; then
                   echo "Keeping current pre-release: $tag"
+                elif [ "$tag" = "crt-server-main" ]; then
+                  echo "Keeping [$tag] - the test server's builds of main, no CRT release."
                 elif ! echo "$tag" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+-'; then
                   echo "SKIPPING [$tag] - flagged as a pre-release, but not shaped like one. Refusing to delete it."
                 else

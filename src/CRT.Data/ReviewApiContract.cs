@@ -1069,8 +1069,8 @@ namespace Handlers.DataHandling
     // possible to automatically update the server from GitHub? ... If this is possible it could show
     // the status in 'Maintainer' => 'Account' => 'Server version'. This should of course be as secure
     // as possible"). *** CRT.Server's update-server, run by a systemd timer as a user of its own,
-    // installs the server build a CRT release carries - the live service from releases, the test
-    // instance from pre-releases too - once GitHub's attestation proves this repository's release
+    // installs a new server build - on the live service the one a real CRT release carries, on the test
+    // instance the one of every commit to main - once GitHub's attestation proves this repository's
     // workflow built it, and goes back to the build before when the new one does not answer. It writes
     // what it did to a file beside the program, which the service reads for this answer
     // (CRT.Server's ServerUpdateStatus); Account > "Server version" words it (ServerVersionDisplay).
@@ -1078,7 +1078,7 @@ namespace Handlers.DataHandling
     // says something about the box.
     //
     //   SetUp                 false: no updater has written anything for this instance - "not set up".
-    //   Channel               "releases" or "pre-releases" - which builds it installs.
+    //   Channel               "releases" or "main" - which builds it installs.
     //   CheckedUtc            when it last looked.
     //   Outcome               what that look came to: "up-to-date", "installed", "would-install" (a dry
     //                         run), "held", "failed", "refused" (not proven genuine, or a pre-release
@@ -1111,8 +1111,11 @@ namespace Handlers.DataHandling
         public const string Refused = "refused";
         public const string Error = "error";
 
+        // The live service installs the server of every real CRT release; the test instance the server of every
+        // commit to main whose tests passed (owner decision, 2026-11-09: "the REAL version should work on a release
+        // ... But ALPHA/BETA works on commit").
         public const string ReleasesChannel = "releases";
-        public const string PreReleasesChannel = "pre-releases";
+        public const string MainChannel = "main";
 
         // Whether `outcome` is one somebody should look at.
         public static bool NeedsALook(string? outcome) =>

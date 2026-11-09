@@ -126,13 +126,14 @@ public sealed class ServerVersionDisplayTests
         Assert.Equal(["10.3.0", "2026-November-9 at 14:05", "10.2.1"], lines[5].Where(run => run.IsCount).Select(run => run.Text));
     }
 
+    // The test instance takes every commit to main (owner decision, 2026-11-09: "ALPHA/BETA works on commit").
     [Fact]
-    public void The_test_instance_says_it_installs_pre_releases_too() =>
+    public void The_test_instance_says_it_installs_every_commit_to_main() =>
         Assert.Contains(
-            "Automatic updates [pre-releases and releases]",
+            "Automatic updates [every commit to main]",
             ServerVersionDisplayTests.Texts(ServerVersionDisplay.Lines(
                 "10.3.0", 2, 2,
-                updates: new Handlers.DataHandling.ServerUpdatesAnswer(SetUp: true, Channel: "pre-releases"))));
+                updates: new Handlers.DataHandling.ServerUpdatesAnswer(SetUp: true, Channel: "main"))));
 
     // The timer looks every minute (owner request, 2026-11-09): a look over ten minutes old means it may have stopped.
     [Fact]

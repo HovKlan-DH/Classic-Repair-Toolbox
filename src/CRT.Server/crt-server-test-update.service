@@ -1,11 +1,12 @@
 [Unit]
-Description=Classic Repair Toolbox contribution service - TEST instance - installs new server builds from GitHub releases and pre-releases (CRT.Server update-server)
+Description=Classic Repair Toolbox contribution service - TEST instance - installs the server build of every commit to main (CRT.Server update-server)
 Wants=network-online.target
 After=network-online.target crt-server-test.service
 
 # ONE LOOK FOR A NEWER SERVER BUILD (owner request, 2026-11-09), started by crt-server-test-update.timer.
-# It installs the server build a CRT RELEASE OR PRE-RELEASE carries once GitHub's attestation proves this
-# repository's release workflow built it, restarts crt-server-test.service and goes back to the build
+# It installs the server build of EVERY COMMIT TO MAIN whose tests passed (owner decision, 2026-11-09:
+# "ALPHA/BETA works on commit") once GitHub's attestation proves this repository's push workflow,
+# build-and-unittest.yml, built it, restarts crt-server-test.service and goes back to the build
 # before when the new one does not answer - see INSTALLING.md, "Automatic updates from GitHub". Its own
 # user, never the service's: the service cannot rewrite its program, and this user can do nothing but
 # install builds and (through 50-crt-server-update.rules) restart the two services. Every line not about
@@ -17,7 +18,7 @@ Type=oneshot
 # What it unpacks is in crt-data all the same - the releases folder is setgid to it (INSTALLING.md).
 User=crt-deploy
 UMask=0027
-ExecStart=/usr/bin/dotnet /mydir/http/classic-repair-toolbox.dk/crt-server-test/app/CRT.Server.dll update-server --channel=pre-releases --folder=/mydir/http/classic-repair-toolbox.dk/crt-server-test --service=crt-server-test.service --health=http://127.0.0.1:5198/api/health
+ExecStart=/usr/bin/dotnet /mydir/http/classic-repair-toolbox.dk/crt-server-test/app/CRT.Server.dll update-server --channel=main --folder=/mydir/http/classic-repair-toolbox.dk/crt-server-test --service=crt-server-test.service --health=http://127.0.0.1:5198/api/health
 TimeoutStartSec=20min
 Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
 Environment=DOTNET_CLI_TELEMETRY_OPTOUT=1

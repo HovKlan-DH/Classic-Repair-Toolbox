@@ -2084,7 +2084,7 @@ public sealed class ReviewWireContractTests
         var installedUtc = new DateTimeOffset(2026, 11, 9, 14, 5, 0, TimeSpan.Zero);
         var sent = new ServerUpdatesAnswer(
             SetUp: true,
-            Channel: ServerUpdateOutcomes.PreReleasesChannel,
+            Channel: ServerUpdateOutcomes.MainChannel,
             CheckedUtc: checkedUtc,
             Outcome: ServerUpdateOutcomes.Held,
             Message: "10.4.0 waits for you.",

@@ -1,0 +1,89 @@
+name: Build the contribution service
+description: >
+  Publishes CRT.Server for linux-x64 (framework-dependent), says what it is in crt-server-release.json, packs it,
+  attests it and writes its pointer - the three files the server's updater reads (CRT.Server's ServerUpdater;
+  INSTALLING.md, "Automatic updates from GitHub").
+
+# ###########################################################################################
+# ONE WAY TO BUILD THE SERVER, FOR BOTH WORKFLOWS THAT DO (2026-11-09). The release workflow builds it for a
+# real CRT release (the live service installs those), the push workflow for every commit to main (the test
+# instance installs those - owner decision: "the REAL version should work on a release ... But ALPHA/BETA works
+# on commit"). Both call this, so the two builds can never differ in anything but what they are told.
+#
+# The attestation is made HERE, inside the calling workflow's job, so it names the CALLING workflow - which is
+# what the box checks (ServerReleaseFeed.SignerWorkflowFor): a build of main must come from the push workflow,
+# a release's from the release workflow. The job needs `id-token: write` and `attestations: write`, and must run
+# on a GitHub-hosted runner - the box refuses a build attested on a self-hosted one.
+#
+# Leaves in the workspace: crt-server-linux-x64.tar.gz, its .sigstore.json bundle, and crt-server-linux-x64.json,
+# the pointer (tag, server version, commit, the build's SHA-256) the box reads every minute.
+# ###########################################################################################
+
+inputs:
+  crt-version:
+    description: CRT's InformationalVersion this build comes with.
+    required: true
+  pre-release:
+    description: '"true" for a build the live service must never install (every build of main), "false" for a real release.'
+    required: true
+  tag:
+    description: The GitHub release the build goes on - the CRT release's tag, or crt-server-main.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Publish the server
+      shell: bash
+      run: dotnet publish src/CRT.Server/CRT.Server.csproj -c Release -r linux-x64 --self-contained false -o publish-server
+
+    - name: Describe the build
+      shell: bash
+      env:
+        CRT_VERSION: ${{ inputs.crt-version }}
+        IS_PRERELEASE: ${{ inputs.pre-release }}
+      run: |
+        SERVER_VERSION=$(dotnet msbuild src/CRT.Server/CRT.Server.csproj -getProperty:InformationalVersion -nologo)
+        jq -n \
+          --arg server "$SERVER_VERSION" \
+          --arg crt "$CRT_VERSION" \
+          --arg commit "$GITHUB_SHA" \
+          --argjson pre "$IS_PRERELEASE" \
+          '{serverVersion: $server, crtVersion: $crt, commit: $commit, preRelease: $pre}' \
+          > publish-server/crt-server-release.json
+        cat publish-server/crt-server-release.json
+
+        # What the box needs, and what must never travel: the settings are the box's own.
+        test -f publish-server/CRT.Server.dll
+        test -d publish-server/Migrations
+        test -f publish-server/crt-server.service
+        test -f publish-server/crt-server-update.service
+        test -f publish-server/50-crt-server-update.rules
+        test ! -e publish-server/appsettings.Production.json
+
+    - name: Pack the server
+      shell: bash
+      run: tar -czf crt-server-linux-x64.tar.gz -C publish-server .
+
+    - name: Attest where it was built
+      id: attest
+      uses: actions/attest-build-provenance@v4.2.2
+      with:
+        subject-path: crt-server-linux-x64.tar.gz
+
+    - name: Keep the attestation beside the build, and write its pointer
+      shell: bash
+      env:
+        TAG: ${{ inputs.tag }}
+      run: |
+        cp "${{ steps.attest.outputs.bundle-path }}" crt-server-linux-x64.tar.gz.sigstore.json
+        SERVER_VERSION=$(jq -r .serverVersion publish-server/crt-server-release.json)
+        SHA=$(sha256sum crt-server-linux-x64.tar.gz | cut -d' ' -f1)
+        jq -n \
+          --arg tag "$TAG" \
+          --arg server "$SERVER_VERSION" \
+          --arg commit "$GITHUB_SHA" \
+          --arg sha "$SHA" \
+          '{tag: $tag, serverVersion: $server, commit: $commit, sha256: $sha}' \
+          > crt-server-linux-x64.json
+        cat crt-server-linux-x64.json

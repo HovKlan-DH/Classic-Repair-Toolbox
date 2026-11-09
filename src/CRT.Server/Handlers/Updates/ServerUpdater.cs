@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Handlers.DataHandling;
 
 namespace CRT.Server.Handlers.Updates
@@ -8,9 +9,10 @@ namespace CRT.Server.Handlers.Updates
     // then its server automatically update to this, and when there is a new alpha/beta server available,
     // then that server will update to that? The goal would be for me to not manually update this, copying
     // files and restarting service and checking if it is alive ... This should of course be as secure as
-    // possible"). ***
+    // possible"; and the same day: "the REAL version should work on a release ... But ALPHA/BETA works on
+    // commit", "can it then update every minute?"). ***
     //
-    // One look, run by a systemd timer as a user of its own (ServerUpdateCommand, INSTALLING.md
+    // One look a minute, run by a systemd timer as a user of its own (ServerUpdateCommand, INSTALLING.md
     // "Automatic updates from GitHub"). An instance's folder holds its builds side by side:
     //
     //   crt-server/
@@ -22,14 +24,19 @@ namespace CRT.Server.Handlers.Updates
     //       .updater/                      downloads on their way in, the gh tool's caches, the lock
     //     settings/appsettings.Production.json   linked into every build; never in a download
     //
-    // A look: the newest release of the channel (ServerReleaseFeed) -> its build downloaded -> GitHub's
-    // attestation checked by `gh attestation verify`, pinned to this repository, its release workflow, main
-    // and a GitHub-hosted runner - nothing unproven is even unpacked -> unpacked into a folder of its own
-    // (ServerArchive) -> its own crt-server-release.json says its version and whether it is a pre-release
-    // -> never older than the build running, never a pre-release on the live service, never a build that
-    // failed before -> held while it ships a systemd or polkit file that differs from the one installed
-    // (those need root, and the project owner) -> "current" pointed at it, the service restarted, and
-    // /api/health asked until it answers with the new version -> otherwise back to the build before.
+    // A look: the channel's pointer (ServerReleaseFeed - a few lines on GitHub naming the newest build: a real
+    // release's for the live service, main's for the test instance) -> nothing more when it names the build
+    // already looked at, or no newer version -> the build downloaded -> GitHub's attestation checked by `gh
+    // attestation verify`, pinned to this repository, the channel's workflow, main and a GitHub-hosted runner
+    // - nothing unproven is even unpacked -> unpacked into a folder of its own (ServerArchive) -> its own
+    // crt-server-release.json says its version and whether it is a pre-release's -> never older than the
+    // build running, never a pre-release's on the live service, never a build that failed before -> held
+    // while it ships a systemd or polkit file that differs from the one installed (those need root, and the
+    // project owner) -> "current" pointed at it, the service restarted, and /api/health asked until it
+    // answers with the new version -> otherwise back to the build before.
+    //
+    // The journal hears of a look only when it has something new to say - a minute saying again what the
+    // last said writes nothing there (the status file notes every look's time all the same).
     //
     // The decisions are all here, against IServerUpdateHost, so the tests drive every path with a fake
     // host; ServerUpdateHost is the thin real one (HTTP, gh, systemctl, links).
@@ -55,22 +62,6 @@ namespace CRT.Server.Handlers.Updates
         // Builds kept besides the one running: the one it replaced, and one more.
         public const int OlderBuildsKept = 2;
 
-        // ###########################################################################################
-        // *** A LOOK EVERY MINUTE, GITHUB'S API SELDOM (owner request, 2026-11-09: "Instead of updating only every 15
-        // minutes, can it then update every minute?"). *** The timer runs a look every minute, but GitHub lets a
-        // box with no login ask its API 60 times an hour - two instances every minute would ask 120. So a
-        // minute's look reads the releases feed (ServerReleaseFeed.FeedUrl, not counted) and asks the API only:
-        //   - when the feed changed - a release published, edited or deleted;
-        //   - every minute for LookCloselyAfterAChange after it changed - a release is published before its files
-        //     are uploaded, and its server build must not be missed for that;
-        //   - at least every FullLookEvery anyway - a feed GitHub could not serve, or something it does not show;
-        //   - and for a dry run or a retry asked by hand.
-        // That is some 4 API calls an hour per instance, and a few more around a release. A build held for the
-        // project owner is tried again every minute with no GitHub at all.
-        // ###########################################################################################
-        public static readonly TimeSpan FullLookEvery = TimeSpan.FromMinutes(15);
-        public static readonly TimeSpan LookCloselyAfterAChange = TimeSpan.FromMinutes(10);
-
         public sealed record Options(
             string Channel,
             string InstanceFolder,
@@ -81,6 +72,9 @@ namespace CRT.Server.Handlers.Updates
         private readonly Options thisOptions;
         private readonly IServerUpdateHost thisHost;
         private readonly TextWriter thisLog;
+
+        // What the last look said - a look saying it again says nothing in the journal.
+        private (string Outcome, string Message) thisSaidBefore;
 
         public ServerUpdater(Options options, IServerUpdateHost host, TextWriter log)
         {
@@ -98,15 +92,16 @@ namespace CRT.Server.Handlers.Updates
         private string WorkFolder => Path.Combine(this.ReleasesFolder, ServerUpdater.WorkFolderName);
 
         // ###########################################################################################
-        // One look. True when nothing went wrong (up to date, installed, held, a dry run); false when it
-        // failed, was refused or could not look - systemd then marks the run failed, and the status says why.
+        // One look. True when nothing new went wrong (up to date, installed, held, a dry run, or a failure said
+        // before); false when a build failed or was refused at this look, or GitHub could not be asked -
+        // systemd then marks the run failed, and the status says why.
         // ###########################################################################################
         public async Task<bool> RunAsync(CancellationToken cancellationToken)
         {
             ServerUpdateStatus status = ServerUpdateStatus.Read(this.StatusPath) ?? new ServerUpdateStatus();
-            DateTimeOffset now = this.thisHost.UtcNow;
+            this.thisSaidBefore = (status.Outcome, status.Message);
             status.Channel = this.thisOptions.Channel;
-            status.CheckedUtc = now;
+            status.CheckedUtc = this.thisHost.UtcNow;
 
             string? running = this.thisHost.PointedAt(this.ReleasesFolder);
 
@@ -127,97 +122,60 @@ namespace CRT.Server.Handlers.Updates
                 return true;
             }
 
-            if (!await this.IsFullLookDueAsync(status, now, cancellationToken))
-                return await this.QuietLookAsync(status, running, cancellationToken);
-
-            status.FullLookUtc = now;
-
-            string releasesJson;
+            string? pointerJson;
 
             try
             {
-                releasesJson = await this.thisHost.ReadReleasesAsync(cancellationToken);
+                pointerJson = await this.thisHost.ReadPointerAsync(ServerReleaseFeed.PointerUrlFor(this.thisOptions.Channel), cancellationToken);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                return this.Finish(status, ServerUpdateOutcomes.Error, $"GitHub's list of releases could not be read - {ex.Message}");
+                return this.Finish(status, ServerUpdateOutcomes.Error, $"GitHub could not be asked for the newest server build - {ex.Message}");
             }
 
-            if (ServerReleaseFeed.Newest(releasesJson, this.thisOptions.Channel, out string why, out bool readable) is not { } candidate)
+            if (pointerJson == null)
             {
                 status.NewestVersion = null;
                 status.NewestRelease = null;
 
-                return readable
-                    ? this.Finish(status, ServerUpdateOutcomes.UpToDate, $"{why} {running} runs.")
-                    : this.Finish(status, ServerUpdateOutcomes.Error, why);
+                return this.Finish(status, ServerUpdateOutcomes.UpToDate, this.thisOptions.Channel == ServerUpdateOutcomes.MainChannel
+                    ? $"No build of main is published yet. {running} runs."
+                    : $"The newest CRT release carries no server build yet. {running} runs.");
             }
 
-            status.NewestRelease = candidate.Tag;
+            if (ServerBuildPointer.Read(pointerJson, this.thisOptions.Channel, out string why) is not { } pointer)
+                return this.Finish(status, ServerUpdateOutcomes.Error, why);
 
-            // The build looked at last time: nothing is downloaded again for it.
-            if (status.ExaminedAssetId == candidate.ArchiveAssetId &&
-                await this.AgainAsync(status, candidate, running, cancellationToken) is bool done)
+            status.NewestRelease = pointer.Tag;
+
+            // The build looked at last time: nothing is downloaded again for it. A dry run always looks afresh.
+            if (!this.thisOptions.DryRun &&
+                string.Equals(pointer.Sha256, status.ExaminedSha256, StringComparison.Ordinal) &&
+                await this.AgainAsync(status, pointer, running, cancellationToken) is bool done)
             {
                 return done;
             }
 
-            return await this.ExamineAsync(status, candidate, running, cancellationToken);
-        }
-
-        // ###########################################################################################
-        // Whether this look asks GitHub's API (above, FullLookEvery). Reads the feed, noting when it changed.
-        // ###########################################################################################
-        private async Task<bool> IsFullLookDueAsync(ServerUpdateStatus status, DateTimeOffset now, CancellationToken cancellationToken)
-        {
-            string? fingerprint;
-
-            try
+            // ###########################################################################################
+            // A build that says it is no newer is not even downloaded - a new commit that left the server's version
+            // as it was, mostly. The pointer is not proven, but all it can do here is spare a download.
+            // ###########################################################################################
+            if (!this.thisOptions.DryRun && !this.thisOptions.RetryFailed && ServerUpdater.Compare(pointer.ServerVersion, running) <= 0)
             {
-                fingerprint = await this.thisHost.ReadFeedFingerprintAsync(cancellationToken);
-            }
-            catch (Exception ex) when (ex is not OperationCanceledException)
-            {
-                fingerprint = null;
+                status.ExaminedSha256 = pointer.Sha256;
+                status.ExaminedVersion = pointer.ServerVersion;
+                status.NewestVersion = pointer.ServerVersion;
+                return this.Finish(status, ServerUpdateOutcomes.UpToDate, ServerUpdater.UpToDateSentence(pointer.ServerVersion, running, pointer.Source));
             }
 
-            if (fingerprint != null && !string.Equals(fingerprint, status.FeedFingerprint, StringComparison.Ordinal))
-            {
-                status.FeedFingerprint = fingerprint;
-                status.FeedChangedUtc = now;
-            }
-
-            return this.thisOptions.DryRun ||
-                   this.thisOptions.RetryFailed ||
-                   status.FullLookUtc is not DateTimeOffset last ||
-                   now - last >= ServerUpdater.FullLookEvery ||
-                   (fingerprint != null && status.FeedChangedUtc is DateTimeOffset changed && now - changed < ServerUpdater.LookCloselyAfterAChange);
-        }
-
-        // ###########################################################################################
-        // A minute with nothing new on GitHub: what the last look found stands, said quietly - nothing in the
-        // journal every minute. A build held for the project owner is tried again (its files may be installed now).
-        // ###########################################################################################
-        private async Task<bool> QuietLookAsync(ServerUpdateStatus status, string running, CancellationToken cancellationToken)
-        {
-            if (status.Outcome == ServerUpdateOutcomes.Held &&
-                status.ExaminedVersion is string waiting &&
-                ServerReleaseInfo.IsFolderSafeVersion(waiting) &&
-                Directory.Exists(Path.Combine(this.ReleasesFolder, waiting)) &&
-                ServerUpdater.Compare(waiting, running) > 0)
-            {
-                return await this.InstallAsync(status, status.NewestRelease ?? "?", waiting, running, cancellationToken, quietIfStillHeld: true);
-            }
-
-            this.Finish(status, status.Outcome, status.Message, quiet: true);
-            return true;
+            return await this.ExamineAsync(status, pointer, running, cancellationToken);
         }
 
         // ###########################################################################################
         // The same build as the last look: what that look came to stands - unless it was held and may go
         // in now, or a retry was asked for. Null: look at it afresh (download it again).
         // ###########################################################################################
-        private async Task<bool?> AgainAsync(ServerUpdateStatus status, ServerReleaseFeed.Candidate candidate, string running, CancellationToken cancellationToken)
+        private async Task<bool?> AgainAsync(ServerUpdateStatus status, ServerBuildPointer pointer, string running, CancellationToken cancellationToken)
         {
             string? seen = ServerReleaseInfo.IsFolderSafeVersion(status.ExaminedVersion) ? status.ExaminedVersion : null;
 
@@ -225,24 +183,25 @@ namespace CRT.Server.Handlers.Updates
             {
                 case ServerUpdateOutcomes.Failed:
                 case ServerUpdateOutcomes.Refused:
-                    // Said again as it was said - still the newest build, still not installed - and quietly: it went
-                    // wrong once, and systemd was told then. A refusal may have been gh not reaching Sigstore, so a
-                    // retry looks at that build again too.
+                    // Said again as it was said - still the newest build, still not installed - and no new failure:
+                    // systemd was told once. A refusal may have been gh not reaching Sigstore, so a retry looks at
+                    // that build again too.
                     if (this.thisOptions.RetryFailed)
                         return null;
 
-                    this.Finish(status, status.Outcome, status.Message, quiet: true);
+                    this.Finish(status, status.Outcome, status.Message);
                     return true;
 
                 case ServerUpdateOutcomes.Held when seen != null && Directory.Exists(Path.Combine(this.ReleasesFolder, seen)):
+                    // Its files may be installed by now - tried every minute, from disk.
                     status.NewestVersion = seen;
-                    return await this.InstallAsync(status, candidate.Tag, seen, running, cancellationToken);
+                    return await this.InstallAsync(status, pointer.Source, seen, running, cancellationToken);
             }
 
             if (seen != null && ServerUpdater.Compare(seen, running) <= 0)
             {
                 status.NewestVersion = seen;
-                return this.Finish(status, ServerUpdateOutcomes.UpToDate, ServerUpdater.UpToDateSentence(seen, running, candidate.Tag));
+                return this.Finish(status, ServerUpdateOutcomes.UpToDate, ServerUpdater.UpToDateSentence(seen, running, pointer.Source));
             }
 
             return null;
@@ -251,7 +210,7 @@ namespace CRT.Server.Handlers.Updates
         // ###########################################################################################
         // A build not looked at before: downloaded, proven, unpacked, read - and installed when it is newer.
         // ###########################################################################################
-        private async Task<bool> ExamineAsync(ServerUpdateStatus status, ServerReleaseFeed.Candidate candidate, string running, CancellationToken cancellationToken)
+        private async Task<bool> ExamineAsync(ServerUpdateStatus status, ServerBuildPointer pointer, string running, CancellationToken cancellationToken)
         {
             string incoming = Path.Combine(this.WorkFolder, "incoming");
             ServerUpdater.DeleteFolder(incoming);
@@ -260,29 +219,38 @@ namespace CRT.Server.Handlers.Updates
             string archive = Path.Combine(incoming, ServerReleaseFeed.ArchiveName);
             string bundle = Path.Combine(incoming, ServerReleaseFeed.BundleName);
             string unpacked = Path.Combine(incoming, "build");
+            string source = pointer.Source;
 
             try
             {
-                this.thisLog.WriteLine($"Downloading the server build of CRT release [{candidate.Tag}]...");
+                this.thisLog.WriteLine($"Downloading the server build of {source}...");
 
                 try
                 {
-                    await this.thisHost.DownloadAsync(candidate.ArchiveUrl, archive, ServerReleaseFeed.ArchiveMaxBytes, cancellationToken);
-                    await this.thisHost.DownloadAsync(candidate.BundleUrl, bundle, ServerReleaseFeed.BundleMaxBytes, cancellationToken);
+                    await this.thisHost.DownloadAsync(ServerReleaseFeed.DownloadUrl(pointer.Tag, ServerReleaseFeed.ArchiveName), archive, ServerReleaseFeed.ArchiveMaxBytes, cancellationToken);
+                    await this.thisHost.DownloadAsync(ServerReleaseFeed.DownloadUrl(pointer.Tag, ServerReleaseFeed.BundleName), bundle, ServerReleaseFeed.BundleMaxBytes, cancellationToken);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    return this.Finish(status, ServerUpdateOutcomes.Error, $"The server build of CRT release [{candidate.Tag}] could not be downloaded - {ex.Message}");
+                    return this.Finish(status, ServerUpdateOutcomes.Error, $"The server build of {source} could not be downloaded - {ex.Message}. The next minute tries again.");
+                }
+
+                // The files of main's release are replaced at every push: one replaced between the pointer and the
+                // download is no build yet - the next minute finds them together.
+                if (!string.Equals(ServerUpdater.Sha256Of(archive), pointer.Sha256, StringComparison.Ordinal))
+                {
+                    return this.Finish(status, ServerUpdateOutcomes.Error,
+                        $"The server build of {source} changed while it was downloaded - a newer one was being put up. The next minute tries again.");
                 }
 
                 // *** NOTHING UNPROVEN IS UNPACKED. ***
-                AttestationCheck proof = await this.thisHost.VerifyAsync(archive, bundle, cancellationToken);
+                AttestationCheck proof = await this.thisHost.VerifyAsync(archive, bundle, this.thisOptions.Channel, cancellationToken);
 
                 if (!proof.Genuine)
                 {
-                    return this.Refuse(status, candidate, null,
-                        $"The server build of CRT release [{candidate.Tag}] was NOT installed: GitHub's attestation does not prove " +
-                        $"this repository's release workflow built it - {proof.Reason}");
+                    return this.Refuse(status, pointer, null,
+                        $"The server build of {source} was NOT installed: GitHub's attestation does not prove this repository's " +
+                        $"workflow built it - {proof.Reason}");
                 }
 
                 try
@@ -291,33 +259,33 @@ namespace CRT.Server.Handlers.Updates
                 }
                 catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException)
                 {
-                    return this.Refuse(status, candidate, null, $"The server build of CRT release [{candidate.Tag}] could not be unpacked - {ex.Message}");
+                    return this.Refuse(status, pointer, null, $"The server build of {source} could not be unpacked - {ex.Message}");
                 }
 
                 string infoPath = Path.Combine(unpacked, ServerReleaseInfo.FileName);
                 ServerReleaseInfo? info = ServerReleaseInfo.Read(File.Exists(infoPath) ? File.ReadAllText(infoPath) : null, out string why);
 
                 if (info == null)
-                    return this.Refuse(status, candidate, null, $"The server build of CRT release [{candidate.Tag}] was not installed - {why}");
+                    return this.Refuse(status, pointer, null, $"The server build of {source} was not installed - {why}");
 
                 if (!string.IsNullOrEmpty(proof.Commit) && !string.Equals(proof.Commit, info.Commit, StringComparison.OrdinalIgnoreCase))
                 {
-                    return this.Refuse(status, candidate, null,
-                        $"The server build of CRT release [{candidate.Tag}] was not installed: it says it was built from [{info.Commit}], its attestation [{proof.Commit}].");
+                    return this.Refuse(status, pointer, null,
+                        $"The server build of {source} was not installed: it says it was built from [{info.Commit}], its attestation [{proof.Commit}].");
                 }
 
                 if (info.PreRelease && this.thisOptions.Channel == ServerUpdateOutcomes.ReleasesChannel)
                 {
-                    return this.Refuse(status, candidate, info.ServerVersion,
-                        $"The server build of CRT [{info.CrtVersion}] is a pre-release's, and this service installs releases only.");
+                    return this.Refuse(status, pointer, info.ServerVersion,
+                        $"The server build of CRT [{info.CrtVersion}] is a pre-release's, and this service installs real releases only.");
                 }
 
                 status.NewestVersion = info.ServerVersion;
-                status.ExaminedAssetId = candidate.ArchiveAssetId;
+                status.ExaminedSha256 = pointer.Sha256;
                 status.ExaminedVersion = info.ServerVersion;
 
                 if (ServerUpdater.Compare(info.ServerVersion, running) <= 0)
-                    return this.Finish(status, ServerUpdateOutcomes.UpToDate, ServerUpdater.UpToDateSentence(info.ServerVersion, running, candidate.Tag));
+                    return this.Finish(status, ServerUpdateOutcomes.UpToDate, ServerUpdater.UpToDateSentence(info.ServerVersion, running, source));
 
                 if (string.Equals(status.FailedVersion, info.ServerVersion, StringComparison.OrdinalIgnoreCase) && !this.thisOptions.RetryFailed)
                 {
@@ -332,7 +300,7 @@ namespace CRT.Server.Handlers.Updates
                 Directory.Move(unpacked, target);
                 this.thisHost.LinkSettings(target, this.SettingsPath);
 
-                return await this.InstallAsync(status, candidate.Tag, info.ServerVersion, running, cancellationToken);
+                return await this.InstallAsync(status, source, info.ServerVersion, running, cancellationToken);
             }
             finally
             {
@@ -344,7 +312,7 @@ namespace CRT.Server.Handlers.Updates
         // The build in releases/`version`, unpacked and proven, goes live: unless its systemd or polkit
         // files wait for the project owner, or this is a dry run.
         // ###########################################################################################
-        private async Task<bool> InstallAsync(ServerUpdateStatus status, string tag, string version, string running, CancellationToken cancellationToken, bool quietIfStillHeld = false)
+        private async Task<bool> InstallAsync(ServerUpdateStatus status, string source, string version, string running, CancellationToken cancellationToken)
         {
             string target = Path.Combine(this.ReleasesFolder, version);
             IReadOnlyList<string> waiting = this.SystemFilesWaiting(target, Path.Combine(this.ReleasesFolder, running));
@@ -352,17 +320,16 @@ namespace CRT.Server.Handlers.Updates
             if (waiting.Count > 0)
             {
                 return this.Finish(status, ServerUpdateOutcomes.Held,
-                    $"{version} (CRT release [{tag}]) waits for you: it ships {string.Join(", ", waiting)} changed, which only root installs. " +
+                    $"{version} ({source}) waits for you: it ships {string.Join(", ", waiting)} changed, which only root installs. " +
                     $"Copy them from [{target}] to /etc (units to /etc/systemd/system, the polkit rule to /etc/polkit-1/rules.d), and the " +
-                    $"next look installs it. {running} runs meanwhile.",
-                    quiet: quietIfStillHeld);
+                    $"next minute installs it. {running} runs meanwhile.");
             }
 
             if (this.thisOptions.DryRun)
             {
                 // Looked at afresh next time: a dry run installs nothing.
-                status.ExaminedAssetId = null;
-                return this.Finish(status, ServerUpdateOutcomes.WouldInstall, $"{version} (CRT release [{tag}]) would be installed - a dry run, so {running} runs on.");
+                status.ExaminedSha256 = null;
+                return this.Finish(status, ServerUpdateOutcomes.WouldInstall, $"{version} ({source}) would be installed - a dry run, so {running} runs on.");
             }
 
             this.thisLog.WriteLine($"Installing {version} in place of {running}...");
@@ -375,8 +342,7 @@ namespace CRT.Server.Handlers.Updates
 
                 return this.Finish(status, ServerUpdateOutcomes.Held,
                     $"{version} is ready, but [{this.thisOptions.Service}] could not be restarted - {refused}. Is the polkit rule " +
-                    $"{ServerUpdater.PolkitRuleFile} installed? {running} runs meanwhile; the next look tries again.",
-                    quiet: quietIfStillHeld);
+                    $"{ServerUpdater.PolkitRuleFile} installed? {running} runs meanwhile; the next minute tries again.");
             }
 
             if (await this.WaitForVersionAsync(version, cancellationToken) is null)
@@ -387,7 +353,7 @@ namespace CRT.Server.Handlers.Updates
                 status.FailedVersion = null;
                 this.KeepFewBuilds(version, running);
 
-                return this.Finish(status, ServerUpdateOutcomes.Installed, $"Installed {version} (CRT release [{tag}]) in place of {running}.");
+                return this.Finish(status, ServerUpdateOutcomes.Installed, $"Installed {version} ({source}) in place of {running}.");
             }
 
             // *** IT DID NOT COME UP: BACK TO THE BUILD BEFORE. ***
@@ -402,9 +368,9 @@ namespace CRT.Server.Handlers.Updates
                 : await this.WaitForVersionAsync(running, cancellationToken);
 
             return this.Finish(status, ServerUpdateOutcomes.Failed, back == null
-                ? $"{version} (CRT release [{tag}]) did not come up ({state}), so {running} runs again. " +
+                ? $"{version} ({source}) did not come up ({state}), so {running} runs again. " +
                   "Its journal says why (journalctl -u " + this.thisOptions.Service + "). It is not tried again by itself."
-                : $"{version} (CRT release [{tag}]) did not come up ({state}), and {running} did not come back either: " +
+                : $"{version} ({source}) did not come up ({state}), and {running} did not come back either: " +
                   $"{back}. THE SERVICE IS DOWN - see its journal (journalctl -u {this.thisOptions.Service}). A build past a database " +
                   "migration cannot go back: the build before refuses the newer database.");
         }
@@ -501,23 +467,23 @@ namespace CRT.Server.Handlers.Updates
         }
 
         // Refused for good: the same build is not downloaded again, only said again (AgainAsync).
-        private bool Refuse(ServerUpdateStatus status, ServerReleaseFeed.Candidate candidate, string? version, string message)
+        private bool Refuse(ServerUpdateStatus status, ServerBuildPointer pointer, string? version, string message)
         {
-            status.ExaminedAssetId = candidate.ArchiveAssetId;
+            status.ExaminedSha256 = pointer.Sha256;
             status.ExaminedVersion = version;
             return this.Finish(status, ServerUpdateOutcomes.Refused, message);
         }
 
         // ###########################################################################################
-        // Writes what this look came to. `quiet`: a minute's look saying again what an earlier one said - not
-        // written to the journal, which would otherwise gain a line a minute per instance.
+        // Writes what this look came to - to the journal only when it says something the last look did not, as
+        // a look every minute would otherwise write a line a minute per instance.
         // ###########################################################################################
-        private bool Finish(ServerUpdateStatus status, string outcome, string message, bool quiet = false)
+        private bool Finish(ServerUpdateStatus status, string outcome, string message)
         {
             status.Outcome = outcome;
             status.Message = message;
 
-            if (!quiet)
+            if ((outcome, message) != this.thisSaidBefore)
                 this.thisLog.WriteLine(message);
 
             try
@@ -533,10 +499,10 @@ namespace CRT.Server.Handlers.Updates
             return !ServerUpdateOutcomes.NeedsALook(outcome) || outcome == ServerUpdateOutcomes.Held;
         }
 
-        private static string UpToDateSentence(string newest, string running, string tag) =>
+        private static string UpToDateSentence(string newest, string running, string source) =>
             string.Equals(newest, running, StringComparison.OrdinalIgnoreCase)
-                ? $"Up to date: {running} is the newest server build (CRT release [{tag}])."
-                : $"Up to date: {running} runs, and the newest server build, {newest} (CRT release [{tag}]), is older - never installed backwards.";
+                ? $"Up to date: {running} is the newest server build ({source})."
+                : $"Up to date: {running} runs, and the newest server build, {newest} ({source}), is not newer - never installed backwards.";
 
         // SemVer order, a version that does not parse lowest.
         public static int Compare(string? a, string? b)
@@ -551,6 +517,13 @@ namespace CRT.Server.Handlers.Updates
                 (false, true) => -1,
                 _ => 0,
             };
+        }
+
+        // The SHA-256 of a file, lower-case hex - as the workflows write it into the pointer with sha256sum.
+        private static string Sha256Of(string path)
+        {
+            using FileStream file = File.OpenRead(path);
+            return Convert.ToHexString(SHA256.HashData(file)).ToLowerInvariant();
         }
 
         private static FileStream? TryLock(string path)
@@ -569,8 +542,8 @@ namespace CRT.Server.Handlers.Updates
 
         // ###########################################################################################
         // Two systemd or polkit files the same, line ends aside: a build published by hand on Windows ships
-        // them with "\r\n", every build of the release workflow with "\n" - the same file all the same, and
-        // a build held for that alone would wait for nothing.
+        // them with "\r\n", every build of a workflow with "\n" - the same file all the same, and a build held
+        // for that alone would wait for nothing.
         // ###########################################################################################
         private static bool SameBytes(byte[]? a, byte[]? b) =>
             a != null && b != null && ServerUpdater.WithoutCarriageReturns(a).SequenceEqual(ServerUpdater.WithoutCarriageReturns(b));
@@ -595,14 +568,14 @@ namespace CRT.Server.Handlers.Updates
     {
         DateTimeOffset UtcNow { get; }
 
-        Task<string> ReadReleasesAsync(CancellationToken cancellationToken);
-
-        // The releases feed's fingerprint (ServerReleaseFeed.FingerprintOf), or null when it could not be read.
-        Task<string?> ReadFeedFingerprintAsync(CancellationToken cancellationToken);
+        // The channel's pointer (ServerReleaseFeed.PointerUrlFor), or null when GitHub has none (404). Throws
+        // when GitHub cannot be asked.
+        Task<string?> ReadPointerAsync(string url, CancellationToken cancellationToken);
 
         Task DownloadAsync(string url, string toPath, long maxBytes, CancellationToken cancellationToken);
 
-        Task<AttestationCheck> VerifyAsync(string archivePath, string bundlePath, CancellationToken cancellationToken);
+        // gh attestation verify, held to `channel`'s workflow (ServerUpdateHost.VerifyArguments).
+        Task<AttestationCheck> VerifyAsync(string archivePath, string bundlePath, string channel, CancellationToken cancellationToken);
 
         // The build "releases/current" points at (its folder's name), or null when it is no link.
         string? PointedAt(string releasesFolder);

@@ -542,31 +542,35 @@ To stop the service entirely: `sudo systemctl disable --now crt-server`, then co
 
 ## Automatic updates from GitHub
 
-**Once this is set up, nobody deploys a build by hand.** Every minute the box looks on GitHub for
-the server build the newest CRT release carries, and installs it (server 10.3.0 and up). A minute's
-look is cheap: it reads the releases' feed, and asks GitHub's API - 60 calls an hour without a login
-- only when the feed changed, and at least every 15 minutes.
+**Once this is set up, nobody deploys a build by hand.** Every minute the box looks on GitHub for a newer
+server build, and installs it (server 10.3.0 and up):
 
-| Instance | Installs | Unit and timer |
-| --- | --- | --- |
-| Live service | the server of the newest CRT **release** | `crt-server-update.service`, `.timer` |
-| Test instance | the server of the newest CRT release **or pre-release** | `crt-server-test-update.service`, `.timer` |
+| Instance | Installs | Built by | Unit and timer |
+| --- | --- | --- | --- |
+| Live service | the server of the newest **real CRT release** | the release workflow, `build-and-release.yml` | `crt-server-update.service`, `.timer` |
+| Test instance | the server of **every commit pushed to main** whose tests passed | the push workflow, `build-and-unittest.yml` | `crt-server-test-update.service`, `.timer` |
 
-So the live service always runs the server built with the newest released CRT, and the test
-instance the one built with the newest alpha or beta - exactly the CRTs that talk to each.
+So no release is needed for the test instance: a push to main is on it a few minutes later (the tests take
+that long). The live service only ever gets what a real release carries. Main's builds stand on one
+pre-release on GitHub, `crt-server-main`, its files replaced at every push - it is no CRT release, and CRT's
+own update check never offers it.
+
+A minute's look is cheap: it reads one small file on GitHub naming the newest build (not GitHub's API,
+which allows only 60 calls an hour without a login), and downloads only a build it has not seen that
+says it is newer. A commit that leaves the server's version as it was is not even downloaded.
 
 **How it stays safe:**
 
-- **Nothing unproven is installed, or even unpacked.** The release workflow attests every server
-  build on GitHub; the box checks it with `gh attestation verify`, held to this repository, its
-  release workflow (`build-and-release.yml`), the `main` branch and a GitHub-hosted runner. A build
-  made anywhere else, or changed after it was built, is refused. The box needs no GitHub login and
-  holds no key: the attestation travels with the release.
+- **Nothing unproven is installed, or even unpacked.** Each workflow attests the server build it makes;
+  the box checks it with `gh attestation verify`, held to this repository, that instance's workflow, the
+  `main` branch and a GitHub-hosted runner. A build made anywhere else, by the other workflow, or changed
+  after it was built, is refused. The box needs no GitHub login and holds no key: the attestation travels
+  with the build.
 - **Its own user, `crt-deploy`**, which can write the builds and nothing else. It is not in
   `crt-data`, so it cannot read the settings with the database password; the service, in turn,
   still cannot write its own program. The one thing it may do beyond that is **restart** the two
   services - a polkit rule allows exactly that.
-- **Never backwards, never a pre-release on the live service** - the build's own description,
+- **Never backwards, never a pre-release's build on the live service** - the build's own description,
   inside the attested bytes, says which it is - and **never a build that failed before**.
 - **A build that does not come up is rolled back**: after the restart the updater asks
   `/api/health` for two minutes; without the new version answering, the build before goes back and
@@ -581,13 +585,13 @@ What it did shows in CRT's Maintainer tab, Account > **Server version**, under t
 
 **The test instance first, now; the live service on CRT 4.0's release day.** The live service runs the
 server CRT 3.x talks to until then, and a 4.0 server must not reach it before the release - so its
-updater is set up as part of "Switching the service to the 4.0 trees", with the names in the table at
-the end of this list.
+updater is set up as part of "Switching the service to the 4.0 trees", with the names at the end of this
+list.
 
-**Before starting, on your PC:** commit and push, bump CRT's `InformationalVersion` to the next alpha or
-beta, and run the release workflow. That pre-release carries the first server build with the updater
-in it, `crt-server-linux-x64.tar.gz`, and its attestation. The box is set up from THAT build - so the
-very first install already goes through the check every later one does.
+**Before starting:** push a commit to main with server 10.3.0 or newer in it, and wait for its "Build and
+Unit Test" run on GitHub to finish green. Its last job, "Build the server for the test server", puts the
+build on the pre-release `crt-server-main`. The box is set up from THAT build - so the very first install
+already goes through the check every later one does.
 
 Then on the box, each step in the same shell:
 
@@ -610,16 +614,16 @@ Then on the box, each step in the same shell:
    id crt-deploy                                  # groups=...(crt-deploy) - and NOT crt-data
    ```
 
-3. **The first build, downloaded and proven** - `T` is the tag of the pre-release you just made:
+3. **The first build, downloaded and proven:**
 
    ```bash
-   T=4.0.0-alpha.5
    mkdir -p ~/crt-server-first && cd ~/crt-server-first
-   curl -fsSLO https://github.com/HovKlan-DH/Classic-Repair-Toolbox/releases/download/$T/crt-server-linux-x64.tar.gz
-   curl -fsSLO https://github.com/HovKlan-DH/Classic-Repair-Toolbox/releases/download/$T/crt-server-linux-x64.tar.gz.sigstore.json
+   rm -f crt-server-linux-x64.*
+   curl -fsSLO https://github.com/HovKlan-DH/Classic-Repair-Toolbox/releases/download/crt-server-main/crt-server-linux-x64.tar.gz
+   curl -fsSLO https://github.com/HovKlan-DH/Classic-Repair-Toolbox/releases/download/crt-server-main/crt-server-linux-x64.tar.gz.sigstore.json
    gh attestation verify crt-server-linux-x64.tar.gz --bundle crt-server-linux-x64.tar.gz.sigstore.json \
      --repo HovKlan-DH/Classic-Repair-Toolbox \
-     --signer-workflow HovKlan-DH/Classic-Repair-Toolbox/.github/workflows/build-and-release.yml \
+     --signer-workflow HovKlan-DH/Classic-Repair-Toolbox/.github/workflows/build-and-unittest.yml \
      --source-ref refs/heads/main --deny-self-hosted-runners
    ```
 
@@ -696,11 +700,11 @@ Then on the box, each step in the same shell:
 
    ```bash
    cd /
-   sudo -u crt-deploy /usr/bin/dotnet $S/app/CRT.Server.dll update-server --channel=pre-releases \
+   sudo -u crt-deploy /usr/bin/dotnet $S/app/CRT.Server.dll update-server --channel=main \
      --folder=$S --service=crt-server-test.service --health=http://127.0.0.1:5198/api/health --dry-run
    ```
 
-   **Check:** it ends with "Up to date: <V> is the newest server build (CRT release [<T>])." A line
+   **Check:** it ends with "Up to date: <V> is the newest server build (main at [...])." A line
    with "NOT installed: GitHub's attestation does not prove ..." means the check failed - the words
    after it say why (gh not reaching Sigstore's servers reads the same); nothing was installed.
 
@@ -728,7 +732,9 @@ sudo chown root:crt-data $S/app/appsettings.Production.json && sudo chmod 0640 $
 sudo systemctl start crt-server-test
 ```
 
-**For the live service on release day**, the same steps from step 3, with the tag of CRT 4.0.0 and:
+**For the live service on release day**, the same steps from step 3, from the build CRT 4.0.0's release
+carries - in step 3 its downloads are `.../releases/download/4.0.0/...` and its check names
+`build-and-release.yml` in place of `build-and-unittest.yml` - and with
 `S=/mydir/http/classic-repair-toolbox.dk/crt-server`, port `5199`, `crt-server.service`,
 `--channel=releases`, and its own unit and timer, `crt-server-update.service` and
 `crt-server-update.timer`. Steps 1, 2 and the polkit rule are done already - the rule names both
@@ -1157,7 +1163,7 @@ What it publishes is test data, replaced on release day.
 ### Running it
 
 - **New builds:** with "Automatic updates from GitHub" set up for it, it installs the server of every
-  CRT release and pre-release by itself. By hand: as "Deploying a new build" in part two, with
+  commit pushed to main by itself, minutes after the push. By hand: as "Deploying a new build" in part two, with
   `ROOT=/mydir/http/classic-repair-toolbox.dk/crt-server-test`, `crt-server-test` and port 5198.
 - **Its log:** the commands in "Is it working, and reading the log" with `-u crt-server-test`.
 - **Starting over:** "Resetting the contribution data" works here as on the live service (with

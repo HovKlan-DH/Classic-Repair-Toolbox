@@ -15,9 +15,9 @@ namespace CRT.Server.Handlers.Updates
     // "releases/<version>", so the file is in that folder's parent (Locate). A service whose program
     // folder is not a release - one installed by hand - finds none: "not set up".
     //
-    // Besides what CRT shows, it keeps what the next look needs: the asset already looked at (so the same
-    // build is not downloaded again at every look), a build that failed (never tried again by itself - it
-    // would take the service down at every look), and the releases feed as last read (the minute's look).
+    // Besides what CRT shows, it keeps what the next look needs: the build already looked at (so the same
+    // build is not downloaded again every minute) and a build that failed (never tried again by itself - it
+    // would take the service down at every look).
     // ###########################################################################################
     internal sealed class ServerUpdateStatus
     {
@@ -47,18 +47,11 @@ namespace CRT.Server.Handlers.Updates
         // A build that did not come up: never installed again by itself (ServerUpdater, --retry-failed).
         [JsonPropertyName("failedVersion")] public string? FailedVersion { get; set; }
 
-        // The release file looked at last, and what came of it - the next look skips the download for it.
-        [JsonPropertyName("examinedAssetId")] public long? ExaminedAssetId { get; set; }
+        // The build looked at last - by its checksum, as its pointer names it - and its version: the next look
+        // skips the download for it.
+        [JsonPropertyName("examinedSha256")] public string? ExaminedSha256 { get; set; }
 
         [JsonPropertyName("examinedVersion")] public string? ExaminedVersion { get; set; }
-
-        // The minute's look (ServerUpdater): the releases feed as last read, when it last changed, and when GitHub's
-        // API was last asked.
-        [JsonPropertyName("feedFingerprint")] public string? FeedFingerprint { get; set; }
-
-        [JsonPropertyName("feedChangedUtc")] public DateTimeOffset? FeedChangedUtc { get; set; }
-
-        [JsonPropertyName("fullLookUtc")] public DateTimeOffset? FullLookUtc { get; set; }
 
         [JsonExtensionData] public Dictionary<string, JsonElement>? Unknown { get; set; }
 

@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text.Json;
 using CRT.Server.Handlers.Updates;
 using Handlers.DataHandling;
@@ -5,15 +6,17 @@ using Handlers.DataHandling;
 namespace CRT.Server.Tests
 {
     // ###########################################################################################
-    // THE SERVER UPDATES ITSELF FROM GITHUB (owner request, 2026-11-09: "The goal would be for me to not
+    // THE SERVER UPDATES ITSELF FROM GITHUB (owner requests, 2026-11-09: "The goal would be for me to not
     // manually update this, copying files and restarting service and checking if it is alive ... This
-    // should of course be as secure as possible"; ServerUpdater).
+    // should of course be as secure as possible"; "the REAL version should work on a release ... But
+    // ALPHA/BETA works on commit"; "can it then update every minute?"; ServerUpdater).
     //
     // Every path of one look, through the real updater on a real instance folder, with a fake host for
     // GitHub, gh, systemd and the links: a newer build proven genuine goes in and the service answers as it;
-    // nothing unproven is unpacked; nothing older, nothing pre-release on the live service, nothing that
+    // nothing unproven is unpacked; nothing older, nothing a pre-release's on the live service, nothing that
     // failed before goes in by itself; a build that does not come up is rolled back; a build whose systemd
-    // or polkit files changed waits for the project owner; the same build is not downloaded again.
+    // or polkit files changed waits for the project owner; the same build, or one of the same version, is not
+    // downloaded again; a minute with nothing new writes nothing to the journal.
     // ###########################################################################################
     public sealed class ServerUpdaterTests : IDisposable
     {
@@ -47,53 +50,39 @@ namespace CRT.Server.Tests
         private void AddBuild(string version, Dictionary<string, string>? files = null) =>
             ServerBuilds.Unpack(Path.Combine(this.Releases, version), files ?? ServerBuilds.Files(version));
 
-        private ServerUpdater Updater(string channel = ServerUpdateOutcomes.ReleasesChannel, bool dryRun = false, bool retryFailed = false) =>
-            new(new ServerUpdater.Options(channel, this.thisInstance, "crt-server.service", dryRun, retryFailed), this.thisHost, TextWriter.Null);
+        private ServerUpdater Updater(string channel = ServerUpdateOutcomes.ReleasesChannel, bool dryRun = false, bool retryFailed = false, TextWriter? log = null) =>
+            new(new ServerUpdater.Options(channel, this.thisInstance, "crt-server.service", dryRun, retryFailed), this.thisHost, log ?? TextWriter.Null);
 
         private ServerUpdateStatus Status => ServerUpdateStatus.Read(Path.Combine(this.Releases, ServerUpdateStatus.FileName))!;
 
-        // A release on GitHub carrying `build` (the archive's bytes) - asset id `assetId`.
-        private void Publish(string tag, byte[] build, bool preRelease = false, long assetId = 1001)
+        // ###########################################################################################
+        // A build put on GitHub as the workflows put it: the archive and its bundle on the release, and the
+        // pointer naming it - a real release's (the newest release's pointer) or main's (the standing
+        // pre-release's). `pointerVersion` lets a pointer say another version than the build does.
+        // ###########################################################################################
+        private void Publish(string tag, byte[] build, string serverVersion, string channel = ServerUpdateOutcomes.ReleasesChannel, string? pointerSha = null)
         {
-            this.thisHost.Tags.Insert(0, tag);
-            this.thisHost.Releases.Insert(0, ServerUpdaterTests.ReleaseJson(tag, preRelease, assetId, build.Length));
-            this.thisHost.Files[ServerReleaseFeed.DownloadPrefix + tag + "/" + ServerReleaseFeed.ArchiveName] = build;
-            this.thisHost.Files[ServerReleaseFeed.DownloadPrefix + tag + "/" + ServerReleaseFeed.BundleName] = "{\"bundle\":true}"u8.ToArray();
-        }
-
-        // A release published with its files not uploaded yet - as the release workflow's last step makes it, for a moment.
-        private void PublishWithoutFiles(string tag)
-        {
-            this.thisHost.Tags.Insert(0, tag);
-            this.thisHost.Releases.Insert(0, new { tag_name = tag, prerelease = false, draft = false, published_at = DateTimeOffset.UtcNow.ToString("O"), assets = Array.Empty<object>() });
-        }
-
-        // Its files uploaded: the same release, the feed unchanged.
-        private void AttachFiles(string tag, byte[] build, long assetId = 3001)
-        {
-            this.thisHost.Releases.RemoveAt(this.thisHost.Tags.IndexOf(tag));
-            this.thisHost.Releases.Insert(this.thisHost.Tags.IndexOf(tag), ServerUpdaterTests.ReleaseJson(tag, false, assetId, build.Length));
-            this.thisHost.Files[ServerReleaseFeed.DownloadPrefix + tag + "/" + ServerReleaseFeed.ArchiveName] = build;
-            this.thisHost.Files[ServerReleaseFeed.DownloadPrefix + tag + "/" + ServerReleaseFeed.BundleName] = "{\"bundle\":true}"u8.ToArray();
-        }
-
-        public static object ReleaseJson(string tag, bool preRelease, long assetId, long size, bool draft = false, string? archiveUrl = null) => new
-        {
-            tag_name = tag,
-            prerelease = preRelease,
-            draft,
-            published_at = DateTimeOffset.UtcNow.ToString("O"),
-            assets = new object[]
+            this.thisHost.Files[ServerReleaseFeed.DownloadUrl(tag, ServerReleaseFeed.ArchiveName)] = build;
+            this.thisHost.Files[ServerReleaseFeed.DownloadUrl(tag, ServerReleaseFeed.BundleName)] = "{\"bundle\":true}"u8.ToArray();
+            this.thisHost.Pointers[ServerReleaseFeed.PointerUrlFor(channel)] = JsonSerializer.Serialize(new
             {
-                new { id = assetId, name = ServerReleaseFeed.ArchiveName, size, browser_download_url = archiveUrl ?? ServerReleaseFeed.DownloadPrefix + tag + "/" + ServerReleaseFeed.ArchiveName },
-                new { id = assetId + 1, name = ServerReleaseFeed.BundleName, size = 20, browser_download_url = ServerReleaseFeed.DownloadPrefix + tag + "/" + ServerReleaseFeed.BundleName },
-            },
-        };
+                tag,
+                serverVersion,
+                commit = ServerBuilds.Commit,
+                sha256 = pointerSha ?? Convert.ToHexString(SHA256.HashData(build)).ToLowerInvariant(),
+            });
+        }
+
+        private void PublishRelease(string tag, string serverVersion, bool preRelease = false) =>
+            this.Publish(tag, ServerBuilds.Build(serverVersion, preRelease), serverVersion);
+
+        private void PublishMain(string serverVersion, string commit = ServerBuilds.Commit) =>
+            this.Publish(ServerReleaseFeed.MainTag, ServerBuilds.Build(serverVersion, preRelease: true, commit: commit), serverVersion, ServerUpdateOutcomes.MainChannel);
 
         [Fact]
         public async Task A_newer_build_proven_genuine_is_installed_and_the_service_answers_as_it()
         {
-            this.Publish("4.1.0", ServerBuilds.Build("10.3.0"));
+            this.PublishRelease("4.1.0", "10.3.0");
 
             Assert.True(await this.Updater().RunAsync(CancellationToken.None));
 
@@ -101,6 +90,7 @@ namespace CRT.Server.Tests
             Assert.Equal(["crt-server.service"], this.thisHost.Restarted);
             Assert.True(File.Exists(Path.Combine(this.Releases, "10.3.0", "CRT.Server.dll")));
             Assert.True(File.Exists(Path.Combine(this.Releases, "10.3.0", "Migrations", "0001_first.sql")));
+            Assert.Equal([ServerUpdateOutcomes.ReleasesChannel], this.thisHost.VerifiedFor);
 
             // Its settings are the box's own, linked in - never in a download.
             Assert.Equal(Path.Combine(this.thisInstance, "settings", ServerUpdater.SettingsFileName), this.thisHost.SettingsLinked[Path.Combine(this.Releases, "10.3.0")]);
@@ -110,20 +100,54 @@ namespace CRT.Server.Tests
             Assert.Equal("10.3.0", status.InstalledVersion);
             Assert.Equal(ServerUpdaterTests.Running, status.InstalledFromVersion);
             Assert.Equal(ServerUpdateOutcomes.ReleasesChannel, status.Channel);
-            Assert.Contains("4.1.0", status.Message, StringComparison.Ordinal);
+            Assert.Contains("CRT release [4.1.0]", status.Message, StringComparison.Ordinal);
 
             // Nothing is left on its way in.
             Assert.False(Directory.Exists(Path.Combine(this.Releases, ServerUpdater.WorkFolderName, "incoming")));
         }
 
         // ###########################################################################################
-        // *** NOTHING UNPROVEN IS EVEN UNPACKED. *** The attestation not proving this repository's release
-        // workflow built it: no folder, no restart, refused - and not downloaded again every quarter of an hour.
+        // *** EVERY COMMIT TO MAIN, ON THE TEST INSTANCE (owner decision: "ALPHA/BETA works on commit"). *** Its
+        // builds are a pre-release's and attested by the push workflow; the live service never even reads their
+        // pointer, and the test instance installs them, checked against the push workflow.
+        // ###########################################################################################
+        [Fact]
+        public async Task The_test_instance_installs_main_and_the_live_service_never_sees_it()
+        {
+            this.PublishMain("10.3.0");
+
+            Assert.True(await this.Updater(ServerUpdateOutcomes.ReleasesChannel).RunAsync(CancellationToken.None));
+            Assert.Equal(ServerUpdaterTests.Running, this.thisHost.Current);
+            Assert.Equal(0, this.thisHost.Downloads);
+            Assert.Contains("carries no server build", this.Status.Message, StringComparison.Ordinal);
+
+            Assert.True(await this.Updater(ServerUpdateOutcomes.MainChannel).RunAsync(CancellationToken.None));
+            Assert.Equal("10.3.0", this.thisHost.Current);
+            Assert.Equal([ServerUpdateOutcomes.MainChannel], this.thisHost.VerifiedFor);
+            Assert.Contains("main at [7f3a2c1]", this.Status.Message, StringComparison.Ordinal);
+        }
+
+        // A commit that left the server's version as it was: nothing downloaded - the minute costs one small file.
+        [Fact]
+        public async Task A_new_commit_that_left_the_server_version_as_it_was_downloads_nothing()
+        {
+            this.PublishMain(ServerUpdaterTests.Running, commit: "0123456789abcdef0123456789abcdef01234567");
+
+            Assert.True(await this.Updater(ServerUpdateOutcomes.MainChannel).RunAsync(CancellationToken.None));
+
+            Assert.Equal(0, this.thisHost.Downloads);
+            Assert.Empty(this.thisHost.Restarted);
+            Assert.Equal(ServerUpdateOutcomes.UpToDate, this.Status.Outcome);
+        }
+
+        // ###########################################################################################
+        // *** NOTHING UNPROVEN IS EVEN UNPACKED. *** The attestation not proving this repository's workflow built
+        // it: no folder, no restart, refused - and not downloaded again every minute.
         // ###########################################################################################
         [Fact]
         public async Task A_build_its_attestation_does_not_prove_is_neither_unpacked_nor_installed()
         {
-            this.Publish("4.1.0", ServerBuilds.Build("10.3.0"));
+            this.PublishRelease("4.1.0", "10.3.0");
             this.thisHost.Proof = new AttestationCheck(false, null, "verifying with issuer \"sigstore.dev\"");
 
             Assert.False(await this.Updater().RunAsync(CancellationToken.None));
@@ -134,7 +158,7 @@ namespace CRT.Server.Tests
             Assert.Equal(ServerUpdateOutcomes.Refused, this.Status.Outcome);
             Assert.Contains("NOT installed", this.Status.Message, StringComparison.Ordinal);
 
-            // Said again at the next look - not downloaded again, and no new failure for systemd: it was told once.
+            // Said again at the next minute - not downloaded again, and no new failure for systemd: it was told once.
             int downloads = this.thisHost.Downloads;
             Assert.True(await this.Updater().RunAsync(CancellationToken.None));
             Assert.Equal(downloads, this.thisHost.Downloads);
@@ -145,7 +169,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task A_build_whose_commit_is_not_its_attestations_is_refused()
         {
-            this.Publish("4.1.0", ServerBuilds.Build("10.3.0", commit: "0000000000000000000000000000000000000000"));
+            this.Publish("4.1.0", ServerBuilds.Build("10.3.0", commit: "0000000000000000000000000000000000000000"), "10.3.0");
 
             Assert.False(await this.Updater().RunAsync(CancellationToken.None));
 
@@ -153,71 +177,94 @@ namespace CRT.Server.Tests
             Assert.Equal(ServerUpdateOutcomes.Refused, this.Status.Outcome);
         }
 
+        // ###########################################################################################
+        // The files of main's release are replaced at every push: a build that is not the one its pointer names
+        // was being replaced - nothing is taken, and the next minute, with pointer and build together, installs.
+        // ###########################################################################################
         [Fact]
-        public async Task The_build_running_is_up_to_date_and_nothing_restarts()
+        public async Task A_build_replaced_while_it_was_downloaded_is_not_taken()
         {
-            this.Publish("4.0.1", ServerBuilds.Build(ServerUpdaterTests.Running));
+            this.Publish(ServerReleaseFeed.MainTag, ServerBuilds.Build("10.3.0", preRelease: true), "10.3.0", ServerUpdateOutcomes.MainChannel, pointerSha: new string('a', 64));
 
-            Assert.True(await this.Updater().RunAsync(CancellationToken.None));
+            Assert.False(await this.Updater(ServerUpdateOutcomes.MainChannel).RunAsync(CancellationToken.None));
+            Assert.Equal(ServerUpdaterTests.Running, this.thisHost.Current);
+            Assert.Empty(this.thisHost.VerifiedFor);
+            Assert.Contains("changed while it was downloaded", this.Status.Message, StringComparison.Ordinal);
 
-            Assert.Empty(this.thisHost.Restarted);
-            Assert.Equal(ServerUpdateOutcomes.UpToDate, this.Status.Outcome);
-            Assert.Equal(ServerUpdaterTests.Running, this.Status.NewestVersion);
+            this.PublishMain("10.3.0");
+
+            Assert.True(await this.Updater(ServerUpdateOutcomes.MainChannel).RunAsync(CancellationToken.None));
+            Assert.Equal("10.3.0", this.thisHost.Current);
+        }
+
+        // A pointer naming another channel's release is no pointer: no URL is ever built from it.
+        [Theory]
+        [InlineData(ServerUpdateOutcomes.ReleasesChannel, ServerReleaseFeed.MainTag)]
+        [InlineData(ServerUpdateOutcomes.ReleasesChannel, "4.1.0-beta.1")]
+        [InlineData(ServerUpdateOutcomes.MainChannel, "4.1.0")]
+        public async Task A_pointer_naming_another_channels_release_downloads_nothing(string channel, string tag)
+        {
+            this.Publish(tag, ServerBuilds.Build("10.3.0", preRelease: true), "10.3.0", channel);
+
+            Assert.False(await this.Updater(channel).RunAsync(CancellationToken.None));
+
+            Assert.Equal(0, this.thisHost.Downloads);
+            Assert.Equal(ServerUpdateOutcomes.Error, this.Status.Outcome);
         }
 
         // ###########################################################################################
-        // Never backwards: a newer CRT release from an older branch, or a release older than the test
-        // instance's pre-release, carries an older server.
+        // Never backwards, and nothing downloaded for it: a newer CRT release from an older branch carries an
+        // older server. A pointer is not proven - but all a lying one could do here is spare a download.
         // ###########################################################################################
         [Fact]
-        public async Task An_older_build_is_never_installed()
+        public async Task An_older_build_is_never_installed_nor_downloaded()
         {
-            this.Publish("4.0.2", ServerBuilds.Build("10.1.0"));
+            this.PublishRelease("4.0.2", "10.1.0");
+
+            Assert.True(await this.Updater().RunAsync(CancellationToken.None));
+
+            Assert.Equal(ServerUpdaterTests.Running, this.thisHost.Current);
+            Assert.Equal(0, this.thisHost.Downloads);
+            Assert.Equal(ServerUpdateOutcomes.UpToDate, this.Status.Outcome);
+            Assert.Contains("never installed backwards", this.Status.Message, StringComparison.Ordinal);
+        }
+
+        // A pointer that says "newer" about an older build: downloaded, and its own description decides.
+        [Fact]
+        public async Task A_pointer_overstating_its_version_is_overruled_by_the_build_itself()
+        {
+            this.Publish("4.1.0", ServerBuilds.Build("10.1.0"), serverVersion: "10.9.0");
 
             Assert.True(await this.Updater().RunAsync(CancellationToken.None));
 
             Assert.Equal(ServerUpdaterTests.Running, this.thisHost.Current);
             Assert.Empty(this.thisHost.Restarted);
-            Assert.Equal(ServerUpdateOutcomes.UpToDate, this.Status.Outcome);
-            Assert.Contains("never installed backwards", this.Status.Message, StringComparison.Ordinal);
+            Assert.Equal("10.1.0", this.Status.NewestVersion);
         }
 
         // ###########################################################################################
-        // The live service installs releases only - read from the build's own crt-server-release.json, which
-        // the attestation covers, never from the GitHub release's flag. A release mis-flagged on GitHub
-        // carrying a pre-release's build is refused there; the test instance installs it.
+        // The live service installs real releases only - read from the build's own crt-server-release.json,
+        // which the attestation covers, never from GitHub's flags. A release carrying a pre-release's build is
+        // refused there.
         // ###########################################################################################
         [Fact]
         public async Task A_pre_release_build_is_never_installed_on_the_live_service()
         {
-            this.Publish("4.1.0", ServerBuilds.Build("10.3.0", preRelease: true), preRelease: false);
+            this.PublishRelease("4.1.0", "10.3.0", preRelease: true);
 
             Assert.False(await this.Updater(ServerUpdateOutcomes.ReleasesChannel).RunAsync(CancellationToken.None));
             Assert.Equal(ServerUpdaterTests.Running, this.thisHost.Current);
             Assert.Equal(ServerUpdateOutcomes.Refused, this.Status.Outcome);
         }
 
-        [Fact]
-        public async Task The_test_instance_installs_a_pre_release_and_the_live_service_does_not_even_see_one()
-        {
-            this.Publish("4.1.0-beta.1", ServerBuilds.Build("10.3.0", preRelease: true), preRelease: true);
-
-            Assert.True(await this.Updater(ServerUpdateOutcomes.ReleasesChannel).RunAsync(CancellationToken.None));
-            Assert.Equal(ServerUpdaterTests.Running, this.thisHost.Current);
-            Assert.Equal(0, this.thisHost.Downloads);
-
-            Assert.True(await this.Updater(ServerUpdateOutcomes.PreReleasesChannel).RunAsync(CancellationToken.None));
-            Assert.Equal("10.3.0", this.thisHost.Current);
-        }
-
         // ###########################################################################################
         // *** A BUILD THAT DOES NOT COME UP IS ROLLED BACK - AND NOT TRIED AGAIN BY ITSELF. *** Tried at every
-        // look, it would take the service down every quarter of an hour.
+        // minute, it would take the service down every minute.
         // ###########################################################################################
         [Fact]
         public async Task A_build_that_does_not_come_up_is_rolled_back_and_not_tried_again_by_itself()
         {
-            this.Publish("4.1.0", ServerBuilds.Build("10.3.0"));
+            this.PublishRelease("4.1.0", "10.3.0");
             this.thisHost.DoesNotComeUp.Add("10.3.0");
 
             Assert.False(await this.Updater().RunAsync(CancellationToken.None));
@@ -239,146 +286,11 @@ namespace CRT.Server.Tests
             Assert.Equal(ServerUpdateOutcomes.Failed, this.Status.Outcome);
         }
 
-        // ###########################################################################################
-        // *** EVERY MINUTE, AND GITHUB'S API SELDOM (owner request, 2026-11-09: "can it then update every
-        // minute?"). *** GitHub lets a box with no login ask its API 60 times an hour; two instances every minute
-        // would ask 120. A minute's look reads the releases feed and asks the API only when it changed - for ten
-        // minutes after, while a release's files may still be uploading - and every 15 minutes anyway.
-        // ###########################################################################################
-        [Fact]
-        public async Task A_minute_with_nothing_new_on_GitHub_asks_its_API_nothing()
-        {
-            this.Publish("4.1.0", ServerBuilds.Build("10.3.0"));
-            await this.Updater().RunAsync(CancellationToken.None);
-            DateTimeOffset installed = this.Status.CheckedUtc!.Value;
-
-            this.thisHost.Advance(ServerUpdater.LookCloselyAfterAChange + TimeSpan.FromMinutes(1));
-
-            Assert.True(await this.Updater().RunAsync(CancellationToken.None));
-
-            Assert.Equal(1, this.thisHost.ApiCalls);
-            Assert.Equal(ServerUpdateOutcomes.Installed, this.Status.Outcome);
-            Assert.True(this.Status.CheckedUtc > installed, "A quiet look is a look all the same - its time is noted");
-        }
-
-        [Fact]
-        public async Task A_release_published_on_GitHub_is_installed_at_the_next_minute()
-        {
-            this.Publish("4.0.0", ServerBuilds.Build(ServerUpdaterTests.Running), assetId: 1001);
-            await this.Updater().RunAsync(CancellationToken.None);
-            this.thisHost.Advance(TimeSpan.FromMinutes(12));
-            await this.Updater().RunAsync(CancellationToken.None);
-            Assert.Equal(1, this.thisHost.ApiCalls);
-
-            this.Publish("4.1.0", ServerBuilds.Build("10.3.0"), assetId: 2001);
-            this.thisHost.Advance(TimeSpan.FromMinutes(1));
-
-            Assert.True(await this.Updater().RunAsync(CancellationToken.None));
-            Assert.Equal(2, this.thisHost.ApiCalls);
-            Assert.Equal("10.3.0", this.thisHost.Current);
-        }
-
-        // ###########################################################################################
-        // The release workflow publishes a release and then uploads its files - and GitHub's feed does not change
-        // as they arrive. So for ten minutes after a change every minute asks the API: the server build is found
-        // the minute it is there, not a quarter of an hour later. Then the API rests again.
-        // ###########################################################################################
-        [Fact]
-        public async Task A_release_whose_files_arrive_after_it_is_installed_the_minute_they_are_there()
-        {
-            await this.Updater().RunAsync(CancellationToken.None);
-            this.thisHost.Advance(TimeSpan.FromMinutes(12));
-
-            this.PublishWithoutFiles("4.1.0");
-            Assert.True(await this.Updater().RunAsync(CancellationToken.None));
-            Assert.Equal(ServerUpdaterTests.Running, this.thisHost.Current);
-
-            this.thisHost.Advance(TimeSpan.FromMinutes(2));
-            this.AttachFiles("4.1.0", ServerBuilds.Build("10.3.0"));
-
-            Assert.True(await this.Updater().RunAsync(CancellationToken.None));
-            Assert.Equal("10.3.0", this.thisHost.Current);
-
-            // Ten minutes after the change, the minutes are quiet again.
-            int calls = this.thisHost.ApiCalls;
-            this.thisHost.Advance(ServerUpdater.LookCloselyAfterAChange);
-            await this.Updater().RunAsync(CancellationToken.None);
-            Assert.Equal(calls, this.thisHost.ApiCalls);
-        }
-
-        // A safety net: whatever the feed says, the API is asked at least every quarter of an hour.
-        [Fact]
-        public async Task The_API_is_asked_at_least_every_quarter_of_an_hour()
-        {
-            await this.Updater().RunAsync(CancellationToken.None);
-            this.thisHost.Advance(TimeSpan.FromMinutes(11));
-            await this.Updater().RunAsync(CancellationToken.None);
-            Assert.Equal(1, this.thisHost.ApiCalls);
-
-            this.thisHost.Advance(ServerUpdater.FullLookEvery - TimeSpan.FromMinutes(11));
-            await this.Updater().RunAsync(CancellationToken.None);
-            Assert.Equal(2, this.thisHost.ApiCalls);
-        }
-
-        // A feed GitHub cannot serve says nothing - the quarter of an hour stands, never the API every minute.
-        [Fact]
-        public async Task A_feed_that_cannot_be_read_leaves_the_API_to_the_quarter_of_an_hour()
-        {
-            this.thisHost.FeedDown = true;
-
-            await this.Updater().RunAsync(CancellationToken.None);
-
-            for (int minute = 1; minute < 15; minute++)
-            {
-                this.thisHost.Advance(TimeSpan.FromMinutes(1));
-                await this.Updater().RunAsync(CancellationToken.None);
-            }
-
-            Assert.Equal(1, this.thisHost.ApiCalls);
-
-            this.thisHost.Advance(TimeSpan.FromMinutes(1));
-            await this.Updater().RunAsync(CancellationToken.None);
-            Assert.Equal(2, this.thisHost.ApiCalls);
-        }
-
-        // A build held for the project owner goes in the minute its files are installed - GitHub is not asked.
-        [Fact]
-        public async Task A_held_build_goes_in_the_minute_its_files_are_installed_without_asking_GitHub()
-        {
-            Dictionary<string, string> files = ServerBuilds.Files("10.3.0");
-            files["crt-server-update.timer"] += "# changed\n";
-            this.Publish("4.1.0", ServerBuilds.Pack(files));
-            await this.Updater().RunAsync(CancellationToken.None);
-            Assert.Equal(ServerUpdateOutcomes.Held, this.Status.Outcome);
-
-            this.thisHost.Advance(TimeSpan.FromMinutes(30));
-            this.thisHost.Installed["crt-server-update.timer"] = files["crt-server-update.timer"];
-            int calls = this.thisHost.ApiCalls;
-
-            // The quarter of an hour is due by now: move the full look out of the way to prove the quiet minute does it.
-            ServerUpdateStatus status = this.Status;
-            status.FullLookUtc = this.thisHost.UtcNow;
-            status.Write(Path.Combine(this.Releases, ServerUpdateStatus.FileName));
-
-            Assert.True(await this.Updater().RunAsync(CancellationToken.None));
-
-            Assert.Equal(calls, this.thisHost.ApiCalls);
-            Assert.Equal("10.3.0", this.thisHost.Current);
-            Assert.Equal(ServerUpdateOutcomes.Installed, this.Status.Outcome);
-        }
-
-        [Fact]
-        public void The_feed_is_read_from_this_repositorys_releases()
-        {
-            Assert.Equal("https://github.com/HovKlan-DH/Classic-Repair-Toolbox/releases.atom", ServerReleaseFeed.FeedUrl);
-            Assert.Equal(TimeSpan.FromMinutes(15), ServerUpdater.FullLookEvery);
-        }
-
         // "update-server --retry-failed": the project owner fixed what stopped it, and tries again.
         [Fact]
         public async Task Retry_failed_tries_that_build_again()
         {
-            this.Publish("4.1.0", ServerBuilds.Build("10.3.0"));
+            this.PublishRelease("4.1.0", "10.3.0");
             this.thisHost.DoesNotComeUp.Add("10.3.0");
             await this.Updater().RunAsync(CancellationToken.None);
 
@@ -395,11 +307,11 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task A_newer_build_after_a_failed_one_is_installed()
         {
-            this.Publish("4.1.0", ServerBuilds.Build("10.3.0"), assetId: 1001);
+            this.PublishRelease("4.1.0", "10.3.0");
             this.thisHost.DoesNotComeUp.Add("10.3.0");
             await this.Updater().RunAsync(CancellationToken.None);
 
-            this.Publish("4.1.1", ServerBuilds.Build("10.3.1"), assetId: 2001);
+            this.PublishRelease("4.1.1", "10.3.1");
 
             Assert.True(await this.Updater().RunAsync(CancellationToken.None));
             Assert.Equal("10.3.1", this.thisHost.Current);
@@ -412,7 +324,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task When_the_build_before_does_not_come_back_either_the_service_is_said_to_be_down()
         {
-            this.Publish("4.1.0", ServerBuilds.Build("10.3.0"));
+            this.PublishRelease("4.1.0", "10.3.0");
             this.thisHost.DoesNotComeUp.Add("10.3.0");
             this.thisHost.DoesNotComeUp.Add(ServerUpdaterTests.Running);
 
@@ -424,15 +336,15 @@ namespace CRT.Server.Tests
 
         // ###########################################################################################
         // *** A BUILD THAT SHIPS A CHANGED SYSTEMD OR POLKIT FILE WAITS FOR THE PROJECT OWNER. *** Those need
-        // root; the build is unpacked and kept, and goes in at the first look after they are installed - with
-        // no download again.
+        // root; the build is unpacked and kept, tried again every minute from disk, and goes in at the first
+        // minute after they are installed - with no download again.
         // ###########################################################################################
         [Fact]
         public async Task A_build_with_a_changed_unit_waits_until_the_unit_is_installed()
         {
             Dictionary<string, string> files = ServerBuilds.Files("10.3.0");
             files["crt-server.service"] += "ReadWritePaths=/new/folder\n";
-            this.Publish("4.1.0", ServerBuilds.Pack(files));
+            this.Publish("4.1.0", ServerBuilds.Pack(files), "10.3.0");
 
             Assert.True(await this.Updater().RunAsync(CancellationToken.None));
 
@@ -442,12 +354,12 @@ namespace CRT.Server.Tests
             Assert.Contains("crt-server.service", this.Status.Message, StringComparison.Ordinal);
             Assert.True(File.Exists(Path.Combine(this.Releases, "10.3.0", "crt-server.service")));
 
-            // Still waiting at the next look, with no download again.
+            // Still waiting at the next minute, with no download again.
             int downloads = this.thisHost.Downloads;
             Assert.True(await this.Updater().RunAsync(CancellationToken.None));
             Assert.Equal(ServerUpdateOutcomes.Held, this.Status.Outcome);
 
-            // Installed by the project owner: the next look installs the build.
+            // Installed by the project owner: the next minute installs the build.
             this.thisHost.Installed["crt-server.service"] = files["crt-server.service"];
 
             Assert.True(await this.Updater().RunAsync(CancellationToken.None));
@@ -456,7 +368,23 @@ namespace CRT.Server.Tests
             Assert.Equal(ServerUpdateOutcomes.Installed, this.Status.Outcome);
         }
 
-        // The build running published by hand on Windows ("\r\n"), the next by the workflow ("\n"): no change, no hold.
+        // A unit changed by hand on purpose: the marker says the installed files are the ones wanted.
+        [Fact]
+        public async Task The_marker_lets_a_held_build_in()
+        {
+            Dictionary<string, string> files = ServerBuilds.Files("10.3.0");
+            files[ServerUpdater.PolkitRuleFile] += "// changed\n";
+            this.Publish("4.1.0", ServerBuilds.Pack(files), "10.3.0");
+            await this.Updater().RunAsync(CancellationToken.None);
+            Assert.Equal(ServerUpdateOutcomes.Held, this.Status.Outcome);
+
+            File.WriteAllText(Path.Combine(this.Releases, "10.3.0", ServerUpdater.SystemFilesInstalledMarker), string.Empty);
+
+            Assert.True(await this.Updater().RunAsync(CancellationToken.None));
+            Assert.Equal("10.3.0", this.thisHost.Current);
+        }
+
+        // The build running published by hand on Windows ("\r\n"), the next by a workflow ("\n"): no change, no hold.
         [Fact]
         public async Task Line_ends_alone_hold_no_build()
         {
@@ -466,23 +394,7 @@ namespace CRT.Server.Tests
                 windows[name] = windows[name].Replace("\n", "\r\n", StringComparison.Ordinal);
 
             this.AddBuild(ServerUpdaterTests.Running, windows);
-            this.Publish("4.1.0", ServerBuilds.Build("10.3.0"));
-
-            Assert.True(await this.Updater().RunAsync(CancellationToken.None));
-            Assert.Equal("10.3.0", this.thisHost.Current);
-        }
-
-        // A unit changed by hand on purpose: the marker says the installed files are the ones wanted.
-        [Fact]
-        public async Task The_marker_lets_a_held_build_in()
-        {
-            Dictionary<string, string> files = ServerBuilds.Files("10.3.0");
-            files[ServerUpdater.PolkitRuleFile] += "// changed\n";
-            this.Publish("4.1.0", ServerBuilds.Pack(files));
-            await this.Updater().RunAsync(CancellationToken.None);
-            Assert.Equal(ServerUpdateOutcomes.Held, this.Status.Outcome);
-
-            File.WriteAllText(Path.Combine(this.Releases, "10.3.0", ServerUpdater.SystemFilesInstalledMarker), string.Empty);
+            this.PublishRelease("4.1.0", "10.3.0");
 
             Assert.True(await this.Updater().RunAsync(CancellationToken.None));
             Assert.Equal("10.3.0", this.thisHost.Current);
@@ -503,9 +415,9 @@ namespace CRT.Server.Tests
 
         // The restart refused (no polkit rule): pointed back - nothing was restarted, so the build before runs - and tried again.
         [Fact]
-        public async Task A_refused_restart_points_back_and_tries_again_at_the_next_look()
+        public async Task A_refused_restart_points_back_and_tries_again_at_the_next_minute()
         {
-            this.Publish("4.1.0", ServerBuilds.Build("10.3.0"));
+            this.PublishRelease("4.1.0", "10.3.0");
             this.thisHost.RestartRefusal = "Interactive authentication required.";
 
             Assert.True(await this.Updater().RunAsync(CancellationToken.None));
@@ -525,20 +437,34 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task A_dry_run_proves_the_build_and_installs_nothing()
         {
-            this.Publish("4.1.0", ServerBuilds.Build("10.3.0"));
+            this.PublishRelease("4.1.0", "10.3.0");
 
             Assert.True(await this.Updater(dryRun: true).RunAsync(CancellationToken.None));
 
             Assert.Equal(ServerUpdaterTests.Running, this.thisHost.Current);
             Assert.Empty(this.thisHost.Restarted);
-            Assert.Equal(1, this.thisHost.Verified);
+            Assert.Single(this.thisHost.VerifiedFor);
             Assert.Equal(ServerUpdateOutcomes.WouldInstall, this.Status.Outcome);
         }
 
+        // The setup's check: a dry run over the very build running still downloads and proves it - so it shows
+        // gh and the attestation work on the box - and says it is up to date.
         [Fact]
-        public async Task The_same_build_is_not_downloaded_again_at_every_look()
+        public async Task A_dry_run_over_the_build_running_proves_it_and_says_up_to_date()
         {
-            this.Publish("4.1.0", ServerBuilds.Build("10.3.0"));
+            this.PublishMain(ServerUpdaterTests.Running);
+
+            Assert.True(await this.Updater(ServerUpdateOutcomes.MainChannel, dryRun: true).RunAsync(CancellationToken.None));
+
+            Assert.Single(this.thisHost.VerifiedFor);
+            Assert.Equal(ServerUpdateOutcomes.UpToDate, this.Status.Outcome);
+            Assert.StartsWith($"Up to date: {ServerUpdaterTests.Running} is the newest server build (main at [", this.Status.Message, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public async Task The_same_build_is_not_downloaded_again_at_every_minute()
+        {
+            this.PublishRelease("4.1.0", "10.3.0");
             await this.Updater().RunAsync(CancellationToken.None);
             int downloads = this.thisHost.Downloads;
 
@@ -547,6 +473,28 @@ namespace CRT.Server.Tests
             Assert.Equal(downloads, this.thisHost.Downloads);
             Assert.Equal(ServerUpdateOutcomes.UpToDate, this.Status.Outcome);
             Assert.Equal("10.3.0", this.Status.InstalledVersion);
+        }
+
+        // ###########################################################################################
+        // A look every minute (owner request: "can it then update every minute?"): one that has nothing new to
+        // say writes nothing to the journal - only its time to the status file.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_minute_saying_again_what_the_last_said_writes_nothing_to_the_journal()
+        {
+            this.PublishRelease("4.0.1", ServerUpdaterTests.Running);
+
+            using var first = new StringWriter();
+            await this.Updater(log: first).RunAsync(CancellationToken.None);
+            Assert.Contains("Up to date", first.ToString(), StringComparison.Ordinal);
+            DateTimeOffset looked = this.Status.CheckedUtc!.Value;
+
+            this.thisHost.Advance(TimeSpan.FromMinutes(1));
+
+            using var second = new StringWriter();
+            Assert.True(await this.Updater(log: second).RunAsync(CancellationToken.None));
+            Assert.Equal(string.Empty, second.ToString());
+            Assert.True(this.Status.CheckedUtc > looked, "A quiet minute is a look all the same - its time is noted");
         }
 
         // ###########################################################################################
@@ -560,7 +508,7 @@ namespace CRT.Server.Tests
             this.AddBuild("10.1.0");
             this.AddBuild("10.2.0");
             Directory.CreateDirectory(Path.Combine(this.Releases, "not-a-build"));
-            this.Publish("4.1.0", ServerBuilds.Build("10.3.0"));
+            this.PublishRelease("4.1.0", "10.3.0");
 
             await this.Updater().RunAsync(CancellationToken.None);
 
@@ -573,12 +521,12 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task Without_its_folders_set_up_the_updater_does_nothing()
         {
-            this.Publish("4.1.0", ServerBuilds.Build("10.3.0"));
+            this.PublishRelease("4.1.0", "10.3.0");
             this.thisHost.Current = null;
 
             Assert.False(await this.Updater().RunAsync(CancellationToken.None));
 
-            Assert.Equal(0, this.thisHost.Downloads);
+            Assert.Equal(0, this.thisHost.PointerReads);
             Assert.Equal(ServerUpdateOutcomes.Error, this.Status.Outcome);
             Assert.Contains("INSTALLING.md", this.Status.Message, StringComparison.Ordinal);
         }
@@ -595,12 +543,14 @@ namespace CRT.Server.Tests
         }
 
         [Fact]
-        public async Task No_release_with_a_server_build_yet_is_up_to_date()
+        public async Task No_server_build_yet_is_up_to_date()
         {
             Assert.True(await this.Updater().RunAsync(CancellationToken.None));
-
             Assert.Equal(ServerUpdateOutcomes.UpToDate, this.Status.Outcome);
-            Assert.Contains("No release", this.Status.Message, StringComparison.Ordinal);
+            Assert.Contains("carries no server build", this.Status.Message, StringComparison.Ordinal);
+
+            Assert.True(await this.Updater(ServerUpdateOutcomes.MainChannel).RunAsync(CancellationToken.None));
+            Assert.Contains("No build of main", this.Status.Message, StringComparison.Ordinal);
         }
 
         // ###########################################################################################
@@ -610,7 +560,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task The_service_running_the_new_build_finds_what_the_updater_did()
         {
-            this.Publish("4.1.0", ServerBuilds.Build("10.3.0"));
+            this.PublishRelease("4.1.0", "10.3.0");
             await this.Updater().RunAsync(CancellationToken.None);
 
             ServerUpdatesAnswer answer = ServerUpdateStatus.AnswerFrom(ServerUpdateStatus.Locate(Path.Combine(this.Releases, "10.3.0")));
@@ -629,7 +579,7 @@ namespace CRT.Server.Tests
         // ###########################################################################################
         private sealed class FakeHost : IServerUpdateHost
         {
-            public List<object> Releases { get; } = [];
+            public Dictionary<string, string> Pointers { get; } = new(StringComparer.Ordinal);
 
             public Dictionary<string, byte[]> Files { get; } = new(StringComparer.Ordinal);
 
@@ -641,6 +591,9 @@ namespace CRT.Server.Tests
 
             public List<string> Restarted { get; } = [];
 
+            // The channel each attestation was checked for.
+            public List<string> VerifiedFor { get; } = [];
+
             public AttestationCheck Proof { get; set; } = new(true, ServerBuilds.Commit, string.Empty);
 
             public string? Current { get; set; }
@@ -651,32 +604,21 @@ namespace CRT.Server.Tests
 
             public bool GitHubDown { get; set; }
 
-            // The releases feed: it changes as a release is published or deleted - by its tags - but NOT as files are
-            // attached to one, as GitHub's own does not.
-            public List<string> Tags { get; } = [];
-
-            public bool FeedDown { get; set; }
-
-            public int ApiCalls { get; private set; }
-
-            public void Advance(TimeSpan time) => this.UtcNow += time;
-
-            public Task<string?> ReadFeedFingerprintAsync(CancellationToken cancellationToken) =>
-                Task.FromResult(this.FeedDown ? null : "tags:" + string.Join(",", this.Tags));
-
             public int Downloads { get; private set; }
 
-            public int Verified { get; private set; }
+            public int PointerReads { get; private set; }
 
             public DateTimeOffset UtcNow { get; private set; } = new(2026, 11, 9, 12, 0, 0, TimeSpan.Zero);
 
-            public Task<string> ReadReleasesAsync(CancellationToken cancellationToken)
+            public void Advance(TimeSpan time) => this.UtcNow += time;
+
+            public Task<string?> ReadPointerAsync(string url, CancellationToken cancellationToken)
             {
-                this.ApiCalls++;
+                this.PointerReads++;
 
                 return this.GitHubDown
                     ? throw new HttpRequestException("No such host is known.")
-                    : Task.FromResult(JsonSerializer.Serialize(this.Releases));
+                    : Task.FromResult(this.Pointers.TryGetValue(url, out string? json) ? json : null);
             }
 
             public Task DownloadAsync(string url, string toPath, long maxBytes, CancellationToken cancellationToken)
@@ -686,9 +628,9 @@ namespace CRT.Server.Tests
                 return Task.CompletedTask;
             }
 
-            public Task<AttestationCheck> VerifyAsync(string archivePath, string bundlePath, CancellationToken cancellationToken)
+            public Task<AttestationCheck> VerifyAsync(string archivePath, string bundlePath, string channel, CancellationToken cancellationToken)
             {
-                this.Verified++;
+                this.VerifiedFor.Add(channel);
                 Assert.True(File.Exists(archivePath));
                 Assert.True(File.Exists(bundlePath));
                 return Task.FromResult(this.Proof);

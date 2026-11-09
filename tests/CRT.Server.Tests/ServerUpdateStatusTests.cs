@@ -74,7 +74,7 @@ namespace CRT.Server.Tests
         public void A_status_is_written_whole_and_keeps_what_a_later_updater_wrote()
         {
             string path = Path.Combine(this.thisRoot, ServerUpdateStatus.FileName);
-            File.WriteAllText(path, "{\"channel\":\"releases\",\"outcome\":\"installed\",\"examinedAssetId\":7,\"fromLater\":{\"a\":1}}");
+            File.WriteAllText(path, "{\"channel\":\"releases\",\"outcome\":\"installed\",\"examinedSha256\":\"ab12\",\"fromLater\":{\"a\":1}}");
 
             ServerUpdateStatus status = ServerUpdateStatus.Read(path)!;
             status.Message = "Up to date.";
@@ -82,7 +82,7 @@ namespace CRT.Server.Tests
 
             ServerUpdateStatus again = ServerUpdateStatus.Read(path)!;
             Assert.Equal("Up to date.", again.Message);
-            Assert.Equal(7, again.ExaminedAssetId);
+            Assert.Equal("ab12", again.ExaminedSha256);
             Assert.True(again.Unknown!.ContainsKey("fromLater"));
             Assert.False(File.Exists(path + ".writing"));
         }

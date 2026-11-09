@@ -71,7 +71,7 @@ namespace Handlers.MaintainerHandling
 
         public const string ReleasesOnly = "releases only";
 
-        public const string PreReleasesToo = "pre-releases and releases";
+        public const string EveryCommit = "every commit to main";
 
         public const string NotSetUp = "not set up on this server";
 
@@ -115,7 +115,7 @@ namespace Handlers.MaintainerHandling
             string channel = updates.Channel switch
             {
                 ServerUpdateOutcomes.ReleasesChannel => ServerVersionDisplay.ReleasesOnly,
-                ServerUpdateOutcomes.PreReleasesChannel => ServerVersionDisplay.PreReleasesToo,
+                ServerUpdateOutcomes.MainChannel => ServerVersionDisplay.EveryCommit,
                 _ => updates.Channel ?? string.Empty,
             };
 

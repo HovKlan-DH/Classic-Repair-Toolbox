@@ -1,218 +1,151 @@
-using System.Globalization;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Handlers.DataHandling;
 
 namespace CRT.Server.Handlers.Updates
 {
     // ###########################################################################################
-    // WHERE A SERVER BUILD COMES FROM, AND WHICH ONE IS NEXT (owner decisions, 2026-11-09: the server
-    // builds come "With CRT releases", checked by "GitHub attestations").
+    // WHERE A SERVER BUILD COMES FROM, AND WHO MUST HAVE BUILT IT (owner decisions, 2026-11-09: "GitHub
+    // attestations"; and then "the REAL version should work on a release ... But ALPHA/BETA works on commit").
     //
-    // The release workflow builds the server beside CRT and attaches it to the same GitHub Release:
-    // ArchiveName, the build, and BundleName, GitHub's attestation that this repository's release
-    // workflow built exactly those bytes. The live service installs from releases, the test instance
-    // from pre-releases too - so each CRT talks to a server built from the same commit as itself.
+    //   - THE LIVE SERVICE ("releases"): the server build a real CRT release carries - built, attested and
+    //     attached by the release workflow, build-and-release.yml. Found through GitHub's newest release.
+    //   - THE TEST INSTANCE ("main"): the server build of every commit pushed to main whose tests passed -
+    //     built, attested and put by the push workflow, build-and-unittest.yml, on ONE standing pre-release,
+    //     MainTag, its files replaced at every push. No CRT release is needed for it.
+    //
+    // Each carries three files: ArchiveName, the build; BundleName, GitHub's attestation that the named
+    // workflow built exactly those bytes from main; PointerName, a few lines saying which build that is
+    // (ServerBuildPointer) - read every minute, so a minute costs one small download and no GitHub API call
+    // (60 an hour without a login). The pointer is not proven: it only decides whether to download. What is
+    // installed is decided by the build's own crt-server-release.json, inside the attested bytes.
     //
     // Everything here is fixed in the code, never read from a setting: the box trusts builds of THIS
-    // repository's release workflow on main, and nothing a setting could point elsewhere.
+    // repository's two workflows on main, and nothing a setting could point elsewhere.
     // ###########################################################################################
     internal static class ServerReleaseFeed
     {
         public const string Repository = "HovKlan-DH/Classic-Repair-Toolbox";
 
-        // The workflow whose builds are trusted - the one Dennis runs from the Actions tab - on main.
-        public const string SignerWorkflow = ServerReleaseFeed.Repository + "/.github/workflows/build-and-release.yml";
         public const string SourceRef = "refs/heads/main";
+
+        // The standing pre-release the push workflow keeps the newest build of main on.
+        public const string MainTag = "crt-server-main";
 
         public const string ArchiveName = "crt-server-linux-x64.tar.gz";
         public const string BundleName = ServerReleaseFeed.ArchiveName + ".sigstore.json";
-
-        // The newest releases first; a pre-release run deletes the pre-releases before it, so a page holds them all.
-        public const string ReleasesUrl = "https://api.github.com/repos/" + ServerReleaseFeed.Repository + "/releases?per_page=30";
-
-        // ###########################################################################################
-        // *** THE LOOK EVERY MINUTE (owner request, 2026-11-09: "Instead of updating only every 15 minutes, can it
-        // then update every minute?"). *** GitHub lets a box with no login ask its API 60 times an hour, and the
-        // two instances asking every minute would ask 120 - so a minute's look reads the releases' Atom feed, a
-        // page of github.com the API's limit does not count, and only a change there (or ServerUpdater's
-        // safety net) makes the updater ask the API. The feed lists every published release, pre-releases too.
-        // ###########################################################################################
-        public const string FeedUrl = "https://github.com/" + ServerReleaseFeed.Repository + "/releases.atom";
-
-        // ###########################################################################################
-        // What the feed says, as one string that changes whenever a release is published, edited or deleted:
-        // every entry's id and time, hashed. Null when `atomXml` is no Atom feed (an error page, a DTD).
-        // ###########################################################################################
-        public static string? FingerprintOf(string? atomXml)
-        {
-            if (string.IsNullOrWhiteSpace(atomXml))
-                return null;
-
-            try
-            {
-                // A DTD refused outright, nothing resolved - no entity is ever expanded. (XDocument.Parse alone
-                // PROCESSES a DTD - ServerReleaseFeedTests caught that.)
-                var settings = new System.Xml.XmlReaderSettings
-                {
-                    DtdProcessing = System.Xml.DtdProcessing.Prohibit,
-                    XmlResolver = null,
-                    MaxCharactersInDocument = 4_000_000,
-                };
-
-                using var reader = System.Xml.XmlReader.Create(new StringReader(atomXml), settings);
-                System.Xml.Linq.XDocument document = System.Xml.Linq.XDocument.Load(reader);
-                System.Xml.Linq.XNamespace atom = "http://www.w3.org/2005/Atom";
-
-                if (document.Root is not { } feed || feed.Name != atom + "feed")
-                    return null;
-
-                string entries = string.Join(
-                    "\n",
-                    feed.Elements(atom + "entry").Select(entry => $"{entry.Element(atom + "id")?.Value}\t{entry.Element(atom + "updated")?.Value}"));
-
-                return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(entries))).ToLowerInvariant();
-            }
-            catch (System.Xml.XmlException)
-            {
-                return null;
-            }
-        }
+        public const string PointerName = "crt-server-linux-x64.json";
 
         // Where a release's files are downloaded from - nothing else is ever fetched.
         public const string DownloadPrefix = "https://github.com/" + ServerReleaseFeed.Repository + "/releases/download/";
 
         public const long ArchiveMaxBytes = 200L * 1024 * 1024;
         public const long BundleMaxBytes = 1L * 1024 * 1024;
-
-        // One release that carries a server build: its CRT tag, whether it is a pre-release, and its two files.
-        public sealed record Candidate(
-            string Tag,
-            bool IsPreRelease,
-            DateTimeOffset PublishedUtc,
-            string ArchiveUrl,
-            long ArchiveAssetId,
-            long ArchiveBytes,
-            string BundleUrl);
+        public const long PointerMaxBytes = 64L * 1024;
 
         // ###########################################################################################
-        // The newest release with a server build for `channel` (ServerUpdateOutcomes' channel words) in
-        // GitHub's answer to ReleasesUrl, or null with the reason - `readable` false when the answer was
-        // no list of releases at all. A draft is never one; a pre-release only for the pre-releases
-        // channel; a release whose files lie anywhere but this repository's downloads, or whose build is
-        // larger than ArchiveMaxBytes, is passed over.
+        // The workflow whose builds a channel installs - the attestation must name it.
         // ###########################################################################################
-        public static Candidate? Newest(string releasesJson, string channel, out string why, out bool readable)
+        public static string SignerWorkflowFor(string channel) =>
+            ServerReleaseFeed.Repository + "/.github/workflows/" +
+            (channel == ServerUpdateOutcomes.MainChannel ? "build-and-unittest.yml" : "build-and-release.yml");
+
+        // ###########################################################################################
+        // The pointer a channel reads every minute: GitHub's newest release's (a pre-release is never the
+        // newest, so never the live service's), or the standing pre-release's.
+        // ###########################################################################################
+        public static string PointerUrlFor(string channel) =>
+            channel == ServerUpdateOutcomes.MainChannel
+                ? ServerReleaseFeed.DownloadPrefix + ServerReleaseFeed.MainTag + "/" + ServerReleaseFeed.PointerName
+                : "https://github.com/" + ServerReleaseFeed.Repository + "/releases/latest/download/" + ServerReleaseFeed.PointerName;
+
+        // A file of release `tag` - a tag the pointer named, held to its channel's shape first (ServerBuildPointer).
+        public static string DownloadUrl(string tag, string fileName) =>
+            ServerReleaseFeed.DownloadPrefix + Uri.EscapeDataString(tag) + "/" + fileName;
+    }
+
+    // ###########################################################################################
+    // WHICH BUILD A RELEASE CARRIES - "crt-server-linux-x64.json", written by the workflows beside the build
+    // (2026-11-09):
+    //
+    //   tag            the release it is on - a CRT release's version, or ServerReleaseFeed.MainTag
+    //   serverVersion  the server version inside it
+    //   commit         the commit it was built from
+    //   sha256         the build's checksum - a new build is a new checksum, even of the same version
+    //
+    // NOT PROVEN, and so never trusted with more than whether to download: a pointer naming an older or the
+    // same version only spares a download; one naming a newer leads to a download, whose attestation and own
+    // description decide everything (ServerUpdater).
+    // ###########################################################################################
+    internal sealed class ServerBuildPointer
+    {
+        [JsonPropertyName("tag")] public string Tag { get; set; } = string.Empty;
+
+        [JsonPropertyName("serverVersion")] public string ServerVersion { get; set; } = string.Empty;
+
+        [JsonPropertyName("commit")] public string Commit { get; set; } = string.Empty;
+
+        [JsonPropertyName("sha256")] public string Sha256 { get; set; } = string.Empty;
+
+        // ###########################################################################################
+        // The pointer in `json` for `channel`, or null with the reason. Its tag must be its channel's - a real
+        // release's version for the live service, the standing pre-release for the test instance - so no URL is
+        // ever built from anything else; its checksum a SHA-256; its version one that can name a folder.
+        // ###########################################################################################
+        public static ServerBuildPointer? Read(string? json, string channel, out string why)
         {
-            bool takesPreReleases = string.Equals(channel, ServerUpdateOutcomes.PreReleasesChannel, StringComparison.Ordinal);
-            var candidates = new List<Candidate>();
-            readable = false;
+            ServerBuildPointer? pointer;
 
             try
             {
-                using JsonDocument document = JsonDocument.Parse(releasesJson);
-
-                if (document.RootElement.ValueKind != JsonValueKind.Array)
-                {
-                    why = "GitHub's list of releases was not a list.";
-                    return null;
-                }
-
-                readable = true;
-
-                foreach (JsonElement release in document.RootElement.EnumerateArray())
-                {
-                    if (ServerReleaseFeed.CandidateOf(release) is { } candidate &&
-                        (takesPreReleases || !candidate.IsPreRelease))
-                    {
-                        candidates.Add(candidate);
-                    }
-                }
+                pointer = string.IsNullOrWhiteSpace(json) ? null : JsonSerializer.Deserialize<ServerBuildPointer>(json);
             }
             catch (JsonException ex)
             {
-                why = $"GitHub's list of releases could not be read - {ex.Message}";
+                why = $"The release's {ServerReleaseFeed.PointerName} could not be read - {ex.Message}";
                 return null;
             }
 
-            Candidate? newest = candidates.OrderByDescending(candidate => candidate.PublishedUtc).FirstOrDefault();
+            if (pointer == null)
+            {
+                why = $"The release's {ServerReleaseFeed.PointerName} is empty.";
+                return null;
+            }
 
-            why = newest == null
-                ? $"No {(takesPreReleases ? "release or pre-release" : "release")} on GitHub carries a server build yet."
-                : string.Empty;
+            bool tagFits = channel == ServerUpdateOutcomes.MainChannel
+                ? pointer.Tag == ServerReleaseFeed.MainTag
+                : ServerReleaseInfo.IsFolderSafeVersion(pointer.Tag) && !pointer.Tag.Contains('-');
 
-            return newest;
+            if (!tagFits)
+            {
+                why = $"The release's {ServerReleaseFeed.PointerName} names [{pointer.Tag}], which is no release of this channel.";
+                return null;
+            }
+
+            if (!ServerReleaseInfo.IsFolderSafeVersion(pointer.ServerVersion))
+            {
+                why = $"The release's {ServerReleaseFeed.PointerName} names the server version [{pointer.ServerVersion}], which is no version.";
+                return null;
+            }
+
+            if (!IsSha256(pointer.Sha256))
+            {
+                why = $"The release's {ServerReleaseFeed.PointerName} names no checksum.";
+                return null;
+            }
+
+            why = string.Empty;
+            return pointer;
         }
 
-        private static Candidate? CandidateOf(JsonElement release)
-        {
-            if (release.ValueKind != JsonValueKind.Object ||
-                ServerReleaseFeed.Bool(release, "draft") ||
-                ServerReleaseFeed.String(release, "tag_name") is not { Length: > 0 } tag ||
-                !release.TryGetProperty("assets", out JsonElement assets) ||
-                assets.ValueKind != JsonValueKind.Array)
-            {
-                return null;
-            }
+        // A lower-case hex SHA-256, as the workflows write it with sha256sum.
+        public static bool IsSha256(string? value) =>
+            value is { Length: 64 } && value.All(c => c is (>= '0' and <= '9') or (>= 'a' and <= 'f'));
 
-            JsonElement? archive = null;
-            JsonElement? bundle = null;
-
-            foreach (JsonElement asset in assets.EnumerateArray())
-            {
-                string? name = asset.ValueKind == JsonValueKind.Object ? ServerReleaseFeed.String(asset, "name") : null;
-
-                if (string.Equals(name, ServerReleaseFeed.ArchiveName, StringComparison.Ordinal))
-                    archive = asset;
-                else if (string.Equals(name, ServerReleaseFeed.BundleName, StringComparison.Ordinal))
-                    bundle = asset;
-            }
-
-            if (archive is not { } archiveAsset || bundle is not { } bundleAsset)
-                return null;
-
-            string? archiveUrl = ServerReleaseFeed.String(archiveAsset, "browser_download_url");
-            string? bundleUrl = ServerReleaseFeed.String(bundleAsset, "browser_download_url");
-            long archiveBytes = ServerReleaseFeed.Long(archiveAsset, "size") ?? -1;
-
-            if (!ServerReleaseFeed.IsOurDownload(archiveUrl, tag, ServerReleaseFeed.ArchiveName) ||
-                !ServerReleaseFeed.IsOurDownload(bundleUrl, tag, ServerReleaseFeed.BundleName) ||
-                archiveBytes <= 0 || archiveBytes > ServerReleaseFeed.ArchiveMaxBytes ||
-                ServerReleaseFeed.Long(archiveAsset, "id") is not long assetId)
-            {
-                return null;
-            }
-
-            DateTimeOffset published = DateTimeOffset.TryParse(
-                ServerReleaseFeed.String(release, "published_at") ?? ServerReleaseFeed.String(release, "created_at"),
-                CultureInfo.InvariantCulture,
-                DateTimeStyles.AssumeUniversal,
-                out DateTimeOffset at)
-                ? at
-                : DateTimeOffset.MinValue;
-
-            return new Candidate(tag, ServerReleaseFeed.Bool(release, "prerelease"), published, archiveUrl!, assetId, archiveBytes, bundleUrl!);
-        }
-
-        // ###########################################################################################
-        // A download address of this repository's release `tag`, for `fileName` - exactly, so a list
-        // somebody tampered with cannot send the updater to another place. HTTPS, no "..", no query.
-        // ###########################################################################################
-        public static bool IsOurDownload(string? url, string tag, string fileName) =>
-            url != null &&
-            string.Equals(url, ServerReleaseFeed.DownloadPrefix + Uri.EscapeDataString(tag) + "/" + fileName, StringComparison.Ordinal) &&
-            !tag.Contains("..", StringComparison.Ordinal) &&
-            !tag.Contains('/') &&
-            !tag.Contains('\\');
-
-        private static string? String(JsonElement element, string name) =>
-            element.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
-
-        private static bool Bool(JsonElement element, string name) =>
-            element.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.True;
-
-        private static long? Long(JsonElement element, string name) =>
-            element.TryGetProperty(name, out JsonElement value) && value.ValueKind == JsonValueKind.Number && value.TryGetInt64(out long number)
-                ? number
-                : null;
+        // Where it came from, in the status's words: "CRT release [4.1.0]" or "main at [63431ff]".
+        public string Source =>
+            this.Tag == ServerReleaseFeed.MainTag
+                ? $"main at [{(this.Commit.Length > 7 ? this.Commit[..7] : this.Commit)}]"
+                : $"CRT release [{this.Tag}]";
     }
 }

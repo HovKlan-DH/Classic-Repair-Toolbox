@@ -3,8 +3,8 @@ Description=Classic Repair Toolbox contribution service - looks for a new server
 
 # Starts crt-server-update.service a minute after the timer starts, and then a minute after each look has
 # ended - so two looks never overlap, however long an install takes (owner request, 2026-11-09: "can it then
-# update every minute?"). A minute's look is cheap: it asks GitHub's API only when its releases feed
-# changed, and at least every 15 minutes (CRT.Server's ServerUpdater). INSTALLING.md, "Automatic updates from
+# update every minute?"). A minute's look is cheap: it reads one small file on GitHub naming the newest
+# build, and downloads only a new one (CRT.Server's ServerUpdater). INSTALLING.md, "Automatic updates from
 # GitHub". Every line not about WHICH instance this is equals crt-server-test-update.timer's.
 
 [Timer]

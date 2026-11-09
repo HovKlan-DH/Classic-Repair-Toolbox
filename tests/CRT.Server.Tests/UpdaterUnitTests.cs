@@ -55,7 +55,7 @@ namespace CRT.Server.Tests
 
         [Theory]
         [InlineData("crt-server-update.service", "crt-server", "crt-server.service", 5199, ServerUpdateOutcomes.ReleasesChannel)]
-        [InlineData("crt-server-test-update.service", "crt-server-test", "crt-server-test.service", 5198, ServerUpdateOutcomes.PreReleasesChannel)]
+        [InlineData("crt-server-test-update.service", "crt-server-test", "crt-server-test.service", 5198, ServerUpdateOutcomes.MainChannel)]
         public void Each_updater_looks_after_its_own_instance(string unit, string folder, string service, int port, string channel)
         {
             ServerUpdateCommand.Options options = UpdaterUnitTests.CommandOf(unit);

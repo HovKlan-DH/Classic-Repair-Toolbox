@@ -8,7 +8,7 @@ namespace CRT.Server.Handlers.Updates
     // `CRT.Server update-server` - ONE LOOK FOR A NEWER SERVER BUILD, AND INSTALLING IT (owner request,
     // 2026-11-09; ServerUpdater says how).
     //
-    //   dotnet CRT.Server.dll update-server --channel=releases|pre-releases
+    //   dotnet CRT.Server.dll update-server --channel=releases|main
     //                                       --folder=<the instance's folder, e.g. .../crt-server>
     //                                       --service=<its unit, e.g. crt-server.service>
     //                                       --health=<its health address, http://127.0.0.1:<port>/api/health>
@@ -33,7 +33,7 @@ namespace CRT.Server.Handlers.Updates
         public const int WrongCommandLine = 2;
 
         public const string UsageText =
-            "Usage: CRT.Server update-server --channel=releases|pre-releases --folder=<instance folder> " +
+            "Usage: CRT.Server update-server --channel=releases|main --folder=<instance folder> " +
             "--service=<unit>.service --health=http://127.0.0.1:<port>/api/health [--gh=<path to gh>] [--dry-run] [--retry-failed]";
 
         public const string DefaultGh = "/usr/bin/gh";
@@ -111,9 +111,9 @@ namespace CRT.Server.Handlers.Updates
 
             string channel = values["--channel"];
 
-            if (channel is not (ServerUpdateOutcomes.ReleasesChannel or ServerUpdateOutcomes.PreReleasesChannel))
+            if (channel is not (ServerUpdateOutcomes.ReleasesChannel or ServerUpdateOutcomes.MainChannel))
             {
-                why = $"[--channel] is [{channel}] - it is [{ServerUpdateOutcomes.ReleasesChannel}] or [{ServerUpdateOutcomes.PreReleasesChannel}].";
+                why = $"[--channel] is [{channel}] - it is [{ServerUpdateOutcomes.ReleasesChannel}] or [{ServerUpdateOutcomes.MainChannel}].";
                 return null;
             }
 

@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Net.Http.Headers;
 using System.Text.Json;
 
 namespace CRT.Server.Handlers.Updates
@@ -8,9 +7,9 @@ namespace CRT.Server.Handlers.Updates
     // THE UPDATER'S REAL HANDS (2026-11-09) - the thin part ServerUpdater decides for. Linux only: it
     // runs on the box, as the crt-deploy user, under crt-server-update.service.
     //
-    //   - GitHub over HTTPS, without a token: the releases list and the two files of one release.
+    //   - GitHub over HTTPS, without a token: a channel's pointer every minute, and the two files of a build.
     //   - `gh attestation verify` with the bundle the release carries - offline from GitHub, so the box
-    //     needs no GitHub login - pinned to this repository, its release workflow, main and a GitHub-hosted
+    //     needs no GitHub login - pinned to this repository, the channel's workflow, main and a GitHub-hosted
     //     runner (ServerReleaseFeed). gh runs with an environment of its own: no token, nothing of ours.
     //   - systemctl for the restart, which the polkit rule allows this user for the two services alone.
     //   - "releases/current" switched by renaming a new link over it (`mv -T`), so the service never
@@ -47,32 +46,35 @@ namespace CRT.Server.Handlers.Updates
 
         public void Dispose() => this.thisHttp.Dispose();
 
-        public async Task<string> ReadReleasesAsync(CancellationToken cancellationToken)
+        // ###########################################################################################
+        // The channel's pointer, a few lines - a release download (github.com, then GitHub's file storage), which
+        // GitHub's API limit does not count, so every minute costs nothing there. Null when GitHub has none: the
+        // newest release carries no server build yet, or main's release is not there yet.
+        // ###########################################################################################
+        public async Task<string?> ReadPointerAsync(string url, CancellationToken cancellationToken)
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, ServerReleaseFeed.ReleasesUrl);
-            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/vnd.github+json"));
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeout.CancelAfter(TimeSpan.FromSeconds(30));
 
-            using HttpResponseMessage response = await this.thisHttp.SendAsync(request, cancellationToken);
+            using HttpResponseMessage response = await this.thisHttp.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+
+            if (response.StatusCode == System.Net.HttpStatusCode.NotFound)
+                return null;
 
             if (!response.IsSuccessStatusCode)
                 throw new HttpRequestException($"GitHub answered {(int)response.StatusCode} {response.ReasonPhrase}");
 
-            return await response.Content.ReadAsStringAsync(cancellationToken);
-        }
+            if (response.RequestMessage?.RequestUri is { } landed && landed.Scheme != Uri.UriSchemeHttps)
+                throw new HttpRequestException($"[{url}] was sent somewhere that is not HTTPS.");
 
-        public async Task<string?> ReadFeedFingerprintAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                timeout.CancelAfter(TimeSpan.FromSeconds(20));
+            if (response.Content.Headers.ContentLength > ServerReleaseFeed.PointerMaxBytes)
+                throw new HttpRequestException($"[{url}] is far larger than a pointer.");
 
-                return ServerReleaseFeed.FingerprintOf(await this.thisHttp.GetStringAsync(ServerReleaseFeed.FeedUrl, timeout.Token));
-            }
-            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
-            {
-                return null;
-            }
+            string text = await response.Content.ReadAsStringAsync(timeout.Token);
+
+            return text.Length > ServerReleaseFeed.PointerMaxBytes
+                ? throw new HttpRequestException($"[{url}] is far larger than a pointer.")
+                : text;
         }
 
         public async Task DownloadAsync(string url, string toPath, long maxBytes, CancellationToken cancellationToken)
@@ -106,7 +108,7 @@ namespace CRT.Server.Handlers.Updates
             }
         }
 
-        public async Task<AttestationCheck> VerifyAsync(string archivePath, string bundlePath, CancellationToken cancellationToken)
+        public async Task<AttestationCheck> VerifyAsync(string archivePath, string bundlePath, string channel, CancellationToken cancellationToken)
         {
             Directory.CreateDirectory(this.thisGhHome);
 
@@ -117,7 +119,7 @@ namespace CRT.Server.Handlers.Updates
                 UseShellExecute = false,
             };
 
-            foreach (string argument in ServerUpdateHost.VerifyArguments(archivePath, bundlePath))
+            foreach (string argument in ServerUpdateHost.VerifyArguments(archivePath, bundlePath, channel))
                 start.ArgumentList.Add(argument);
 
             // An environment of its own: no GitHub token reaches it (none is needed - the bundle is on disk), its
@@ -143,16 +145,17 @@ namespace CRT.Server.Handlers.Updates
         }
 
         // ###########################################################################################
-        // gh's arguments: the build and its bundle, held to THIS repository, its release workflow, main and a
-        // GitHub-hosted runner - so a build made anywhere else, from another branch or on a runner somebody
-        // controls, is no build of ours.
+        // gh's arguments: the build and its bundle, held to THIS repository, the channel's workflow (the release
+        // workflow for the live service, the push workflow for the test instance), main and a GitHub-hosted
+        // runner - so a build made anywhere else, from another branch, by the other workflow or on a runner
+        // somebody controls, is no build of ours.
         // ###########################################################################################
-        public static IReadOnlyList<string> VerifyArguments(string archivePath, string bundlePath) =>
+        public static IReadOnlyList<string> VerifyArguments(string archivePath, string bundlePath, string channel) =>
         [
             "attestation", "verify", archivePath,
             "--bundle", bundlePath,
             "--repo", ServerReleaseFeed.Repository,
-            "--signer-workflow", ServerReleaseFeed.SignerWorkflow,
+            "--signer-workflow", ServerReleaseFeed.SignerWorkflowFor(channel),
             "--source-ref", ServerReleaseFeed.SourceRef,
             "--deny-self-hosted-runners",
             "--format", "json",

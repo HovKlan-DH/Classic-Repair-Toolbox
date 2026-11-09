@@ -81,7 +81,7 @@ namespace CRT.Server.Tests
             Assert.Null(ServerUpdateCommand.Parse(ServerUpdateCommandTests.Args("--folder=" + Path.Combine(ServerUpdateCommandTests.Folder, "..", "etc")), out _));
 
             List<string> twice = ServerUpdateCommandTests.Args();
-            twice.Add("--channel=pre-releases");
+            twice.Add("--channel=main");
             Assert.Null(ServerUpdateCommand.Parse(twice, out string why));
             Assert.Contains("twice", why, StringComparison.Ordinal);
         }
@@ -97,23 +97,26 @@ namespace CRT.Server.Tests
 
         // ###########################################################################################
         // *** WHAT gh IS ASKED TO PROVE (owner decision, 2026-11-09: "GitHub attestations"). *** The build and
-        // its bundle, held to this repository, its release workflow, main and a GitHub-hosted runner. Loosening
-        // any of these fails here.
+        // its bundle, held to this repository, the channel's workflow - the release workflow for the live
+        // service, the push workflow for the test instance - main and a GitHub-hosted runner. Loosening any of
+        // these fails here.
         // ###########################################################################################
-        [Fact]
-        public void Gh_is_held_to_this_repository_its_release_workflow_main_and_a_GitHub_hosted_runner()
+        [Theory]
+        [InlineData(ServerUpdateOutcomes.ReleasesChannel, "build-and-release.yml")]
+        [InlineData(ServerUpdateOutcomes.MainChannel, "build-and-unittest.yml")]
+        public void Gh_is_held_to_this_repository_the_channels_workflow_main_and_a_GitHub_hosted_runner(string channel, string workflow)
         {
             Assert.Equal(
                 [
                     "attestation", "verify", "/r/build.tar.gz",
                     "--bundle", "/r/build.tar.gz.sigstore.json",
                     "--repo", "HovKlan-DH/Classic-Repair-Toolbox",
-                    "--signer-workflow", "HovKlan-DH/Classic-Repair-Toolbox/.github/workflows/build-and-release.yml",
+                    "--signer-workflow", "HovKlan-DH/Classic-Repair-Toolbox/.github/workflows/" + workflow,
                     "--source-ref", "refs/heads/main",
                     "--deny-self-hosted-runners",
                     "--format", "json",
                 ],
-                ServerUpdateHost.VerifyArguments("/r/build.tar.gz", "/r/build.tar.gz.sigstore.json"));
+                ServerUpdateHost.VerifyArguments("/r/build.tar.gz", "/r/build.tar.gz.sigstore.json", channel));
         }
 
         // gh's answer, as `gh attestation verify --format json` writes it (measured 2026-11-09 on gh 2.98.0).

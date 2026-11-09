@@ -2917,37 +2917,42 @@ service to the 4.0 trees"). CRT reads a main file only at or below its own versi
   in words naming no version of CRT.
 - **THE SERVER UPDATES ITSELF FROM GITHUB** (owner request, 2026-11-09: "The goal would be for me to not
   manually update this ... This should of course be as secure as possible"; owner decisions the same
-  day: server builds come "With CRT releases", proven by "GitHub attestations"; server 10.3.0;
-  `src/CRT.Server/Handlers/Updates/`, INSTALLING.md "Automatic updates from GitHub"). The release
-  workflow's `build-server` job publishes the server, writes `crt-server-release.json` into it
-  (server and CRT version, commit, pre-release), packs it and attests it
-  (`actions/attest-build-provenance`), and the release carries `crt-server-linux-x64.tar.gz` and its
-  `.sigstore.json` bundle. On the box `CRT.Server update-server`, run EVERY MINUTE (owner request, same
-  day; a minute after the last look ended - `OnUnitInactiveSec=1min`) by
-  `crt-server-update.timer` (`crt-server-test-update.timer` for the test instance) as the user
-  `crt-deploy` - not in `crt-data`, so it cannot read the settings - installs the newest RELEASE's build
-  on the live service and the newest of releases and PRE-RELEASES on the test instance. **The trust is
-  fixed in code, never a setting** (`ServerReleaseFeed`, `ServerUpdateHost.VerifyArguments`, held by
+  day: proven by "GitHub attestations", and "the REAL version should work on a release ... But ALPHA/BETA
+  works on commit", "can it then update every minute?"; server 10.3.0; `src/CRT.Server/Handlers/Updates/`,
+  INSTALLING.md "Automatic updates from GitHub"). **Two channels:** the LIVE service ("releases") installs
+  the server build a real CRT release carries - the release workflow's `build-server` job; the TEST
+  instance ("main") the build of every push to main whose tests passed - the push workflow's
+  `server-build-of-main` job, which replaces the files of ONE standing pre-release, `crt-server-main`
+  (Velopack skips a release without its `releases.<channel>.json`, so CRT's update check never sees it;
+  the release workflow's clean-up leaves it alone). Both build through ONE composite action,
+  `.github/actions/crt-server-build` (publish, `crt-server-release.json` inside - server and CRT version,
+  commit, pre-release - pack, `actions/attest-build-provenance`, and the pointer
+  `crt-server-linux-x64.json` - tag, server version, commit, SHA-256). **On the box** `CRT.Server
+  update-server`, run EVERY MINUTE (a minute after the last look ended - `OnUnitInactiveSec=1min`) by
+  `crt-server-update.timer` / `crt-server-test-update.timer` as the user `crt-deploy` - not in `crt-data`,
+  so it cannot read the settings - reads its channel's POINTER (`ServerReleaseFeed.PointerUrlFor`:
+  `releases/latest/download/...` - a pre-release is never "latest" - or `releases/download/crt-server-main/...`;
+  release downloads, which GitHub's API limit of 60 an hour without a login does not count) and downloads
+  only a build it has not looked at and that says it is newer - a commit leaving the server's version as
+  it was costs one small file. **The pointer is not proven and decides only whether to download**; it must
+  name its own channel's release (`ServerBuildPointer.Read`), the build must have its checksum (main's files
+  are replaced at every push - one replaced mid-download is retried next minute). **The trust is fixed in
+  code, never a setting** (`ServerReleaseFeed.SignerWorkflowFor`, `ServerUpdateHost.VerifyArguments`, held by
   `ServerUpdateCommandTests`): `gh attestation verify` with the bundle, offline from GitHub and with no
-  login, pinned to `HovKlan-DH/Classic-Repair-Toolbox`, `build-and-release.yml`, `refs/heads/main` and a
-  GitHub-hosted runner - **so `build-server` must stay in that file, on `ubuntu-latest`, and releases
-  are run from main**; downloads only from that repository's release URLs; the version and pre-release
-  read from INSIDE the attested build, never the GitHub release's flag. **GitHub's API allows 60 calls an
-  hour without a login** - two instances every minute would be 120 - so a minute's look reads the
-  releases' Atom feed (github.com, not counted; `ServerReleaseFeed.FingerprintOf`, a DTD refused) and
-  asks the API only when it changed, every minute for 10 minutes after (a release's files are uploaded
-  after it is published, and the feed does not move for them), and at least every 15 minutes
-  (`ServerUpdater.FullLookEvery`); a held build is retried every minute from disk, and a minute saying
-  again what was said writes nothing to the journal. Never backwards, never a
-  pre-release on the live service, never a build that failed before (`--retry-failed`). Layout:
-  `<instance>/releases/<version>/`, `releases/current` switched by rename, `app -> releases/current` so
-  the units stay, settings in `<instance>/settings/` linked into each build, `releases/update-status.json`
-  (`ServerUpdateStatus`) which the service reads beside the build it runs and answers in
-  `GET /api/review/server-status`'s `updates` (CRT.Data's `ServerUpdatesAnswer`), shown under Account >
-  "Server version" (`ServerVersionDisplay`). After the restart `/api/health` must answer the new version
-  within two minutes, else the build before goes back. **A build shipping a changed systemd unit, timer or
-  the polkit rule (`50-crt-server-update.rules`, restart of the two services only) is HELD** until the
-  installed copy matches or `system-files-installed` is put in its folder - a change to any of those
+  login, pinned to `HovKlan-DH/Classic-Repair-Toolbox`, the CHANNEL'S workflow (`build-and-release.yml` for
+  live, `build-and-unittest.yml` for test), `refs/heads/main` and a GitHub-hosted runner - **so both jobs
+  must stay in those files, on `ubuntu-latest`, and releases are run from main**; the version and
+  pre-release read from INSIDE the attested build, never a release's flag. Never backwards, never a
+  pre-release's build on the live service, never a build that failed before (`--retry-failed`); a held
+  build is retried every minute from disk; a look saying again what the last said writes nothing to the
+  journal. Layout: `<instance>/releases/<version>/`, `releases/current` switched by rename,
+  `app -> releases/current` so the units stay, settings in `<instance>/settings/` linked into each build,
+  `releases/update-status.json` (`ServerUpdateStatus`) which the service reads beside the build it runs and
+  answers in `GET /api/review/server-status`'s `updates` (CRT.Data's `ServerUpdatesAnswer`), shown under
+  Account > "Server version" (`ServerVersionDisplay`). After the restart `/api/health` must answer the new
+  version within two minutes, else the build before goes back. **A build shipping a changed systemd unit,
+  timer or the polkit rule (`50-crt-server-update.rules`, restart of the two services only) is HELD** until
+  the installed copy matches or `system-files-installed` is put in its folder - a change to any of those
   files is a step for the project owner, said in VERSION.md. The decisions are `ServerUpdater`'s against
   `IServerUpdateHost` (tests: a fake host, virtual time); `ServerUpdateHost` is the thin Linux part.
 - **Step 1's foundation, `DraftSession`** (2026-10-25, CRT.Data - used by the Contribute tab's table and,
