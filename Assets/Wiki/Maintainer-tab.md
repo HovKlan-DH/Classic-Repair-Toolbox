@@ -123,6 +123,14 @@ For now, only the administrator publishes to the stable source: for everybody el
   a fourth line says how many. The server tries them again every few minutes for three days. A mail
   with a confirmation link or a code in it (signing up, a new password, a new address, an
   invitation) is not sent again: the person asks for a new one, or the administrator invites again.
+  The last lines say how the server keeps itself up to date: every minute it looks on GitHub for
+  the server that came with the newest CRT release (the test server: release or pre-release),
+  installs it once GitHub proves the project's own release built it, and goes back to the server
+  before if the new one does not start. **Automatic updates** says which releases it installs,
+  **Last look** when it last looked and what it found - or what waits and why - and **Last
+  installed** the newest server it installed and the one that server replaced. A last look over ten
+  minutes old means the updater has stopped. A server set up without it says "not set up on this
+  server".
 
 **Management** - the administrator's eight tools, on a tab of its own before **Account**, marked with a padlock. Nobody else sees the tab, and the server turns everybody else away from the tools anyway. While an oscilloscope model waits, a red number on the tab and on **Oscilloscope models** says how many, and **Management** opens on that entry; otherwise it opens on **Maintainers**:
 

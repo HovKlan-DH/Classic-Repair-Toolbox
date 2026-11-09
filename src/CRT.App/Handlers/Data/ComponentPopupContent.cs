@@ -5,10 +5,21 @@ using System.Linq;
 namespace Handlers.DataHandling
 {
     // One pin as the component popup lists it - with its net on this board, from the board's KiCad
-    // data ("" without), and whether the image shown is of it (owner request, 2026-11-02).
-    public sealed record ComponentPopupPin(string Pin, string Name, string Direction, string Net = "", bool IsViewed = false)
+    // data ("" without), whether the image shown is of it (owner request, 2026-11-02), what its
+    // oscilloscope baselines say the scope should read on it ("" for none - owner request, 2026-11-09),
+    // and whether the pointer is on it in the drawing beside the list (owner request, 2026-11-09).
+    public sealed record ComponentPopupPin(
+        string Pin,
+        string Name,
+        string Direction,
+        string Net = "",
+        bool IsViewed = false,
+        string Reading = "",
+        bool IsPointedAt = false)
     {
         public bool HasNet => this.Net.Length > 0;
+
+        public bool HasReading => this.Reading.Length > 0;
     }
 
     // One replacement part as the component popup lists it - its part number and kind on the first line.
@@ -51,16 +62,25 @@ namespace Handlers.DataHandling
         // The component's pins in `region` (a pin with no region is in every one), in number order -
         // each with its net on this board from `nets` (by pin number; the plan: "The popup shows the
         // signal name and 'net on this board' side by side"). `viewedPin`: the pin of the image shown -
-        // its row says so (owner request, 2026-11-02).
+        // its row says so (owner request, 2026-11-02). `images`: the board's component images, whose
+        // oscilloscope baselines of this component and region give each pin its expected reading
+        // (ReadingOf). `pointedPin`: the pin the pointer is on in the drawing - its row says so.
         // ###########################################################################################
         public static List<ComponentPopupPin> PinsOf(
             IEnumerable<ComponentPinEntry> pins,
             string? label,
             string? region,
             IReadOnlyDictionary<string, string>? nets = null,
-            string? viewedPin = null)
+            string? viewedPin = null,
+            IEnumerable<ComponentImageEntry>? images = null,
+            int? pointedPin = null)
         {
             ArgumentNullException.ThrowIfNull(pins);
+
+            // The component's baselines in the region, found once for all its pins.
+            List<ComponentImageEntry> baselines = (images ?? [])
+                .Where(image => ComponentImageKinds.IsScopeBaseline(image) && ComponentPopupContent.InScope(image.BoardLabel, image.Region, label, region))
+                .ToList();
 
             return pins
                 .Where(pin => ComponentPopupContent.InScope(pin.BoardLabel, pin.Region, label, region))
@@ -75,9 +95,58 @@ namespace Handlers.DataHandling
                         pin.Name?.Trim() ?? string.Empty,
                         pin.Direction?.Trim() ?? string.Empty,
                         net,
-                        ComponentVocabulary.IsSamePin(number, viewedPin));
+                        ComponentVocabulary.IsSamePin(number, viewedPin),
+                        ComponentPopupContent.ReadingOf(baselines, number),
+                        pointedPin is int pointed && ComponentVocabulary.PinNumberOf(number) == pointed);
                 })
                 .ToList();
+        }
+
+        // ###########################################################################################
+        // WHAT THE SCOPE SHOULD READ ON `pin` (owner request, 2026-11-09: "add another column ... named
+        // 'Expected oscilloscope reading' and have the value from the oscilloscope pin"): the expected
+        // reading of its baselines among `baselines`, "2 [64K]" being pin 2. Nearly every pin has one
+        // baseline (measured 2026-11-09: 4 of the 13,858 pins with one have two that read differently,
+        // the C16's "2" HIGH and "2 [64K]" Pulsing), so one reading is the reading; readings that
+        // differ are each a line, "Pulsing [64K]" - with what its pin says beside its number, unless a
+        // baseline of the plain pin reads it too. Capitals aside, a reading is said once. "" for none.
+        // ###########################################################################################
+        internal static string ReadingOf(IEnumerable<ComponentImageEntry> baselines, string? pin)
+        {
+            ArgumentNullException.ThrowIfNull(baselines);
+
+            List<IGrouping<string, ComponentImageEntry>> readings = baselines
+                .Where(baseline => ComponentVocabulary.IsSamePin(baseline.Pin, pin) &&
+                                   !string.IsNullOrWhiteSpace(baseline.ExpectedOscilloscopeReading))
+                .GroupBy(baseline => baseline.ExpectedOscilloscopeReading.Trim(), StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (readings.Count <= 1)
+            {
+                return readings.FirstOrDefault()?.Key ?? string.Empty;
+            }
+
+            return string.Join(
+                "\n",
+                readings.Select(reading =>
+                {
+                    List<string> asides = reading.Select(baseline => ComponentPopupContent.BesideItsNumber(baseline.Pin)).ToList();
+
+                    return asides.Any(aside => aside.Length == 0)
+                        ? reading.Key
+                        : $"{reading.Key} {string.Join(" ", asides.Distinct(StringComparer.OrdinalIgnoreCase))}";
+                }));
+        }
+
+        // What a baseline's pin says beside its number - "[64K]" of "2 [64K]" - "" for a pin that is only its
+        // number, or no number at all.
+        private static string BesideItsNumber(string? pin)
+        {
+            string text = (pin ?? string.Empty).Trim();
+
+            return ComponentVocabulary.PinNumberOf(text) is null
+                ? string.Empty
+                : text[text.TakeWhile(char.IsAsciiDigit).Count()..].Trim();
         }
 
         // The pins as the drawing takes them - the same scope.

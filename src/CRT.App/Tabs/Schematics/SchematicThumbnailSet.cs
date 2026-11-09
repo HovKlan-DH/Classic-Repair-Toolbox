@@ -5,7 +5,9 @@ using Handlers.Geometry;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace Tabs.TabSchematics
 {
@@ -81,9 +83,17 @@ namespace Tabs.TabSchematics
         }
 
         // ###########################################################################################
-        // Decodes every image to a thumbnail at most `maxWidth` wide. Off the UI thread. Checks
-        // `cancellationToken` between images; cancelled, it disposes what it decoded and throws
-        // OperationCanceledException.
+        // How many images are decoded at once: half the processors, at most four (2026-11-09, the launch
+        // question - measured on the C64 250407's six pictures, 635 ms one at a time, 276 ms four at once,
+        // 214 ms six at once). Not more: a PNG is decoded whole before it is scaled, a large scan some
+        // 100 MB while it lasts.
+        // ###########################################################################################
+        internal static int DecodedAtOnce => Math.Clamp(Environment.ProcessorCount / 2, 1, 4);
+
+        // ###########################################################################################
+        // Decodes every image to a thumbnail at most `maxWidth` wide, several at once (DecodedAtOnce), each
+        // kept in its place. Off the UI thread. Starts no image once `cancellationToken` is cancelled;
+        // cancelled, it disposes what it decoded and throws OperationCanceledException.
         // ###########################################################################################
         internal static SchematicThumbnailSet Decode(
             IReadOnlyList<(string Name, string FullPath)> images,
@@ -91,29 +101,34 @@ namespace Tabs.TabSchematics
             int maxWidth,
             CancellationToken cancellationToken)
         {
-            var decoded = new List<SchematicThumbnailImage>(images.Count);
+            var decoded = new SchematicThumbnailImage?[images.Count];
 
             try
             {
-                foreach (var (name, fullPath) in images)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-
-                    var (thumbnail, originalSize) = SchematicThumbnailSet.DecodeOne(fullPath, maxWidth);
-                    decoded.Add(new SchematicThumbnailImage(name, fullPath, thumbnail, originalSize));
-                }
+                // An image throws nothing (DecodeOne logs and returns none), so the loop ends in a
+                // cancellation or not at all - never an AggregateException.
+                Parallel.For(
+                    0,
+                    images.Count,
+                    new ParallelOptions { MaxDegreeOfParallelism = SchematicThumbnailSet.DecodedAtOnce, CancellationToken = cancellationToken },
+                    index =>
+                    {
+                        var (name, fullPath) = images[index];
+                        var (thumbnail, originalSize) = SchematicThumbnailSet.DecodeOne(fullPath, maxWidth);
+                        decoded[index] = new SchematicThumbnailImage(name, fullPath, thumbnail, originalSize);
+                    });
             }
             catch (OperationCanceledException)
             {
                 foreach (var image in decoded)
                 {
-                    image.Thumbnail?.Dispose();
+                    image?.Thumbnail?.Dispose();
                 }
 
                 throw;
             }
 
-            return new SchematicThumbnailSet(signature, decoded);
+            return new SchematicThumbnailSet(signature, decoded.Select(image => image!).ToList());
         }
 
         private static (Bitmap? Thumbnail, PixelSize OriginalSize) DecodeOne(string fullPath, int maxWidth)

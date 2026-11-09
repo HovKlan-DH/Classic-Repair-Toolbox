@@ -611,7 +611,16 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
 - `Main/App.axaml.cs` - holds `AppConfig`, nearly every tunable value (file/folder names, URLs,
   timeouts, zoom limits, version helpers, the Wiki page names). **Check here before hardcoding a
   constant.** `App` wires theme application, global exception logging and the startup sequence:
-  `Splash` -> `DataManager.InitializeAsync` -> `Main` -> fire-and-forget check-in.
+  `Splash` -> `DataManager.InitializeAsync` -> `Main` -> fire-and-forget check-in. **The splash stays until
+  the first board is drawn** (owner report, 2026-11-09: "a couple of seconds ... I see an empty UI";
+  `Main.FirstBoard.cs`, `Main.WaitForFirstBoardAsync`, at most `AppConfig.SplashWaitsForFirstBoardAtMost`):
+  the window is shown only once its lists are filled, its thumbnails placed and its picture read - it
+  loads unshown safely, the picture fitted by layout. **Every way a board load ends says so**
+  (`FirstBoardDone`) - a new early return in `ReadSelectedBoardAsync` must too, or the splash waits out
+  its limit. **`Main.StartAsync` awaits nothing before `PopulateHardwareDropDown`** (2026-11-09: an awaited
+  crash-file read there handed the window back to App with empty drop-downs and no board load begun) -
+  start such work, and await it after. Thumbnails decode several at once
+  (`SchematicThumbnailSet.DecodedAtOnce`; 635 ms one at a time, 276 ms four at once on the C64 250407).
 - `Main/Main.axaml.cs` - the main window, the central controller for board selection, schematics,
   and cross-tab state. **Split into partials by area** (`Main.BoardSelection.cs`, `Main.Worklog.cs`,
   `Main.Maintainer.cs`, `Main.SubmissionChecks.cs`, `Main.ModeHint.cs`, ...); its `.axaml.cs` header is
@@ -1032,7 +1041,16 @@ there, and `await` on a finished task looped for ever on the UI thread. A tool f
   region shown; owner request, 2026-11-01: **a pin of either lights up under the pointer and a click goes to its first image**,
   `PinoutDrawing.PinsCanBePicked`, `ComponentInfoWindow.GoToPin`, `ComponentPopupContent.FirstImageOfPin`; a drawing takes the
   pointer only where it draws, so it fills itself with Transparent; owner request, 2026-11-02: **the pin of the image shown stays
-  lit on both**, `ShowViewedPin`, `PinoutDrawing.MarkPin` - `HoverPin` for the pointer in the list), replacement parts,
+  lit on both**, `ShowViewedPin`, `PinoutDrawing.MarkPin` - `HoverPin` for the pointer in the list; owner request, 2026-11-09:
+  **the pin under the pointer is lit on BOTH, whichever it is on** - the chip's case and a part drawn as it looks raise
+  `PinHovered` for the POINTER alone, never for `HoverPin`, or the two would answer each other; the row's `IsPointedAt` - and
+  **last, each pin's "Expected oscilloscope reading"**, its heading on three lines, from its baselines in the region shown,
+  readings that differ a line each with what the pin says beside its number, "Pulsing [64K]" (`ComponentPopupContent.ReadingOf`);
+  **every column as wide as its longest text, the same 20 after each** (owner request, 2026-11-09 - the space "Pin" had in its
+  36 wide column; `PinTableGeometry`, `ComponentInfoWindow.PinList.cs`): Auto columns sharing their widths, a `PinCell` style's
+  margin, and only when the room is short do Signal, Net name and the reading wrap - widest first, none below its widest word
+  unless not even the words fit, when they break down to `PinTableGeometry.Narrowest` - to widths put in resources their MaxWidth reads (rows made again as a pin is pointed at take them too); the list stands beside
+  the drawing only when it fits there whole), replacement parts,
   a baseline's machine state (`ComponentPopupContent`); the Overview has a Package column and
   its Notes are the first image's note (`OverviewHtmlBuilder.BuildRows`). **"Show pinout in its own window when the component info window would scroll"** (owner's choice of words, 2026-11-09 - "Detach pinout image in component info popup", then "... window", until then; right under "Open multiple component info windows" since)
   (owner request, 2026-11-07; `ComponentInfoWindow.Pinout.cs`) moves the popup's pinout section into a window of its own,
@@ -1964,7 +1982,7 @@ The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainer
   published board is on the machine. A user on the BETA source is told once, when their work reaches
   stable, to switch back (`Main.SourceSwitchNotice.cs`). **Nothing is retired while CRT talks to the
   test instance** (`ContributionServer.RetiresPublishedDrafts`; code review, 2026-10-25): its stable
-  data is replaced on release day, so the draft is the work's only lasting copy.
+  data never reaches the live data, so the draft is the work's only lasting copy.
 
 #### The board table editor (`Controls/BoardTable/`, shown by the Contribute and Maintainer tabs)
 
@@ -2875,20 +2893,63 @@ service to the 4.0 trees"). CRT reads a main file only at or below its own versi
   under `Files/` or `.crt-` is never listed by a draft write (`DraftFiles`), so a file filed there was
   copied in and lost. The drafts flow's words name no Excel: the lock-file check stays, worded "open in
   another program".
-- **CRT 4.0's pre-releases talk to a TEST INSTANCE of the service** (owner decision, 2026-10-25: "We
-  need the test server"): its own program folder, settings, database (`crt_review_test`) and port
-  (5198), at `https://classic-repair-toolbox.dk/crt-test/api/`, publishing into the 4.0 trees, with a
-  shipped unit of its own (`crt-server-test.service` - every line the live unit's but the five naming
-  the instance, `TestInstanceUnitTests`); set up as INSTALLING.md's "A test instance for CRT 4.0's
-  pre-releases". **Only the contribution service moves**: submissions, the Maintainer tab and the
-  health check use `AppConfig.ContributionServerRootUrl` (the test instance now), while the check-in,
-  feedback and board views stay on `CrtServerRootUrl`, the live service - the usage numbers and the
-  feedback mail. What CRT remembers of a service is kept per service (`ContributionServer.FileNameFor`:
-  `maintainer-session-test.json`, `submissions-test.json`) - shared with the files CRT 3.x reads, a
-  pre-release would send the live token to the test instance and forget it on the 401, signing 3.x
-  out. The sign-in screen and the Submit dialog say it is the test server. **On release day
-  `ContributionServerRootUrl` goes back to `CrtServerRootUrl`** - `ContributionServerTests` fails a
-  release version still naming the test instance, which stops the release workflow.
+- **EVERY PRE-RELEASE TALKS TO A TEST INSTANCE OF THE SERVICE, EVERY RELEASE TO THE LIVE ONE, BY ITS
+  VERSION** (owner decisions, 2026-10-25: "We need the test server"; 2026-11-09: "if the
+  <InformationalVersion> is not a 'real' version, then the application will refer to the
+  'crt-server-test' ... If it is a real version, then it should refer to the 'crt-server'";
+  `ContributionServer.RootUrlFor` - no "-" before any "+" is a release; no version at all is not):
+  its own program folder, settings, database (`crt_review_test`) and port (5198), at
+  `https://classic-repair-toolbox.dk/crt-test/api/`, with a shipped unit of its own
+  (`crt-server-test.service` - every line the live unit's but the five naming the instance,
+  `TestInstanceUnitTests`); set up as INSTALLING.md's "A test instance for pre-releases". **Nothing is
+  set back by hand on release day** - `AppConfig.ContributionServerRootUrl` is a PROPERTY over the
+  version (a static field declared above `AppDisplayVersionString` would read it as null, and every
+  release would talk to the test instance; `ContributionServerTests`). **The test instance stays after
+  CRT 4.0's release** (owner decision, 2026-11-09: "Trees of its own"): until then it publishes into the
+  4.0 trees, from release day into `app-data-v4-test(-BETA)`, copies of the live ones no CRT reads -
+  pre-releases read the live data like everybody (INSTALLING.md, "On release day"). **Only the
+  contribution service moves**: submissions, the Maintainer tab and the health check use
+  `ContributionServerRootUrl`, while the check-in, feedback and board views stay on `CrtServerRootUrl`,
+  the live service - the usage numbers and the feedback mail. What CRT remembers of a service is kept
+  per service (`ContributionServer.FileNameFor`: `maintainer-session-test.json`, `submissions-test.json`)
+  - shared with the files a release reads, a pre-release would send the live token to the test
+  instance and forget it on the 401. The sign-in screen and the Submit dialog say it is the test server,
+  in words naming no version of CRT.
+- **THE SERVER UPDATES ITSELF FROM GITHUB** (owner request, 2026-11-09: "The goal would be for me to not
+  manually update this ... This should of course be as secure as possible"; owner decisions the same
+  day: server builds come "With CRT releases", proven by "GitHub attestations"; server 10.3.0;
+  `src/CRT.Server/Handlers/Updates/`, INSTALLING.md "Automatic updates from GitHub"). The release
+  workflow's `build-server` job publishes the server, writes `crt-server-release.json` into it
+  (server and CRT version, commit, pre-release), packs it and attests it
+  (`actions/attest-build-provenance`), and the release carries `crt-server-linux-x64.tar.gz` and its
+  `.sigstore.json` bundle. On the box `CRT.Server update-server`, run EVERY MINUTE (owner request, same
+  day; a minute after the last look ended - `OnUnitInactiveSec=1min`) by
+  `crt-server-update.timer` (`crt-server-test-update.timer` for the test instance) as the user
+  `crt-deploy` - not in `crt-data`, so it cannot read the settings - installs the newest RELEASE's build
+  on the live service and the newest of releases and PRE-RELEASES on the test instance. **The trust is
+  fixed in code, never a setting** (`ServerReleaseFeed`, `ServerUpdateHost.VerifyArguments`, held by
+  `ServerUpdateCommandTests`): `gh attestation verify` with the bundle, offline from GitHub and with no
+  login, pinned to `HovKlan-DH/Classic-Repair-Toolbox`, `build-and-release.yml`, `refs/heads/main` and a
+  GitHub-hosted runner - **so `build-server` must stay in that file, on `ubuntu-latest`, and releases
+  are run from main**; downloads only from that repository's release URLs; the version and pre-release
+  read from INSIDE the attested build, never the GitHub release's flag. **GitHub's API allows 60 calls an
+  hour without a login** - two instances every minute would be 120 - so a minute's look reads the
+  releases' Atom feed (github.com, not counted; `ServerReleaseFeed.FingerprintOf`, a DTD refused) and
+  asks the API only when it changed, every minute for 10 minutes after (a release's files are uploaded
+  after it is published, and the feed does not move for them), and at least every 15 minutes
+  (`ServerUpdater.FullLookEvery`); a held build is retried every minute from disk, and a minute saying
+  again what was said writes nothing to the journal. Never backwards, never a
+  pre-release on the live service, never a build that failed before (`--retry-failed`). Layout:
+  `<instance>/releases/<version>/`, `releases/current` switched by rename, `app -> releases/current` so
+  the units stay, settings in `<instance>/settings/` linked into each build, `releases/update-status.json`
+  (`ServerUpdateStatus`) which the service reads beside the build it runs and answers in
+  `GET /api/review/server-status`'s `updates` (CRT.Data's `ServerUpdatesAnswer`), shown under Account >
+  "Server version" (`ServerVersionDisplay`). After the restart `/api/health` must answer the new version
+  within two minutes, else the build before goes back. **A build shipping a changed systemd unit, timer or
+  the polkit rule (`50-crt-server-update.rules`, restart of the two services only) is HELD** until the
+  installed copy matches or `system-files-installed` is put in its folder - a change to any of those
+  files is a step for the project owner, said in VERSION.md. The decisions are `ServerUpdater`'s against
+  `IServerUpdateHost` (tests: a fake host, virtual time); `ServerUpdateHost` is the thin Linux part.
 - **Step 1's foundation, `DraftSession`** (2026-10-25, CRT.Data - used by the Contribute tab's table and,
   through `DraftEdits`, by every other draft editor since the same day): a
   draft held once in memory for every editor. `Apply(description, transform, origin)` edits it in
@@ -2943,10 +3004,11 @@ service to the 4.0 trees"). CRT reads a main file only at or below its own versi
   was empty, every pin the workbook had kept). **A user's Excel-era draft takes the pinouts its published board was converted with, in the
   draft and its base** (`ConversionPinouts.FromPublished`, `DraftConversion`): a draft sends its whole pin list, and without them it read as
   every pin removed.
-- **Not done yet**: the release day itself (stop the test instance, convert once more, work the queue
-  empty, switch the service, point CRT back at the live service - a submission CRT 3.x sent names its
-  files by their Excel-tree paths), and pasting the Wiki's 4.0 pages and deleting the fourteen it no
-  longer has (`Assets/Wiki/README.md`, "Pages removed at CRT 4.0").
+- **Not done yet**: the release day itself (stop the test instance and move it to trees of its own,
+  convert once more, work the queue empty, switch the service - a submission CRT 3.x sent names its
+  files by their Excel-tree paths; CRT itself needs nothing, its version picks the service), and pasting
+  the Wiki's 4.0 pages and deleting the fourteen it no longer has (`Assets/Wiki/README.md`, "Pages
+  removed at CRT 4.0").
 
 ### External integrations (`Handlers/`)
 

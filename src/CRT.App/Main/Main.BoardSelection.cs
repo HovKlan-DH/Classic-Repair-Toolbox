@@ -47,6 +47,9 @@ namespace CRT
             if (hardwareNames.Count == 0)
             {
                 this.HardwareComboBox.SelectedIndex = -1;
+
+                // No board to show: the splash waits for none (Main.FirstBoard.cs).
+                this.FirstBoardDone();
                 return;
             }
 
@@ -141,6 +144,9 @@ namespace CRT
             if (string.IsNullOrWhiteSpace(selectedHardware) || boards.Count == 0)
             {
                 this.BoardComboBox.SelectedIndex = -1;
+
+                // No board to show: the splash waits for none (Main.FirstBoard.cs).
+                this.FirstBoardDone();
                 return;
             }
 
@@ -302,6 +308,7 @@ namespace CRT
                 this.NoteBoardOnScreen(null);
                 this.RefreshWorklogBar();
                 this.ShowBoardInContributeTab(null);
+                this.FirstBoardDone();
                 return;
             }
 
@@ -328,6 +335,7 @@ namespace CRT
                 this.NoteBoardOnScreen(null);
                 this.RefreshWorklogBar();
                 this.ShowBoardInContributeTab(null);
+                this.FirstBoardDone();
                 return;
             }
 
@@ -350,6 +358,7 @@ namespace CRT
                 this.NoteBoardOnScreen(null);
                 this.RefreshWorklogBar();
                 this.ShowBoardInContributeTab(null);
+                this.FirstBoardDone();
                 return;
             }
 
@@ -563,8 +572,15 @@ namespace CRT
                                 : orderedThumbnails.FindIndex(thumbnail =>
                                     string.Equals(thumbnail.Name, savedSchematic, StringComparison.OrdinalIgnoreCase));
 
-                            this.TabSchematicsControl.SelectedThumbnail =
-                                orderedThumbnails[savedIndex >= 0 ? savedIndex : 0];
+                            SchematicThumbnail shown = orderedThumbnails[savedIndex >= 0 ? savedIndex : 0];
+
+                            // Before the selection: a picture with no file is settled inside it (Main.FirstBoard.cs).
+                            this.FirstBoardPlaced(shown);
+                            this.TabSchematicsControl.SelectedThumbnail = shown;
+                        }
+                        else
+                        {
+                            this.FirstBoardPlaced(null);
                         }
 
                         this.ShowResources(boardData, entry, dataRoot, draftBoardFolder);
@@ -612,6 +628,9 @@ namespace CRT
                 catch (Exception ex)
                 {
                     Logger.Warning($"Background board load failed - [{ex}]");
+
+                    // Over all the same: the splash waits no longer (Main.FirstBoard.cs).
+                    this.FirstBoardDoneSoon();
                 }
             });
         }

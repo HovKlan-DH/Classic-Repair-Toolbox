@@ -25,6 +25,17 @@ namespace CRT
         }
 
         // ###########################################################################################
+        // What the splash waits for once the data is in - the first board being drawn (App.StartApplicationAsync).
+        // The file line of the data check goes with it.
+        // ###########################################################################################
+        internal void ShowStatus(string status)
+        {
+            this.StatusLabel.Text = status;
+            this.FileLabel.Text = string.Empty;
+            this.FileLabel.IsVisible = false;
+        }
+
+        // ###########################################################################################
         // Updates the file label with the path of the file currently being downloaded.
         // Hides the label automatically when the download batch finishes (empty string).
         // ###########################################################################################

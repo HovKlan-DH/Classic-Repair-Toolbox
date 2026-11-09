@@ -1,0 +1,35 @@
+[Unit]
+Description=Classic Repair Toolbox contribution service - installs new server builds from GitHub releases (CRT.Server update-server)
+Wants=network-online.target
+After=network-online.target crt-server.service
+
+# ONE LOOK FOR A NEWER SERVER BUILD (owner request, 2026-11-09), started by crt-server-update.timer.
+# It installs the server build a CRT RELEASE carries once GitHub's attestation proves this repository's
+# release workflow built it, restarts crt-server.service and goes back to the build before when the new
+# one does not answer - see INSTALLING.md, "Automatic updates from GitHub". Its own user, never the
+# service's: the service cannot rewrite its program, and this user can do nothing but install builds and
+# (through 50-crt-server-update.rules) restart the two services. Every line not about WHICH instance this
+# is equals crt-server-test-update.service's (UpdaterUnitTests).
+
+[Service]
+Type=oneshot
+# Its own user AND group: not in crt-data, so it cannot read the settings (the database password).
+# What it unpacks is in crt-data all the same - the releases folder is setgid to it (INSTALLING.md).
+User=crt-deploy
+UMask=0027
+ExecStart=/usr/bin/dotnet /mydir/http/classic-repair-toolbox.dk/crt-server/app/CRT.Server.dll update-server --channel=releases --folder=/mydir/http/classic-repair-toolbox.dk/crt-server --service=crt-server.service --health=http://127.0.0.1:5199/api/health
+TimeoutStartSec=20min
+Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
+Environment=DOTNET_CLI_TELEMETRY_OPTOUT=1
+
+# Hardening. Writable: the instance's builds and nothing else - not its settings, not its uploads, not
+# the data trees.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+ReadWritePaths=/mydir/http/classic-repair-toolbox.dk/crt-server/releases

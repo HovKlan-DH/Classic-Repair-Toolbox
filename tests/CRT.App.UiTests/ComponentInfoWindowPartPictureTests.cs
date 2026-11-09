@@ -159,6 +159,45 @@ public sealed class ComponentInfoWindowPartPictureTests : IDisposable
     }
 
     // ###########################################################################################
+    // A lead pointed at lights its pin's row in the list, as a chip's pin does (owner request, 2026-11-09: "Not only an
+    // issue for ICs"); off the leads, no row is lit.
+    // ###########################################################################################
+    [Fact]
+    public void A_lead_pointed_at_lights_its_pins_row_in_the_list()
+    {
+        UiTest.Run(() =>
+        {
+            var window = new ComponentInfoWindow { Width = 900, Height = 800 };
+            window.Show();
+
+            Show(window, new ComponentEntry { BoardLabel = BoardLabel, Category = "Transistor", Package = "TO-92", FriendlyName = "NPN", TechnicalNameOrValue = "2SC1815" }, Pins("E", "C", "B"));
+
+            for (int i = 0; i < 3; i++)
+            {
+                Dispatcher.UIThread.RunJobs();
+                AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            }
+
+            PartPictureDrawing part = window.GetControl<PartPictureDrawing>("InfoPartDrawing");
+            PartPictureGeometry.LeadPlace collector = part.LayoutForTests!.Leads.Single(lead => lead.Number == 2);
+
+            window.MouseMove(part.TranslatePoint(collector.Label.Center, window)!.Value);
+            Dispatcher.UIThread.RunJobs();
+
+            List<ComponentPopupPin> rows = window.GetControl<ItemsControl>("InfoPinsItemsControl").ItemsSource!.Cast<ComponentPopupPin>().ToList();
+            Assert.Equal(["2"], rows.Where(pin => pin.IsPointedAt).Select(pin => pin.Pin));
+
+            window.MouseMove(new Point(2, 2));
+            Dispatcher.UIThread.RunJobs();
+
+            rows = window.GetControl<ItemsControl>("InfoPinsItemsControl").ItemsSource!.Cast<ComponentPopupPin>().ToList();
+            Assert.DoesNotContain(rows, pin => pin.IsPointedAt);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
     // A transistor's picture says what its letters stand for (owner request, 2026-11-09: "E = Emitter, C = Collector, B =
     // Base"), the picture as tall as that takes; a RESISTOR'S PIN LIST STANDS FIRST, its picture under it (owner request,
     // 2026-11-09: "I want the pinout table to be shown first and then the image and explanation afterwards"), wide window

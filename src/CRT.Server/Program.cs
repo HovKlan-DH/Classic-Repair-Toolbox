@@ -9,6 +9,7 @@ using CRT.Server.Handlers.Email;
 using CRT.Server.Handlers.Feedback;
 using CRT.Server.Handlers.Health;
 using CRT.Server.Handlers.Submissions;
+using CRT.Server.Handlers.Updates;
 using CRT.Server.Handlers.Usage;
 using Handlers.DataHandling;
 using CRT.Server.Handlers;
@@ -41,6 +42,17 @@ namespace CRT.Server
             if (DataTreeConvertCommand.IsCommand(args))
             {
                 Environment.ExitCode = DataTreeConvertCommand.Run(args, Console.Out);
+                return;
+            }
+
+            // ---------------------------------------------------------------------------------
+            // ANOTHER (2026-11-09): one look for a newer server build on GitHub, installing it -
+            // run by a systemd timer as a user of its own, never as the service. See
+            // ServerUpdateCommand and INSTALLING.md, "Automatic updates from GitHub".
+            // ---------------------------------------------------------------------------------
+            if (ServerUpdateCommand.IsCommand(args))
+            {
+                Environment.ExitCode = ServerUpdateCommand.Run(args, Console.Out);
                 return;
             }
 

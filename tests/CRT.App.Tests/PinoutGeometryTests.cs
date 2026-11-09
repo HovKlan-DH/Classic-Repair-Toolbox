@@ -74,18 +74,20 @@ public sealed class PinoutGeometryTests
         Assert.Equal(usual.Pins.Select(pin => pin.Lead.Center.Y), narrow.Pins.Select(pin => pin.Lead.Center.Y));
     }
 
-    // Beside the drawing when the list keeps its room; with no drawing, or before the width is known,
-    // there is nothing to go under.
+    // Beside the drawing when the whole list fits there, every text whole (owner request, 2026-11-09: each column as wide
+    // as its longest text) - a 432 wide list beside a 340 wide drawing and its gap of 12; with no drawing, or before the
+    // width is known, there is nothing to go under.
     [Theory]
-    [InlineData(600, 340, true)]
-    [InlineData(552, 340, true)]
-    [InlineData(551, 340, false)]
-    [InlineData(300, 340, false)]
-    [InlineData(300, 0, true)]
-    [InlineData(0, 340, true)]
-    public void The_pin_list_stands_beside_the_drawing_while_it_fits(double width, double drawing, bool beside)
+    [InlineData(900, 340, 432, true)]
+    [InlineData(784, 340, 432, true)]
+    [InlineData(783, 340, 432, false)]
+    [InlineData(552, 340, 200, true)]
+    [InlineData(300, 340, 200, false)]
+    [InlineData(300, 0, 432, true)]
+    [InlineData(0, 340, 432, true)]
+    public void The_pin_list_stands_beside_the_drawing_while_it_fits_whole(double width, double drawing, double list, bool beside)
     {
-        Assert.Equal(beside, PinoutGeometry.ListFitsBeside(width, drawing));
+        Assert.Equal(beside, PinoutGeometry.ListFitsBeside(width, drawing, list));
     }
 
     [Fact]

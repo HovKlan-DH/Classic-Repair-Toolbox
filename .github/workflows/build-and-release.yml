@@ -326,6 +326,84 @@ jobs:
           path: velopack-output/*
 
   ###############################################################
+  # THE CONTRIBUTION SERVICE, BUILT AND ATTESTED
+  ###############################################################
+  # The server rides on every CRT release (owner decisions, 2026-11-09: server builds come "With CRT
+  # releases", proven by "GitHub attestations"). Its updater on the box (CRT.Server's update-server,
+  # INSTALLING.md "Automatic updates from GitHub") installs the build a RELEASE carries on the live
+  # service, and the newest of releases and PRE-RELEASES on the test instance - so each CRT talks to a
+  # server built from the same commit as itself.
+  #
+  # The box installs nothing GitHub's attestation does not tie to THIS workflow, in this repository, run
+  # from main, on a GITHUB-HOSTED runner - so this job must stay on ubuntu-latest (the self-hosted Windows
+  # runner is refused there) and in this file. The build says what it is in crt-server-release.json, inside
+  # the attested bytes: the box reads the version and pre-release from there, never from the release's
+  # name or flag. The attestation's bundle is attached beside the build, so the box checks it with no
+  # GitHub login.
+  build-server:
+    needs: [test, determine-version]
+    name: Build the contribution service (linux-x64, attested)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v5
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Publish the server
+        run: dotnet publish src/CRT.Server/CRT.Server.csproj -c Release -r linux-x64 --self-contained false -o publish-server
+
+      - name: Describe the build
+        env:
+          CRT_VERSION: ${{ needs.determine-version.outputs.version }}
+          IS_PRERELEASE: ${{ needs.determine-version.outputs.is_prerelease }}
+        run: |
+          SERVER_VERSION=$(dotnet msbuild src/CRT.Server/CRT.Server.csproj -getProperty:InformationalVersion -nologo)
+          jq -n \
+            --arg server "$SERVER_VERSION" \
+            --arg crt "$CRT_VERSION" \
+            --arg commit "$GITHUB_SHA" \
+            --argjson pre "$IS_PRERELEASE" \
+            '{serverVersion: $server, crtVersion: $crt, commit: $commit, preRelease: $pre}' \
+            > publish-server/crt-server-release.json
+          cat publish-server/crt-server-release.json
+
+          # What the box needs, and what must never travel: the settings are the box's own.
+          test -f publish-server/CRT.Server.dll
+          test -d publish-server/Migrations
+          test -f publish-server/crt-server.service
+          test -f publish-server/crt-server-update.service
+          test -f publish-server/50-crt-server-update.rules
+          test ! -e publish-server/appsettings.Production.json
+
+      - name: Pack the server
+        run: tar -czf crt-server-linux-x64.tar.gz -C publish-server .
+
+      - name: Attest where it was built
+        id: attest
+        uses: actions/attest-build-provenance@v4.2.2
+        with:
+          subject-path: crt-server-linux-x64.tar.gz
+
+      - name: Keep the attestation beside the build
+        run: cp "${{ steps.attest.outputs.bundle-path }}" crt-server-linux-x64.tar.gz.sigstore.json
+
+      - name: Upload the server build
+        uses: actions/upload-artifact@v7
+        with:
+          name: crt-server
+          path: |
+            crt-server-linux-x64.tar.gz
+            crt-server-linux-x64.tar.gz.sigstore.json
+
+  ###############################################################
   # MACOS BUILD (arm64 + x64 with self-contained .NET10)
   ###############################################################
   build-macos:
@@ -546,7 +624,7 @@ jobs:
   create-release:
     name: Create GitHub Release
     runs-on: ubuntu-latest
-    needs: [determine-version, build-windows, build-linux, build-macos, security-scan]
+    needs: [determine-version, build-windows, build-linux, build-macos, build-server, security-scan]
     permissions:
       contents: write
     steps:
@@ -669,6 +747,8 @@ jobs:
             release-assets/*.nupkg
             release-assets/releases.*.json
             release-assets/assets.*.json
+            release-assets/crt-server-linux-x64.tar.gz
+            release-assets/crt-server-linux-x64.tar.gz.sigstore.json
 
       # Leaves at most one pre-release standing, and none at all once a full release ships.
       # Deliberately ungated so one step covers both kinds of run - the "keep the current tag"

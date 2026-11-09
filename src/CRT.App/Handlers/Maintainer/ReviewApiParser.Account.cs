@@ -47,8 +47,10 @@ namespace Handlers.MaintainerHandling
 
         // ###########################################################################################
         // GET /api/review/server-status (2026-10-13): CRT.Data's ServerStatusAnswer - how many mails
-        // the server could not send. A count that is no whole number of zero or more reads as not
-        // said (null); an answer that is no object is no answer.
+        // the server could not send, and how it keeps itself up to date (server 10.3.0). A count that
+        // is no whole number of zero or more reads as not said (null); an answer that is no object is
+        // no answer; "updates" that is no object, or says nothing of being set up, is not said (an older
+        // server's).
         // ###########################################################################################
         public static ServerStatusAnswer? ParseServerStatus(string? json)
         {
@@ -61,7 +63,25 @@ namespace Handlers.MaintainerHandling
                 ? (int)count
                 : null;
 
-            return new ServerStatusAnswer(unsent);
+            ServerUpdatesAnswer? updates = null;
+
+            if (root.TryGetProperty("updates", out JsonElement found) &&
+                found.ValueKind == JsonValueKind.Object &&
+                ReviewApiParser.Bool(found, "setUp") is bool setUp)
+            {
+                updates = new ServerUpdatesAnswer(
+                    setUp,
+                    ReviewApiParser.String(found, "channel"),
+                    ReviewApiParser.Time(found, "checkedUtc"),
+                    ReviewApiParser.String(found, "outcome"),
+                    ReviewApiParser.String(found, "message"),
+                    ReviewApiParser.String(found, "newestVersion"),
+                    ReviewApiParser.Time(found, "installedUtc"),
+                    ReviewApiParser.String(found, "installedVersion"),
+                    ReviewApiParser.String(found, "installedFromVersion"));
+            }
+
+            return new ServerStatusAnswer(unsent, updates);
         }
 
         // ###########################################################################################

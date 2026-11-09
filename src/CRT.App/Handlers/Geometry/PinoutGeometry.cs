@@ -60,9 +60,6 @@ namespace Handlers.Geometry
         // How much of a pin's number stands inside the case, which a pin's area takes in.
         private const double NumberInsideCase = 24;
 
-        // What the pin list beside a drawing needs at least: its "Pin", "Signal" and "Direction" columns.
-        public const double SmallestListWidth = 200;
-
         // The drawing's right margin (the markup's), between it and the list.
         public const double ListGap = 12;
 
@@ -109,10 +106,14 @@ namespace Handlers.Geometry
             return layout.Pins.FirstOrDefault(pin => PinoutGeometry.AreaOf(layout, pin).Contains(point));
         }
 
-        // Whether the pin list fits beside a drawing `drawing` wide in `width` - with no drawing it has
-        // the whole width anyway. A width not known yet (0: not laid out) says yes.
-        public static bool ListFitsBeside(double width, double drawing) =>
-            drawing <= 0 || width <= 0 || width - drawing - PinoutGeometry.ListGap >= PinoutGeometry.SmallestListWidth;
+        // Whether the pin list, `list` wide with every text whole (PinTableGeometry.WidthOf), fits beside a
+        // drawing `drawing` wide in `width` - so no column of it wraps there (owner request, 2026-11-09: each
+        // column as wide as its longest text). With no drawing it has the whole width anyway. A width not
+        // known yet (0: not laid out) says yes.
+        public static bool ListFitsBeside(double width, double drawing, double list) =>
+            drawing <= 0 ||
+            width <= 0 ||
+            width - drawing - PinoutGeometry.ListGap >= list;
 
         // ###########################################################################################
         // The drawing of `package` - or null when CRT cannot tell how many pins it has. A SIP's count

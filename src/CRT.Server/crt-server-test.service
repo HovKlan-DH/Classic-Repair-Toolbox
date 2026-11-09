@@ -1,12 +1,12 @@
 [Unit]
-Description=Classic Repair Toolbox contribution service - TEST instance for CRT 4.0's pre-releases (CRT.Server)
+Description=Classic Repair Toolbox contribution service - TEST instance for pre-releases (CRT.Server)
 After=network.target mariadb.service
 
-# THE TEST INSTANCE (owner decision, 2026-10-25): its own program folder, settings, database and
-# port beside the live service, publishing into the CRT 4.0 trees that CRT 4.0's pre-releases read.
-# The live service keeps serving CRT 3.x from the Excel trees until the release. Stopped and disabled
-# on release day - INSTALLING.md, "A test instance for CRT 4.0's pre-releases". Every line not about
-# WHICH instance this is equals crt-server.service's (TestInstanceUnitTests).
+# THE TEST INSTANCE (owner decisions, 2026-10-25, and 2026-11-09: every alpha and beta of CRT talks
+# to it, every release to the live service): its own program folder, settings, database and port
+# beside the live service. Until CRT 4.0's release day it publishes into the CRT 4.0 trees, and from
+# then on into trees of its own - INSTALLING.md, "A test instance for pre-releases". Every line not
+# about WHICH instance this is equals crt-server.service's (TestInstanceUnitTests).
 
 [Service]
 # Type=simple, NOT Type=notify: the service sends systemd no readiness signal, so with

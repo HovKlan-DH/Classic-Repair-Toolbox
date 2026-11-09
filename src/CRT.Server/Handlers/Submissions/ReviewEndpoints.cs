@@ -2,6 +2,7 @@ using CRT.Server.Configuration;
 using Handlers.DataHandling;
 using CRT.Server.Handlers.Accounts;
 using CRT.Server.Handlers.Email;
+using CRT.Server.Handlers.Updates;
 
 namespace CRT.Server.Handlers.Submissions
 {
@@ -89,14 +90,17 @@ namespace CRT.Server.Handlers.Submissions
         }
 
         // ###########################################################################################
-        // GET /api/review/server-status - how many mails wait in the outbox (MailOutboxFlow). Any
-        // maintainer may ask: a decision mail that did not go is something every maintainer should
-        // know about, and the count says nothing more. Never on /api/health, which is public.
+        // GET /api/review/server-status - how many mails wait in the outbox (MailOutboxFlow), and how
+        // the server keeps itself up to date from GitHub (server 10.3.0; the status file its updater
+        // writes beside the build it runs - ServerUpdateStatus). Any maintainer may ask: a decision mail
+        // that did not go, or a build that did not come up, is something every maintainer should know
+        // about. Never on /api/health, which is public.
         // ###########################################################################################
         private static async Task<IResult> GetServerStatusAsync(
             HttpContext context,
             IAccountStore accounts,
             IMailOutboxStore outbox,
+            IWebHostEnvironment environment,
             CancellationToken cancellationToken)
         {
             (ReviewAccess? _, IResult? refusal) =
@@ -117,7 +121,9 @@ namespace CRT.Server.Handlers.Submissions
                 unsent = null;
             }
 
-            return Results.Ok(new ServerStatusAnswer(unsent));
+            ServerUpdatesAnswer updates = ServerUpdateStatus.AnswerFrom(ServerUpdateStatus.Locate(environment.ContentRootPath));
+
+            return Results.Ok(new ServerStatusAnswer(unsent, updates));
         }
 
         // ###########################################################################################

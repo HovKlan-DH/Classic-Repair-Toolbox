@@ -23,13 +23,17 @@ namespace CRT
     //
     // What is drawn is PartPicture's, every position PartPictureGeometry's; this only paints. The component popup and the
     // Contribute tab's "Pinout" page show it in the place of PinoutDrawing, so it does what that does: with PinsCanBePicked
-    // a lead lights up under the pointer and a click raises PinPicked; the host lights one too (HoverPin, MarkPin). It is
+    // a lead lights up under the pointer and a click raises PinPicked; the host lights one too (HoverPin, MarkPin), and the
+    // pointer moving onto or off a lead raises PinHovered (owner request, 2026-11-09: the list's row lit too). It is
     // drawn smaller, never cut, where its place is narrower than it.
     // ###########################################################################################
     public sealed class PartPictureDrawing : Control
     {
         public static readonly RoutedEvent<PinPickedEventArgs> PinPickedEvent =
             RoutedEvent.Register<PartPictureDrawing, PinPickedEventArgs>(nameof(PinPicked), RoutingStrategies.Bubble);
+
+        public static readonly RoutedEvent<PinHoveredEventArgs> PinHoveredEvent =
+            RoutedEvent.Register<PartPictureDrawing, PinHoveredEventArgs>(nameof(PinHovered), RoutingStrategies.Bubble);
 
         private const double NumberSize = 11;
         private const double NameSize = 10.5;
@@ -51,6 +55,12 @@ namespace CRT
         {
             add => this.AddHandler(PartPictureDrawing.PinPickedEvent, value);
             remove => this.RemoveHandler(PartPictureDrawing.PinPickedEvent, value);
+        }
+
+        public event EventHandler<PinHoveredEventArgs>? PinHovered
+        {
+            add => this.AddHandler(PartPictureDrawing.PinHoveredEvent, value);
+            remove => this.RemoveHandler(PartPictureDrawing.PinHoveredEvent, value);
         }
 
         public bool PinsCanBePicked { get; set; }
@@ -182,6 +192,7 @@ namespace CRT
                 this.thisHoveredPin = number;
                 this.Cursor = number is null ? null : new Cursor(StandardCursorType.Hand);
                 this.InvalidateVisual();
+                this.RaiseEvent(new PinHoveredEventArgs(PartPictureDrawing.PinHoveredEvent, number));
             }
         }
 

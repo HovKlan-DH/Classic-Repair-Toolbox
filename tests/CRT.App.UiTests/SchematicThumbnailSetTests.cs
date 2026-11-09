@@ -59,6 +59,70 @@ public sealed class SchematicThumbnailSetTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // Decoded several at once since 2026-11-09 (the launch question: 635 ms one at a time, 276 ms four
+    // at once on the C64 250407): each image still lands in ITS place with ITS size. More images than
+    // are decoded at once, each a PNG whose header says another width - so an image put in another's
+    // place shows as the wrong width there.
+    // ###########################################################################################
+    [Fact]
+    public void Images_decoded_several_at_once_each_keep_their_own_place()
+    {
+        int count = SchematicThumbnailSet.DecodedAtOnce * 3 + 1;
+
+        var images = Enumerable.Range(1, count)
+            .Select(width => ($"Picture {width}", this.WritePngOfWidth($"picture-{width}.png", width)))
+            .ToList();
+
+        UiTest.Run(() =>
+        {
+            using var set = SchematicThumbnailSet.Decode(images, "s", 800, CancellationToken.None);
+
+            Assert.Equal(images.Select(image => image.Item1), set.Images.Select(image => image.Name));
+            Assert.Equal(Enumerable.Range(1, count), set.Images.Select(image => image.OriginalPixelSize.Width));
+        });
+    }
+
+    [Fact]
+    public void At_least_one_and_at_most_four_images_are_decoded_at_once() =>
+        Assert.InRange(SchematicThumbnailSet.DecodedAtOnce, 1, 4);
+
+    // The 1x1 PNG with its header saying `width` pixels across, the header's checksum made again.
+    private string WritePngOfWidth(string name, int width)
+    {
+        byte[] bytes = (byte[])OnePixelPng.Clone();
+        bytes[16] = (byte)(width >> 24);
+        bytes[17] = (byte)(width >> 16);
+        bytes[18] = (byte)(width >> 8);
+        bytes[19] = (byte)width;
+
+        // The IHDR chunk's CRC covers its type and data: bytes 12 to 28, written at 29.
+        uint crc = SchematicThumbnailSetTests.Crc32(bytes.AsSpan(12, 17));
+        bytes[29] = (byte)(crc >> 24);
+        bytes[30] = (byte)(crc >> 16);
+        bytes[31] = (byte)(crc >> 8);
+        bytes[32] = (byte)crc;
+
+        string path = this.thisWorkspace.Path_(name);
+        File.WriteAllBytes(path, bytes);
+        return path;
+    }
+
+    private static uint Crc32(ReadOnlySpan<byte> data)
+    {
+        uint crc = 0xFFFFFFFF;
+
+        foreach (byte b in data)
+        {
+            crc ^= b;
+
+            for (int bit = 0; bit < 8; bit++)
+                crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320 : crc >> 1;
+        }
+
+        return ~crc;
+    }
+
     // A file that is not an image still gets its entry, and the decode goes on: a failed board
     // load is not an option. (Whether it gets a picture is the platform's say - the headless test
     // platform makes a stub of anything; Skia throws, which DecodeOne turns into no thumbnail.)

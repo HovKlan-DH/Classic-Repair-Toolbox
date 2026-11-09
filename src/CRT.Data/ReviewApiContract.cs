@@ -1058,8 +1058,66 @@ namespace Handlers.DataHandling
     // UnsentMails: the mails waiting in the server's outbox because the mail system refused them
     // (CRT.Server's MailOutboxFlow) - retried until they go or are given up. Shown only when above
     // zero. Null from a server that does not say.
+    //
+    // Updates (server 10.3.0): how the server keeps itself up to date from GitHub (ServerUpdatesAnswer).
+    // Null from an older server, which had no such thing.
     // ###########################################################################################
-    public sealed record ServerStatusAnswer(int? UnsentMails = null);
+    public sealed record ServerStatusAnswer(int? UnsentMails = null, ServerUpdatesAnswer? Updates = null);
+
+    // ###########################################################################################
+    // *** THE SERVER KEEPS ITSELF UP TO DATE FROM GITHUB (owner request, 2026-11-09: "would it be
+    // possible to automatically update the server from GitHub? ... If this is possible it could show
+    // the status in 'Maintainer' => 'Account' => 'Server version'. This should of course be as secure
+    // as possible"). *** CRT.Server's update-server, run by a systemd timer as a user of its own,
+    // installs the server build a CRT release carries - the live service from releases, the test
+    // instance from pre-releases too - once GitHub's attestation proves this repository's release
+    // workflow built it, and goes back to the build before when the new one does not answer. It writes
+    // what it did to a file beside the program, which the service reads for this answer
+    // (CRT.Server's ServerUpdateStatus); Account > "Server version" words it (ServerVersionDisplay).
+    // Part of the signed-in ServerStatusAnswer, never the public health answer: what failed and why
+    // says something about the box.
+    //
+    //   SetUp                 false: no updater has written anything for this instance - "not set up".
+    //   Channel               "releases" or "pre-releases" - which builds it installs.
+    //   CheckedUtc            when it last looked.
+    //   Outcome               what that look came to: "up-to-date", "installed", "would-install" (a dry
+    //                         run), "held", "failed", "refused" (not proven genuine, or a pre-release
+    //                         build on the live service), "error" (ServerUpdateOutcomes) - a word CRT
+    //                         does not know is shown through Message alone.
+    //   Message               the updater's own sentence about it.
+    //   NewestVersion         the newest server build it found for its channel.
+    //   InstalledUtc, InstalledVersion, InstalledFromVersion   the last build it installed, and the one
+    //                         that build replaced.
+    // ###########################################################################################
+    public sealed record ServerUpdatesAnswer(
+        bool SetUp,
+        string? Channel = null,
+        DateTimeOffset? CheckedUtc = null,
+        string? Outcome = null,
+        string? Message = null,
+        string? NewestVersion = null,
+        DateTimeOffset? InstalledUtc = null,
+        string? InstalledVersion = null,
+        string? InstalledFromVersion = null);
+
+    // The words of ServerUpdatesAnswer.Outcome and .Channel - the updater writes them, CRT reads them.
+    public static class ServerUpdateOutcomes
+    {
+        public const string UpToDate = "up-to-date";
+        public const string Installed = "installed";
+        public const string WouldInstall = "would-install";
+        public const string Held = "held";
+        public const string Failed = "failed";
+        public const string Refused = "refused";
+        public const string Error = "error";
+
+        public const string ReleasesChannel = "releases";
+        public const string PreReleasesChannel = "pre-releases";
+
+        // Whether `outcome` is one somebody should look at.
+        public static bool NeedsALook(string? outcome) =>
+            outcome is ServerUpdateOutcomes.Held or ServerUpdateOutcomes.Failed or ServerUpdateOutcomes.Refused or ServerUpdateOutcomes.Error;
+    }
 
     // ###########################################################################################
     // AN OSCILLOSCOPE MODEL OF A USER'S OWN, SENT IN FOR EVERYBODY (CRT 4.0 step 5 - the plan:

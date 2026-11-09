@@ -176,7 +176,8 @@ namespace CRT
         // The LIVE CRT.Server host with NO path. Its "/api" twin below is where every CRT sends its
         // launch check-in, its feedback and its board views - a pre-release too, so the usage
         // numbers and the feedback mail always reach the live service (2026-10-25; see
-        // ContributionServerRootUrl for what a pre-release sends elsewhere).
+        // ContributionServerRootUrl for what a pre-release sends elsewhere). A release's contribution
+        // service is this one too.
         public const string CrtServerRootUrl = "https://classic-repair-toolbox.dk";
 
         // Base URL of the LIVE CRT.Server API: the check-in (CheckInUrl), feedback
@@ -189,27 +190,28 @@ namespace CRT
         public const string CrtServerBaseUrl = CrtServerRootUrl + "/api";
 
         // ###########################################################################################
-        // *** THE CONTRIBUTION SERVICE THIS CRT SUBMITS TO, SIGNS IN TO AND ASKS THE API REVISION OF
-        // (owner decision, 2026-10-25: "We need the test server"). *** While CRT 4.0 is in
-        // pre-release that is the TEST instance - its own program, database and port beside the live
-        // one, publishing into the 4.0 trees (INSTALLING.md, "A test instance for CRT 4.0's
-        // pre-releases") - so the live service keeps serving CRT 3.x until the release, and a 4.0
-        // pre-release never sends a submission named the 4.0 way to a 3.x service.
-        //
-        // *** ON RELEASE DAY IT GOES BACK TO CrtServerRootUrl. *** ContributionServerTests fails a
-        // CRT whose InformationalVersion is a release while this still names the test instance, and
-        // the release workflow runs the tests first - so a release cannot ship pointing at it.
+        // *** THE CONTRIBUTION SERVICE THIS CRT SUBMITS TO, SIGNS IN TO AND ASKS THE API REVISION OF,
+        // DECIDED BY ITS VERSION (owner decision, 2026-11-09: "if the <InformationalVersion> is not a
+        // 'real' version, then the application will refer to the 'crt-server-test' ... If it is a real
+        // version, then it should refer to the 'crt-server'"). *** An alpha or a beta talks to the TEST
+        // instance - its own program, database and port (5198) beside the live one (INSTALLING.md, "A
+        // test instance for pre-releases"); a release to the live service (5199). The rule is
+        // ContributionServer.RootUrlFor - nothing is changed by hand on release day any more (the test
+        // instance came 2026-10-25 as a constant, set back to the live service on release day).
         //
         // What a CRT remembers of the service it talks to - the Maintainer tab's sign-in and the
         // receipts of what it sent - is kept in files of the test instance's own while it does
-        // (ContributionServerFiles), never in the ones CRT 3.x reads and writes.
+        // (ContributionServer.FileNameFor), never in the ones a release reads and writes.
+        //
+        // PROPERTIES, not fields: AppDisplayVersionString is declared further down, and a field here
+        // would be initialised before it, reading null - every release would talk to the test instance.
         // ###########################################################################################
         public const string TestServerRootUrl = "https://classic-repair-toolbox.dk/crt-test";
 
-        public const string ContributionServerRootUrl = TestServerRootUrl;
+        public static string ContributionServerRootUrl => Handlers.Online.ContributionServer.RootUrlFor(AppDisplayVersionString);
 
         // The same with "/api" - SubmissionClient's base (see CrtServerBaseUrl for why both exist).
-        public const string ContributionServerBaseUrl = ContributionServerRootUrl + "/api";
+        public static string ContributionServerBaseUrl => ContributionServerRootUrl + "/api";
 
         // Whether this CRT talks to the test instance - its sign-in and submissions screens say so.
         public static bool UsesTestServer => string.Equals(ContributionServerRootUrl, TestServerRootUrl, StringComparison.Ordinal);
@@ -327,6 +329,12 @@ namespace CRT
         // Used by: App.OnFrameworkInitializationCompleted to center the splash on the saved screen.
         public const int SplashWidth = 600;
         public const int SplashHeight = 350;
+
+        // How long the splash waits for the first board to be drawn before the window is shown anyway, the board coming
+        // in as it is read (owner report, 2026-11-09: the window stood empty for a couple of seconds - Main.FirstBoard.cs).
+        // A board read from a slow disk or a first launch's thousands of pictures must not keep CRT hidden for long.
+        // Used by: App.StartApplicationAsync
+        public static readonly TimeSpan SplashWaitsForFirstBoardAtMost = TimeSpan.FromSeconds(10);
 
         // ###########################################################################################
         // Numeric application version used for version comparisons against versioned data files.
@@ -813,6 +821,8 @@ namespace CRT
                 var main = new Main();
                 desktop.MainWindow = main;
 
+                Logger.Info(startupTimeline.Record("Main window built", DateTime.Now));
+
                 // The window's outward-facing startup - the hardware/board data it reads from
                 // DataManager, the update check and the background data sync. These used to run from
                 // Main's constructor; they live in StartAsync so the window can be constructed
@@ -832,6 +842,22 @@ namespace CRT
                 // the timeline logged below. StartAsync catches and logs its own exceptions, since
                 // discarding the Task means nothing else observes them.
                 _ = main.StartAsync();
+
+                // ###########################################################################################
+                // *** THE SPLASH STAYS UNTIL THE FIRST BOARD IS DRAWN (owner report, 2026-11-09: "It can take
+                // a couple of seconds before it will populate the schematic image and thumbnails etc. and in
+                // the meantime I see an empty UI"). *** The board load is asynchronous - its file read, its
+                // thumbnails decoded and its picture read off the UI thread - so a window shown at once was
+                // painted before any of it. It is shown once the first board is in (Main.FirstBoard.cs), or
+                // after AppConfig.SplashWaitsForFirstBoardAtMost, whichever comes first.
+                // ###########################################################################################
+                splash.ShowStatus("Opening the board");
+
+                bool firstBoardDrawn = await main.WaitForFirstBoardAsync(AppConfig.SplashWaitsForFirstBoardAtMost);
+
+                Logger.Info(firstBoardDrawn
+                    ? startupTimeline.Record("First board drawn", DateTime.Now)
+                    : $"The first board was not drawn within [{AppConfig.SplashWaitsForFirstBoardAtMost.TotalSeconds:0}] seconds - the window is shown, the board coming in as it is read");
 
                 main.Show();
                 splash.Close();

@@ -5,40 +5,45 @@ using Handlers.Online;
 namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
-// Which service a CRT talks to - the contribution service's TEST instance while CRT 4.0 is in
-// pre-release, the live one otherwise (owner decision, 2026-10-25: "We need the test server";
-// AppConfig.ContributionServerRootUrl, ContributionServer).
-//
-// *** THE TEST THAT MATTERS MOST is A_release_never_ships_talking_to_the_test_instance. *** On
-// release day ContributionServerRootUrl goes back to the live service. Forgotten, every installed
-// CRT 4.0.0 would submit to a test database the project owner stops that day - so a release version
-// pointing at the test instance fails here, and the release workflow runs this suite before it
-// builds anything.
+// Which service a CRT talks to - decided by its version since 2026-11-09 (owner decision: "if the
+// <InformationalVersion> is not a 'real' version, then the application will refer to the
+// 'crt-server-test' ... If it is a real version, then it should refer to the 'crt-server'"): an alpha
+// or a beta the contribution service's TEST instance, a release the live one (ContributionServer.RootUrlFor,
+// AppConfig.ContributionServerRootUrl). It was a constant until then, set back to the live service by hand
+// on release day, with a test failing a release that still named the test instance.
 // ###########################################################################################
 public sealed class ContributionServerTests
 {
     private const string Live = "https://classic-repair-toolbox.dk";
 
-    [Fact]
-    public void A_release_never_ships_talking_to_the_test_instance()
-    {
-        Assert.True(
-            ContributionServer.MayShip(AppConfig.AppDisplayVersionString, AppConfig.ContributionServerRootUrl),
-            $"CRT {AppConfig.AppDisplayVersionString} is a release, but AppConfig.ContributionServerRootUrl still names the test " +
-            $"instance ({AppConfig.ContributionServerRootUrl}). Set it back to AppConfig.CrtServerRootUrl - see INSTALLING.md, " +
-            "\"Switching the service to the 4.0 trees (release day)\".");
-    }
+    private const string Test = "https://classic-repair-toolbox.dk/crt-test";
 
     [Theory]
-    [InlineData("4.0.0", false)]
-    [InlineData("4.0.0+7f3a2c1", false)]
-    [InlineData("4.0.0-alpha.1", true)]
-    [InlineData("4.0.0-beta.2+7f3a2c1", true)]
-    public void Only_a_pre_release_may_talk_to_the_test_instance(string version, bool mayShip)
+    [InlineData("4.0.0", ContributionServerTests.Live)]
+    [InlineData("4.0.0+7f3a2c1", ContributionServerTests.Live)]
+    [InlineData(" 10.2.3 ", ContributionServerTests.Live)]
+    [InlineData("4.0.0-alpha.1", ContributionServerTests.Test)]
+    [InlineData("4.0.0-beta.2+7f3a2c1", ContributionServerTests.Test)]
+    [InlineData("4.1.0-rc.1", ContributionServerTests.Test)]
+    // No version at all is no release: never the live service.
+    [InlineData("", ContributionServerTests.Test)]
+    [InlineData(null, ContributionServerTests.Test)]
+    // Build metadata may hold a "-" ("+build-7"): only what stands before the "+" counts.
+    [InlineData("4.0.0+build-7", ContributionServerTests.Live)]
+    public void A_release_talks_to_the_live_service_and_an_alpha_or_beta_to_the_test_instance(string? version, string expected)
     {
-        Assert.Equal(mayShip, ContributionServer.MayShip(version, AppConfig.TestServerRootUrl));
-        Assert.Equal(mayShip, ContributionServer.MayShip(version, AppConfig.TestServerRootUrl.ToUpperInvariant() + "/"));
-        Assert.True(ContributionServer.MayShip(version, ContributionServerTests.Live));
+        Assert.Equal(expected, ContributionServer.RootUrlFor(version));
+        Assert.Equal(expected == ContributionServerTests.Live, ContributionServer.IsRelease(version));
+    }
+
+    // The address this very build uses follows the rule - read at each use, never fixed before the version is known
+    // (a static field declared above AppDisplayVersionString would read it as null: every release on the test instance).
+    [Fact]
+    public void This_build_talks_to_the_service_its_own_version_names()
+    {
+        Assert.Equal(ContributionServer.RootUrlFor(AppConfig.AppDisplayVersionString), AppConfig.ContributionServerRootUrl);
+        Assert.Equal(!ContributionServer.IsRelease(AppConfig.AppDisplayVersionString), AppConfig.UsesTestServer);
+        Assert.Equal(ContributionServerTests.Test, AppConfig.TestServerRootUrl);
     }
 
     // ###########################################################################################
@@ -88,8 +93,8 @@ public sealed class ContributionServerTests
 
     // ###########################################################################################
     // *** A DRAFT IS NOT RETIRED AGAINST THE TEST INSTANCE'S DATA (code review, 2026-10-25). ***
-    // A pre-release reads the test instance's stable data as stable; a draft whose work reached it
-    // was deleted - and that data is replaced on release day, so the work was gone everywhere.
+    // A draft whose work reached the test instance's stable data was deleted - and that data never
+    // reaches the live data, so the work was gone everywhere.
     // ###########################################################################################
     [Fact]
     public void Published_drafts_are_retired_only_against_the_live_service()
@@ -103,5 +108,13 @@ public sealed class ContributionServerTests
     public void The_submit_note_says_the_draft_is_kept()
     {
         Assert.Contains("Your draft is kept", ContributionServer.SubmitNote, StringComparison.Ordinal);
+    }
+
+    // Every pre-release talks to the test instance now, not CRT 4.0's alone: no note names one version.
+    [Fact]
+    public void The_test_server_notes_name_no_version_of_CRT()
+    {
+        Assert.DoesNotContain("4.0", ContributionServer.SubmitNote, StringComparison.Ordinal);
+        Assert.DoesNotContain("4.0", ContributionServer.SignInNote, StringComparison.Ordinal);
     }
 }

@@ -2073,6 +2073,43 @@ public sealed class ReviewWireContractTests
     }
 
     // ###########################################################################################
+    // How the server keeps itself up to date (server 10.3.0, 2026-11-09): every field through the server's
+    // JSON settings and the real parser, "not set up" too - and never on the public health answer, as what
+    // failed and why says something about the box.
+    // ###########################################################################################
+    [Fact]
+    public void The_server_status_reads_back_how_the_server_keeps_itself_up_to_date()
+    {
+        var checkedUtc = new DateTimeOffset(2026, 11, 9, 14, 20, 0, TimeSpan.Zero);
+        var installedUtc = new DateTimeOffset(2026, 11, 9, 14, 5, 0, TimeSpan.Zero);
+        var sent = new ServerUpdatesAnswer(
+            SetUp: true,
+            Channel: ServerUpdateOutcomes.PreReleasesChannel,
+            CheckedUtc: checkedUtc,
+            Outcome: ServerUpdateOutcomes.Held,
+            Message: "10.4.0 waits for you.",
+            NewestVersion: "10.4.0",
+            InstalledUtc: installedUtc,
+            InstalledVersion: "10.3.0",
+            InstalledFromVersion: "10.2.1");
+
+        ServerStatusAnswer? read = ReviewApiParser.ParseServerStatus(ReviewWireContractTests.Answer(new ServerStatusAnswer(0, sent)));
+
+        Assert.Equal(sent, read!.Updates);
+
+        Assert.Equal(
+            new ServerUpdatesAnswer(SetUp: false),
+            ReviewApiParser.ParseServerStatus(ReviewWireContractTests.Answer(new ServerStatusAnswer(0, new ServerUpdatesAnswer(SetUp: false))))!.Updates);
+
+        // An older server's answer has no "updates": nothing is said about them.
+        Assert.Null(ReviewApiParser.ParseServerStatus(ReviewWireContractTests.Answer(new ServerStatusAnswer(2)))!.Updates);
+
+        Assert.DoesNotContain(
+            typeof(HealthStatus).GetProperties(),
+            property => property.Name.Contains("Update", StringComparison.OrdinalIgnoreCase));
+    }
+
+    // ###########################################################################################
     // AN OSCILLOSCOPE MODEL SENT IN (CRT 4.0 step 5): what the Oscilloscope tab sends arrives with
     // its values under the main file's own names - a value's name is never put through the naming
     // policy, or "dumpImage" would arrive as something the server refuses - and the administrator's

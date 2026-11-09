@@ -127,6 +127,86 @@ public sealed class ComponentPopupContentTests
         Assert.Equal([false, false], ComponentPopupContent.PinsOf(pins, "U8", "PAL", viewedPin: "9").Select(pin => pin.IsViewed));
     }
 
+    // ###########################################################################################
+    // The pin the pointer is on in the drawing says so on its row (owner request, 2026-11-09: "hovering the IC image
+    // pin will not highlight the table pin ... do highlight both places") - by its number, as the drawing knows pins.
+    // ###########################################################################################
+    [Fact]
+    public void The_row_of_the_pin_pointed_at_in_the_drawing_says_so()
+    {
+        ComponentPinEntry[] pins = [new() { BoardLabel = "U8", Pin = "1", Name = "VCC" }, new() { BoardLabel = "U8", Pin = " 2 ", Name = "CLK" }];
+
+        Assert.Equal([false, true], ComponentPopupContent.PinsOf(pins, "U8", "PAL", pointedPin: 2).Select(pin => pin.IsPointedAt));
+        Assert.Equal([false, false], ComponentPopupContent.PinsOf(pins, "U8", "PAL", pointedPin: null).Select(pin => pin.IsPointedAt));
+        Assert.Equal([false, false], ComponentPopupContent.PinsOf(pins, "U8", "PAL", pointedPin: 9).Select(pin => pin.IsPointedAt));
+
+        // The pin shown and the one pointed at are two things - one row can be both.
+        ComponentPopupPin both = ComponentPopupContent.PinsOf(pins, "U8", "PAL", viewedPin: "2", pointedPin: 2)[1];
+        Assert.True(both.IsViewed);
+        Assert.True(both.IsPointedAt);
+    }
+
+    // ###########################################################################################
+    // EACH PIN SAYS WHAT THE SCOPE SHOULD READ ON IT (owner request, 2026-11-09: "add another column to it named
+    // 'Expected oscilloscope reading' and have the value from the oscilloscope pin") - from the component's oscilloscope
+    // baselines in the region shown, a baseline with no region being in every one, "2 [64K]" being pin 2. A picture
+    // (no pin) is no baseline, and another component's baselines say nothing.
+    // ###########################################################################################
+    [Fact]
+    public void Each_pin_shows_what_its_baselines_say_the_scope_should_read()
+    {
+        ComponentPinEntry[] pins =
+        [
+            new() { BoardLabel = "U8", Pin = "1", Name = "VCC" },
+            new() { BoardLabel = "U8", Pin = "2", Name = "CLK" },
+            new() { BoardLabel = "U8", Pin = "3", Name = "D0" },
+            new() { BoardLabel = "U8", Pin = "4", Name = "NC" },
+        ];
+
+        ComponentImageEntry[] images =
+        [
+            new() { BoardLabel = "u8", Pin = "1", ExpectedOscilloscopeReading = " 5.1V (+5VDC power rail) " },
+            new() { BoardLabel = "U8", Pin = "2 [64K]", ExpectedOscilloscopeReading = "1.02272 MHz", Region = "NTSC" },
+            new() { BoardLabel = "U8", Pin = "2", ExpectedOscilloscopeReading = "985.232 kHz", Region = "PAL" },
+            new() { BoardLabel = "U8", Pin = "3", ExpectedOscilloscopeReading = "   " },
+            new() { BoardLabel = "U8", ExpectedOscilloscopeReading = "A picture, no baseline" },
+            new() { BoardLabel = "U9", Pin = "4", ExpectedOscilloscopeReading = "Another chip's" },
+        ];
+
+        Assert.Equal(
+            ["5.1V (+5VDC power rail)", "985.232 kHz", "", ""],
+            ComponentPopupContent.PinsOf(pins, "U8", "PAL", images: images).Select(pin => pin.Reading));
+        Assert.Equal(
+            ["5.1V (+5VDC power rail)", "1.02272 MHz", "", ""],
+            ComponentPopupContent.PinsOf(pins, "U8", "NTSC", images: images).Select(pin => pin.Reading));
+
+        Assert.True(ComponentPopupContent.PinsOf(pins, "U8", "PAL", images: images)[0].HasReading);
+        Assert.False(ComponentPopupContent.PinsOf(pins, "U8", "PAL", images: images)[2].HasReading);
+
+        // Without images, no reading - as before the column came.
+        Assert.All(ComponentPopupContent.PinsOf(pins, "U8", "PAL"), pin => Assert.Equal(string.Empty, pin.Reading));
+    }
+
+    // ###########################################################################################
+    // A pin whose baselines read differently - the C16's "2" HIGH and "2 [64K]" Pulsing, the only kind measured on the
+    // published boards (2026-11-09) - lists each reading on a line of its own, with what its pin says beside its number.
+    // A reading also seen on the plain pin needs no such word, and one reading said twice, capitals aside, is said once.
+    // ###########################################################################################
+    [Fact]
+    public void Readings_that_differ_on_one_pin_are_each_a_line_saying_which_baseline()
+    {
+        static string Reading(params (string Pin, string Reading)[] baselines) =>
+            ComponentPopupContent.ReadingOf(baselines.Select(baseline => new ComponentImageEntry { Pin = baseline.Pin, ExpectedOscilloscopeReading = baseline.Reading }), "2");
+
+        Assert.Equal("HIGH\nPulsing [64K]", Reading(("2", "HIGH"), ("2 [64K]", "Pulsing")));
+        Assert.Equal("HIGH", Reading(("2", "HIGH"), ("2 [64K]", "high")));
+        Assert.Equal("HIGH\nPulsing", Reading(("2", "HIGH"), ("2 [64K]", "Pulsing"), ("2", "Pulsing")));
+        Assert.Equal("HIGH [16K]\nPulsing [64K]", Reading(("2 [16K]", "HIGH"), ("2 [64K]", "Pulsing")));
+        Assert.Equal("LOW\nPulsing [16K] [64K]", Reading(("2", "LOW"), ("2 [16K]", "Pulsing"), ("2 [64K]", "Pulsing")));
+        Assert.Equal(string.Empty, Reading(("3", "HIGH")));
+        Assert.Equal(string.Empty, Reading());
+    }
+
     // A file or a link of one region shows in that region alone, one for every region in each.
     [Fact]
     public void The_files_and_links_are_the_components_in_the_region_shown()
