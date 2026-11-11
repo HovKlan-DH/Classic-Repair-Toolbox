@@ -358,13 +358,18 @@ public partial class TabSchematics
 
     // ###########################################################################################
     // The picture's image has been read - shown, or not readable - and a tool waiting for it may start.
+    // Main hears of it too: the splash waits for the first board's picture (Main.FirstBoard.cs).
     // ###########################################################################################
     private void ImageSettled(string? picture, bool shown)
     {
         this.thisImageSettledFor = picture?.Trim();
         this.thisImageMissing = !shown;
         this.TryStartPendingTool();
+        this.PictureSettled?.Invoke(picture);
     }
+
+    // A picture's image has been read, shown or not - its name.
+    internal event Action<string?>? PictureSettled;
 
     // ###########################################################################################
     // The board's KiCad data has settled - read, or none - and an "Align KiCad" waiting for it may

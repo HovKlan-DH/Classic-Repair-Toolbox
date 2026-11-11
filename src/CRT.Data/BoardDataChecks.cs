@@ -643,6 +643,44 @@ namespace Handlers.DataHandling
                     $"The board says it comes in [{taken[0]}] alone: a board told apart by region comes in {BoardRegions.FewestRegions} at least - or none.",
                     null, -1, null);
             }
+
+            // *** Security (owner request, 2026-11-11): A REGION'S COLORS ARE "#RRGGBB", OF A REGION THE BOARD SAYS, EACH ONCE
+            // (RegionColors.Problems). *** They are drawn on every CRT once published, so nothing else may reach one. Regions not
+            // sent keep the published ones, which colors sent beside them are not held to.
+            IReadOnlyList<string?> said = context.Rows.Regions is { } regions
+                ? [.. regions]
+                : [.. (context.Rows.RegionColors ?? []).Select(row => row?.Region)];
+
+            foreach ((string region, string problem) in RegionColors.Problems(context.Rows.RegionColors, said))
+            {
+                context.Error("regions.color", region, problem, null, -1, null);
+            }
+
+            // Security (code review, 2026-11-11): with no regions sent, the color rows name their regions themselves - so
+            // each name is held to the rule every region's name is (BoardRegions.NameProblem), and to its number. Else any
+            // text, at any length and count, reached the published board file. A name twice is Problems' to say.
+            if (context.Rows.Regions is null)
+            {
+                var named = new List<string>();
+
+                foreach (RegionColorEntry? row in context.Rows.RegionColors ?? [])
+                {
+                    string region = row?.Region?.Trim() ?? string.Empty;
+
+                    if (named.Contains(region, StringComparer.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    if (BoardRegions.NameProblem(region, named) is { } problem)
+                    {
+                        context.Error("regions.color", region, problem, null, -1, null);
+                        continue;
+                    }
+
+                    named.Add(region);
+                }
+            }
         }
 
         // What is wrong with such a pin, for the box it is marked on too.
@@ -1228,7 +1266,8 @@ namespace Handlers.DataHandling
         IReadOnlyList<KiCadImportantSignalEntry>? ImportantSignals = null,
         IReadOnlyList<ComponentPinEntry>? ComponentPins = null,
         IReadOnlyList<ComponentReplacementEntry>? ComponentReplacements = null,
-        IReadOnlyList<string>? Regions = null)
+        IReadOnlyList<string>? Regions = null,
+        IReadOnlyList<RegionColorEntry>? RegionColors = null)
     {
         public static BoardCheckRows From(BoardData board)
         {
@@ -1237,7 +1276,7 @@ namespace Handlers.DataHandling
             return new BoardCheckRows(
                 board.Schematics, board.Components, board.ComponentImages, board.ComponentHighlights,
                 board.ComponentLocalFiles, board.BoardLocalFiles, board.ComponentLinks, board.BoardLinks,
-                board.Credits, board.KiCadImportantSignals, board.ComponentPins, board.ComponentReplacements, board.Regions);
+                board.Credits, board.KiCadImportantSignals, board.ComponentPins, board.ComponentReplacements, board.Regions, board.RegionColors);
         }
 
         public static BoardCheckRows From(SubmissionRows rows)
@@ -1247,7 +1286,7 @@ namespace Handlers.DataHandling
             return new BoardCheckRows(
                 rows.Schematics, rows.Components, rows.ComponentImages, rows.ComponentHighlights,
                 rows.ComponentLocalFiles, rows.BoardLocalFiles, rows.ComponentLinks, rows.BoardLinks,
-                rows.Credits, rows.KiCadImportantSignals, rows.ComponentPins, rows.ComponentReplacements, rows.Regions);
+                rows.Credits, rows.KiCadImportantSignals, rows.ComponentPins, rows.ComponentReplacements, rows.Regions, rows.RegionColors);
         }
     }
 }

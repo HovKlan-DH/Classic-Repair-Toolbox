@@ -48,7 +48,7 @@ public sealed class TabSchematicsPictureToolsTests
     // Bold pieces or not (BoldRuns: a line with a bold piece has no Text).
     private static string Text(TabSchematics tab, string name) => BoldRuns.TextOf(tab.GetControl<TextBlock>(name));
 
-    private static bool BarShown(TabSchematics tab) => tab.GetControl<Border>("PictureToolBarBorder").IsVisible;
+    private static bool BarShown(TabSchematics tab) => tab.GetControl<ReturnBar>("PictureToolBarBorder").IsVisible;
 
     private static void Click(TabSchematics tab, string name) =>
         tab.GetControl<Button>(name).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
@@ -758,6 +758,40 @@ public sealed class TabSchematicsPictureToolsTests
 
             tab.ShowBackToContribute(null);
             Assert.False(tab.IsBackToContributeShownForTests);
+        });
+    }
+
+    // ###########################################################################################
+    // Every bar that takes a person back to the Contribute tab looks the same (owner request, 2026-11-11: "This panel should be
+    // identical everywhere, and please let us try and make this lightgrey background with 2px black dashed border, to give it
+    // some attention" - then white in place of the lightgray): "Back to Contribute" and the picture tool's bar are both a ReturnBar - white, framed by a 2px black
+    // dash - and their words are black on it whichever theme is on.
+    // ###########################################################################################
+    [Fact]
+    public void Every_bar_back_to_Contribute_is_white_with_a_2px_black_dashed_frame()
+    {
+        UiTest.Run(() =>
+        {
+            (TabSchematics tab, _) = CreateTab();
+
+            // Shown: the colors are the app's resources, which a control finds only in a window.
+            var window = new Window { Content = tab, Width = 1000, Height = 700 };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            foreach (string name in new[] { "BackToContributeBorder", "PictureToolBarBorder" })
+            {
+                ReturnBar bar = tab.GetControl<ReturnBar>(name);
+
+                Assert.Equal(Avalonia.Media.Colors.White, ((Avalonia.Media.ISolidColorBrush)bar.Background!).Color);
+                Assert.Equal(Avalonia.Media.Colors.Black, ((Avalonia.Media.ISolidColorBrush)bar.FrameBrush!).Color);
+            }
+
+            Assert.Equal(2, ReturnBar.FrameThickness);
+            Assert.Equal(Avalonia.Media.Colors.Black, ((Avalonia.Media.ISolidColorBrush)tab.GetControl<TextBlock>("BackToContributeText").Foreground!).Color);
+            Assert.Equal(Avalonia.Media.Colors.Black, ((Avalonia.Media.ISolidColorBrush)tab.GetControl<TextBlock>("PictureToolTitleText").Foreground!).Color);
+
+            window.Close();
         });
     }
 }

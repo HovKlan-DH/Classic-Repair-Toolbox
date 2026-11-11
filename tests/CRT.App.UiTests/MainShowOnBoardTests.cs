@@ -131,10 +131,12 @@ public sealed class MainShowOnBoardTests : IDisposable
             Assert.True(window.TabSchematicsControl.IsBackToContributeShownForTests);
             Assert.Equal("Showing [U8] from the \"Contribute\" tab", window.TabSchematicsControl.BackToContributeTextForTests);
 
-            // KHAKI, so it stands out as there only for the moment (owner request, 2026-10-30: "please
-            // make this more visible - maybe use the standard(?) Khaki color for the panel").
-            Avalonia.Controls.Border bar = Avalonia.Controls.ControlExtensions.FindControl<Avalonia.Controls.Border>(window.TabSchematicsControl, "BackToContributeBorder")!;
-            Assert.Equal(Avalonia.Media.Colors.Khaki, ((Avalonia.Media.ISolidColorBrush)bar.Background!).Color);
+            // WHITE (lightgray for a day) WITH A 2PX BLACK DASHED FRAME, as every bar back to the Contribute tab (owner request, 2026-11-11: "This
+            // panel should be identical everywhere, and please let us try and make this lightgrey background with 2px black dashed
+            // border" - Khaki from 2026-10-30 until then).
+            ReturnBar bar = Avalonia.Controls.ControlExtensions.FindControl<ReturnBar>(window.TabSchematicsControl, "BackToContributeBorder")!;
+            Assert.Equal(Avalonia.Media.Colors.White, ((Avalonia.Media.ISolidColorBrush)bar.Background!).Color);
+            Assert.Equal(Avalonia.Media.Colors.Black, ((Avalonia.Media.ISolidColorBrush)bar.FrameBrush!).Color);
 
             window.TabSchematicsControl.PressBackToContributeForTests();
 

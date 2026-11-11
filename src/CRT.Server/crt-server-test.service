@@ -1,12 +1,12 @@
 [Unit]
-Description=Classic Repair Toolbox contribution service - TEST instance for CRT 4.0's pre-releases (CRT.Server)
+Description=Classic Repair Toolbox contribution service - TEST instance for pre-releases (CRT.Server)
 After=network.target mariadb.service
 
-# THE TEST INSTANCE (owner decision, 2026-10-25): its own program folder, settings, database and
-# port beside the live service, publishing into the CRT 4.0 trees that CRT 4.0's pre-releases read.
-# The live service keeps serving CRT 3.x from the Excel trees until the release. Stopped and disabled
-# on release day - INSTALLING.md, "A test instance for CRT 4.0's pre-releases". Every line not about
-# WHICH instance this is equals crt-server.service's (TestInstanceUnitTests).
+# THE TEST INSTANCE (owner decisions, 2026-10-25, and 2026-11-09: every alpha and beta of CRT talks
+# to it and downloads its data, every release the live service's): its own program folder, settings,
+# database, port and data trees (app-data-v4-test, app-data-v4-test-BETA) beside the live service -
+# INSTALLING.md, "A test instance for pre-releases". Every line not about WHICH instance this is equals
+# crt-server.service's (TestInstanceUnitTests).
 
 [Service]
 # Type=simple, NOT Type=notify: the service sends systemd no readiness signal, so with
@@ -28,8 +28,10 @@ Environment=ASPNETCORE_ENVIRONMENT=Production
 Environment=ASPNETCORE_URLS=http://127.0.0.1:5198
 Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
 
-# Hardening, exactly the live unit's. Writable: the CRT 4.0 trees it publishes into, and its own
-# stored uploads and feedback folder - never the live service's, and never the Excel trees.
+# Hardening, exactly the live unit's. Writable: its OWN data trees (owner decision, 2026-11-09: "we need
+# to have a new data source for the test server, so it does not mix data with the real server" - copies
+# of the 4.0 trees, read by CRT's alphas and betas), and its own stored uploads and feedback folder -
+# never the live service's 4.0 trees, never the Excel trees, never the live service's folders.
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
@@ -37,7 +39,7 @@ ProtectHome=true
 ProtectKernelTunables=true
 ProtectControlGroups=true
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
-ReadWritePaths=/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4-BETA /mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4 /mydir/http/classic-repair-toolbox.dk/crt-server-test/blobs /mydir/http/classic-repair-toolbox.dk/crt-server-test/feedback
+ReadWritePaths=/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4-test-BETA /mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4-test /mydir/http/classic-repair-toolbox.dk/crt-server-test/blobs /mydir/http/classic-repair-toolbox.dk/crt-server-test/feedback
 
 [Install]
 WantedBy=multi-user.target

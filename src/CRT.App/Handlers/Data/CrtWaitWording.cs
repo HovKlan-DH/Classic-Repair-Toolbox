@@ -37,22 +37,10 @@ namespace Handlers.DataHandling
 
         public const string CapturingOscilloscope = "Taking the screenshot from the oscilloscope...";
 
-        // "Also on other boards" (slice 5) - the other boards' files read for the same part.
-        public const string LookingAtOtherBoards = "Looking for the same part on the other boards...";
-
         // "Clone component from another board" - the board picked read for its components, and the clone.
         public const string ReadingOtherBoard = "Reading that board...";
 
         public const string CloningComponent = "Cloning the component into your draft...";
-
-        // "Also on other boards" for a file replaced - the other boards' file lists read for its bytes.
-        public const string LookingForFilesOnOtherBoards = "Looking for the same files on the other boards...";
-
-        // "Also on other boards" for a part AND its files - one read of the other boards for both.
-        public const string LookingForPartAndFilesOnOtherBoards = "Looking for the same part and files on the other boards...";
-
-        // "Also on other boards" (slice 5) - each board's draft made when it has none, changed and saved.
-        public const string ChangingOtherBoards = "Putting the change into the other boards' drafts...";
 
         public const string MakingDraft = "Making your draft of this board...";
 

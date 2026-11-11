@@ -138,7 +138,26 @@ namespace Handlers.DataHandling
 
                 // Theirs when the contributor changed what the board says, else the update's.
                 Regions = BoardRegions.Differ(based, draft) ? draft.Regions : published.Regions,
+
+                // The same for their colors (owner request, 2026-11-11; RegionColors).
+                RegionColors = RegionColors.Differ(based, draft) ? draft.RegionColors : published.RegionColors,
             };
+
+            // ###########################################################################################
+            // Colors are given only for regions the board's list SAYS (RegionColors.WithColors writes the list down for
+            // them, and the checks hold a submission to it - "regions.color"). The draft's colors kept beside the update's
+            // list - left unwritten, as on a board whose regions its rows decide, or without a region the colors name -
+            // would be colors of no region: the list is written down, and colors of a region it no longer has go.
+            // ###########################################################################################
+            if (board.RegionColors.Count > 0)
+            {
+                if (board.Regions.Count == 0)
+                {
+                    board = board.WithRegions([.. BoardRegions.Of(board)]);
+                }
+
+                board = RegionColors.Tidied(board);
+            }
 
             List<KiCadCalibrationEntry> calibrations = DraftRebase.MergeSection(
                 "KiCad calibrations",

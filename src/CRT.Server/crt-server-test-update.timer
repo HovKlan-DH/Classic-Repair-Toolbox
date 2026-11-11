@@ -1,0 +1,17 @@
+[Unit]
+Description=Classic Repair Toolbox contribution service - TEST instance - looks for a new server build every minute
+
+# Starts crt-server-test-update.service a minute after the timer starts, and then a minute after each look
+# has ended - so two looks never overlap, however long an install takes (owner request, 2026-11-09: "can it
+# then update every minute?"). A minute's look is cheap: it reads one small file on GitHub naming the newest
+# build, and downloads only a new one (CRT.Server's ServerUpdater). INSTALLING.md, "Automatic updates from
+# GitHub". Every line not about WHICH instance this is equals crt-server-update.timer's.
+
+[Timer]
+OnActiveSec=1min
+OnUnitInactiveSec=1min
+AccuracySec=5s
+Unit=crt-server-test-update.service
+
+[Install]
+WantedBy=timers.target

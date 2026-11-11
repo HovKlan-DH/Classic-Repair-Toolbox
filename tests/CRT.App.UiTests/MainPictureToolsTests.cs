@@ -133,13 +133,13 @@ public sealed class MainPictureToolsTests : IDisposable
             Dispatcher.UIThread.RunJobs();
 
             window.DoWhatWasAskedAfterLoad("Commodore 64|250425");
-            Assert.False(tab.GetControl<Border>("PictureToolBarBorder").IsVisible);
+            Assert.False(tab.GetControl<ReturnBar>("PictureToolBarBorder").IsVisible);
 
             window.StartPictureTool(PictureTool.MarkComponents, "Board top", readBoardFirst: true);
             Dispatcher.UIThread.RunJobs();
             window.DoWhatWasAskedAfterLoad(MainPictureToolsTests.BoardKey);
 
-            Assert.True(tab.GetControl<Border>("PictureToolBarBorder").IsVisible);
+            Assert.True(tab.GetControl<ReturnBar>("PictureToolBarBorder").IsVisible);
         });
     }
 

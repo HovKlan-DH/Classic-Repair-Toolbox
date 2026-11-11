@@ -247,7 +247,8 @@ curl -s -o /dev/null -w '%{http_code}\n' --resolve classic-repair-toolbox.dk:443
 ## 6. Settings
 
 The settings live in `app/appsettings.Production.json`, beside the program - the service reads it
-from there by itself. Start from the example the publish carries:
+from there by itself. (With automatic updates they move to `settings/`, linked into every build -
+"Automatic updates from GitHub", step 4.) Start from the example the publish carries:
 
 ```bash
 APP=/mydir/http/classic-repair-toolbox.dk/crt-server/app
@@ -310,7 +311,7 @@ names the four folders from step 3, and nothing else on the box is writable to t
 publishing to stable, remove `.../public_html/app-data` from that line first) - then:
 
 ```bash
-sudo cp /mydir/http/classic-repair-toolbox.dk/crt-server/app/crt-server.service /etc/systemd/system/
+sudo install -m 0644 /mydir/http/classic-repair-toolbox.dk/crt-server/app/crt-server.service /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now crt-server
 ```
@@ -495,6 +496,10 @@ has an account, or invite somebody new by email. You can add yourself too.
 
 ## Deploying a new build
 
+**Once "Automatic updates from GitHub" (below) is set up, the box does this itself** - and the
+program then lives in `releases/<version>/`, not in `app/`, so the commands here no longer fit; that
+section says how to deploy and roll back by hand then. Until it is set up:
+
 Publish as in step 5, copy the folder to the box, then:
 
 ```bash
@@ -518,6 +523,8 @@ curl -s http://127.0.0.1:5199/api/health
 
 ## Rolling back
 
+(Before automatic updates are set up - after, see "Running it" under "Automatic updates from GitHub".)
+
 ```bash
 ROOT=/mydir/http/classic-repair-toolbox.dk/crt-server
 sudo systemctl stop crt-server
@@ -532,6 +539,268 @@ start. Fix forward instead.
 
 To stop the service entirely: `sudo systemctl disable --now crt-server`, then comment out the
 `ProxyPass` lines and reload Apache.
+
+## Automatic updates from GitHub
+
+**Once this is set up, nobody deploys a build by hand.** Every minute the box looks on GitHub for a newer
+server build, and installs it (server 10.3.0 and up):
+
+| Instance | Installs | Built by | Unit and timer |
+| --- | --- | --- | --- |
+| Live service | the server of the newest **real CRT release** | the release workflow, `build-and-release.yml` | `crt-server-update.service`, `.timer` |
+| Test instance | the server of **every commit pushed to main** whose tests passed | the push workflow, `build-and-unittest.yml` | `crt-server-test-update.service`, `.timer` |
+
+So no release is needed for the test instance: a push to main is on it a few minutes later (the tests take
+that long). The live service only ever gets what a real release carries. Main's builds stand on one
+pre-release on GitHub, `crt-server-main`, its files replaced at every push - it is no CRT release, and CRT's
+own update check never offers it.
+
+A minute's look is cheap: it reads one small file on GitHub naming the newest build (not GitHub's API,
+which allows only 60 calls an hour without a login), and downloads only a build it has not seen that
+says it is newer. A commit that leaves the server's version as it was is not even downloaded.
+
+**How it stays safe:**
+
+- **Nothing unproven is installed, or even unpacked.** Each workflow attests the server build it makes;
+  the box checks it with `gh attestation verify`, held to this repository, that instance's workflow, the
+  `main` branch and a GitHub-hosted runner. A build made anywhere else, by the other workflow, or changed
+  after it was built, is refused. The box needs no GitHub login and holds no key: the attestation travels
+  with the build.
+- **Its own user, `crt-deploy`**, which can write the builds and nothing else. It is not in
+  `crt-data`, so it cannot read the settings with the database password; the service, in turn,
+  still cannot write its own program. The one thing it may do beyond that is **restart** the two
+  services - a polkit rule allows exactly that.
+- **Never backwards, never a pre-release's build on the live service** - the build's own description,
+  inside the attested bytes, says which it is - and **never a build that failed before**.
+- **A build that does not come up is rolled back**: after the restart the updater asks
+  `/api/health` for two minutes; without the new version answering, the build before goes back and
+  the service is restarted again. **Past a database migration that cannot work** (see "Rolling
+  back"): the status then says THE SERVICE IS DOWN. The test instance meets every migration first.
+- **A build that ships a changed systemd unit, timer or polkit rule waits for you** - those need
+  root. See "When an update waits for you" below.
+
+What it did shows in CRT's Maintainer tab, Account > **Server version**, under the version lines.
+
+### Setting it up, once
+
+**The test instance first, now; the live service on CRT 4.0's release day.** The live service runs the
+server CRT 3.x talks to until then, and a 4.0 server must not reach it before the release - so its
+updater is set up as part of "Switching the service to the 4.0 trees", with the names at the end of this
+list.
+
+**Before starting:** push a commit to main with server 10.3.0 or newer in it, and wait for its "Build and
+Unit Test" run on GitHub to finish green. Its last job, "Build the server for the test server", puts the
+build on the pre-release `crt-server-main`. The box is set up from THAT build - so the very first install
+already goes through the check every later one does.
+
+Then on the box, each step in the same shell:
+
+1. **The GitHub CLI**, from GitHub's own package repository (AlmaLinux has none of its own). It
+   updates with `dnf upgrade` like everything else:
+
+   ```bash
+   sudo dnf install 'dnf-command(config-manager)'
+   sudo dnf config-manager --add-repo https://cli.github.com/packages/rpm/gh-cli.repo
+   sudo dnf install gh
+   gh --version                                   # 2.49 or newer
+   ```
+
+   Do NOT run `gh auth login` - the updater needs no GitHub account, and should have none.
+
+2. **The updater's user**, with a group of its own (not `crt-data`, so it cannot read the settings):
+
+   ```bash
+   sudo useradd --system --no-create-home --shell /sbin/nologin crt-deploy
+   id crt-deploy                                  # groups=...(crt-deploy) - and NOT crt-data
+   ```
+
+3. **The first build, downloaded and proven:**
+
+   ```bash
+   mkdir -p ~/crt-server-first && cd ~/crt-server-first
+   rm -f crt-server-linux-x64.*
+   curl -fsSLO https://github.com/HovKlan-DH/Classic-Repair-Toolbox/releases/download/crt-server-main/crt-server-linux-x64.tar.gz
+   curl -fsSLO https://github.com/HovKlan-DH/Classic-Repair-Toolbox/releases/download/crt-server-main/crt-server-linux-x64.tar.gz.sigstore.json
+   gh attestation verify crt-server-linux-x64.tar.gz --bundle crt-server-linux-x64.tar.gz.sigstore.json \
+     --repo HovKlan-DH/Classic-Repair-Toolbox \
+     --signer-workflow HovKlan-DH/Classic-Repair-Toolbox/.github/workflows/build-and-unittest.yml \
+     --source-ref refs/heads/main --deny-self-hosted-runners
+   ```
+
+   **Check:** it ends with "Verification succeeded!". Anything else: stop here. Then unpack it and read
+   its version:
+
+   ```bash
+   rm -rf build && mkdir build && tar -xzf crt-server-linux-x64.tar.gz -C build
+   V=$(sed -n 's/.*"serverVersion": *"\([^"]*\)".*/\1/p' build/crt-server-release.json); echo "[$V]"
+   ```
+
+   **Check:** it prints the version in brackets, `[10.3.0]` or newer.
+
+4. **The builds side by side.** The program goes into `releases/<version>/`; `app` becomes a link to
+   the build running, so the service's unit stays as it is; the settings move out of the program
+   folder into `settings/`, linked into every build. The build running now is kept as
+   `app-before-updates` until all is well:
+
+   ```bash
+   S=/mydir/http/classic-repair-toolbox.dk/crt-server-test
+   sudo systemctl stop crt-server-test
+   sudo mkdir $S/settings $S/releases
+   sudo mv $S/app/appsettings.Production.json $S/settings/
+   sudo chown -R root:crt-data $S/settings
+   sudo chmod 0750 $S/settings
+   sudo chmod 0640 $S/settings/appsettings.Production.json
+   sudo mv $S/app $S/app-before-updates
+   sudo cp -r ~/crt-server-first/build $S/releases/$V
+   sudo ln -s $S/settings/appsettings.Production.json $S/releases/$V/appsettings.Production.json
+   sudo ln -s $V $S/releases/current
+   sudo ln -s releases/current $S/app
+   sudo chown -hR crt-deploy:crt-data $S/releases
+   sudo find $S/releases -type d -exec chmod 2750 {} +
+   sudo find $S/releases -type f -exec chmod 0640 {} +
+   sudo setfacl -m u:crt-deploy:x $S
+   sudo install -m 0644 $S/app/crt-server-test.service /etc/systemd/system/
+   sudo systemctl daemon-reload
+   sudo systemctl start crt-server-test
+   ```
+
+   The `2750` on the folders - the setgid bit - is what makes every file the updater unpacks later
+   belong to `crt-data`, so the service can read it although the updater is not in that group. The
+   `setfacl` line lets `crt-deploy` PASS THROUGH the instance's folder to its `releases/` - nothing more:
+   it cannot list the folder, and `settings/` and `blobs/` stay closed to it. (`setfacl` missing: `sudo
+   dnf install acl`.)
+
+   **Check** - give it a few seconds to start:
+
+   ```bash
+   curl -s http://127.0.0.1:5198/api/health        # "version":"<V>"
+   ls -l $S/app $S/releases/current                # app -> releases/current, current -> <V>
+   sudo -u crt-deploy test -r $S/app/CRT.Server.dll && echo "The updater reaches its builds (correct)" \
+     || echo "*** THE UPDATER CANNOT REACH ITS BUILDS - namei -l $S/app/CRT.Server.dll shows which folder ***"
+   sudo -u crt-deploy cat $S/settings/appsettings.Production.json > /dev/null 2>&1 \
+     && echo "*** THE UPDATER CAN READ THE SETTINGS - check step 2 ***" || echo "Settings closed to the updater (correct)"
+   ```
+
+5. **The polkit rule** that lets `crt-deploy` restart the two services and nothing else:
+
+   ```bash
+   sudo install -m 0644 $S/app/50-crt-server-update.rules /etc/polkit-1/rules.d/
+   sudo systemctl restart polkit
+   cd /
+   sudo -u crt-deploy systemctl --no-ask-password restart crt-server-test.service && echo "Restart allowed (correct)"
+   sudo -u crt-deploy systemctl --no-ask-password stop crt-server-test.service || echo "Stop refused (correct)"
+   ```
+
+   **Check:** both lines say "(correct)".
+
+6. **The updater's unit and timer:**
+
+   ```bash
+   sudo install -m 0644 $S/app/crt-server-test-update.service $S/app/crt-server-test-update.timer /etc/systemd/system/
+   sudo systemctl daemon-reload
+   ```
+
+7. **One look by hand, as a dry run** - it downloads and proves the newest build and says whether it
+   would install it, installing nothing:
+
+   ```bash
+   cd /
+   sudo -u crt-deploy /usr/bin/dotnet $S/app/CRT.Server.dll update-server --channel=main \
+     --folder=$S --service=crt-server-test.service --health=http://127.0.0.1:5198/api/health --dry-run
+   ```
+
+   **Check:** it ends with "Up to date: <V> is the newest server build (main at [...])." A line
+   with "NOT installed: GitHub's attestation does not prove ..." means the check failed - the words
+   after it say why (gh not reaching Sigstore's servers reads the same); nothing was installed. The
+   timer looks at a build so refused again an hour later (server 10.4.1 on), so a Sigstore outage
+   mends itself; `--retry-failed` tries it at once.
+
+8. **Start the timer:**
+
+   ```bash
+   sudo systemctl enable --now crt-server-test-update.timer
+   systemctl list-timers crt-server-test-update.timer   # its next look, within a minute
+   ```
+
+   **Check,** a couple of minutes later: `cat $S/releases/update-status.json` says `"outcome": "up-to-date"`,
+   and a pre-release of CRT shows it under Maintainer > Account > **Server version**.
+
+9. **Tidy up** once all is well: `sudo rm -rf $S/app-before-updates $S/previous ~/crt-server-first`.
+
+**If step 4 went wrong**, back to how it was:
+
+```bash
+sudo systemctl disable --now crt-server-test-update.timer 2>/dev/null
+sudo systemctl stop crt-server-test
+sudo rm $S/app
+sudo mv $S/app-before-updates $S/app
+sudo cp $S/settings/appsettings.Production.json $S/app/
+sudo chown root:crt-data $S/app/appsettings.Production.json && sudo chmod 0640 $S/app/appsettings.Production.json
+sudo systemctl start crt-server-test
+```
+
+**For the live service on release day**, the same steps from step 3, from the build CRT 4.0.0's release
+carries - in step 3 its downloads are `.../releases/download/4.0.0/...` and its check names
+`build-and-release.yml` in place of `build-and-unittest.yml` - and with
+`S=/mydir/http/classic-repair-toolbox.dk/crt-server`, port `5199`, `crt-server.service`,
+`--channel=releases`, and its own unit and timer, `crt-server-update.service` and
+`crt-server-update.timer`. Steps 1, 2 and the polkit rule are done already - the rule names both
+services; its check in step 5 then names `crt-server.service`.
+
+### Running it
+
+(Below for the live service; for the test instance read `crt-server-test` and `crt-server-test-update`.)
+
+- **What it did:** Maintainer tab, Account > **Server version**; or on the box
+  `cat /mydir/http/classic-repair-toolbox.dk/crt-server/releases/update-status.json`, and its log:
+  `journalctl -u crt-server-update -n 30 --no-pager`. A minute with nothing new writes nothing there -
+  only what it found, installed or could not do.
+- **A look now**, instead of waiting a minute: `sudo systemctl start crt-server-update.service`.
+- **Builds kept:** the one running, the one it replaced and one more, in `releases/`. Older ones go
+  by themselves.
+- **Rolling back by hand:** point `current` at an older build and restart -
+  `sudo -u crt-deploy ln -sfn <version> $S/releases/current && sudo systemctl restart crt-server`.
+  The updater never installs an older build, so it leaves yours alone until a newer one comes.
+- **Deploying a build by hand** is still possible: unpack it into `releases/<its version>/` as
+  `crt-deploy`, link the settings into it as in step 4 of the setup, point `current` at it and restart.
+- **Turning it off:** `sudo systemctl disable --now crt-server-update.timer`. The service runs on as
+  it is.
+
+### When an update waits for you, or failed
+
+- **"... waits for you: it ships crt-server.service changed ..."** - a new build changed a unit, the
+  timer or the polkit rule, which only root installs. The build is unpacked in `releases/<version>/`,
+  and the message gives the commands. Read VERSION.md for why, then install the named files from there
+  with `sudo install -m 0644 <file> /etc/systemd/system/` and run `sudo systemctl daemon-reload`; the
+  next look installs the build. **Never a plain `cp`**: it gives a new file the build's own mode, 0640,
+  root's alone - and the updater, which reads the installed unit as `crt-deploy` to see it is in, holds
+  the build on for ever (this box, 2026-11-09; `sudo chmod 0644` on the file mends it). The polkit rule
+  goes to `/etc/polkit-1/rules.d/` the same way, but that folder is root's, so the updater never sees it
+  there: put the marker after it, `sudo touch $S/releases/<version>/system-files-installed`. The marker
+  is also how to say you keep changes of your own in an installed file on purpose.
+- **"... did not come up (activating (exit 147)), so ... runs again"** - the service could not read the
+  new build's own files (.NET's "invalid config file", 0x80008093). The updaters of server 10.3.0 to 10.3.2
+  unpacked builds so: their files came in `crt-deploy`'s group, not `crt-data`. Such an updater unpacks
+  the next build too, so once, give every folder of the builds a default ACL letting the service's group
+  read what is made in it - then the next build goes in, and its own updater unpacks correctly:
+
+  ```bash
+  sudo find $S/releases -type d -exec setfacl -m d:g:crt-data:rX {} +
+  getfacl -p $S/releases/.updater | grep default:group:crt-data     # default:group:crt-data:r-x
+  ```
+
+  A build already marked failed is not tried again by itself; a newer one is, or `--retry-failed` (below).
+- **"... did not come up (failed (exit 78)), so ... runs again"** - the new build would not start:
+  usually a new setting it needs (VERSION.md says so, its journal names it). Add it to
+  `settings/appsettings.Production.json`, then try that build again:
+  `sudo -u crt-deploy /usr/bin/dotnet $S/app/CRT.Server.dll update-server <the unit's options> --retry-failed`
+  (copy the options from the unit's `ExecStart=` line). Without that, a failed build is never tried
+  again by itself; the next newer one is.
+- **"THE SERVICE IS DOWN"** - the new build did not start and the old one would not come back,
+  almost always because the new one migrated the database. Fix forward: find why the new one does
+  not start (its journal), point `current` at it again and restart.
+- **"... could not be restarted ... Is the polkit rule installed?"** - step 5 of the setup. The next
+  minute tries again.
 
 ## Is it working, and reading the log
 
@@ -681,10 +950,11 @@ clean up before restarting.
 ## Converting a data tree for CRT 4.0
 
 **Not live yet.** CRT 4.0 keeps its board data as JSON instead of Excel, and reads it from two
-folders of its own. Until CRT 4.0 is released only its pre-releases read them, and only the test
-instance writes them ("A test instance for CRT 4.0's pre-releases", below): CRT 3.x and older keep
-reading `app-data` and `app-data-BETA`, and the 3.x service keeps writing those as before. The 4.0
-service writes only the 4.0 folders - see "Switching the service to the 4.0 trees" below.
+folders of its own. Until CRT 4.0 is released no CRT reads them and nothing but this conversion
+writes them: CRT 4.0's pre-releases read the test instance's copies of them, `app-data-v4-test` and
+`app-data-v4-test-BETA` ("A test instance for pre-releases", below), CRT 3.x and older keep reading
+`app-data` and `app-data-BETA`, and the 3.x service keeps writing those as before. The 4.0 service
+writes only the 4.0 folders - see "Switching the service to the 4.0 trees" below.
 
 ```
 public_html/
@@ -768,7 +1038,6 @@ A plan can also be made from a PC with .NET 10, against a tree over the network 
 never a workbook - and tell every CRT 3.x that sends a submission or opens the Maintainer tab to update
 (API revision 2). So it is deployed on CRT 4.0's release day, not before, in this order:
 
-0. **Stop the test instance** (its "On release day" below) - the 4.0 trees get one writer.
 1. **Work the queue empty on the running (3.x) service** - approve, publish to stable or reject every
    submission waiting. A submission sent by CRT 3.x names its files by their place in the Excel tree
    ("Commodore/C64/250407/Images/sheet.png"); approved into a 4.0 tree those would become the board's
@@ -791,40 +1060,64 @@ never a workbook - and tell every CRT 3.x that sends a submission or opens the M
    CRT 3.x from now on, and the filesystem then keeps them read-only too. `sudo systemctl
    daemon-reload && sudo systemctl restart crt-server`, and check `GET /api/health` says the new
    version and API revision 2.
+5. **Its automatic updates**, from CRT 4.0.0's own server build - "Automatic updates from GitHub",
+   the paragraph "For the live service on release day". From then on no server build is copied by hand.
 
 The rest of this guide still names the Excel folders the 3.x service writes (steps 3, 6, 7 and 8);
 for a 4.0 service read `app-data-v4-BETA` and `app-data-v4` there.
 
-## A test instance for CRT 4.0's pre-releases
+## A test instance for pre-releases
 
-CRT 4.0's pre-releases (`4.0.0-alpha...`, `4.0.0-beta...`) submit to a **test instance** of the
-service, never to the live one. The live service keeps serving CRT 3.x from the Excel trees until the
-release; the test instance runs the newest build - server 4.0.0 and up, which must not go live before
-the release - and publishes into the CRT 4.0 trees the pre-releases read. Only submissions and the
-Maintainer tab go there: a pre-release sends its launch check-in, its feedback and its board views to
-the live service, like every CRT.
+**Every pre-release of CRT (`...-alpha...`, `...-beta...`) talks to a test instance of the service and
+downloads ITS data; every release talks to the live service and downloads the live data** - CRT decides by
+its own version (owner decisions, 2026-11-09: "we need to have a new data source for the test server, so it
+does not mix data with the real server"), so nothing changes in CRT on a release day. The test instance has
+its own program, settings, database, port AND data trees: nothing it publishes ever reaches a CRT release,
+and nothing changes in the live data when a test submission is approved. Until CRT 4.0 is released, the live
+service keeps serving CRT 3.x from the Excel trees, and the test instance runs the newest build - server 4.0.0
+and up. Only submissions, the Maintainer tab and the data go there: a pre-release sends its launch check-in,
+its feedback and its board views to the live service, like every CRT.
 
 |  | Live service | Test instance |
 | --- | --- | --- |
-| Program and settings | `crt-server/app` | `crt-server-test/app` |
+| Program | `crt-server/app` | `crt-server-test/app` (-> `releases/<version>` with automatic updates) |
+| Settings | `crt-server/app/appsettings.Production.json` | `crt-server-test/settings/appsettings.Production.json` |
 | Port (loopback) | 5199 | 5198 |
 | Address | `https://classic-repair-toolbox.dk/api/` | `https://classic-repair-toolbox.dk/crt-test/api/` |
 | Database | `crt_review` | `crt_review_test` |
-| Data it writes | `app-data-BETA`, `app-data` (until release day) | `app-data-v4-BETA`, `app-data-v4` |
+| Data it writes | `app-data-BETA`, `app-data` (until release day; then `app-data-v4-BETA`, `app-data-v4`) | `app-data-v4-test-BETA`, `app-data-v4-test` |
+| Data CRT reads from it | every release of CRT | every alpha and beta of CRT |
 | Uploads and feedback | `crt-server/blobs`, `user-feedback` | `crt-server-test/blobs`, `crt-server-test/feedback` |
 | Unit | `crt-server.service` | `crt-server-test.service` |
 
 It is the same program, the same user and groups (`crt-server`, `crt-data`) and the steps of part
 one with these names. **Its accounts are its own**: a pre-release signs in to it (CRT says so above
 "Sign in"), so maintainers are invited on it separately and the administrator is made in its database.
-What it publishes is test data, replaced on release day.
+What it publishes is test data, seen by CRT's alphas and betas only.
 
 ### Setting it up, once
 
-1. **The 4.0 folders and fresh data.** Make the two folders as in "The two folders, once" above (their
-   `<Directory>` blocks included), then run the conversion for both trees as there, as `crt-server`. The
-   trees converted over the network share on 2026-10-24 are an older snapshot, and files copied in over
-   the share are not the service's.
+(For a box that has none yet. The test instance on this box was made before it had trees of its own -
+"Moving it to trees of its own" below is what moved it, once.)
+
+1. **Its data trees**, as copies of the live 4.0 trees, each manifest's addresses rewritten to the copy -
+   the files and their checksums are the same, only where CRT downloads them from changes:
+
+   ```bash
+   P=/mydir/http/classic-repair-toolbox.dk/public_html
+   sudo cp -a $P/app-data-v4 $P/app-data-v4-test
+   sudo cp -a $P/app-data-v4-BETA $P/app-data-v4-test-BETA
+   sudo sed -i 's#https://classic-repair-toolbox.dk/app-data-v4/Data/#https://classic-repair-toolbox.dk/app-data-v4-test/Data/#' $P/app-data-v4-test/dataChecksums.json
+   sudo sed -i 's#https://classic-repair-toolbox.dk/app-data-v4-BETA/Data/#https://classic-repair-toolbox.dk/app-data-v4-test-BETA/Data/#' $P/app-data-v4-test-BETA/dataChecksums.json
+   for T in $P/app-data-v4-test $P/app-data-v4-test-BETA; do
+     sudo chgrp -R crt-data $T
+     sudo chmod -R g+rwX    $T
+     sudo find $T -type d -exec chmod g+s {} +
+   done
+   ```
+
+   And in the vhost, a `<Directory>` block for each, exactly like the 4.0 trees' ("The two folders, once"
+   above) with the folder's name changed. Then `apachectl configtest && sudo systemctl reload httpd`.
 
 2. **Its own folders** - as step 3, the upload store owned by the service and the feedback folder
    setgid (nothing posts feedback to it, but the service needs one of its own):
@@ -848,20 +1141,21 @@ What it publishes is test data, replaced on release day.
    ```
 
 4. **The program** - publish as in step 5 and copy it into `crt-server-test/app` with the same
-   `chown -R root:crt-data` and `chmod -R 0750`.
+   `chown -R root:crt-data` and `chmod -R 0750` (then "Automatic updates from GitHub" moves it into
+   `releases/`, and the settings below into `settings/`).
 
 5. **Its settings** - as step 6, in `crt-server-test/app/appsettings.Production.json` (copied from
    `appsettings.Example.json`, `root:crt-data`, mode 0640), with these values:
 
    | Setting | Value |
    | --- | --- |
-   | `DataTreeRoot` | `/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4-BETA/Data` |
-   | `ManifestPath` | `/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4-BETA/dataChecksums.json` |
-   | `PublicDataBaseUrl` | `https://classic-repair-toolbox.dk/app-data-v4-BETA/Data` |
-   | `ProductionTreeRoot` | `/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4` |
-   | `ProductionDataTreeRoot` | `/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4/Data` |
-   | `ProductionManifestPath` | `/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4/dataChecksums.json` |
-   | `ProductionPublicDataBaseUrl` | `https://classic-repair-toolbox.dk/app-data-v4/Data` |
+   | `DataTreeRoot` | `/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4-test-BETA/Data` |
+   | `ManifestPath` | `/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4-test-BETA/dataChecksums.json` |
+   | `PublicDataBaseUrl` | `https://classic-repair-toolbox.dk/app-data-v4-test-BETA/Data` |
+   | `ProductionTreeRoot` | `/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4-test` |
+   | `ProductionDataTreeRoot` | `/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4-test/Data` |
+   | `ProductionManifestPath` | `/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4-test/dataChecksums.json` |
+   | `ProductionPublicDataBaseUrl` | `https://classic-repair-toolbox.dk/app-data-v4-test/Data` |
    | `BlobStoreRoot` | `/mydir/http/classic-repair-toolbox.dk/crt-server-test/blobs` |
    | `FeedbackRoot` | `/mydir/http/classic-repair-toolbox.dk/crt-server-test/feedback` |
    | `ConnectionString` | `crt_review_test` and the password from 3. |
@@ -872,10 +1166,10 @@ What it publishes is test data, replaced on release day.
    The rest as for the live service (`FeedbackToAddress`, `MailFromAddress`, ...).
 
 6. **Its unit** - the program brings `crt-server-test.service`, every line of it the live unit's but
-   the five that say which instance it is (port 5198, its own folders):
+   the five that say which instance it is (port 5198, its own folders, its own data trees):
 
    ```bash
-   sudo cp /mydir/http/classic-repair-toolbox.dk/crt-server-test/app/crt-server-test.service /etc/systemd/system/
+   sudo install -m 0644 /mydir/http/classic-repair-toolbox.dk/crt-server-test/app/crt-server-test.service /etc/systemd/system/
    sudo systemctl daemon-reload
    sudo systemctl enable --now crt-server-test
    ss -ltnp | grep 5198                          # 127.0.0.1:5198 - NOT 0.0.0.0
@@ -903,32 +1197,63 @@ What it publishes is test data, replaced on release day.
    Open the link in the mail ("Classic Repair Toolbox (test)"), then
    `UPDATE crt_review_test.accounts SET is_administrator = 1 WHERE email_normalised = 'you@example.com';`
 
-9. **End to end, with a CRT 4.0 pre-release**: the Maintainer tab says it signs in to the test server;
-   Account > **Server version** shows the test instance's version and API 2 on both lines; a small change
-   sent from the Drafts tab (whose Submit dialog says it goes to the test server) reaches the queue;
-   approving it changes `app-data-v4-BETA/dataChecksums.json`, publishing it to stable
-   `app-data-v4/dataChecksums.json`.
+9. **End to end, with a CRT pre-release**: the Maintainer tab says it signs in to the test server;
+   Account > **Server version** shows the test instance's version and API 2 on both lines; CRT's log names
+   `app-data-v4-test` for its data; a small change sent from the Contribute tab (whose Submit dialog says it
+   goes to the test server) reaches the queue; approving it changes `app-data-v4-test-BETA/dataChecksums.json`,
+   publishing it to stable `app-data-v4-test/dataChecksums.json` - and nothing under `app-data-v4`.
+
+### Moving it to trees of its own (once, 2026-11-09)
+
+This box's test instance published into the 4.0 trees until server 10.3.1. To move it - server 10.3.1's
+unit names the new trees, so its updater HOLDS 10.3.1 until that unit is installed, and installs it by
+itself the minute after:
+
+1. Wait until `cat .../crt-server-test/releases/update-status.json` says `"outcome": "held"` for 10.3.1 -
+   the build is then in `releases/10.3.1/`.
+2. Stop the test instance, and make its trees as in step 1 of "Setting it up, once" (the copies, the
+   manifests rewritten, the groups, the two `<Directory>` blocks).
+3. Point its seven tree settings at them (a copy of the file kept beside it first):
+
+   ```bash
+   F=/mydir/http/classic-repair-toolbox.dk/crt-server-test/settings/appsettings.Production.json
+   sudo cp -p $F $F.before-test-trees
+   sudo sed -i \
+     -e 's#public_html/app-data-v4-BETA/#public_html/app-data-v4-test-BETA/#g' \
+     -e 's#public_html/app-data-v4/#public_html/app-data-v4-test/#g' \
+     -e 's#public_html/app-data-v4"#public_html/app-data-v4-test"#g' \
+     -e 's#\.dk/app-data-v4-BETA/Data#.dk/app-data-v4-test-BETA/Data#g' \
+     -e 's#\.dk/app-data-v4/Data#.dk/app-data-v4-test/Data#g' \
+     $F
+   # The seven settings alone (the file's "//..." lines are notes, and still name the Excel trees):
+   sudo grep -E '"(DataTreeRoot|ManifestPath|PublicDataBaseUrl|ProductionTreeRoot|ProductionDataTreeRoot|ProductionManifestPath|ProductionPublicDataBaseUrl)"' $F
+   # seven lines, every one app-data-v4-test...
+   ```
+
+4. Install 10.3.1's unit and start the test instance - still the build before, now on its own trees:
+   `sudo install -m 0644 .../crt-server-test/releases/10.3.1/crt-server-test.service /etc/systemd/system/ && sudo
+   systemctl daemon-reload && sudo systemctl start crt-server-test`.
+5. The next minute the updater installs 10.3.1 and restarts it: `update-status.json` says `"installed"`.
 
 ### Running it
 
-- **Deploying a new build:** as "Deploying a new build" in part two, with
+- **New builds:** with "Automatic updates from GitHub" set up for it, it installs the server of every
+  commit pushed to main by itself, minutes after the push. By hand: as "Deploying a new build" in part two, with
   `ROOT=/mydir/http/classic-repair-toolbox.dk/crt-server-test`, `crt-server-test` and port 5198.
-  **Builds from the main branch go here, and not to the live service, until release day.**
 - **Its log:** the commands in "Is it working, and reading the log" with `-u crt-server-test`.
 - **Starting over:** "Resetting the contribution data" works here as on the live service (with
-  `AllowDataReset` true); the conversion, run again, puts the trees back to the live data as it is.
+  `AllowDataReset` true).
+- **Its data brought up to date with the live data:** stop it, delete its two trees, make them again as in
+  step 1 of "Setting it up, once", and start it. What it had published is gone with them.
 
 ### On release day
 
-Before "Switching the service to the 4.0 trees" (above): `sudo systemctl disable --now crt-server-test`,
-take its two `ProxyPass` lines out and reload Apache - the 4.0 trees get one writer, the live service.
-The last conversion replaces everything it published, so test data never reaches anybody. Its database
-and folder can go afterwards (`DROP DATABASE crt_review_test;`, `crt-server-test/`), or stay for the
-next pre-releases.
+**Nothing for the test instance.** It never writes the 4.0 trees that become the live data that day, and
+CRT's alphas and betas go on reading its own. Bring its data up to date with the freshly converted live
+data afterwards if wanted ("Running it").
 
-**CRT's side:** the release build talks to the live service again - `AppConfig.ContributionServerRootUrl`
-set back to `AppConfig.CrtServerRootUrl`. A CRT whose version is a release and that still names the test
-instance fails `ContributionServerTests`, so the release workflow stops before it builds anything.
+**CRT's side needs nothing either:** a release talks to the live service and reads the live data, a
+pre-release the test instance's, by its version (`ContributionServer.RootUrlFor`, `ChecksumsUrlFor`).
 
 ## Looking at the numbers
 

@@ -406,7 +406,7 @@ namespace CRT
             PaneBoardPart.Links => ComponentPane.ListDiffers(published?.BoardLinks, board.BoardLinks),
             PaneBoardPart.Credits => ComponentPane.ListDiffers(published?.Credits, board.Credits),
             PaneBoardPart.Pictures => ComponentPane.ListDiffers(published?.Schematics, board.Schematics),
-            PaneBoardPart.Regions => BoardRegions.Differ(published, board),
+            PaneBoardPart.Regions => BoardRegions.Differ(published, board) || RegionColors.Differ(published, board),
             PaneBoardPart.Categories => !ComponentPane.SameCategories(published, board),
             _ => ComponentPane.ListDiffers(published?.KiCadImportantSignals, board.KiCadImportantSignals),
         };
@@ -428,7 +428,6 @@ namespace CRT
         {
             this.ChangedMark.IsVisible = this.IsBoardPartChanged;
             ToolTip.SetTip(this.ChangedMark, ComponentPaneWording.BoardPartChangedTip);
-            this.ShowBoardFilesAlsoOffer();
         }
 
         // ---- the part's changes into the draft ----------------------------------------------------
@@ -467,6 +466,10 @@ namespace CRT
                         this.CommitCategoryNames();
                     }
 
+                    break;
+                case PaneBoardPart.Regions:
+                    // The regions' colors picked (owner request, 2026-11-11).
+                    this.CommitRegionColors();
                     break;
             }
         }

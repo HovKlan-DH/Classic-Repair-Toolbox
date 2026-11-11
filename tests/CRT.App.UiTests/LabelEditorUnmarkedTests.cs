@@ -81,7 +81,7 @@ public sealed class LabelEditorUnmarkedTests
             TabSchematics tab = CreateTab();
             Border panel = tab.GetControl<Border>("UnmarkedPanelBorder");
 
-            Assert.Contains(tab.GetControl<Border>("PictureToolBarBorder"), panel.GetLogicalAncestors());
+            Assert.Contains(tab.GetControl<ReturnBar>("PictureToolBarBorder"), panel.GetLogicalAncestors());
         });
     }
 

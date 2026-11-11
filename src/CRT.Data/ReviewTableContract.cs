@@ -48,7 +48,8 @@ namespace Handlers.DataHandling
                 // Not sent reads as none here; the publish keeps the published ones (PublishMerge).
                 ComponentPins = [.. rows.ComponentPins ?? []],
                 ComponentReplacements = [.. rows.ComponentReplacements ?? []],
-                Regions = [.. rows.Regions ?? []]
+                Regions = [.. rows.Regions ?? []],
+                RegionColors = [.. rows.RegionColors ?? []]
             };
         }
 
@@ -72,7 +73,8 @@ namespace Handlers.DataHandling
                 KiCadImportantSignals = board.KiCadImportantSignals.ToList(),
                 ComponentPins = board.ComponentPins.ToList(),
                 ComponentReplacements = board.ComponentReplacements.ToList(),
-                Regions = board.Regions.ToList()
+                Regions = board.Regions.ToList(),
+                RegionColors = board.RegionColors.ToList()
             };
         }
 
@@ -147,7 +149,8 @@ namespace Handlers.DataHandling
                 ComponentReplacements = edited.ComponentReplacements?.ToList() ?? current.ComponentReplacements,
 
                 // No sheet of the table - the submission's, whatever a request says.
-                Regions = current.Regions
+                Regions = current.Regions,
+                RegionColors = current.RegionColors
             };
         }
 

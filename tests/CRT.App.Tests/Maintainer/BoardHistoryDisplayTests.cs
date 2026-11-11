@@ -204,6 +204,18 @@ public sealed class BoardHistoryDisplayTests
         Assert.Equal(["Regions", BoardRegions.ChangedLine(false)], BoardHistoryDisplay.ChangeLines(changes).Select(line => line.Text));
     }
 
+    // Their colors (owner request, 2026-11-11) under the same heading, given once - and alone a change worth a line.
+    [Fact]
+    public void A_change_of_the_regions_colors_reads_under_the_regions_heading()
+    {
+        var both = new SubmissionChanges(false, [], FileChanges.None, null, RegionsNow: false) { RegionColorsChanged = true };
+        var colorsAlone = new SubmissionChanges(false, [], FileChanges.None) { RegionColorsChanged = true };
+
+        Assert.Equal(["Regions", BoardRegions.ChangedLine(false), RegionColors.ChangedLine], BoardHistoryDisplay.ChangeLines(both).Select(line => line.Text));
+        Assert.True(SubmissionChangeFacts.HasChanges(colorsAlone));
+        Assert.Equal(["Regions", RegionColors.ChangedLine], BoardHistoryDisplay.ChangeLines(colorsAlone).Select(line => line.Text));
+    }
+
     // ###########################################################################################
     // One rectangle moved and another resized (code review, 2026-11-02): from the review's own comparison to
     // the line, each with its own field. A record stored before - both fields on both rows - reads as stored.

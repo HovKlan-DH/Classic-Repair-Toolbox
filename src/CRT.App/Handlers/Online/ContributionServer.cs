@@ -5,24 +5,56 @@ using CRT;
 namespace Handlers.Online
 {
     // ###########################################################################################
-    // THE CONTRIBUTION SERVICE'S TEST INSTANCE, AS CRT SEES IT (owner decision, 2026-10-25: "We
-    // need the test server"). CRT 4.0's pre-releases submit to it and sign in to it
-    // (AppConfig.ContributionServerRootUrl), so the live service keeps serving CRT 3.x until the
-    // release; the check-in, feedback and board views go to the live service all the same.
+    // THE CONTRIBUTION SERVICE'S TEST INSTANCE, AS CRT SEES IT (owner decisions, 2026-10-25: "We
+    // need the test server"; and 2026-11-09: every pre-release talks to it, every release to the live
+    // service). A CRT whose version is an alpha or a beta submits to it and signs in to it
+    // (RootUrlFor, AppConfig.ContributionServerRootUrl); the check-in, feedback and board views go to
+    // the live service all the same.
     //
     //   - WHAT CRT REMEMBERS OF A SERVICE IS KEPT PER SERVICE (FileNameFor). The Maintainer tab's
     //     sign-in (ReviewSessionStore) and the receipts of what was sent (SubmissionReceiptStore)
     //     mean nothing to another service: a token, and submission numbers, are one database's.
-    //     Shared with the live files - which CRT 3.x reads and writes too - a pre-release would send
-    //     the live token to the test instance and forget it on the 401, signing 3.x out (and 3.x the
-    //     same the other way), and would ask the test instance about live submissions.
-    //   - A RELEASE NEVER SHIPS POINTING AT IT (MayShip, held by ContributionServerTests, which the
-    //     release workflow runs before it builds anything).
+    //     Shared with the live files - which a release reads and writes too - a pre-release would send
+    //     the live token to the test instance and forget it on the 401, signing the release out (and
+    //     the release the same the other way), and would ask the test instance about live submissions.
+    //   - A RELEASE NEVER TALKS TO IT: the version decides, so there is nothing to set back by hand.
     //   - THE SCREENS THAT TALK TO IT SAY SO: the Maintainer tab's sign-in (its accounts are its
     //     own) and the Submit dialog (what it publishes is test data).
     // ###########################################################################################
     public static class ContributionServer
     {
+        // ###########################################################################################
+        // Whether a CRT built as `informationalVersion` is a release: a version with no "-" pre-release
+        // tag before any "+" build metadata. "4.0.0" is; "4.0.0-alpha.4", "4.1.0-beta.2+7f3a2c1" and no
+        // version at all are not.
+        // ###########################################################################################
+        public static bool IsRelease(string? informationalVersion)
+        {
+            string version = (informationalVersion ?? string.Empty).Split('+')[0].Trim();
+            return version.Length > 0 && !version.Contains('-');
+        }
+
+        // ###########################################################################################
+        // The contribution service a CRT built as `informationalVersion` talks to (owner decision,
+        // 2026-11-09): the live one (port 5199 behind Apache) for a release, the test instance (5198)
+        // for an alpha or a beta.
+        // ###########################################################################################
+        public static string RootUrlFor(string? informationalVersion) =>
+            ContributionServer.IsRelease(informationalVersion) ? AppConfig.CrtServerRootUrl : AppConfig.TestServerRootUrl;
+
+        // ###########################################################################################
+        // *** AND THE DATA IT DOWNLOADS, BY THE SAME RULE (owner decisions, 2026-11-09: "we need to have a new
+        // data source for the test server, so it does not mix data with the real server", and an alpha or a beta
+        // downloads "The test server's"). *** A release reads the live service's 4.0 trees, an alpha or a beta the
+        // test instance's own - so what the test instance publishes is seen by the testers, and never by anybody
+        // else. `betaSource`: the tree's BETA source ("Download data from the BETA source"), else its stable one.
+        // The manifest URL; every file's address comes from the manifest (OnlineServices).
+        // ###########################################################################################
+        public static string ChecksumsUrlFor(string? informationalVersion, bool betaSource) =>
+            (ContributionServer.IsRelease(informationalVersion) ? AppConfig.LiveDataRootUrl : AppConfig.TestDataRootUrl) +
+            (betaSource ? "-BETA" : string.Empty) +
+            "/dataChecksums.json";
+
         // What a file of the test instance's own carries before its extension.
         public const string TestFileSuffix = "-test";
 
@@ -44,40 +76,23 @@ namespace Handlers.Online
             ContributionServer.FileNameFor(fileName, AppConfig.UsesTestServer);
 
         // ###########################################################################################
-        // Whether a CRT built as `informationalVersion` may ship talking to `contributionRootUrl`: a
-        // RELEASE - no "-" pre-release tag before any "+" build metadata - never to the test instance.
-        // A pre-release may talk to either.
-        // ###########################################################################################
-        public static bool MayShip(string? informationalVersion, string? contributionRootUrl)
-        {
-            string version = (informationalVersion ?? string.Empty).Split('+')[0].Trim();
-            bool isRelease = version.Length > 0 && !version.Contains('-');
-            bool isTestServer = string.Equals(
-                (contributionRootUrl ?? string.Empty).Trim().TrimEnd('/'),
-                AppConfig.TestServerRootUrl,
-                StringComparison.OrdinalIgnoreCase);
-
-            return !(isRelease && isTestServer);
-        }
-
-        // ###########################################################################################
         // Whether a draft whose work reached the stable data may be deleted by itself
         // (Main.RetirePublishedDraftsAsync): never while CRT talks to the test instance (code review,
-        // 2026-10-25). What the test instance publishes is replaced by the release day's conversion,
-        // so there the draft is the only lasting copy of the contributor's work - kept, to be sent to
-        // the live service once CRT 4.0 is released.
+        // 2026-10-25). What the test instance publishes never reaches the live data - it is replaced
+        // whenever its trees are copied from the live ones again - so there the draft is the only
+        // lasting copy of the contributor's work, kept to be sent from a released CRT.
         // ###########################################################################################
         public static bool RetiresPublishedDrafts(bool testServer) => !testServer;
 
         // Above the Maintainer tab's sign-in, while CRT talks to the test instance.
         public const string SignInNote =
-            "This pre-release of CRT signs in to the test server for CRT 4.0. It has accounts of its own: " +
+            "This pre-release of CRT signs in to the test server. It has accounts of its own: " +
             "your account on the live server does not work here, and nothing done here reaches the live data.";
 
         // In the Submit dialog, while CRT talks to the test instance.
         public const string SubmitNote =
-            "This pre-release of CRT sends your changes to the test server for CRT 4.0. What is published " +
-            "there is test data: everybody else keeps the live data, and the test data is replaced when " +
-            "CRT 4.0 is released. Your draft is kept, so your changes can be sent again then.";
+            "This pre-release of CRT sends your changes to the test server. What is published there is " +
+            "test data: everybody else keeps the live data. Your draft is kept, so your changes can be " +
+            "sent again from a released CRT.";
     }
 }

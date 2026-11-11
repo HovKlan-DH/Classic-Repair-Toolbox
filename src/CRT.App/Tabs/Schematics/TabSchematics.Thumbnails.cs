@@ -323,6 +323,17 @@ public partial class TabSchematics
         catch (Exception ex)
         {
             Logger.Critical($"OnSchematicsThumbnailSelectionChanged failed - [{ex}]");
+
+            // Settled, not shown: the splash waiting for the first board's picture, and a picture tool waiting for it, are
+            // told so - left waiting, the splash stood its whole limit (code review, 2026-11-11).
+            try
+            {
+                this.ImageSettled(this.SelectedThumbnail?.Name, shown: false);
+            }
+            catch (Exception inner)
+            {
+                Logger.Critical($"OnSchematicsThumbnailSelectionChanged could not say the picture settled - [{inner}]");
+            }
         }
     }
 

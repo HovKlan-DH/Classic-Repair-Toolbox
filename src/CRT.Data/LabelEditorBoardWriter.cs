@@ -91,6 +91,7 @@ namespace Handlers.DataHandling
                 ComponentPins = current.ComponentPins,
                 ComponentReplacements = current.ComponentReplacements,
                 Regions = current.Regions,
+                RegionColors = current.RegionColors,
             };
         }
 

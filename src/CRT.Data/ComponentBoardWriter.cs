@@ -65,6 +65,7 @@ namespace Handlers.DataHandling
                     current.ComponentReplacements, label, existing => existing.BoardLabel),
 
                 Regions = current.Regions,
+                RegionColors = current.RegionColors,
 
                 BoardLocalFiles = current.BoardLocalFiles,
                 BoardLinks = current.BoardLinks,

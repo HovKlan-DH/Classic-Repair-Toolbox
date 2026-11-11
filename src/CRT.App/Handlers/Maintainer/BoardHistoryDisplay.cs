@@ -261,6 +261,19 @@ namespace Handlers.MaintainerHandling
                     IsHeading: false));
             }
 
+            // And of their colors (2026-11-11) - under the same heading, given once.
+            if (changes.RegionColorsChanged)
+            {
+                if (changes.RegionsNow is null)
+                {
+                    lines.Add(new HistoryChangeLine([new ReviewNoteRun("Regions", IsCount: false)], IsHeading: true));
+                }
+
+                lines.Add(new HistoryChangeLine(
+                    [new ReviewNoteRun(changes.IsNewBoard ? RegionColors.NewBoardLine : RegionColors.ChangedLine, IsCount: false)],
+                    IsHeading: false));
+            }
+
             FileChanges files = changes.Files ?? FileChanges.None;
 
             if (files.HasChanges)

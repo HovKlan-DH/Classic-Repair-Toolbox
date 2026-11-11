@@ -149,55 +149,70 @@
 		<!-- A region on "Board: Regions" as its button looks (owner request, 2026-11-09: "list all regions and its colors"):
 		     the colors RegionChoice.ColorsOf names, by a class per set - the buttons' resources, so a theme or a color set
 		     for PAL and NTSC shows here too. -->
+		<!-- As the region's button looks when picked (owner request, 2026-11-11: "you should not show the regional name in bold -
+		     it must be identical to what the user will see in the region buttons"): the button's font size and weight, a 2px edge
+		     in its background color (App.axaml's Button.RegionToggle.active). -->
 		<Style Selector="Border.RegionPill">
+			<Setter Property="Height" Value="{x:Static local:ComponentPaneRegionRow.LineHeight}" />
 			<Setter Property="MinWidth" Value="90" />
 			<Setter Property="Padding" Value="12,4" />
 			<Setter Property="CornerRadius" Value="3" />
-			<Setter Property="BorderThickness" Value="1" />
+			<Setter Property="BorderThickness" Value="2" />
 			<Setter Property="VerticalAlignment" Value="Center" />
 		</Style>
+		<!-- A region's two color pickers as tall as its pill, on its line (owner request, 2026-11-11: "have the size of the two
+		     color-picker boxes have the same size/height as the region button"). -->
+		<Style Selector="ColorPicker.RegionColor">
+			<Setter Property="Height" Value="{x:Static local:ComponentPaneRegionRow.LineHeight}" />
+			<Setter Property="MinHeight" Value="0" />
+			<Setter Property="VerticalAlignment" Value="Center" />
+		</Style>
+		<Style Selector="ColorPicker.RegionColor /template/ DropDownButton">
+			<Setter Property="MinHeight" Value="0" />
+			<Setter Property="Height" Value="{x:Static local:ComponentPaneRegionRow.LineHeight}" />
+		</Style>
 		<Style Selector="Border.RegionPill > TextBlock">
-			<Setter Property="FontWeight" Value="SemiBold" />
+			<Setter Property="FontSize" Value="12" />
 			<Setter Property="HorizontalAlignment" Value="Center" />
 		</Style>
 		<Style Selector="Border.RegionPill.PAL">
 			<Setter Property="Background" Value="{DynamicResource Schematics_Region_PAL_Bg}" />
-			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_PAL_Border}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_PAL_Bg}" />
 		</Style>
 		<Style Selector="Border.RegionPill.PAL > TextBlock">
 			<Setter Property="Foreground" Value="{DynamicResource Schematics_Region_PAL_Fg}" />
 		</Style>
 		<Style Selector="Border.RegionPill.NTSC">
 			<Setter Property="Background" Value="{DynamicResource Schematics_Region_NTSC_Bg}" />
-			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_NTSC_Border}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_NTSC_Bg}" />
 		</Style>
 		<Style Selector="Border.RegionPill.NTSC > TextBlock">
 			<Setter Property="Foreground" Value="{DynamicResource Schematics_Region_NTSC_Fg}" />
 		</Style>
 		<Style Selector="Border.RegionPill.Own1">
 			<Setter Property="Background" Value="{DynamicResource Schematics_Region_Own1_Bg}" />
-			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_Own1_Border}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_Own1_Bg}" />
 		</Style>
 		<Style Selector="Border.RegionPill.Own1 > TextBlock">
 			<Setter Property="Foreground" Value="{DynamicResource Schematics_Region_Own1_Fg}" />
 		</Style>
 		<Style Selector="Border.RegionPill.Own2">
 			<Setter Property="Background" Value="{DynamicResource Schematics_Region_Own2_Bg}" />
-			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_Own2_Border}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_Own2_Bg}" />
 		</Style>
 		<Style Selector="Border.RegionPill.Own2 > TextBlock">
 			<Setter Property="Foreground" Value="{DynamicResource Schematics_Region_Own2_Fg}" />
 		</Style>
 		<Style Selector="Border.RegionPill.Own3">
 			<Setter Property="Background" Value="{DynamicResource Schematics_Region_Own3_Bg}" />
-			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_Own3_Border}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_Own3_Bg}" />
 		</Style>
 		<Style Selector="Border.RegionPill.Own3 > TextBlock">
 			<Setter Property="Foreground" Value="{DynamicResource Schematics_Region_Own3_Fg}" />
 		</Style>
 		<Style Selector="Border.RegionPill.Own4">
 			<Setter Property="Background" Value="{DynamicResource Schematics_Region_Own4_Bg}" />
-			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_Own4_Border}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_Own4_Bg}" />
 		</Style>
 		<Style Selector="Border.RegionPill.Own4 > TextBlock">
 			<Setter Property="Foreground" Value="{DynamicResource Schematics_Region_Own4_Fg}" />
@@ -362,13 +377,6 @@
 								Margin="0,0,6,4"
 								ToolTip.Tip="Pick a hardware, a board and a component - this component takes over everything it has but the board label"
 								Click="OnCloneFromOtherBoardClick" />
-						<!-- What this draft changed of the part, on the same part of the other boards (slice 5). -->
-						<Button x:Name="AlsoOnOtherBoardsButton"
-								Content="Also on other boards"
-								Margin="0,0,6,4"
-								IsVisible="False"
-								ToolTip.Tip="Make the same change on the other boards, each in its own draft - to the same part (the same part number), and to the files you replaced where another board has the same file"
-								Click="OnAlsoOnOtherBoardsClick" />
 						<!-- The popup as it will look once the draft is published - from the draft, now. -->
 						<Button x:Name="PreviewPopupButton"
 								Content="Preview component info popup"
@@ -515,42 +523,6 @@
 							<Button x:Name="CancelCloneButton"
 									Content="Cancel"
 									Click="OnCancelCloneClick" />
-						</StackPanel>
-					</StackPanel>
-				</Border>
-
-				<!-- ==== Also on other boards (slice 5) - open while picking ==== -->
-				<Border x:Name="AlsoPanel"
-						IsVisible="False"
-						BorderBrush="{DynamicResource Form_Border}"
-						BorderThickness="1"
-						CornerRadius="3"
-						Padding="12,10">
-					<StackPanel Spacing="6">
-						<TextBlock Classes="PaneHeading" Text="Also on other boards" />
-						<!-- The same part - the same part number - on the other boards. -->
-						<StackPanel x:Name="AlsoPartsSection" Spacing="6">
-							<TextBlock x:Name="AlsoIntroText" Classes="PaneIntro" />
-							<TextBlock Classes="FieldLabel" Text="The boards" />
-							<StackPanel x:Name="AlsoBoardsPanel" Spacing="2" />
-							<TextBlock Classes="FieldLabel" Text="What to change there" />
-							<StackPanel x:Name="AlsoPartsPanel" Spacing="2" />
-						</StackPanel>
-						<!-- The files the draft replaced, on the boards with the same file (the plan: "This
-						     datasheet is also used by 11 other boards - change it there too?"). -->
-						<StackPanel x:Name="AlsoFilesSection" Spacing="6" Margin="0,8,0,0">
-							<TextBlock x:Name="AlsoFilesIntroText" Classes="PaneIntro" />
-							<StackPanel x:Name="AlsoFilesPanel" Spacing="2" />
-						</StackPanel>
-						<StackPanel Orientation="Horizontal" Spacing="6">
-							<Button x:Name="AlsoChangeButton"
-									Classes="Accept"
-									Content="Change them too"
-									ToolTip.Tip="Put what is ticked into each ticked board's own draft - one step there, reviewed by that board's maintainers"
-									Click="OnAlsoChangeClick" />
-							<Button x:Name="CancelAlsoButton"
-									Content="Cancel"
-									Click="OnCancelAlsoClick" />
 						</StackPanel>
 					</StackPanel>
 				</Border>
@@ -1428,19 +1400,54 @@
 												Margin="0,0,0,6" />
 									</Panel>
 									<Border Classes="MovableRow" IsVisible="{Binding IsNotDropPlaceholder}">
-										<StackPanel Spacing="4">
+										<StackPanel Spacing="6">
 											<Grid ColumnDefinitions="Auto,12,*,12,Auto,6,28">
-												<!-- The region as its button looks: its name in its colors. -->
-												<Border Grid.Column="0"
-														Classes="RegionPill"
-														Classes.PAL="{Binding IsPal}"
-														Classes.NTSC="{Binding IsNtsc}"
-														Classes.Own1="{Binding IsOwn1}"
-														Classes.Own2="{Binding IsOwn2}"
-														Classes.Own3="{Binding IsOwn3}"
-														Classes.Own4="{Binding IsOwn4}">
-													<TextBlock Text="{Binding Name}" />
-												</Border>
+												<!-- The region as its button looks: its name in its colors - CRT's, or the board's own
+												     (owner request, 2026-11-11), never bold, as the button's is not. -->
+												<Panel Grid.Column="0" VerticalAlignment="Center">
+													<Border Classes="RegionPill"
+															Classes.PAL="{Binding IsPal}"
+															Classes.NTSC="{Binding IsNtsc}"
+															Classes.Own1="{Binding IsOwn1}"
+															Classes.Own2="{Binding IsOwn2}"
+															Classes.Own3="{Binding IsOwn3}"
+															Classes.Own4="{Binding IsOwn4}"
+															IsVisible="{Binding HasCrtColors}">
+														<TextBlock Text="{Binding Name}" />
+													</Border>
+													<Border Classes="RegionPill"
+															Background="{Binding BackgroundBrush}"
+															BorderBrush="{Binding BackgroundBrush}"
+															IsVisible="{Binding HasOwnColors}">
+														<TextBlock Text="{Binding Name}" Foreground="{Binding TextBrush}" />
+													</Border>
+												</Panel>
+
+												<!-- ITS COLORS, ON THE REGION'S OWN LINE (owner requests, 2026-11-11: "I would like to be able to set
+												     the background color, and then you should calculate the complementary text color ... However, I
+												     would also like to be able to set the text color", then "in the same line as the region itself";
+												     RegionColors): the background, the text worked out from it until one is picked, and the way back
+												     to each - wrapping under only on a pane too narrow for them. -->
+												<WrapPanel Grid.Column="2" ItemSpacing="6" LineSpacing="6" VerticalAlignment="Center">
+													<TextBlock Text="Background" VerticalAlignment="Center" />
+													<ColorPicker Classes="RegionColor" Color="{Binding BackgroundColor, Mode=TwoWay}"
+																 ToolTip.Tip="The region's button and its name over the pictures in this color - for everybody, once published" />
+													<TextBlock Text="Text" VerticalAlignment="Center" Margin="12,0,0,0" />
+													<ColorPicker Classes="RegionColor" Color="{Binding TextColor, Mode=TwoWay}"
+																 ToolTip.Tip="Worked out from the background as the one that reads best on it, black or white - pick another to set your own" />
+													<Button Content="Automatic text color"
+															IsVisible="{Binding HasOwnText}"
+															Tag="{Binding}"
+															Click="OnAutomaticTextColorClick"
+															ToolTip.Tip="The text in the color that reads best on the background, black or white" />
+													<Button Classes="Danger"
+															Content="Reset colors"
+															IsVisible="{Binding HasOwnColors}"
+															Tag="{Binding}"
+															Click="OnResetRegionColorsClick"
+															ToolTip.Tip="The colors CRT gives this region" />
+												</WrapPanel>
+
 												<Button Grid.Column="4"
 														Classes="Danger"
 														Content="Delete region"
@@ -1457,7 +1464,44 @@
 													<TextBlock Text="&#xf338;" />
 												</Border>
 											</Grid>
+
 											<TextBlock theme:BoldRuns.MarkedText="{Binding Why}" IsVisible="{Binding HasWhy}" Classes="EmptyLine" TextWrapping="Wrap" />
+
+											<!-- WHAT IT IS APPLIED ON (owner request, 2026-11-11: "it should be possible to see which component
+											     has the region applied, so I can find these and change them") - each component a button opening
+											     it in this region; past ComponentsNamedAtMost, "... and N more" and "Show all" ON THE SAME LINE (owner
+											     request, the same day), the last item of the very list. -->
+											<StackPanel Spacing="4" IsVisible="{Binding HasComponents}">
+												<TextBlock Text="Applied on:" Classes="EmptyLine" />
+												<ItemsControl ItemsSource="{Binding ChipsShown}">
+													<ItemsControl.ItemsPanel>
+														<ItemsPanelTemplate>
+															<WrapPanel ItemSpacing="6" LineSpacing="6" />
+														</ItemsPanelTemplate>
+													</ItemsControl.ItemsPanel>
+													<ItemsControl.DataTemplates>
+														<DataTemplate DataType="local:ComponentPaneRegionComponent">
+															<Button Content="{Binding Label}"
+																	Tag="{Binding}"
+																	Padding="8,2"
+																	Cursor="Hand"
+																	Click="OnRegionComponentClick"
+																	ToolTip.Tip="Open this component" />
+														</DataTemplate>
+														<DataTemplate DataType="local:ComponentPaneRegionMore">
+															<StackPanel Orientation="Horizontal" Spacing="6">
+																<TextBlock theme:BoldRuns.MarkedText="{Binding Text}" IsVisible="{Binding HasText}" VerticalAlignment="Center" />
+																<Button Content="{Binding ShowAllText}"
+																		Tag="{Binding Row}"
+																		Padding="8,2"
+																		Cursor="Hand"
+																		Click="OnRegionShowAllClick" />
+															</StackPanel>
+														</DataTemplate>
+													</ItemsControl.DataTemplates>
+												</ItemsControl>
+											</StackPanel>
+											<TextBlock theme:BoldRuns.MarkedText="{Binding BoardRowsText}" IsVisible="{Binding HasBoardRows}" Classes="EmptyLine" TextWrapping="Wrap" />
 										</StackPanel>
 									</Border>
 									</Grid>
@@ -1990,37 +2034,7 @@
 									Classes="Accept"
 									Content="Add file"
 									Click="OnAddBoardFileClick" />
-							<!-- The files replaced here, on the other boards with the same file. -->
-							<Button x:Name="BoardFilesAlsoButton"
-									Content="Also on other boards"
-									IsVisible="False"
-									ToolTip.Tip="Put the files you replaced on the other boards that have the same file, each in its own draft"
-									Click="OnBoardFilesAlsoClick" />
 						</StackPanel>
-
-						<Border x:Name="BoardAlsoPanel"
-								IsVisible="False"
-								Margin="0,8,0,0"
-								BorderBrush="{DynamicResource Form_Border}"
-								BorderThickness="1"
-								CornerRadius="3"
-								Padding="12,10">
-							<StackPanel Spacing="6">
-								<TextBlock Classes="PaneHeading" Text="Also on other boards" />
-								<TextBlock x:Name="BoardAlsoIntroText" Classes="PaneIntro" />
-								<StackPanel x:Name="BoardAlsoFilesPanel" Spacing="2" />
-								<StackPanel Orientation="Horizontal" Spacing="6">
-									<Button x:Name="BoardAlsoChangeButton"
-											Classes="Accept"
-											Content="Change them too"
-											ToolTip.Tip="Put your new file into each ticked board's own draft, in place of the old one - reviewed by that board's maintainers"
-											Click="OnBoardAlsoChangeClick" />
-									<Button x:Name="CancelBoardAlsoButton"
-											Content="Cancel"
-											Click="OnCancelBoardAlsoClick" />
-								</StackPanel>
-							</StackPanel>
-						</Border>
 					</StackPanel>
 				</StackPanel>
 

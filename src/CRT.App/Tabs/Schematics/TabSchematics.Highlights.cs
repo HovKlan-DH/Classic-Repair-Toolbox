@@ -117,17 +117,8 @@ public partial class TabSchematics
         // In the colors of its button: PAL's and NTSC's, or one of a board's own (RegionChoice, 2026-11-09).
         string colorPrefix = RegionChoice.ColorsOf(this.MainWindow?.CurrentBoardRegions() ?? BoardRegions.PalAndNtsc, rawRegion);
 
-        this.SchematicsRegionBorder.Bind(
-            Border.BackgroundProperty,
-            this.GetResourceObservable($"{colorPrefix}_Bg"));
-
-        this.SchematicsRegionBorder.Bind(
-            Border.BorderBrushProperty,
-            this.GetResourceObservable($"{colorPrefix}_Border"));
-
-        this.SchematicsRegionLabel.Bind(
-            TextBlock.ForegroundProperty,
-            this.GetResourceObservable($"{colorPrefix}_Fg"));
+        // Or the board's own colors where it gives the region any (owner request, 2026-11-11; RegionColors).
+        Handlers.Theming.RegionPaint.PaintLabel(this, this.SchematicsRegionBorder, this.SchematicsRegionLabel, colorPrefix, this.MainWindow?.RegionColorsShown(rawRegion));
     }
 
     // ###########################################################################################

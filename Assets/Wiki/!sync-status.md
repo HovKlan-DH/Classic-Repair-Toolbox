@@ -5,7 +5,7 @@
 
 # Wiki pages waiting to be pasted
 
-**21 pages waiting.**
+**22 pages waiting.**
 
 | File in `Assets/Wiki` | Where it is in the Wiki |
 | --- | --- |
@@ -22,6 +22,7 @@
 | `KiCad-folder.md` | Home > Reference > Data files > KiCad folder |
 | `Maintainer-tab.md` | Home > Contributing > Maintainer tab |
 | `Synchronize-oscilloscope.md` | Home > At the bench > Synchronize oscilloscope |
+| `Table-view.md` | Home > Contributing > Table view |
 | `View-boards-from-online-source.md` | Home > Contributing > View boards from online source |
 | `Workbooks-Browsing-and-search.md` | Home > At the bench > Workbooks > Browsing and search |
 | `Workbooks-Daily-use.md` | Home > At the bench > Workbooks > Daily use |

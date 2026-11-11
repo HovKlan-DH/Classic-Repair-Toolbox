@@ -37,6 +37,9 @@ namespace CRT
     //     Handlers/Geometry/ColumnAutoFitGeometry; this measures. The grid's
     //     own double-click fit is OFF (CanUserResizeColumnsOnDoubleClick in the markup): it measures
     //     only the rows on screen.
+    //
+    //   - NO COLUMN STARTS NARROWER THAN ITS HEADING, with as much space after the name as before it
+    //     (owner request, 2026-11-11; FitColumnsToHeadings).
     // ###########################################################################################
     public partial class BoardTableEditor
     {
@@ -107,6 +110,10 @@ namespace CRT
                 {
                     column.Width = new DataGridLength(width);
                 }
+
+                // Its heading's width was a least width only while the column sized itself (FitColumnsToHeadings): kept as
+                // its width, a drag can take it narrower again - the heading then wraps.
+                column.MinWidth = BoardTableEditor.LeastColumnWidth;
             }
 
             this.thisColumnWidthsFreed = true;
@@ -195,6 +202,70 @@ namespace CRT
             this.TableGrid.UpdateLayout();
             this.TableGrid.ScrollIntoView(null!, column);
         }
+
+        // ###########################################################################################
+        // *** NO COLUMN NARROWER THAN ITS HEADING (owner request, 2026-11-11: "if the cell values in the column does not take
+        // more space than the header, then do "auto-fit" column based on the header name. In some cases I see the header have
+        // 0px horizontal spacing to its right-sided cell border"). *** A column sizes itself to its text (Auto), and a heading's
+        // name runs into the room its template keeps on the right for a sort arrow this table never shows - so a column of short
+        // values was exactly as wide as the name and its left space, with nothing after it. Once the headings are laid out each
+        // data column gets its heading's width (HeadingWidth: the space before the name repeated after it) as its least width,
+        // within MaxColumnWidth; longer values still widen it. Once the header row is pressed (FreeColumnWidths) the width it
+        // has is kept and the least width goes back to LeastColumnWidth, so a drag can still make it narrower, its heading wrapping.
+        // ###########################################################################################
+        private void FitColumnsToHeadingsOnceLaidOut()
+        {
+            int build = ++this.thisColumnsBuilt;
+
+            // Until a heading is there to measure: a table built while hidden has none until it is shown.
+            void Fit(object? sender, EventArgs e)
+            {
+                // LayoutUpdated comes after every layout pass in the window: a table not shown (the Contribute tab's "UI" view)
+                // has no heading laid out to fit by, so its visual tree is not walked until it is shown (code review, 2026-11-11).
+                if (build == this.thisColumnsBuilt && !this.TableGrid.IsEffectivelyVisible)
+                {
+                    return;
+                }
+
+                if (build != this.thisColumnsBuilt || this.FitColumnsToHeadings())
+                {
+                    this.TableGrid.LayoutUpdated -= Fit;
+                }
+            }
+
+            this.TableGrid.LayoutUpdated += Fit;
+        }
+
+        // How many times the columns were built - a fit waiting for the layout of columns built since does nothing.
+        private int thisColumnsBuilt;
+
+        // Whether a heading was there to fit by.
+        internal bool FitColumnsToHeadings()
+        {
+            bool any = false;
+
+            foreach (DataGridColumnHeader header in this.TableGrid.GetVisualDescendants().OfType<DataGridColumnHeader>())
+            {
+                if (header.OwningColumn is not { Tag: int index } column || index < 0 || !this.TableGrid.Columns.Contains(column) || header.Bounds.Width <= 0)
+                {
+                    continue;
+                }
+
+                any = true;
+                double heading = Math.Ceiling(BoardTableEditor.HeadingWidth(header));
+                double least = Math.Min(BoardTableEditor.MaxColumnWidth, Math.Max(BoardTableEditor.LeastColumnWidth, heading));
+
+                if (least > column.MinWidth)
+                {
+                    column.MinWidth = least;
+                }
+            }
+
+            return any;
+        }
+
+        // The narrowest a data column is built - before its heading's width is known, and for a heading narrower than this.
+        internal const double LeastColumnWidth = 60;
 
         // ###########################################################################################
         // The width a heading needs for its name on one line: the name, with the heading's own space

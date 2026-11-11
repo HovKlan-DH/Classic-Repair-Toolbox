@@ -201,6 +201,31 @@ namespace Handlers.DataHandling
             ? "<b>1</b> row of this board has it applied, so it stays until that row applies to another region or to all of them."
             : $"<b>{rows.ToString(CultureInfo.InvariantCulture)}</b> rows of this board have it applied, so it stays until they apply to another region or to all of them.";
 
+        // The board's own files and links with a region applied, under its components - nothing for none; the counts bold.
+        public static string RegionOnBoardRows(int files, int links)
+        {
+            string Counted(int count, string one, string many) =>
+                $"<b>{count.ToString(CultureInfo.InvariantCulture)}</b> {(count == 1 ? one : many)}";
+
+            List<string> parts = [];
+            List<string> pages = [];
+
+            if (files > 0)
+            {
+                parts.Add(Counted(files, "board file", "board files"));
+                pages.Add("\"Board: Files\"");
+            }
+
+            if (links > 0)
+            {
+                parts.Add(Counted(links, "board link", "board links"));
+                pages.Add("\"Board: Links\"");
+            }
+
+            // Only the pages that hold them are named (code review, 2026-11-11: one link sent the reader to "Board: Files" too).
+            return parts.Count == 0 ? string.Empty : $"Also on {string.Join(" and ", parts)} - under {string.Join(" and ", pages)}.";
+        }
+
         // What goes with a region deleted - the rows of components told apart per region it has, and their pins (code review,
         // 2026-11-09: they went without a word); the count bold, as RegionInUse's.
         public static string RegionTakesRows(int rows) => rows == 1
@@ -457,94 +482,6 @@ namespace Handlers.DataHandling
                 ? done
                 : $"{done} These files could not be brought over, so what cites them was left out: {string.Join(", ", filesLeftOut)}.";
         }
-
-        // ---- the same part on other boards (slice 5) ------------------------------------------------------
-
-        public const string CopyNeedsPartNumber =
-            "Give the component its part number first - the same part is found on the other boards by it.";
-
-        public static string CopyFoundNothing(string partNumber) =>
-            $"No other board on this machine has a component with the part number [{partNumber.Trim()}].";
-
-        // ---- also on other boards (slice 5) -----------------------------------------------------------
-
-        public static string AlsoIntro(string partNumber) =>
-            $"The same part - part number [{partNumber.Trim()}] - is on these boards. What you changed here goes into each ticked board's own draft, as one step there - each is reviewed by that board's maintainers. What the part has there of what is ticked is replaced.";
-
-        public const string AlsoNothingChanged =
-            "Your draft changes nothing of this part that could go to another board yet - its package, \"Other technical details\", pins, replacement parts, links, files or pictures.";
-
-        // A file replaced with nothing on the other boards to change: no part number to find the part
-        // by, or none that has it, and no other board with the file it replaced.
-        public static string AlsoFoundNothing(string partNumber) =>
-            partNumber.Trim().Length == 0
-                ? "No other board on this machine has the files you replaced."
-                : $"No other board on this machine has a component with the part number [{partNumber.Trim()}], or the files you replaced.";
-
-        // ###########################################################################################
-        // Above the files the draft replaced (2026-10-26 - the plan: "This datasheet is also used by 11
-        // other boards - change it there too?"): the same bytes as published here, on the boards listed
-        // under each - and what happens to them.
-        // ###########################################################################################
-        public const string AlsoFilesIntro =
-            "The files you replaced are on other boards too - the same file as it is published here. Each ticked board gets your new file in its place, in its own draft: every entry there showing the old file shows the new one, and that board's \"Undo\" takes it back. A board whose draft has a version of its own keeps it.";
-
-        // The board's own files: the same, offered under Files.
-        public const string AlsoBoardFilesIntro =
-            "The board files you replaced are on other boards too - the same file as it is published here. Each ticked board gets your new file in its place, in its own draft: every entry there showing the old file shows the new one, and that board's \"Undo\" takes it back. A board whose draft has a version of its own keeps it.";
-
-        public const string AlsoBoardFilesNothingChanged =
-            "Your draft replaces none of the board's files yet - pick another file for one with Change file first.";
-
-        public const string AlsoBoardFilesFoundNothing =
-            "No other board on this machine has the board files you replaced.";
-
-        // ###########################################################################################
-        // What came of it: the boards changed, and those that were not, with why - "Changed on 2 boards,
-        // each in its own draft: A, B. Not changed on C - its draft could not be saved." - then each
-        // component not changed on a board where something else was ("[U7] not changed on B - ..."; code
-        // review, 2026-10-26), then each file not put on a board it was ticked for: "[Datasheet
-        // (6510.pdf)] not put on D - ...".
-        // ###########################################################################################
-        public static string AlsoDone(
-            IReadOnlyList<string> changed,
-            IReadOnlyList<(string Board, string Why)> notChanged,
-            IReadOnlyList<(string File, string Board, string Why)>? filesNotPut = null,
-            IReadOnlyList<(string Label, string Board, string Why)>? componentsNotChanged = null)
-        {
-            var parts = new List<string>();
-
-            if (changed.Count > 0)
-            {
-                parts.Add(changed.Count == 1
-                    ? $"Changed on 1 board, in its own draft: {changed[0]}."
-                    : $"Changed on {changed.Count.ToString(CultureInfo.InvariantCulture)} boards, each in its own draft: {string.Join(", ", changed)}.");
-            }
-
-            parts.AddRange(notChanged.Select(board => $"Not changed on {board.Board} - {board.Why}."));
-            parts.AddRange((componentsNotChanged ?? []).Select(component => $"[{component.Label.Trim()}] not changed on {component.Board} - {component.Why}."));
-            parts.AddRange((filesNotPut ?? []).Select(file => $"[{file.File}] not put on {file.Board} - {file.Why}."));
-
-            return string.Join(" ", parts);
-        }
-
-        public const string AlsoAlreadySo = "it is like that there already";
-
-        public const string AlsoNoDraft = "no draft could be made of it";
-
-        public const string AlsoNotSaved = "its draft could not be saved";
-
-        // That board's own draft renamed or deleted the component (code review, 2026-11-02).
-        public const string AlsoComponentNotInDraft = "that board's draft no longer has this component";
-
-        // Why a file was not put on a board (ChangedFiles.CanPut, and the copy itself).
-        public const string AlsoFileNoLongerThere = "that board's draft no longer has it";
-
-        public const string AlsoFileOwnVersion = "that board's draft has a version of its own";
-
-        public const string AlsoFileNotCopied = "it could not be copied into that board's draft";
-
-        public const string AlsoFileNotFound = "your new file is not in your draft";
 
         // A file of the board that is in neither the draft nor the data on this machine.
         public static string FileNotFound(string? name) =>

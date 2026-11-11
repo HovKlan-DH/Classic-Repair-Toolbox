@@ -240,26 +240,6 @@ public sealed class ComponentPaneWordingTests
         Assert.Equal("Board: Schematic images (0)", ComponentPaneWording.PartTitle(PaneBoardPart.Pictures, 0));
     }
 
-    // What "Also on other boards" did: the boards changed, then each that was not, with why.
-    [Fact]
-    public void Also_on_other_boards_says_what_it_changed_and_what_not()
-    {
-        Assert.Equal(
-            "Changed on 2 boards, each in its own draft: A, B. Not changed on C - its draft could not be saved.",
-            ComponentPaneWording.AlsoDone(["A", "B"], [("C", ComponentPaneWording.AlsoNotSaved)]));
-        Assert.Equal("Changed on 1 board, in its own draft: A.", ComponentPaneWording.AlsoDone(["A"], []));
-        Assert.Equal("Not changed on C - it is like that there already.", ComponentPaneWording.AlsoDone([], [("C", ComponentPaneWording.AlsoAlreadySo)]));
-    }
-
-    // A file ticked for a board and not put there is said by the file and the board, after the boards.
-    [Fact]
-    public void Also_on_other_boards_says_each_file_it_did_not_put()
-    {
-        Assert.Equal(
-            "Changed on 1 board, in its own draft: A. [Datasheet (6510.pdf)] not put on D - that board's draft has a version of its own.",
-            ComponentPaneWording.AlsoDone(["A"], [], [("Datasheet (6510.pdf)", "D", ComponentPaneWording.AlsoFileOwnVersion)]));
-    }
-
     // What "Fill from KiCad" did, counted - one pin, or several.
     [Fact]
     public void Fill_from_KiCad_says_what_it_added_and_filled_in()
@@ -268,30 +248,6 @@ public sealed class ComponentPaneWordingTests
         Assert.Equal("Filled from KiCad: 1 pin added.", ComponentPaneWording.FilledFromKiCad(1, 0));
         Assert.Equal("Filled from KiCad: 1 pin filled in.", ComponentPaneWording.FilledFromKiCad(0, 1));
         Assert.Contains("[U8]", ComponentPaneWording.FillFromKiCadTip(" U8 "), StringComparison.Ordinal);
-    }
-
-    // A component not changed on a board where something else was is said by its label (code review,
-    // 2026-10-26), after the boards and before the files.
-    [Fact]
-    public void Also_on_other_boards_says_each_component_it_did_not_change()
-    {
-        Assert.Equal(
-            "Changed on 1 board, in its own draft: B. [U7] not changed on B - its draft could not be saved. [Datasheet (6510.pdf)] not put on C - it is like that there already.",
-            ComponentPaneWording.AlsoDone(
-                ["B"],
-                [],
-                [("Datasheet (6510.pdf)", "C", ComponentPaneWording.AlsoAlreadySo)],
-                [(" U7 ", "B", ComponentPaneWording.AlsoNotSaved)]));
-    }
-
-    // With no part number, the files are all that could have been found.
-    [Fact]
-    public void Also_found_nothing_names_the_part_number_only_when_there_is_one()
-    {
-        Assert.Equal("No other board on this machine has the files you replaced.", ComponentPaneWording.AlsoFoundNothing(" "));
-        Assert.Equal(
-            "No other board on this machine has a component with the part number [6510], or the files you replaced.",
-            ComponentPaneWording.AlsoFoundNothing(" 6510 "));
     }
 
     // Every sentence the pane says is plain ASCII and names neither Excel nor the old editor window.
@@ -355,15 +311,6 @@ public sealed class ComponentPaneWordingTests
             ComponentPaneWording.BoardPartChangedTip,
             ComponentPaneWording.DeleteTip("U8"),
             ComponentPaneWording.NetNotFound("X"),
-            ComponentPaneWording.AlsoNothingChanged,
-            ComponentPaneWording.AlsoFilesIntro,
-            ComponentPaneWording.AlsoBoardFilesIntro,
-            ComponentPaneWording.AlsoBoardFilesNothingChanged,
-            ComponentPaneWording.AlsoBoardFilesFoundNothing,
-            ComponentPaneWording.AlsoFileNoLongerThere,
-            ComponentPaneWording.AlsoFileOwnVersion,
-            ComponentPaneWording.AlsoFileNotCopied,
-            ComponentPaneWording.AlsoFileNotFound,
             ComponentPaneWording.FillFromKiCadTip("U8"),
             ComponentPaneWording.NothingToFillFromKiCad,
             ComponentPaneWording.FilledFromKiCad(2, 3),

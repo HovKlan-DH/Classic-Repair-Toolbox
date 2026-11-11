@@ -443,6 +443,9 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         public List<string> Regions { get; init; } = new();
 
+        // Each region's own colors, where it has any (owner request, 2026-11-11; RegionColors) - in the board's order of regions.
+        public List<RegionColorEntry> RegionColors { get; init; } = new();
+
         // ###########################################################################################
         // The same board with a different revision date - used by the publish, which stamps the
         // date it actually published on (added 2026-09-23).
@@ -471,6 +474,7 @@ namespace Handlers.DataHandling
             ComponentPins = this.ComponentPins,
             ComponentReplacements = this.ComponentReplacements,
             Regions = this.Regions,
+            RegionColors = this.RegionColors,
         };
 
         // ###########################################################################################
@@ -501,6 +505,7 @@ namespace Handlers.DataHandling
             ComponentPins = this.ComponentPins,
             ComponentReplacements = this.ComponentReplacements,
             Regions = this.Regions,
+            RegionColors = this.RegionColors,
         };
 
         // The same board under another "# Hardware:" / "# Board:" caption - the publish, for a board
@@ -524,6 +529,7 @@ namespace Handlers.DataHandling
             ComponentPins = this.ComponentPins,
             ComponentReplacements = this.ComponentReplacements,
             Regions = this.Regions,
+            RegionColors = this.RegionColors,
         };
 
         // ###########################################################################################
@@ -555,6 +561,7 @@ namespace Handlers.DataHandling
             ComponentPins = componentPins ?? this.ComponentPins,
             ComponentReplacements = componentReplacements ?? this.ComponentReplacements,
             Regions = this.Regions,
+            RegionColors = this.RegionColors,
         };
 
         // The same board saying it comes in other regions (BoardRegions.WithRegions). Lists shared, as
@@ -577,6 +584,29 @@ namespace Handlers.DataHandling
             ComponentPins = this.ComponentPins,
             ComponentReplacements = this.ComponentReplacements,
             Regions = regions ?? new(),
+            RegionColors = this.RegionColors,
+        };
+
+        // The same board with its regions in other colors (RegionColors.WithColors). Lists shared, as WithRevisionDate's are.
+        public BoardData WithRegionColors(List<RegionColorEntry> regionColors) => new()
+        {
+            RevisionDate = this.RevisionDate,
+            HardwareName = this.HardwareName,
+            BoardName = this.BoardName,
+            Schematics = this.Schematics,
+            Components = this.Components,
+            ComponentImages = this.ComponentImages,
+            ComponentHighlights = this.ComponentHighlights,
+            ComponentLocalFiles = this.ComponentLocalFiles,
+            ComponentLinks = this.ComponentLinks,
+            BoardLocalFiles = this.BoardLocalFiles,
+            BoardLinks = this.BoardLinks,
+            Credits = this.Credits,
+            KiCadImportantSignals = this.KiCadImportantSignals,
+            ComponentPins = this.ComponentPins,
+            ComponentReplacements = this.ComponentReplacements,
+            Regions = this.Regions,
+            RegionColors = regionColors ?? new(),
         };
 
         // ###########################################################################################
@@ -606,6 +636,7 @@ namespace Handlers.DataHandling
             ComponentPins = this.ComponentPins,
             ComponentReplacements = this.ComponentReplacements,
             Regions = this.Regions,
+            RegionColors = this.RegionColors,
         };
 
         // The same board with different highlights - used when a save drops the highlights of a
@@ -628,6 +659,7 @@ namespace Handlers.DataHandling
             ComponentPins = this.ComponentPins,
             ComponentReplacements = this.ComponentReplacements,
             Regions = this.Regions,
+            RegionColors = this.RegionColors,
         };
     }
 

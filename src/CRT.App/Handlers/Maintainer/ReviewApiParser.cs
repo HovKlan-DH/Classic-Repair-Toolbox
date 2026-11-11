@@ -641,6 +641,7 @@ namespace Handlers.MaintainerHandling
             {
                 RegionNamesBefore = Names("regionNamesBefore"),
                 RegionNamesNow = Names("regionNamesNow"),
+                RegionColorsChanged = ReviewApiParser.Bool(element, "regionColorsChanged") ?? false,
             };
         }
 

@@ -148,9 +148,9 @@ namespace CRT
             bool shows = this.IsNarrowedToComponents;
 
             this.ComponentsShownText.IsVisible = shows;
-            this.ComponentsShownText.Text = shows
+            Handlers.Theming.BoldRuns.ShowMarked(this.ComponentsShownText, shows
                 ? BoardTableEditWording.ComponentsShown(this.thisComponentsShownNamed)
-                : string.Empty;
+                : string.Empty);
         }
     }
 }

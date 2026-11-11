@@ -39,6 +39,7 @@ namespace Handlers.DataHandling
 
             next.Unknown ??= previous.Unknown;
 
+            Carry(previous.RegionColors, next.RegionColors, row => (row.Region ?? string.Empty).Trim().ToUpperInvariant());
             Carry(previous.Schematics, next.Schematics, row => BoardDraftNaturalKeys.ForSchematic(row.Name));
             Carry(previous.Components, next.Components, row => BoardDraftNaturalKeys.ForComponent(row.BoardLabel, row.Region));
             Carry(previous.ComponentImages, next.ComponentImages, row => BoardDraftNaturalKeys.ForComponentImage(row.BoardLabel, row.Region, row.Pin, row.Name));

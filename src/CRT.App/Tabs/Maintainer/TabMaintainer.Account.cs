@@ -290,21 +290,23 @@ namespace CRT
 
             ReviewApiResult<HealthStatus> answer = await client.GetServerVersionAsync();
 
-            // The mails it could not send (2026-10-13) - asked with the session, from a server that
-            // answered at all; an older server's 404 simply says nothing about mail.
-            int? unsentMails = null;
+            // The mails it could not send (2026-10-13), and how it keeps itself up to date (2026-11-09) -
+            // asked with the session, from a server that answered at all; an older server's 404 simply
+            // says nothing about either.
+            ServerStatusAnswer? serverStatus = null;
 
             if (answer.IsOk && this.thisSession is ReviewSession session)
             {
                 ReviewApiResult<ServerStatusAnswer> status = await client.GetServerStatusAsync(session);
-                unsentMails = status.IsOk ? status.Value?.UnsentMails : null;
+                serverStatus = status.IsOk ? status.Value : null;
             }
 
             this.ShowServerVersionLines(ServerVersionDisplay.Lines(
                 answer.IsOk ? answer.Value?.Version : null,
                 answer.IsOk ? answer.Value?.ApiRevision : null,
                 ClientVersionContract.ApiRevision,
-                unsentMails: unsentMails));
+                unsentMails: serverStatus?.UnsentMails,
+                updates: serverStatus?.Updates));
         }
 
         // One TextBlock a line, its value bold; none clears the panel.

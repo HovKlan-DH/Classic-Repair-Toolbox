@@ -91,7 +91,7 @@ public sealed class PinoutDrawingTests
         });
     }
 
-    // The component pane's drawing only shows: nothing lights up and nothing is picked.
+    // The component pane's drawing only shows: nothing lights up, nothing is picked and no pin is said to be pointed at.
     [Fact]
     public void A_drawing_whose_pins_cannot_be_picked_ignores_the_pointer()
     {
@@ -100,7 +100,9 @@ public sealed class PinoutDrawingTests
             (PinoutDrawing drawing, Window window) = Shown(canBePicked: false);
             PinoutLayout layout = drawing.LayoutForTests!;
             var picked = new List<int>();
+            var hovered = new List<int?>();
             drawing.PinPicked += (_, e) => picked.Add(e.Pin);
+            drawing.PinHovered += (_, e) => hovered.Add(e.Pin);
 
             window.MouseMove(layout.Pins[0].Lead.Center);
             Assert.Null(drawing.LitPinForTests);
@@ -108,6 +110,36 @@ public sealed class PinoutDrawingTests
             window.MouseDown(layout.Pins[0].Lead.Center, MouseButton.Left);
             window.MouseUp(layout.Pins[0].Lead.Center, MouseButton.Left);
             Assert.Empty(picked);
+            Assert.Empty(hovered);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // The pointer moving onto a pin, to another and off them says so, once each (owner request, 2026-11-09: the list's row
+    // lit too) - and the host lighting one (HoverPin, the list's row under the pointer) says nothing, or the two would
+    // answer each other.
+    // ###########################################################################################
+    [Fact]
+    public void The_pointer_moving_onto_and_off_a_pin_says_which_and_the_host_lighting_one_says_nothing()
+    {
+        UiTest.Run(() =>
+        {
+            (PinoutDrawing drawing, Window window) = Shown(canBePicked: true);
+            PinoutLayout layout = drawing.LayoutForTests!;
+            var hovered = new List<int?>();
+            drawing.PinHovered += (_, e) => hovered.Add(e.Pin);
+
+            window.MouseMove(FarOutOn(layout, layout.Pins[0]));
+            window.MouseMove(FarOutOn(layout, layout.Pins[0]) + new Point(1, 0));
+            window.MouseMove(FarOutOn(layout, layout.Pins[7]));
+            window.MouseMove(layout.Body.Center);
+            Assert.Equal([1, 8, null], hovered);
+
+            drawing.HoverPin(5);
+            drawing.HoverPin(null);
+            Assert.Equal([1, 8, null], hovered);
 
             window.Close();
         });

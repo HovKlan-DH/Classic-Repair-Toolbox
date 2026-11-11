@@ -56,6 +56,7 @@ namespace Handlers.DataHandling
                     ("boardName", document.BoardName),
                     ("revisionDate", document.RevisionDate),
                     .. document.Regions.Count > 0 ? new (string, object)[] { ("regions", document.Regions) } : [],
+                    .. document.RegionColors.Count > 0 ? new (string, object)[] { ("regionColors", document.RegionColors) } : [],
                     ("schematics", document.Schematics),
                     ("components", document.Components),
                     ("componentImages", document.ComponentImages),
@@ -82,6 +83,7 @@ namespace Handlers.DataHandling
             DataTreeJson.CheckVersion(document.FormatVersion, "board file");
 
             document.Regions = DataTreeJson.Rows(document.Regions, "regions");
+            document.RegionColors = DataTreeJson.Rows(document.RegionColors, "regionColors");
             document.Schematics = DataTreeJson.Rows(document.Schematics, "schematics");
             document.Components = DataTreeJson.Rows(document.Components, "components");
             document.ComponentImages = DataTreeJson.Rows(document.ComponentImages, "componentImages");

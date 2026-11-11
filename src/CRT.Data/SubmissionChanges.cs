@@ -48,6 +48,10 @@ namespace Handlers.DataHandling
         public IReadOnlyList<string>? RegionNamesBefore { get; init; }
 
         public IReadOnlyList<string>? RegionNamesNow { get; init; }
+
+        // Whether it gave the board's regions other colors (2026-11-11; ReviewChangeSummary.RegionColorsChanged) - false in a
+        // record from before then.
+        public bool RegionColorsChanged { get; init; }
     }
 
     // One sheet's changes. The counts are the whole truth; the lists are the first ListedPerKind.
@@ -136,6 +140,7 @@ namespace Handlers.DataHandling
             {
                 RegionNamesBefore = rows.RegionNamesBefore,
                 RegionNamesNow = rows.RegionNamesNow,
+                RegionColorsChanged = rows.RegionColorsChanged,
             };
         }
 
@@ -200,7 +205,8 @@ namespace Handlers.DataHandling
                    (changes.Sections ?? []).Count > 0 ||
                    (changes.Files ?? FileChanges.None).HasChanges ||
                    (changes.Reordered ?? []).Count > 0 ||
-                   changes.RegionsNow is not null;
+                   changes.RegionsNow is not null ||
+                   changes.RegionColorsChanged;
         }
 
         // Which of the plan's files are new at their path and which replace what was there - asked

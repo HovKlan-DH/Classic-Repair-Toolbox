@@ -49,6 +49,12 @@ namespace Handlers.DataHandling
                 BoardName = board.BoardName,
                 RevisionDate = board.RevisionDate,
                 Regions = board.Regions.ToList(),
+                RegionColors = board.RegionColors.Select(row => new BoardDocument.RegionColorRow
+                {
+                    Region = row.Region,
+                    Background = row.Background,
+                    Text = row.Text,
+                }).ToList(),
                 Schematics = board.Schematics.Select(row => new BoardDocument.SchematicRow
                 {
                     Name = row.SchematicName,
@@ -206,6 +212,12 @@ namespace Handlers.DataHandling
                 BoardName = document.BoardName,
                 RevisionDate = document.RevisionDate,
                 Regions = document.Regions.ToList(),
+                RegionColors = document.RegionColors.Select(row => new RegionColorEntry
+                {
+                    Region = row.Region,
+                    Background = row.Background,
+                    Text = row.Text,
+                }).ToList(),
                 Schematics = document.Schematics.Select(row => new BoardSchematicEntry
                 {
                     SchematicName = row.Name,

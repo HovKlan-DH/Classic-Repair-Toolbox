@@ -29,6 +29,9 @@ namespace Handlers.DataHandling
         // What the board says about its regions (2026-11-01).
         public const string Regions = "The board's regions";
 
+        // Their colors (owner request, 2026-11-11; RegionColors).
+        public const string RegionColors = "The colors of the board's regions";
+
         // The board's categories (2026-11-01).
         public static string CategoryRenamed(string from, string to) =>
             from.Length == 0 ? $"Components with no category moved to [{to}]" : $"Category [{from}] renamed [{to}]";
@@ -53,15 +56,8 @@ namespace Handlers.DataHandling
                 ? $"1 component on [{picture}] moved with its KiCad alignment"
                 : $"{count.ToString(System.Globalization.CultureInfo.InvariantCulture)} components on [{picture}] moved with their KiCad alignment";
 
-        // "Also on other boards" (slice 5) - what the component took, and from where.
-        public static string ComponentCopied(string label, string fromBoard) => $"[{label}] copied from {fromBoard}";
-
         // "Clone component from another board" (owner request, 2026-11-04).
         public static string ComponentCloned(string label, string fromLabel, string fromBoard) => $"[{label}] cloned from [{fromLabel}] of {fromBoard}";
-
-        // "Also on other boards" for files - the files another board's draft took, by their row names.
-        public static string FilesCopied(IReadOnlyList<string> rowNames, string fromBoard) =>
-            rowNames.Count == 1 ? $"[{rowNames[0]}] copied from {fromBoard}" : $"Files copied from {fromBoard}";
 
         // One field of a component, from the component pane - "Short description of [U8]".
         public static string ComponentField(string label, string field) => $"{field} of [{label}]";

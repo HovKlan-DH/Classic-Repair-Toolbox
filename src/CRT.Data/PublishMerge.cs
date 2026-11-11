@@ -59,7 +59,10 @@ namespace Handlers.DataHandling
             // Every list is COPIED, never aliased. The manifest is reloaded per request and the
             // board is handed to a writer; sharing instances means a later mutation of one
             // silently changes the other.
-            return new BoardData
+            //
+            // Security (code review, 2026-11-11): colors sent without regions keep the published regions, so a color of a
+            // region the merged board does not have is let go of here (RegionColors.Tidied) - never published, undrawn.
+            return RegionColors.Tidied(new BoardData
             {
                 RevisionDate = revisionDate,
 
@@ -80,7 +83,8 @@ namespace Handlers.DataHandling
                 ComponentPins = [.. rows.ComponentPins ?? published?.ComponentPins ?? []],
                 ComponentReplacements = [.. rows.ComponentReplacements ?? published?.ComponentReplacements ?? []],
                 Regions = [.. rows.Regions ?? published?.Regions ?? []],
-            };
+                RegionColors = [.. rows.RegionColors ?? published?.RegionColors ?? []],
+            });
         }
 
         // ###########################################################################################

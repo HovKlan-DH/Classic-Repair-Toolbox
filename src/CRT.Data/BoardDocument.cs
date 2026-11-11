@@ -46,6 +46,9 @@ namespace Handlers.DataHandling
         // rows decide.
         [JsonPropertyName("regions")] public List<string> Regions { get; set; } = new();
 
+        // Each region's own colors (owner request, 2026-11-11; RegionColors) - written only when a region has any.
+        [JsonPropertyName("regionColors")] public List<RegionColorRow> RegionColors { get; set; } = new();
+
         [JsonPropertyName("schematics")] public List<SchematicRow> Schematics { get; set; } = new();
 
         [JsonPropertyName("components")] public List<ComponentRow> Components { get; set; } = new();
@@ -83,6 +86,16 @@ namespace Handlers.DataHandling
         [JsonExtensionData] public Dictionary<string, JsonElement>? Unknown { get; set; }
 
         // ---- The rows ------------------------------------------------------------------------
+
+        // A region's colors: its background, and its text - empty for the one that reads best on it.
+        public sealed class RegionColorRow : IKeepsUnknownFields
+        {
+            [JsonPropertyName("region")] public string Region { get; set; } = string.Empty;
+            [JsonPropertyName("background")] public string Background { get; set; } = string.Empty;
+            [JsonPropertyName("text")] public string Text { get; set; } = string.Empty;
+
+            [JsonExtensionData] public Dictionary<string, JsonElement>? Unknown { get; set; }
+        }
 
         public sealed class SchematicRow : IKeepsUnknownFields
         {

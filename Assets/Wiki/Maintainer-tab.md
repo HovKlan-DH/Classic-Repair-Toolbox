@@ -97,7 +97,7 @@ Then decide, with the buttons under the views: **Approve and publish to BETA** p
 
 **Approving a new board makes its creator its maintainer.** A board sent signed in makes that account its maintainer; a board sent with a typed-in address that has no account mails that address an invitation to create one. A typed-in address that already has an account makes nobody maintainer - nothing proves the sender owns it. A board that is only missing from the BETA data - the stable data already has it - is not new, so approving it makes nobody maintainer. The message after approving says which happened, or why nothing could be done (that, or an account that is locked or not verified yet); the administrator can then add the maintainer under **Management** > **Maintainers**.
 
-A submission only ever changes its own board: every board owns its files, so replacing a file on one board never changes another. A contributor who wants the same new datasheet on several boards sends each board's change - CRT's "Also on other boards" puts it into each board's draft for them. A file the contributor sent unchanged is left as it is: when somebody else has replaced it since the submission was sent, approving does not put the old file back.
+A submission only ever changes its own board: every board owns its files, so replacing a file on one board never changes another. A contributor who wants the same new datasheet on several boards changes each board's draft and sends each. A file the contributor sent unchanged is left as it is: when somebody else has replaced it since the submission was sent, approving does not put the old file back.
 
 **Queue: Awaiting push from BETA to stable** - boards whose approved changes are in the BETA data and waiting to go out to everybody. Choose a board to see the contributions it carries - who sent each one, what it was and when it was accepted - then anything that needs a second look, and the files that would be copied. If a contributor has discarded the draft since the contribution was accepted, an amber panel right under the board's name says so - the same panel the other screens use. The contribution is not withdrawn, but it may no longer be wanted: consider pushing the board back to the queue and checking with the contributor first. Try the board in CRT with "Download data from the BETA source instead of the stable source" ticked in the Configuration tab, then:
 
@@ -123,6 +123,15 @@ For now, only the administrator publishes to the stable source: for everybody el
   a fourth line says how many. The server tries them again every few minutes for three days. A mail
   with a confirmation link or a code in it (signing up, a new password, a new address, an
   invitation) is not sent again: the person asks for a new one, or the administrator invites again.
+  The last lines say how the server keeps itself up to date: every minute it looks on GitHub for a
+  newer server - the live server for the one that came with the newest CRT release, the test server
+  for the one built from the newest change to the project - installs it once GitHub proves the
+  project's own build made it, and goes back to the server before if the new one does not start.
+  **Automatic updates** says which builds it installs,
+  **Last look** when it last looked and what it found - or what waits and why - and **Last
+  installed** the newest server it installed and the one that server replaced. A last look over ten
+  minutes old means the updater has stopped. A server set up without it says "not set up on this
+  server".
 
 **Management** - the administrator's eight tools, on a tab of its own before **Account**, marked with a padlock. Nobody else sees the tab, and the server turns everybody else away from the tools anyway. While an oscilloscope model waits, a red number on the tab and on **Oscilloscope models** says how many, and **Management** opens on that entry; otherwise it opens on **Maintainers**:
 

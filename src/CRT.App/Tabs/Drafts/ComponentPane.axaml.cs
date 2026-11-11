@@ -73,9 +73,7 @@ namespace CRT
     //                             "Show on board" lighting a net up on the Schematics tab
     //   ComponentPane.KiCadPins.cs - the component's pins from the board's KiCad data: "Fill from
     //                             KiCad" and each pin's net on this board
-    //   ComponentPane.Copy.cs   - "Clone component from another board": everything of one picked there;
-    //                             "Also on other boards": this draft's change of the part, and the
-    //                             files it replaced, onto the other boards' own drafts
+    //   ComponentPane.Copy.cs   - "Clone component from another board": everything of one picked there
     //   ComponentPane.Several.cs - several components picked, edited as one: the khaki bar, a field that
     //                             differs, the rows all of them have, "Make all like"
     // ###########################################################################################
@@ -231,8 +229,11 @@ namespace CRT
         // board nothing is published to differ from, so nothing is said (owner request, 2026-11-02).
         internal bool IsComponentChanged => this.thisPublished is not null && this.HoldsWorkOfItsOwn;
 
-        // The same, whether or not anything is published: a new board's component is all work of its own -
-        // no mark and no undo say so, while "Also on other boards" offers it (code review, 2026-11-02).
+        // The published board's list of files - what a file of the draft replaced is told by.
+        private IReadOnlyDictionary<string, BoardDocument.StoredFileRow>? PublishedFiles => DraftFiles.ListedIn(this.thisPublishedBoardFile);
+
+        // The same, whether or not anything is published: a new board's component is all work of its own, of which
+        // no mark and no undo say anything (code review, 2026-11-02).
         //
         // *** REMEMBERED WHILE ALL IT DEPENDS ON STANDS (code review, 2026-11-02). *** A commit asks this up
         // to three times on the UI thread, and once more after the save, and each read the whole board:
@@ -581,6 +582,52 @@ namespace CRT
             this.ShowChangedState();
         }
 
+        // ###########################################################################################
+        // "Package" and every pin's "Direction" offer the usual words AND the board's own (owner request, 2026-11-11: a package
+        // typed in the table, "Diskette", is offered in the pane too; ComponentVocabulary.PackagesOf/PinDirectionsOf). Worked
+        // out once per board content - the content is replaced, never changed, so the same one is the same answer - and handed
+        // over only when the words changed: a list replaced under a drop-down lets go of what it shows.
+        // ###########################################################################################
+        private void ShowWordsOfBoard()
+        {
+            BoardData? board = this.thisSession?.Content.Board;
+
+            if (!ReferenceEquals(board, this.thisWordsReadFrom))
+            {
+                this.thisWordsReadFrom = board;
+                this.thisBoardPackages = ComponentVocabulary.PackagesOf(board);
+                this.thisBoardDirections = ComponentVocabulary.PinDirectionsOf(board);
+            }
+
+            // Never under the caret: a package typed is taken on a pause in typing, and its list replaced then would close and
+            // reopen under the word being typed. The box left, the pane commits and comes here again.
+            if (!this.PackageBox.IsKeyboardFocusWithin &&
+                (this.PackageBox.ItemsSource is not IEnumerable<string> offered || !offered.SequenceEqual(this.thisBoardPackages, StringComparer.Ordinal)))
+            {
+                // The text is the box's own, not its list's: kept as it is (an AutoCompleteBox with a list replaced keeps it).
+                string text = this.PackageBox.Text ?? string.Empty;
+                this.PackageBox.ItemsSource = this.thisBoardPackages;
+
+                if (!string.Equals(this.PackageBox.Text ?? string.Empty, text, StringComparison.Ordinal))
+                {
+                    this.PackageBox.Text = text;
+                }
+            }
+
+            foreach (ComponentPanePinRow row in this.thisPins)
+            {
+                row.UseBoardDirections(this.thisBoardDirections);
+            }
+        }
+
+        private BoardData? thisWordsReadFrom;
+
+        private IReadOnlyList<string> thisBoardPackages = ComponentVocabulary.Packages;
+
+        private IReadOnlyList<string> thisBoardDirections = ComponentVocabulary.PinDirections;
+
+        internal IReadOnlyList<string> PackageChoicesForTests => this.PackageBox.ItemsSource as IReadOnlyList<string> ?? [];
+
         private static void Fill<T>(ObservableCollection<T> rows, IEnumerable<T> items)
         {
             rows.Clear();
@@ -698,6 +745,7 @@ namespace CRT
             // from that list may be pins one of them has - added to every one, U1 with pins 1-14 got 1-14 again.
             this.AddCasePinsButton.IsVisible = !this.IsSeveral && missing > 0;
             this.AddCasePinsButton.Content = ComponentPaneWording.AddCasePins(package, missing, pins.Count == 0);
+            this.ShowWordsOfBoard();
             this.ShowKiCadPins();
             this.ShowPinProblems();
             this.TellPagesChanged();
@@ -723,7 +771,6 @@ namespace CRT
             {
                 this.ChangedMark.IsVisible = false;
                 this.UndoChangesButton.IsVisible = false;
-                this.AlsoOnOtherBoardsButton.IsVisible = false;
                 return;
             }
 
@@ -733,7 +780,6 @@ namespace CRT
             ToolTip.SetTip(this.ChangedMark, ComponentPaneWording.ComponentChangedTip);
             this.UndoChangesButton.IsVisible = changed;
             this.UndoChangesButton.Content = ReviewChangesWindow.UndoLabel(this.thisLabel);
-            this.ShowAlsoOffer();
         }
 
         // ---- the pane's changes into the draft --------------------------------------------------
@@ -830,8 +876,7 @@ namespace CRT
                 return;
             }
 
-            // Before the change is told: what follows it reads this - a part number typed alone is what
-            // "Also on other boards" waits for, and it stayed hidden until the next change.
+            // Before the change is told: what follows it reads this, and must read the value just typed.
             this.thisShownValues[field] = wanted;
 
             this.Apply(
@@ -1155,7 +1200,9 @@ namespace CRT
 
         private void OnAddPinClick(object? sender, RoutedEventArgs e)
         {
-            this.thisPins.Add(new ComponentPanePinRow { Region = this.RegionForNewPin() });
+            var pin = new ComponentPanePinRow { Region = this.RegionForNewPin() };
+            pin.UseBoardDirections(this.thisBoardDirections);
+            this.thisPins.Add(pin);
             this.ShowEmptyLines();
         }
 
@@ -1301,12 +1348,6 @@ namespace CRT
                 this.Saved?.Invoke(this, session.ExcelDataFile);
             }
 
-            // A file added is listed - with its bytes, what "Also on other boards" goes by - once written.
-            if (ReferenceEquals(session, this.thisSession))
-            {
-                this.ShowAlsoOffers();
-            }
-
             return outcome;
         }
     }
@@ -1341,11 +1382,33 @@ namespace CRT
             }
         }
 
-        // The vocabulary, and a word the board already holds that is not in it.
+        // The vocabulary with every other direction the board's pins use (ComponentVocabulary.PinDirectionsOf - owner request,
+        // 2026-11-11), and this pin's own word when it is still not among them.
         public IReadOnlyList<string> DirectionChoices =>
-            ComponentVocabulary.IsKnownOrEmpty(ComponentVocabulary.PinDirections, this.thisDirection)
-                ? ComponentVocabulary.PinDirections
-                : [.. ComponentVocabulary.PinDirections, this.thisDirection];
+            ComponentVocabulary.IsKnownOrEmpty(this.thisBoardDirections, this.thisDirection)
+                ? this.thisBoardDirections
+                : [.. this.thisBoardDirections, this.thisDirection];
+
+        private IReadOnlyList<string> thisBoardDirections = ComponentVocabulary.PinDirections;
+
+        // The directions the board offers, as the pane last read them - the list changed only when its words did, as a list
+        // replaced under a drop-down lets go of what it shows.
+        public void UseBoardDirections(IReadOnlyList<string> directions)
+        {
+            ArgumentNullException.ThrowIfNull(directions);
+
+            if (directions.SequenceEqual(this.thisBoardDirections, StringComparer.Ordinal))
+            {
+                return;
+            }
+
+            this.thisBoardDirections = directions;
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(this.DirectionChoices)));
+
+            // A list replaced lets go of its selection and writes "nothing" back, which Direction ignores - so the box is told
+            // the direction again, or it would show none (CLAUDE.md, the picture cards' drop-downs).
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(this.Direction)));
+        }
 
         // The net the pin is on on this board, from its KiCad data - shown, never part of the entry.
         public string Net { get; private set; } = string.Empty;

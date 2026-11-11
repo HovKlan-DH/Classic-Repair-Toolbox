@@ -280,6 +280,10 @@ namespace Handlers.DataHandling
         // sent", which keeps what is published.
         public List<string>? Regions { get; set; }
 
+        // Each region's own colors (owner request, 2026-11-11; RegionColors) - "#RRGGBB" each, checked on both sides
+        // ("regions.color"). Null, as above: "not sent", which keeps what is published.
+        public List<RegionColorEntry>? RegionColors { get; set; }
+
         // The KiCad trace calibration, which is per-schematic rather than per-component. Included
         // because a contributor who calibrates a board's traces has done substantial work that
         // would otherwise not travel with their submission.

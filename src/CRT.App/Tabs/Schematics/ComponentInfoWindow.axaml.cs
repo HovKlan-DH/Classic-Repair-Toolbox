@@ -70,6 +70,8 @@ namespace CRT
     //   ComponentInfoWindow.axaml.cs   - everything but what follows
     //   ComponentInfoWindow.Pinout.cs  - the pinout in a window of its own, "Show pinout in its own window when the
     //                                    component info window would scroll" (owner requests, 2026-11-07 and 2026-11-09)
+    //   ComponentInfoWindow.PinList.cs - the pinout's list of pins: its rows, the pin shown and the pin pointed at lit,
+    //                                    beside or under the drawing, each column as wide as its longest text
     //   ComponentInfoWindow.Regions.cs - the region buttons in the footer, one per region of the board, and the region
     //                                    label over the picture
     // ###########################################################################################
@@ -95,9 +97,6 @@ namespace CRT
         // listed (ComponentPopupContent).
         private IReadOnlyList<ComponentPinEntry> _allPins = [];
         private IReadOnlyList<ComponentReplacementEntry> _allReplacements = [];
-
-        // The pins listed beside the drawing - InfoPinsItemsControl's, changed in place (ShowViewedPin).
-        private readonly System.Collections.ObjectModel.ObservableCollection<ComponentPopupPin> _pinRows = new();
 
         // The component's files and links of every region, each as a row of its section.
         private IReadOnlyList<ComponentLocalFileEntry> _allLocalFiles = [];
@@ -170,6 +169,7 @@ namespace CRT
             this.InitializeComponent();
 
             this.InfoPinsItemsControl.ItemsSource = this._pinRows;
+            this.FitPinColumns(0);
             this.EditComponentButton.Content = PictureToolWording.EditComponent;
             ToolTip.SetTip(this.EditComponentButton, PictureToolWording.EditComponentTip);
 
@@ -1405,6 +1405,8 @@ namespace CRT
             List<ComponentPinEntry> pins = ComponentPopupContent.PinEntriesOf(this._allPins, this._boardLabel, this._localRegion);
             PartPicture.Picture? part = entry is null ? null : PartPicture.Of(entry, pins, this._pinNets);
 
+            // Drawn again, the drawings point at no pin until the pointer moves - and neither does the list.
+            this._pinPointedAtInDrawing = null;
             this.InfoPinoutDrawing.Show(entry?.Package, pins);
             this.InfoPartDrawing.Show(part);
 
@@ -1420,31 +1422,12 @@ namespace CRT
             this.ShowViewedPin(this.ThumbnailList.SelectedItem as ComponentImageItem);
             this.PinoutSection.IsVisible = this._pinRows.Count > 0 || part is not null || resistor;
             this.InfoPinsPanel.IsVisible = this._pinRows.Count > 0;
-            this.InfoPinsNetHeading.IsVisible = this._pinRows.Any(pin => pin.HasNet);
+            this.MeasurePinColumns();
             this.PlacePinList(this.PinoutGrid.Bounds.Width);
 
             List<ComponentPopupReplacement> replacements = ComponentPopupContent.ReplacementsOf(this._allReplacements, this._boardLabel, this._localRegion);
             this.ReplacementsSection.IsVisible = replacements.Count > 0;
             this.InfoReplacementsItemsControl.ItemsSource = replacements;
-        }
-
-        // ###########################################################################################
-        // THE PIN OF THE IMAGE SHOWN IS LIT, on the drawing and in the list beside it (owner request,
-        // 2026-11-02: "if I am viewing a specific pin, then do highlight it on the pinout image and in the
-        // right-side text"). The list keeps every row that does not change: a row is pressed to go to its
-        // images, which changes the selection, and one made again under the pointer loses its hover.
-        // ###########################################################################################
-        private void ShowViewedPin(ComponentImageItem? shown)
-        {
-            string? pin = shown?.Pin;
-
-            InPlaceList.KeepUnchanged(
-                this._pinRows,
-                ComponentPopupContent.PinsOf(this._allPins, this._boardLabel, this._localRegion, this._pinNets, pin),
-                (row, wanted) => row == wanted);
-
-            this.InfoPinoutDrawing.MarkPin(ComponentVocabulary.PinNumberOf(pin));
-            this.InfoPartDrawing.MarkPin(ComponentVocabulary.PinNumberOf(pin));
         }
 
         // ###########################################################################################
@@ -1466,22 +1449,6 @@ namespace CRT
             }
         }
 
-        // The pin under the pointer in the list is the pin marked in the drawing.
-        private void OnPinRowEntered(object? sender, PointerEventArgs e)
-        {
-            if (sender is Control { Tag: ComponentPopupPin pin })
-            {
-                this.InfoPinoutDrawing.HoverPin(ComponentVocabulary.PinNumberOf(pin.Pin));
-                this.InfoPartDrawing.HoverPin(ComponentVocabulary.PinNumberOf(pin.Pin));
-            }
-        }
-
-        private void OnPinRowExited(object? sender, PointerEventArgs e)
-        {
-            this.InfoPinoutDrawing.HoverPin(null);
-            this.InfoPartDrawing.HoverPin(null);
-        }
-
         internal void GoToPin(string? pin)
         {
             List<ComponentImageItem> items = this.ThumbnailList.ItemsSource as List<ComponentImageItem> ?? [];
@@ -1496,27 +1463,6 @@ namespace CRT
             this.ThumbnailList.SelectedIndex = index;
             this.ThumbnailList.ScrollIntoView(this.ThumbnailList.SelectedItem!);
             this.ShowPinFlashAsync(pin?.Trim() ?? string.Empty);
-        }
-
-        // The pin list beside the drawing while the popup has the room for it, else under it.
-        private void OnPinoutGridSizeChanged(object? sender, SizeChangedEventArgs e) => this.PlacePinList(e.NewSize.Width);
-
-        // ###########################################################################################
-        // The pin list beside the drawing when both fit, else under it - and a RESISTOR'S LIST FIRST, its picture under it
-        // (owner request, 2026-11-09: "I want the pinout table to be shown first and then the image and explanation
-        // afterwards"): the list across the top row, the picture in the second (its place in the markup).
-        // ###########################################################################################
-        private void PlacePinList(double width)
-        {
-            double drawing = this.InfoPinoutDrawing.IsVisible ? this.InfoPinoutDrawing.LayoutForTests?.Size.Width ?? 0
-                : this.InfoPartDrawing.IsVisible ? this.InfoPartDrawing.NaturalSize.Width
-                : 0;
-            bool first = this.InfoResistorPicture.IsVisible;
-            bool beside = !first && PinoutGeometry.ListFitsBeside(width, drawing);
-
-            Grid.SetColumn(this.InfoPinsPanel, beside ? 1 : 0);
-            Grid.SetColumnSpan(this.InfoPinsPanel, beside ? 1 : 2);
-            Grid.SetRow(this.InfoPinsPanel, beside || first ? 0 : 1);
         }
 
         private IcTestEntry? _activeTestEntry;

@@ -1,0 +1,12 @@
+// Classic Repair Toolbox - lets the server updater restart the contribution service it has just
+// installed a new build for (owner request, 2026-11-09; INSTALLING.md, "Automatic updates from
+// GitHub"). The crt-deploy user may RESTART crt-server.service and crt-server-test.service - no other
+// unit, no other verb, and no other user. Installed as /etc/polkit-1/rules.d/50-crt-server-update.rules.
+polkit.addRule(function (action, subject) {
+    if (action.id === "org.freedesktop.systemd1.manage-units" &&
+        subject.user === "crt-deploy" &&
+        action.lookup("verb") === "restart" &&
+        (action.lookup("unit") === "crt-server.service" || action.lookup("unit") === "crt-server-test.service")) {
+        return polkit.Result.YES;
+    }
+});

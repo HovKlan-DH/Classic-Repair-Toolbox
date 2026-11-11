@@ -183,4 +183,37 @@ public sealed class ComponentVocabularyTests
     {
         Assert.Equal(same, ComponentVocabulary.IsSamePin(first, second));
     }
+
+    // Owner request, 2026-11-11: a package typed in the table ("Diskette") is offered in the pane's drop-down too, and the
+    // same for a pin's direction - after the usual words, alphabetically, each once whatever its capitals, in the board's
+    // first spelling. "Unknown" stays the last direction.
+    [Fact]
+    public void A_board_offers_its_own_packages_and_directions_after_the_usual_ones()
+    {
+        var board = new BoardData();
+        board.Components.Add(new ComponentEntry { BoardLabel = "D1", Package = "Diskette" });
+        board.Components.Add(new ComponentEntry { BoardLabel = "D2", Package = " diskette " });
+        board.Components.Add(new ComponentEntry { BoardLabel = "U1", Package = "dip-40" });
+        board.Components.Add(new ComponentEntry { BoardLabel = "X1", Package = "Can" });
+        board.Components.Add(new ComponentEntry { BoardLabel = "X2", Package = "" });
+        board.ComponentPins.Add(new ComponentPinEntry { BoardLabel = "U1", Pin = "1", Direction = "Open collector" });
+        board.ComponentPins.Add(new ComponentPinEntry { BoardLabel = "U1", Pin = "2", Direction = "input" });
+        board.ComponentPins.Add(new ComponentPinEntry { BoardLabel = "U1", Pin = "3", Direction = "Bidirectional" });
+
+        Assert.Equal([.. ComponentVocabulary.Packages, "Can", "Diskette"], ComponentVocabulary.PackagesOf(board));
+        Assert.Equal(
+            ["Not connected", "Input", "Output", "Input/output", "Ground", "Power", "Other", "Bidirectional", "Open collector", "Unknown"],
+            ComponentVocabulary.PinDirectionsOf(board));
+    }
+
+    [Fact]
+    public void A_board_using_only_the_usual_words_offers_just_them()
+    {
+        var board = new BoardData();
+        board.Components.Add(new ComponentEntry { BoardLabel = "U1", Package = "DIP-40" });
+
+        Assert.Same(ComponentVocabulary.Packages, ComponentVocabulary.PackagesOf(board));
+        Assert.Same(ComponentVocabulary.PinDirections, ComponentVocabulary.PinDirectionsOf(board));
+        Assert.Same(ComponentVocabulary.Packages, ComponentVocabulary.PackagesOf(null));
+    }
 }

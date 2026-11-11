@@ -453,9 +453,15 @@ public sealed class BoardRegionsTests
 
         // Every region's facts in one go, as "Board: Regions" shows them.
         // ... with how many rows go with each, said under it (code review, 2026-11-09): U19's row and pin, U8's two pins.
+        // Compared on those facts: a holding carries the components holding it too (2026-11-11), a list compared apart.
+        List<BoardRegions.RegionHolding> holding = BoardRegions.HoldingOf(after);
         Assert.Equal(
             [new BoardRegions.RegionHolding("PAL", 2, false, 2), new BoardRegions.RegionHolding("NTSC", 0, true, 4), new BoardRegions.RegionHolding("Japan", 0, true, 4)],
-            BoardRegions.HoldingOf(after));
+            holding.Select(region => new BoardRegions.RegionHolding(region.Region, region.Rows, region.CanDelete, region.Going)));
+        // ... and the components each is applied on, those told apart in every region among them (2026-11-11).
+        Assert.Equal(["U19", "Y1"], holding[0].Components);
+        Assert.Equal(["U19", "U8"], holding[1].Components);
+        Assert.Equal(["U19", "U8"], holding[2].Components);
         BoardData japanLink = after.WithComponentSections(componentLinks: [new ComponentLinkEntry { BoardLabel = "U19", Name = "J", Url = "https://example.org", Region = "Japan" }]);
         Assert.Equal(1, BoardRegions.RowsHolding(japanLink, "Japan"));
         Assert.False(BoardRegions.CanDelete(japanLink, "Japan"));

@@ -668,6 +668,15 @@ namespace CRT
             }
         }
 
+        // "Learn more": the table's Wiki page - what it can do, and its keys (owner request, 2026-11-11). A shared control
+        // touches nothing of CRT's orchestration, the Logger included (code review, 2026-11-11: it opened the page through
+        // ExternalTargetLauncher.OpenOrSay, which logs) - so App hands it how a Wiki page opens, once, in its static
+        // constructor, for every table on every host.
+        internal static Action<string>? OpensWikiPage { get; set; }
+
+        private void OnTableHelpClick(object? sender, RoutedEventArgs e) =>
+            BoardTableEditor.OpensWikiPage?.Invoke(AppConfig.WikiPageTableView);
+
         private void OnReplaceClick(object? sender, RoutedEventArgs e)
         {
             if (this.ReplaceBar.IsVisible)

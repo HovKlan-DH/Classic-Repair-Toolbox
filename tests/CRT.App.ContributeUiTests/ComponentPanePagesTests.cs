@@ -4,6 +4,7 @@ using Avalonia.Headless;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
+using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using CRT;
@@ -1614,6 +1615,217 @@ public sealed class ComponentPanePagesTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // A REGION'S OWN COLORS (owner request, 2026-11-11: "In "Board: Regions" I would like to be able to set the background color,
+    // and then you should calculate the complementary text color, that gives the highest visiblity of the text. However, I
+    // would also like to be able to set the text color"). A background picked goes into the draft as ONE step once picking
+    // pauses, the text worked out from it; a text picked is kept; "Automatic text color" and "Reset colors" take each back. The
+    // region is shown in them - never bold, as its button is not.
+    // ###########################################################################################
+    [Fact]
+    public void A_regions_colors_are_picked_worked_out_kept_and_reset_each_as_one_step()
+    {
+        DraftSession session = this.OpenDraft(new BoardData
+        {
+            Regions = ["PAL", "NTSC"],
+            Components = [new ComponentEntry { BoardLabel = "U8", Category = "IC" }],
+        });
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Regions);
+            ComponentPaneRegionRow pal = pane.RegionRowsForTests[0];
+
+            // CRT's own colors to start from; a picker writing back the color it shows writes nothing.
+            Assert.True(pal.HasCrtColors);
+            pal.BackgroundColor = pal.BackgroundColor;
+            pane.CommitHeld();
+            Assert.Empty(session.Content.Board.RegionColors);
+
+            // A dark blue picked: white text worked out.
+            pal.BackgroundColor = Color.Parse("#1F3A93");
+            pane.CommitHeld();
+
+            Assert.Equal(("#1F3A93", "#FFFFFF"), RegionColors.Of(session.Content.Board, "PAL"));
+            Assert.Equal(DraftStepWording.RegionColors, session.UndoDescription);
+            Assert.Same(pal, pane.RegionRowsForTests[0]);
+            Assert.True(pal.HasOwnColors);
+            Assert.Equal(Colors.White, pal.TextColor);
+
+            // Its name in them, not bold.
+            Dispatcher.UIThread.RunJobs();
+            TextBlock shown = Get<ItemsControl>(pane, "RegionsItemsControl")
+                .GetRealizedContainers().First()
+                .GetVisualDescendants().OfType<TextBlock>()
+                .First(block => block.Text == "PAL" && block.IsEffectivelyVisible);
+            Assert.Equal(FontWeight.Normal, shown.FontWeight);
+            Assert.Equal(Colors.White, ((ISolidColorBrush)shown.Foreground!).Color);
+
+            // A text of its own, kept.
+            pal.TextColor = Color.Parse("#FFFF00");
+            pane.CommitHeld();
+            Assert.Equal(("#1F3A93", "#FFFF00"), RegionColors.Of(session.Content.Board, "PAL"));
+            Assert.True(pal.HasOwnText);
+
+            Button Find(string label) => Get<ItemsControl>(pane, "RegionsItemsControl")
+                .GetRealizedContainers().First()
+                .GetVisualDescendants().OfType<Button>()
+                .First(button => Equals(button.Content, label));
+
+            Find("Automatic text color").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.Equal(("#1F3A93", "#FFFFFF"), RegionColors.Of(session.Content.Board, "PAL"));
+
+            Button reset = Find("Reset colors");
+            Assert.Contains("Danger", reset.Classes);
+            reset.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.Empty(session.Content.Board.RegionColors);
+            Assert.True(pal.HasCrtColors);
+
+            // Each was a step of its own, which "Undo" takes back.
+            session.Undo();
+            Assert.Equal(("#1F3A93", "#FFFFFF"), RegionColors.Of(session.Content.Board, "PAL"));
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // A region's row shown the same facts again raises nothing (code review, 2026-11-11): HoldingOf hands a new list of its
+    // components every time, and the record compared that list by reference - so every showing of "Board: Regions" made every
+    // row's component buttons again and gave each row the draft's colors again.
+    // ###########################################################################################
+    [Fact]
+    public void A_region_row_shown_the_same_facts_again_raises_nothing()
+    {
+        var facts = new ComponentPaneRegionRow.Facts("PAL", 2, false, "Schematics_Region_PAL") { Components = ["U8", "C1"] };
+        var row = new ComponentPaneRegionRow(facts);
+        var raised = new List<string?>();
+        row.PropertyChanged += (_, e) => raised.Add(e.PropertyName);
+
+        row.Use(facts with { Components = ["U8", "C1"] });
+        Assert.Empty(raised);
+
+        // Other components are other facts.
+        row.Use(facts with { Components = ["U8"] });
+        Assert.Contains(nameof(ComponentPaneRegionRow.ChipsShown), raised);
+    }
+
+    // ###########################################################################################
+    // A color picked and a region moved before picking paused (code review, 2026-11-11): the move gave every row the draft's
+    // colors again, and the pick, not in the draft yet, went without a word - the typing pause then found nothing to commit.
+    // It goes in first, as its own step.
+    // ###########################################################################################
+    [Fact]
+    public void A_color_picked_then_a_region_moved_before_the_pause_keeps_the_color()
+    {
+        DraftSession session = this.OpenDraft(new BoardData
+        {
+            Regions = ["PAL", "NTSC"],
+            Components = [new ComponentEntry { BoardLabel = "U8", Category = "IC" }],
+        });
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Regions);
+            ComponentPaneRegionRow pal = pane.RegionRowsForTests[0];
+
+            pal.BackgroundColor = Color.Parse("#1F3A93");
+            Assert.True(pane.MoveRegion(pal, 1));
+
+            Assert.Equal(["NTSC", "PAL"], session.Content.Board.Regions);
+            Assert.Equal(("#1F3A93", "#FFFFFF"), RegionColors.Of(session.Content.Board, "PAL"));
+            Assert.True(pal.HasOwnColors);
+
+            // Two steps: the color, then the move.
+            Assert.Equal(DraftStepWording.Regions, session.UndoDescription);
+            session.Undo();
+            Assert.Equal(DraftStepWording.RegionColors, session.UndoDescription);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // WHAT A REGION IS APPLIED ON (owner request, 2026-11-11: "it should be possible to see which component has the region
+    // applied, so I can find these and change them. Can you show those components (all of them) if it is less than X
+    // components, and if it has more then it shows something like "... and <b>X</b> more - click to see all.""): the first ten
+    // as buttons, the rest counted with "Show all" - and a button opens its component in that region.
+    // ###########################################################################################
+    [Fact]
+    public void A_region_names_the_components_it_is_applied_on_and_opens_each()
+    {
+        var components = Enumerable.Range(1, 12).Select(n => new ComponentEntry { BoardLabel = $"C{n}", Category = "Capacitor", Region = "NTSC" }).ToList();
+
+        DraftSession session = this.OpenDraft(new BoardData
+        {
+            Regions = ["PAL", "NTSC"],
+            Components = [new ComponentEntry { BoardLabel = "U8", Category = "IC" }, .. components],
+            BoardLinks = [new BoardLinkEntry { Category = "Web", Name = "Forum", Url = "https://example.org", Region = "NTSC" }],
+        });
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Regions);
+            ComponentPaneRegionRow ntsc = pane.RegionRowsForTests.Single(row => row.Name == "NTSC");
+
+            Assert.False(pane.RegionRowsForTests.Single(row => row.Name == "PAL").HasComponents);
+            Assert.True(ntsc.HasComponents);
+            // Seven named (owner request, 2026-11-11: "maybe have 7 instead of 10"), the rest counted - and that count and
+            // "Show all" the last item of the same line ("on the same row as the components").
+            Assert.Equal(["C1", "C2", "C3", "C4", "C5", "C6", "C7"], ntsc.ComponentsShown.Select(component => component.Label));
+            Assert.Equal("... and <b>5</b> more", ntsc.MoreText);
+            Assert.Equal("Show all", ntsc.ShowAllText);
+            Assert.Equal(8, ntsc.ChipsShown.Count);
+            ComponentPaneRegionMore more = Assert.IsType<ComponentPaneRegionMore>(ntsc.ChipsShown[^1]);
+            Assert.Equal(("... and <b>5</b> more", "Show all"), (more.Text, more.ShowAllText));
+            Assert.Same(ntsc, more.Row);
+            // Only the page that holds it is named (code review, 2026-11-11).
+            Assert.Equal("Also on <b>1</b> board link - under \"Board: Links\".", ntsc.BoardRowsText);
+
+            Dispatcher.UIThread.RunJobs();
+            Button ShownButton(string content) => Get<ItemsControl>(pane, "RegionsItemsControl")
+                .GetRealizedContainers()
+                .SelectMany(container => container.GetVisualDescendants().OfType<Button>())
+                .First(button => Equals(button.Content, content));
+
+            // The same line: "Show all" stands beside the last component named, at its height.
+            Button c7 = ShownButton("C7");
+            Button showAll = ShownButton("Show all");
+            Assert.Equal(c7.TranslatePoint(default, pane)!.Value.Y, showAll.TranslatePoint(default, pane)!.Value.Y, precision: 0);
+
+            // The hand over a component: it opens something ("as it is clickable").
+            string hand = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand).ToString();
+            Assert.Equal(hand, c7.Cursor?.ToString());
+            Assert.Equal(hand, showAll.Cursor?.ToString());
+
+            showAll.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            Assert.True(ntsc.ShowAll);
+            Assert.Equal(12, ntsc.ComponentsShown.Count);
+            Assert.False(ntsc.HasMore);
+            Assert.Equal("Show fewer", ntsc.ShowAllText);
+            Assert.False(Assert.IsType<ComponentPaneRegionMore>(ntsc.ChipsShown[^1]).HasText);
+
+            (string Label, string Region)? asked = null;
+            pane.OpenComponentRequested += (_, wanted) => asked = wanted;
+
+            Dispatcher.UIThread.RunJobs();
+            ShownButton("C12").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+            Assert.Equal(("C12", "NTSC"), asked);
+
+            // Its pill and its two color pickers one height, a picked region button's (owner request, 2026-11-11).
+            Control rowOf = Get<ItemsControl>(pane, "RegionsItemsControl").GetRealizedContainers().First();
+            Border pill = rowOf.GetVisualDescendants().OfType<Border>().First(border => border.Classes.Contains("RegionPill") && border.IsEffectivelyVisible);
+            List<ColorPicker> pickers = rowOf.GetVisualDescendants().OfType<ColorPicker>().ToList();
+            Assert.Equal(2, pickers.Count);
+            Assert.Equal(ComponentPaneRegionRow.LineHeight, pill.Bounds.Height, precision: 0);
+            Assert.All(pickers, picker => Assert.Equal(ComponentPaneRegionRow.LineHeight, picker.Bounds.Height, precision: 0));
+            Assert.All(pickers, picker => Assert.Equal(pill.TranslatePoint(default, pane)!.Value.Y, picker.TranslatePoint(default, pane)!.Value.Y, precision: 0));
+
+            window.Close();
+        });
+    }
+
     // ---- Board: Categories -------------------------------------------------------------------------
 
     private static ComponentPaneCategoryRow Category(ComponentPane pane, string name) =>
@@ -2587,36 +2799,6 @@ public sealed class ComponentPanePagesTests : IDisposable
 
             Assert.True(Get<Border>(pane, "ChangedMark").IsVisible);
             Assert.Equal("Draft", ((TextBlock)Get<Border>(pane, "ChangedMark").Child!).Text);
-
-            window.Close();
-        });
-    }
-
-    // ###########################################################################################
-    // ... BUT "ALSO ON OTHER BOARDS" STAYS (code review, 2026-11-02). The owner asked for no mark and no
-    // undo on a new board; the offer rode on the same answer and went with them, though all a new board's
-    // chip holds is what another board's same chip could take.
-    // ###########################################################################################
-    [Fact]
-    public void A_new_boards_component_still_offers_also_on_other_boards()
-    {
-        DraftSession session = this.OpenDraft();
-
-        UiTest.Run(() =>
-        {
-            var pane = new ComponentPane { AutoSave = false };
-            var window = new Window { Content = pane, Width = 1100, Height = 1400 };
-            window.Show();
-
-            pane.Show(session, "U8", "PAL", published: null);
-            Dispatcher.UIThread.RunJobs();
-
-            Get<TextBox>(pane, "PartNumberBox").Text = "6510";
-            pane.CommitHeld();
-
-            Assert.True(Get<Button>(pane, "AlsoOnOtherBoardsButton").IsVisible);
-            Assert.False(Get<Border>(pane, "ChangedMark").IsVisible);
-            Assert.False(Get<Button>(pane, "UndoChangesButton").IsVisible);
 
             window.Close();
         });

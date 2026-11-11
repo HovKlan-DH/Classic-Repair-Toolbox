@@ -547,12 +547,18 @@ namespace CRT
         // view is picked (ShowEntryAsync) - in the region its row is of, or the page does not list that row
         // (code review, 2026-11-04). The region is all of CRT's, as the buttons under the list pick it.
         // ###########################################################################################
-        internal System.Threading.Tasks.Task OpenComponentOfProblemAsync(EntryProblem item)
-        {
-            if (!this.ShowsRegionOf(item))
-            {
-                string region = ContributeProblems.RegionToOpen(item, BoardRegions.Of(this.BoardForList()));
+        internal System.Threading.Tasks.Task OpenComponentOfProblemAsync(EntryProblem item) =>
+            this.OpenComponentAsync(item.ComponentLabel, ContributeProblems.RegionToOpen(item, BoardRegions.Of(this.BoardForList())), item.Entry);
 
+        // ###########################################################################################
+        // The component `label` opened on `entry` - in `region` first when CRT shows another, switched as the buttons under
+        // the list switch it, so its rows of that region are the ones the page lists. The ONE way a problem's "Open" and a
+        // component "Board: Regions" lists open one (OpenComponentInRegionAsync).
+        // ###########################################################################################
+        private System.Threading.Tasks.Task OpenComponentAsync(string label, string region, ContributeEntry entry)
+        {
+            if (region.Length > 0 && !string.Equals(region, this.thisCurrentRegion, StringComparison.OrdinalIgnoreCase))
+            {
                 if (this.thisMainWindow is { } main)
                 {
                     main.PickRegion(region);
@@ -563,10 +569,10 @@ namespace CRT
                 }
             }
 
-            this.thisPickedComponent = item.ComponentLabel;
+            this.thisPickedComponent = label;
             this.thisPickedSeveral = [];
 
-            return this.ShowEntryAsync(item.Entry);
+            return this.ShowEntryAsync(entry);
         }
     }
 

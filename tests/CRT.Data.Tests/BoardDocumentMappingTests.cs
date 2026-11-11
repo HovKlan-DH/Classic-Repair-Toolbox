@@ -156,8 +156,10 @@ public sealed class BoardDocumentMappingTests
             [typeof(CreditEntry)] = 4,
             [typeof(KiCadImportantSignalEntry)] = 2,
             [typeof(KiCadCalibrationEntry)] = 8,
-            // 16 since 2026-11-01: the regions it says it comes in (BoardRegions).
-            [typeof(BoardData)] = 16,
+            // 16 since 2026-11-01: the regions it says it comes in (BoardRegions); 17 since 2026-11-11: their colors
+            // (RegionColors - "regionColors", RegionColorsTests round-trips it).
+            [typeof(BoardData)] = 17,
+            [typeof(RegionColorEntry)] = 3,
         };
 
         foreach ((Type type, int count) in known)

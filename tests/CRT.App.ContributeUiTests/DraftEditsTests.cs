@@ -103,41 +103,6 @@ public sealed class DraftEditsTests : IDisposable
     }
 
     // ###########################################################################################
-    // A picture replaced under the name its row already cites changes no row (code review,
-    // 2026-10-26): "Save to draft" wrote nothing, and the new file lay in the draft folder until some
-    // other editor's write took it in. Handed `takeInNewFiles`, a change that changes nothing still
-    // writes the draft, so the file is taken in now - or the save says it could not be.
-    // ###########################################################################################
-    [Fact]
-    public async Task A_file_replaced_under_the_name_its_row_cites_is_taken_in_by_the_save()
-    {
-        var board = new BoardData { RevisionDate = "2026-10-01" };
-        board.Components.Add(new ComponentEntry { BoardLabel = "U1", FriendlyName = "CPU" });
-        board.ComponentImages.Add(new ComponentImageEntry { BoardLabel = "U1", Name = "Top", File = "Component images/u1.png" });
-        string boardFile = DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, DraftEditsTests.BoardKey);
-        BoardFiles.Write(boardFile, BoardDocumentMapping.ToDocument(
-            new BoardContent(board, [], []),
-            name => name,
-            [new BoardDocument.StoredFileRow { Name = "Component images/u1.png", Sha256 = new string('a', 64), Size = 3 }]));
-        DraftMarkerStore.Save(
-            DraftFolderLayout.GetMarkerPath(DraftManager.DraftsRoot, DraftEditsTests.BoardKey),
-            new DraftMarker { BoardKey = DraftEditsTests.BoardKey });
-
-        string replaced = this.thisWorkspace.WriteFile(Path.Combine("Drafts", "Commodore", "C64", "250407", "Component images", "u1.png"), "the new picture");
-        string sha = DataTreeLayout.Sha256Of(replaced);
-        DraftWorkbookEditOutcome outcome = DraftWorkbookEditOutcome.WriteFailed;
-
-        await UiTest.RunAsync(async () =>
-        {
-            outcome = await DraftEdits.ApplyAndSaveAsync(DraftEditsTests.BoardKey, DraftStepWording.ComponentReverted("U1"), (BoardData unchanged) => unchanged, takeInNewFiles: true);
-        });
-
-        Assert.Equal(DraftWorkbookEditOutcome.Saved, outcome);
-        Assert.Equal(sha, Assert.Single(BoardFiles.ReadDocument(boardFile)!.Files).Sha256);
-        Assert.False(File.Exists(replaced));
-    }
-
-    // ###########################################################################################
     // "Undo changes to [U1]" PUTS A PICTURE REPLACED UNDER ITS OWN NAME BACK (code review,
     // 2026-10-26): the rows went back and the draft's list kept the contributor's bytes - the
     // component read as unchanged while the next submission sent the replaced picture.

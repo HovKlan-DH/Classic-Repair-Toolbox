@@ -173,12 +173,13 @@ namespace CRT
         {
             this._suppressRegionToggle = true;
 
-            // On the Contribute tab, by what it reads: the board as the draft now has it.
-            IReadOnlyList<string> regions = BoardRegions.Of(this._contributeListsShown ? this.TabDrafts.BoardForList() ?? this._currentBoardData : this._currentBoardData);
+            // On the Contribute tab, by what it reads: the board as the draft now has it - its colors too.
+            BoardData? board = this.BoardOfRegionButtons();
+            IReadOnlyList<string> regions = BoardRegions.Of(board);
 
             this.RegionButtonsGrid.IsVisible = regions.Count > 0;
 
-            this.LayOutRegionButtons(regions);
+            this.LayOutRegionButtons(regions, board);
 
             foreach (Button button in this._ownRegionButtons.Prepend(this.NtscRegionButton).Prepend(this.PalRegionButton))
             {
@@ -220,7 +221,7 @@ namespace CRT
         // side by side - and a region of the board's own a button made for it, in one of RegionChoice's colors
         // (RegionButtonGrid.ButtonsFor, the popup's rule too). At most three to a row, 6px apart, as the panel is narrow.
         // ###########################################################################################
-        private void LayOutRegionButtons(IReadOnlyList<string> regions)
+        private void LayOutRegionButtons(IReadOnlyList<string> regions, BoardData? board)
         {
             List<Button> buttons = RegionButtonGrid.ButtonsFor(
                 regions,
@@ -228,7 +229,8 @@ namespace CRT
                 this.NtscRegionButton,
                 this._ownRegionButtons,
                 this.MakeOwnRegionButton,
-                this.RegionButtonsGrid);
+                this.RegionButtonsGrid,
+                region => RegionColors.Of(board, region));
 
             // An own region's button says its name - only its text changes (code review, 2026-11-09: a new block at every
             // read of the lists).
@@ -249,9 +251,9 @@ namespace CRT
                 HorizontalContentAlignment = Avalonia.Layout.HorizontalAlignment.Center,
                 FontSize = 12,
                 Padding = new Avalonia.Thickness(4),
-                Content = RegionButtonGrid.NameBlock(),
             };
 
+            made.Content = RegionButtonGrid.NameBlock(made);
             made.Click += this.OnOwnRegionClick;
 
             return made;
@@ -267,6 +269,13 @@ namespace CRT
 
         // The regions of the board on screen, as its buttons show them (BoardRegions.Of).
         internal IReadOnlyList<string> CurrentBoardRegions() => BoardRegions.Of(this._currentBoardData);
+
+        // The board the region buttons are of: on the Contribute tab, the board as the draft now has it.
+        private BoardData? BoardOfRegionButtons() =>
+            this._contributeListsShown ? this.TabDrafts.BoardForList() ?? this._currentBoardData : this._currentBoardData;
+
+        // `region`'s own colors on the board the buttons are of (RegionColors) - null for the colors CRT gives it.
+        internal (string Background, string Text)? RegionColorsShown(string? region) => RegionColors.Of(this.BoardOfRegionButtons(), region);
 
         // ###########################################################################################
         // Positions a new popup on the same screen as the main window with a slight staggered offset.
@@ -408,6 +417,9 @@ namespace CRT
                 .Where(c => string.Equals(c.BoardLabel, boardLabel, StringComparison.OrdinalIgnoreCase))
                 .ToList() ?? new List<ComponentEntry>();
 
+            // The board's own region colors (RegionColors, 2026-11-11), handed over before the buttons are laid out.
+            IReadOnlyList<RegionColorEntry> regionColors = boardData?.RegionColors ?? [];
+
             if (UserSettings.MultipleInstancesForComponentPopup)
             {
                 if (!this._componentInfoWindowsByKey.TryGetValue(componentKey, out var popup) || !popup.IsVisible)
@@ -422,6 +434,7 @@ namespace CRT
                     };
                 }
 
+                popup.RegionColorRows = regionColors;
                 popup.SetComponent(
                     boardLabel,
                     displayText,
@@ -467,6 +480,7 @@ namespace CRT
             }
 
             this._singleComponentInfoWindow.CloseOnDeactivate = false;
+            this._singleComponentInfoWindow.RegionColorRows = regionColors;
             this._singleComponentInfoWindow.SetComponent(
                 boardLabel,
                 displayText,

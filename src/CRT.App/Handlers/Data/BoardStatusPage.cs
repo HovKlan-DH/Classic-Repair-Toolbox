@@ -165,7 +165,7 @@ namespace Handlers.DataHandling
         private static BoardStatusPart PartOf(BoardDataProblem problem) => problem.Sheet switch
         {
             _ when problem.Code == "component.no_category" => BoardStatusPart.Categories,
-            _ when problem.Code == "regions.unknown" => BoardStatusPart.Regions,
+            _ when problem.Code is "regions.unknown" or "regions.color" => BoardStatusPart.Regions,
             BoardWorkbookSchema.SheetBoardSchematics => BoardStatusPart.Pictures,
             BoardWorkbookSchema.SheetComponents or
             BoardWorkbookSchema.SheetComponentImages or

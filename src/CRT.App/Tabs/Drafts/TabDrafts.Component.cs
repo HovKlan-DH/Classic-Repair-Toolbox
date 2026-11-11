@@ -57,13 +57,20 @@ namespace CRT
             this.ComponentPane.CloneBoards = this.OtherPublishedEntries;
             this.ComponentPane.CloneHardwareShown = () => (this.thisComponentEntry ?? this.thisCurrentEntry)?.HardwareName;
             this.ComponentPane.ReadCloneSource = this.ReadCloneSourceAsync;
-            this.ComponentPane.FindAlsoTargets = this.FindAlsoTargetsAsync;
-            this.ComponentPane.ApplyToOtherBoards = this.ApplyToOtherBoardsAsync;
             this.ComponentPane.ComponentShown += (_, label) => this.RunGuarded(() => this.LoadKiCadPinsAsync(label), "Reading the KiCad pins");
             this.ComponentPane.KiCadViewsWanted += (_, ask) => this.RunGuarded(() => this.LoadKiCadViewsAsync(ask), "Reading the KiCad views");
             this.ComponentPane.ShowNetRequested += (_, net) => this.RunGuarded(() => this.ShowNetOnBoardAsync(net), "Show on board");
+            this.ComponentPane.OpenComponentRequested += (_, asked) => this.RunGuarded(() => this.OpenComponentInRegionAsync(asked.Label, asked.Region), "Open a component of a region");
             this.ComponentPane.ReadPreviewTraces = this.PreviewTracesAsync;
         }
+
+        // ###########################################################################################
+        // A component "Board: Regions" lists a region applied on (owner request, 2026-11-11: "so I can find these and change
+        // them"), opened on "Basics" in that region - as a problem's "Open" opens one (OpenComponentOfProblemAsync): the
+        // region switched first, as the buttons under the list switch it, so its rows of the region are the ones shown.
+        // ###########################################################################################
+        internal Task OpenComponentInRegionAsync(string label, string region) =>
+            this.OpenComponentAsync(label, region, ContributeEntry.ComponentBasics);
 
         // For tests, in place of reading a component's pins from its board's KiCad data: the board
         // (its identity) and the label.
@@ -128,7 +135,7 @@ namespace CRT
         private string PublishedBoardFileOf(HardwareBoardEntry entry) =>
             this.PublishedBoardFileOverrideForTests?.Invoke(entry) ?? DraftBoardSource.PublishedPathOf(DataManager.DataRoot, entry.ExcelDataFile);
 
-        // One other published board as "Clone component from another board" and "Also on other boards" read it.
+        // One other published board as "Clone component from another board" reads it.
         private sealed record OtherBoard(HardwareBoardEntry Entry, BoardData Board, IReadOnlyDictionary<string, BoardDocument.StoredFileRow>? Files);
 
         // The OTHER published boards of this machine, as the drop-down lists list them.
@@ -141,41 +148,18 @@ namespace CRT
                 .ToList();
         }
 
-        // ###########################################################################################
-        // The OTHER published boards of this machine - never the board the pane is on - read IN
-        // PARALLEL off the UI thread: each one's data and, with `withFiles`, its list of files, both
-        // from ONE read of its board file (code review, 2026-10-26: read one after another, and twice
-        // each). Without files, BoardDataReader's cache answers. A test hands each board's published
-        // data in through PublishedBoardOverrideForTests, as for the pane.
-        // ###########################################################################################
-        private async Task<List<OtherBoard>> ReadOtherPublishedBoardsAsync(bool withFiles)
-        {
-            List<HardwareBoardEntry> boards = this.OtherPublishedEntries();
-
-            Func<HardwareBoardEntry, BoardData?>? published = this.PublishedBoardOverrideForTests;
-
-            OtherBoard?[] read = await Task.WhenAll(boards.Select(entry => TabDrafts.ReadOtherBoardAsync(entry, this.PublishedBoardFileOf(entry), published, withFiles)));
-
-            return read.OfType<OtherBoard>().ToList();
-        }
-
-        private static async Task<OtherBoard?> ReadOtherBoardAsync(HardwareBoardEntry entry, string path, Func<HardwareBoardEntry, BoardData?>? published, bool withFiles)
+        private static async Task<OtherBoard?> ReadOtherBoardAsync(HardwareBoardEntry entry, string path, Func<HardwareBoardEntry, BoardData?>? published)
         {
             if (published is not null)
             {
                 return published(entry) is { } given
-                    ? new OtherBoard(entry, given, withFiles ? await Task.Run(() => DraftFiles.ListedIn(path)) : null)
+                    ? new OtherBoard(entry, given, await Task.Run(() => DraftFiles.ListedIn(path)))
                     : null;
             }
 
             if (path.Length == 0 || !System.IO.File.Exists(path))
             {
                 return null;
-            }
-
-            if (!withFiles)
-            {
-                return await BoardDataReader.LoadAsync(path, path) is { } board ? new OtherBoard(entry, board, null) : null;
             }
 
             return await Task.Run(() =>
@@ -213,301 +197,9 @@ namespace CRT
             var listings = new BoardFileListings();
 
             return await BusyOverlay.RunLocalAsync<ComponentCloneSource?>(this, CrtWaitWording.ReadingOtherBoard, async () =>
-                await TabDrafts.ReadOtherBoardAsync(entry, path, published, withFiles: true) is { } read
+                await TabDrafts.ReadOtherBoardAsync(entry, path, published) is { } read
                     ? new ComponentCloneSource(entry.ToString(), read.Board, read.Files, name => DraftFileResolver.ResolveWithSource(dataRoot, string.Empty, name, identity, listings)?.FullPath)
                     : null);
-        }
-
-        // ###########################################################################################
-        // "Also on other boards": the components with `partNumber` ("" for none to look for) on the
-        // OTHER published boards, and the boards listing the bytes each of `files` replaced
-        // (ChangedFiles.Elsewhere) - ONE read of the other boards under ONE "please wait" (code review,
-        // 2026-10-26: two searches read every board twice, each under its own).
-        // ###########################################################################################
-        private async Task<AlsoTargets> FindAlsoTargetsAsync(string partNumber, string region, IReadOnlyList<ChangedFile> files)
-        {
-            bool part = partNumber.Trim().Length > 0;
-            bool anyFile = files.Count > 0;
-
-            if (!part && !anyFile)
-            {
-                return AlsoTargets.None;
-            }
-
-            string wait = part && anyFile ? CrtWaitWording.LookingForPartAndFilesOnOtherBoards
-                : part ? CrtWaitWording.LookingAtOtherBoards
-                : CrtWaitWording.LookingForFilesOnOtherBoards;
-
-            return await BusyOverlay.RunLocalAsync(this, wait, async () =>
-            {
-                List<OtherBoard> others = await this.ReadOtherPublishedBoardsAsync(withFiles: anyFile);
-
-                return new AlsoTargets(
-                    part ? ComponentCopy.Sources(others.Select(other => (other.Entry.ToString(), other.Entry.ExcelDataFile, other.Board)), partNumber, region) : [],
-                    anyFile ? ChangedFiles.Elsewhere(files, others.Select(other => (other.Entry.ToString(), other.Entry.ExcelDataFile, other.Board, other.Files))) : []);
-            });
-        }
-
-        // ###########################################################################################
-        // "Also on other boards" (slice 5, and its files): `parts` of `here` - the component as this
-        // draft has it - put onto each of `targets`' components, and each of `files` - a new file in
-        // place of the one it replaced - put onto its board, all in THAT board's own draft: made first
-        // when it has none (seeded from the published file, as every first draft is), saved at once -
-        // all under one "please wait". What came of it, in words (AlsoOnOtherBoardsOutcome). Nothing
-        // while the Contribute tab is covered by "CRT has to be updated" (no draft is made then).
-        // ###########################################################################################
-        private async Task<string> ApplyToOtherBoardsAsync(
-            ComponentCopySource? here,
-            IReadOnlyList<ComponentCopySource> targets,
-            IReadOnlyList<ComponentCopyPart> parts,
-            IReadOnlyList<ChangedFileElsewhere> files)
-        {
-            if (this.IsUpdateRequiredShown)
-            {
-                return Handlers.Online.AppUpdateRequiredWording.NoDraftWhileDraftsTabCovered;
-            }
-
-            HardwareBoardEntry? from = this.thisComponentEntry ?? this.thisCurrentEntry;
-            string fromName = from?.ToString() ?? string.Empty;
-            string fromIdentity = from?.ExcelDataFile ?? string.Empty;
-
-            var outcome = new AlsoOnOtherBoardsOutcome();
-
-            string draftsRoot = DraftManager.DraftsRoot;
-            string dataRoot = DataManager.DataRoot;
-
-            // Every board once, in the order offered: the part's boards first, then those with a file.
-            var boards = targets.Select(target => (Identity: target.BoardIdentity, Name: target.BoardName))
-                .Concat(files.Select(file => (Identity: file.BoardIdentity, Name: file.BoardName)))
-                .Where(board => board.Identity.Length > 0)
-                .DistinctBy(board => board.Identity, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-
-            await BusyOverlay.RunLocalAsync(this, CrtWaitWording.ChangingOtherBoards, async () =>
-            {
-                foreach ((string identity, string boardName) in boards)
-                {
-                    bool made = false;
-
-                    if (!DraftBoardSource.HasDraft(draftsRoot, identity))
-                    {
-                        made = this.SeedDraftOverrideForTests?.Invoke(identity) ??
-                               (await Task.Run(() => DraftSeeder.SeedFromPublishedFile(draftsRoot, dataRoot, identity))).Created;
-
-                        if (!made)
-                        {
-                            outcome.NoDraft(boardName);
-                            continue;
-                        }
-                    }
-
-                    bool changedThere = false;
-                    var partsNotCopied = new List<(string Label, string Why)>();
-
-                    // EVERY ticked component of the board, each its own step (code review, 2026-10-26:
-                    // the board's first only, and its other 4164s were left as they were).
-                    if (here is not null && parts.Count > 0)
-                    {
-                        foreach (ComponentCopySource target in targets.Where(target => string.Equals(target.BoardIdentity, identity, StringComparison.OrdinalIgnoreCase)))
-                        {
-                            if (await TabDrafts.CopyPartsToAsync(target, here with { BoardName = fromName }, parts, fromName) is { } why)
-                                partsNotCopied.Add((target.Row.BoardLabel, why));
-                            else
-                                changedThere = true;
-                        }
-                    }
-
-                    List<ChangedFileElsewhere> boardFiles = files
-                        .Where(file => string.Equals(file.BoardIdentity, identity, StringComparison.OrdinalIgnoreCase))
-                        .ToList();
-
-                    if (boardFiles.Count > 0)
-                    {
-                        changedThere |= await TabDrafts.PutFilesIntoAsync(identity, boardName, boardFiles, fromIdentity, fromName, outcome);
-                    }
-
-                    outcome.Board(boardName, changedThere, partsNotCopied);
-
-                    // A draft made here for a board that then took nothing goes again (code review,
-                    // 2026-10-26: each was left as an empty draft in "My drafts", to discard by hand).
-                    if (made && !changedThere)
-                    {
-                        this.LetGoOfDraftMadeForNothing(identity);
-                    }
-                }
-
-                return true;
-            });
-
-            // "My drafts" lists the drafts just made, and the tab's title follows.
-            if (this.thisMainWindow is not null)
-            {
-                this.thisMainWindow.ApplyContributeTabState();
-            }
-            else
-            {
-                this.RefreshDrafts();
-            }
-
-            return outcome.Said;
-        }
-
-        // A draft "Also on other boards" made for a board that took nothing - deleted again.
-        private void LetGoOfDraftMadeForNothing(string identity)
-        {
-            if (!(this.DiscardOverrideForTests?.Invoke(identity) ?? DraftManager.DiscardDraft(identity)))
-            {
-                Logger.Warning($"The empty draft made for [{identity}] could not be deleted again");
-            }
-        }
-
-        // ###########################################################################################
-        // `parts` of `source` onto the component of `target`, in its board's draft, as ONE step named
-        // after this board - null when that changed it, else why not.
-        //
-        // *** AS EVERY EDITOR DOES - DraftEdits (code review, 2026-10-26). *** The draft read first when
-        // its file changed, the change worked out off the UI thread, and taken back OUT when the save
-        // cannot be made: applied straight to the session, a failed save left the step in, and the
-        // timer that saves drafts no editor holds could save it after CRT said it had not.
-        //
-        // *** THE COMPONENT IS LOOKED UP BY ITS PUBLISHED LABEL (code review, 2026-11-02): *** that board's
-        // own draft may have renamed or deleted it. Then nothing can change - which is not "it is like that
-        // there already", as a copy that changed nothing was said to be.
-        // ###########################################################################################
-        private static async Task<string?> CopyPartsToAsync(ComponentCopySource target, ComponentCopySource source, IReadOnlyList<ComponentCopyPart> parts, string fromName)
-        {
-            string label = target.Row.BoardLabel;
-            string region = target.RowsRegion;
-            bool changesSomething = false;
-            bool hasComponent = true;
-
-            DraftWorkbookEditOutcome outcome = await DraftEdits.ApplyAndSaveAsync(
-                target.BoardIdentity,
-                DraftStepWording.ComponentCopied(label, fromName),
-                (BoardData board) =>
-                {
-                    hasComponent = ComponentPaneEdits.RowShown(board, label, region) is not null;
-
-                    BoardData copied = ComponentCopy.Apply(board, label, region, source, parts);
-                    changesSomething |= !ReferenceEquals(copied, board);
-                    return copied;
-                });
-
-            return outcome == DraftWorkbookEditOutcome.NoDraft ? ComponentPaneWording.AlsoNoDraft
-                : outcome != DraftWorkbookEditOutcome.Saved ? ComponentPaneWording.AlsoNotSaved
-                : !hasComponent ? ComponentPaneWording.AlsoComponentNotInDraft
-                : !changesSomething ? ComponentPaneWording.AlsoAlreadySo
-                : null;
-        }
-
-        // ###########################################################################################
-        // Each of `files` - this draft's new file in place of the bytes it replaced - into the draft of
-        // the board `identity`, where it still has the published bytes (ChangedFiles.CanPut - never over
-        // a version of its own). Each goes in under a name of that board's own, of its own type
-        // (ChangedFiles.NameFor), and every row there citing the old file is pointed at it
-        // (ChangedFiles.Repointed) - ONE step of that draft named after this board, which its Undo takes
-        // back (code review, 2026-10-26: written over the old bytes, it was no step, and a board file had
-        // no way back). Never under a name climbing out of the draft's folder (DraftFiles.TryArrivedPath).
-        // Each file not put is said in `outcome`; true when any went in.
-        // ###########################################################################################
-        private static async Task<bool> PutFilesIntoAsync(
-            string identity,
-            string boardName,
-            IReadOnlyList<ChangedFileElsewhere> files,
-            string fromIdentity,
-            string fromName,
-            AlsoOnOtherBoardsOutcome outcome)
-        {
-            string dataRoot = DataManager.DataRoot;
-
-            if (await DraftEdits.OpenForChangeAsync(identity) is not { } session)
-            {
-                foreach (ChangedFileElsewhere file in files)
-                    outcome.FileNotPut(file.File.DisplayText, boardName, ComponentPaneWording.AlsoNoDraft);
-
-                return false;
-            }
-
-            string folder = DraftFolderLayout.GetBoardFolder(session.DraftsRoot, identity);
-            string fromFolder = DraftFolderLayout.GetBoardFolder(session.DraftsRoot, fromIdentity);
-            List<string> taken = session.FileNamesInUse.ToList();
-
-            var copies = new List<(string Source, string Name)>();
-            var going = new List<(ChangedFileElsewhere File, string Name)>();
-
-            foreach (ChangedFileElsewhere file in files)
-            {
-                ChangedFilePut put = ChangedFiles.CanPut(session.Content.Board, session.ListedFiles, file);
-
-                if (put != ChangedFilePut.Put)
-                {
-                    outcome.FileNotPut(file.File.DisplayText, boardName, put switch
-                    {
-                        ChangedFilePut.AlreadySo => ComponentPaneWording.AlsoAlreadySo,
-                        ChangedFilePut.OwnVersion => ComponentPaneWording.AlsoFileOwnVersion,
-                        _ => ComponentPaneWording.AlsoFileNoLongerThere,
-                    });
-
-                    continue;
-                }
-
-                string name = ChangedFiles.NameFor(file, taken);
-
-                if (!DraftFiles.TryArrivedPath(folder, name, out _))
-                {
-                    outcome.FileNotPut(file.File.DisplayText, boardName, ComponentPaneWording.AlsoFileNotCopied);
-                    continue;
-                }
-
-                if (await Task.Run(() => DraftFileResolver.Resolve(dataRoot, fromFolder, file.File.DraftName, fromIdentity)) is not { } source)
-                {
-                    outcome.FileNotPut(file.File.DisplayText, boardName, ComponentPaneWording.AlsoFileNotFound);
-                    continue;
-                }
-
-                taken.Add(name);
-                copies.Add((source, name));
-                going.Add((file, name));
-            }
-
-            if (going.Count == 0)
-            {
-                return false;
-            }
-
-            DraftWorkbookEditOutcome? saved = await DraftEdits.CopyInAndApplyAsync(
-                identity,
-                copies,
-                DraftStepWording.FilesCopied(going.Select(put => put.File.File.RowName).ToList(), fromName),
-                board => going.Aggregate(board, (changed, put) => ChangedFiles.Repointed(changed, put.File.NameThere, put.Name)));
-
-            if (saved != DraftWorkbookEditOutcome.Saved)
-            {
-                string why = saved is null ? ComponentPaneWording.AlsoFileNotCopied : ComponentPaneWording.AlsoNotSaved;
-
-                foreach ((ChangedFileElsewhere file, _) in going)
-                    outcome.FileNotPut(file.File.DisplayText, boardName, why);
-
-                return false;
-            }
-
-            // Each one as the draft now lists it - a copy that failed on its own is said, not counted.
-            bool any = false;
-
-            foreach ((ChangedFileElsewhere file, string name) in going)
-            {
-                if (session.ListedFiles.TryGetValue(name, out BoardDocument.StoredFileRow? listed) &&
-                    string.Equals(listed.Sha256, file.File.DraftSha256, StringComparison.OrdinalIgnoreCase))
-                {
-                    any = true;
-                }
-                else
-                {
-                    outcome.FileNotPut(file.File.DisplayText, boardName, ComponentPaneWording.AlsoFileNotCopied);
-                }
-            }
-
-            return any;
         }
 
         // ###########################################################################################

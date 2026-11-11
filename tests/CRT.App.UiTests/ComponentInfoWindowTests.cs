@@ -6,6 +6,7 @@ using Avalonia.VisualTree;
 using Avalonia;
 using CRT;
 using Handlers.DataHandling;
+using Handlers.Geometry;
 
 namespace ClassicRepairToolbox.Tests.Ui;
 
@@ -364,6 +365,36 @@ public class ComponentInfoWindowTests : IDisposable
             Assert.Equal(2, Grid.GetRow(ControlOf<Button>(window, "PalRegionButton")));
             Assert.Equal(4, Grid.GetRow(ControlOf<Button>(window, "NtscRegionButton")));
             Assert.Contains("active", ControlOf<Button>(window, "PalRegionButton").Classes);
+        });
+    }
+
+    // ###########################################################################################
+    // A region the board gives colors of its own (owner request, 2026-11-11; RegionColors) is named in them over the popup's
+    // picture, and its button carries them - a region with none keeps CRT's.
+    // ###########################################################################################
+    [Fact]
+    public void A_region_in_the_boards_own_colors_is_named_in_them_on_the_popup()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+            window.RegionColorRows = [new RegionColorEntry { Region = "US", Background = "#1F3A93" }];
+            window.Show();
+
+            SetComponent(window, new[] { Component(region: "EU"), Component(region: "US") }, region: "US", hasExplicitRegionComponents: true, regions: ["EU", "US"]);
+
+            Border label = ControlOf<Border>(window, "InfoRegionBorder");
+            TextBlock text = ControlOf<TextBlock>(window, "InfoRegionText");
+
+            Assert.Equal(Avalonia.Media.Color.Parse("#1F3A93"), ((Avalonia.Media.ISolidColorBrush)label.Background!).Color);
+            Assert.Equal(Avalonia.Media.Colors.White, ((Avalonia.Media.ISolidColorBrush)text.Foreground!).Color);
+
+            SetComponent(window, new[] { Component(region: "EU"), Component(region: "US") }, region: "EU", hasExplicitRegionComponents: true, regions: ["EU", "US"]);
+
+            Assert.True(Application.Current!.TryGetResource("Schematics_Region_Own1_Bg", Avalonia.Styling.ThemeVariant.Light, out object? own1));
+            Assert.Equal(((Avalonia.Media.ISolidColorBrush)own1!).Color, ((Avalonia.Media.ISolidColorBrush)label.Background!).Color);
+
+            window.Close();
         });
     }
 
@@ -923,6 +954,179 @@ public class ComponentInfoWindowTests : IDisposable
                 ItemsOf<ComponentPopupPin>(window, "InfoPinsItemsControl"));
         });
     }
+
+    // ###########################################################################################
+    // The last column says what the scope should read on each pin, from the component's oscilloscope baselines (owner
+    // request, 2026-11-09: "add another column ... named 'Expected oscilloscope reading' ... The header should probably
+    // be 3 lines"), and follows the popup's region; a component with no reading shows no heading for it, as "Net name".
+    // ###########################################################################################
+    [Fact]
+    public void Each_pin_shows_its_expected_oscilloscope_reading_in_the_last_column()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+            ComponentPinEntry[] pins =
+            [
+                new() { BoardLabel = BoardLabel, Pin = "1", Name = "VCC", Direction = "Power" },
+                new() { BoardLabel = BoardLabel, Pin = "2", Name = "PHI2", Direction = "Input" },
+            ];
+
+            SetComponent(
+                window,
+                new[] { new ComponentEntry { BoardLabel = BoardLabel, Category = "IC", Package = "DIP-8" } },
+                hasExplicitRegionComponents: true,
+                pins: pins,
+                images:
+                [
+                    new ComponentImageEntry { BoardLabel = BoardLabel, Pin = "1", ExpectedOscilloscopeReading = "5.0V (+5VDC power rail)" },
+                    new ComponentImageEntry { BoardLabel = BoardLabel, Pin = "2", Region = "PAL", ExpectedOscilloscopeReading = "985.232 kHz" },
+                    new ComponentImageEntry { BoardLabel = BoardLabel, Pin = "2", Region = "NTSC", ExpectedOscilloscopeReading = "1.02272 MHz" },
+                ]);
+
+            TextBlock heading = ControlOf<TextBlock>(window, "InfoPinsReadingHeading");
+            Assert.True(heading.IsVisible);
+            Assert.Equal(["Expected", "oscilloscope", "reading"], heading.Text!.Split('\n'));
+            Assert.Equal(4, Grid.GetColumn(heading));
+            Assert.Equal(4, ControlOf<Grid>(window, "InfoPinsHeading").Children.OfType<TextBlock>().Max(Grid.GetColumn));
+            Assert.Equal(["5.0V (+5VDC power rail)", "985.232 kHz"], ItemsOf<ComponentPopupPin>(window, "InfoPinsItemsControl").Select(pin => pin.Reading));
+
+            ControlOf<Button>(window, "NtscRegionButton").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            Assert.Equal(["5.0V (+5VDC power rail)", "1.02272 MHz"], ItemsOf<ComponentPopupPin>(window, "InfoPinsItemsControl").Select(pin => pin.Reading));
+
+            SetComponent(window, new[] { new ComponentEntry { BoardLabel = BoardLabel, Category = "IC", Package = "DIP-8" } }, pins: pins);
+            Assert.False(heading.IsVisible);
+        });
+    }
+
+    // ###########################################################################################
+    // THE PIN UNDER THE POINTER ON THE DRAWING IS LIT IN THE LIST TOO (owner request, 2026-11-09: "hovering the IC image
+    // pin will not highlight the table pin. This needs to be the same both places") - through a shown window and real
+    // pointer moves, its row's frame taking the look of a row under the pointer; off the pins, no row is lit.
+    // ###########################################################################################
+    [Fact]
+    public void A_pin_pointed_at_on_the_chip_drawing_lights_its_row_in_the_list()
+    {
+        UiTest.Run(() =>
+        {
+            var window = new ComponentInfoWindow { Width = 1200, Height = 900 };
+            window.Show();
+
+            SetComponent(
+                window,
+                new[] { new ComponentEntry { BoardLabel = BoardLabel, Category = "IC", Package = "DIP-8" } },
+                pins: FortyPins().Take(8).ToArray());
+            LayOut();
+
+            PinoutDrawing drawing = ControlOf<PinoutDrawing>(window, "InfoPinoutDrawing");
+            PinoutLayout layout = drawing.LayoutForTests!;
+            PinoutPin pin3 = layout.Pins.Single(pin => pin.Number == 3);
+            PinoutPin pin6 = layout.Pins.Single(pin => pin.Number == 6);
+
+            window.MouseMove(drawing.TranslatePoint(new Point(2, pin3.Lead.Center.Y), window)!.Value);
+            LayOut();
+
+            Assert.Equal(["3"], ItemsOf<ComponentPopupPin>(window, "InfoPinsItemsControl").Where(pin => pin.IsPointedAt).Select(pin => pin.Pin));
+            Assert.Equal(["3"], LitRows(window));
+
+            window.MouseMove(drawing.TranslatePoint(new Point(layout.Size.Width - 2, pin6.Lead.Center.Y), window)!.Value);
+            LayOut();
+            Assert.Equal(["6"], LitRows(window));
+
+            window.MouseMove(drawing.TranslatePoint(layout.Body.Center, window)!.Value);
+            LayOut();
+            Assert.Empty(LitRows(window));
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // EVERY COLUMN OF THE PIN LIST IS AS WIDE AS ITS LONGEST TEXT, THE SAME SPACE BETWEEN EACH TWO (owner request,
+    // 2026-11-09: "align on empty spacing between columns - it should be the same for all, and I do like the spacing
+    // between 'Pin' and 'Signal'. Should be determined by longest text in each column + that spacing"). Laid out in a
+    // shown window: each heading starts where the column before it ends - its widest text, heading or cell, and the gap -
+    // and every cell but the last column's has the gap after it. In a narrow popup nothing stands past the list's right
+    // edge: the reading and the net wrap.
+    // ###########################################################################################
+    [Fact]
+    public void Each_column_of_the_pin_list_is_its_longest_text_and_the_same_gap_wide()
+    {
+        UiTest.Run(() =>
+        {
+            var window = new ComponentInfoWindow { Width = 1600, Height = 900 };
+            window.Show();
+
+            SetComponent(
+                window,
+                new[] { new ComponentEntry { BoardLabel = BoardLabel, Category = "IC", Package = "DIP-8" } },
+                pins:
+                [
+                    new ComponentPinEntry { BoardLabel = BoardLabel, Pin = "1", Name = "D6", Direction = "Unknown" },
+                    new ComponentPinEntry { BoardLabel = BoardLabel, Pin = "2", Name = "PHI-COLOR", Direction = "Input" },
+                    new ComponentPinEntry { BoardLabel = BoardLabel, Pin = "8", Name = "VCC", Direction = "Power" },
+                ],
+                pinNets: new Dictionary<string, string> { ["1"] = "D6", ["2"] = "Net-(FB23-Pad1)", ["8"] = "Net-(C101-Pad1)" },
+                images:
+                [
+                    new ComponentImageEntry { BoardLabel = BoardLabel, Pin = "1", ExpectedOscilloscopeReading = "Pulsing" },
+                    new ComponentImageEntry { BoardLabel = BoardLabel, Pin = "2", ExpectedOscilloscopeReading = "14.3181 MHz" },
+                    new ComponentImageEntry { BoardLabel = BoardLabel, Pin = "8", ExpectedOscilloscopeReading = "12.0V (+12VDC power rail)" },
+                ]);
+            LayOut();
+
+            IReadOnlyList<PinTableColumn> columns = window.PinColumnsForTests;
+            Grid heading = ControlOf<Grid>(window, "InfoPinsHeading");
+            List<double> starts = Enumerable.Range(0, 5)
+                .Select(column => heading.Children.OfType<TextBlock>().Single(block => Grid.GetColumn(block) == column).TranslatePoint(default, heading)!.Value.X)
+                .ToList();
+
+            Assert.Equal(5, columns.Count(column => column.IsShown));
+            Assert.Equal(0, starts[0]);
+
+            for (int column = 1; column < 5; column++)
+            {
+                Assert.Equal(starts[column - 1] + columns[column - 1].Widest + PinTableGeometry.Gap, starts[column], 0.5);
+            }
+
+            List<TextBlock> cells = ControlOf<Control>(window, "InfoPinsItemsControl").GetVisualDescendants().OfType<TextBlock>().ToList();
+            Assert.Equal(3 * 4, cells.Count(cell => cell.Classes.Contains("PinCell") && cell.Margin == new Thickness(0, 0, PinTableGeometry.Gap, 0)));
+            Assert.Equal(3, cells.Count(cell => !cell.Classes.Contains("PinCell") && cell.Margin == default));
+
+            // A narrow popup: the list has less room than its texts whole, though more than the columns that never wrap -
+            // the signal, the net and the reading wrap, and nothing stands past its edge.
+            window.Width = 900;
+            LayOut();
+
+            Control list = ControlOf<Control>(window, "InfoPinsPanel");
+            Assert.True(PinTableGeometry.WidthOf(columns) > list.Bounds.Width, "the list has less room than its texts whole");
+            Assert.True(
+                columns[0].Widest + columns[3].Widest + (4 * PinTableGeometry.Gap) + (3 * PinTableGeometry.Narrowest) < list.Bounds.Width,
+                "the list has room for what never wraps");
+            Assert.All(
+                list.GetVisualDescendants().OfType<TextBlock>().Where(block => block.IsEffectivelyVisible),
+                block => Assert.True(block.TranslatePoint(new Point(block.Bounds.Width, 0), list)!.Value.X <= list.Bounds.Width + 0.5, $"\"{block.Text}\" stands past the list's edge"));
+
+            window.Close();
+        });
+    }
+
+    private static void LayOut()
+    {
+        for (int i = 0; i < 3; i++)
+        {
+            Dispatcher.UIThread.RunJobs();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+        }
+    }
+
+    // The pins whose row in the popup's list is lit from the drawing - by the class its frame carries.
+    private static List<string> LitRows(ComponentInfoWindow window) =>
+        window.GetVisualDescendants()
+            .OfType<Border>()
+            .Where(row => row.Classes.Contains("PopupPinRow") && row.Classes.Contains("pointed") && row.IsEffectivelyVisible)
+            .Select(row => ((ComponentPopupPin)row.Tag!).Pin)
+            .ToList();
 
     // ###########################################################################################
     // Under a scope baseline, how the board's baselines were measured: its "Scope measurements"

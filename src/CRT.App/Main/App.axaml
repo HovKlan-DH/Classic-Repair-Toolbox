@@ -130,7 +130,8 @@
 					<SolidColorBrush x:Key="Schematics_ComponentHover_Border">Black</SolidColorBrush>
 					<SolidColorBrush x:Key="Schematics_Panels_Bg">#F2F2F2</SolidColorBrush>
 					<SolidColorBrush x:Key="Schematics_Panels_Fg">Black</SolidColorBrush>
-					<!-- The bar that is there only for the moment - "Back to Contribute" (owner request, 2026-10-30) -->
+					<!-- A state that is there only for the moment - the Contribute tab's several components picked (it was
+					     "Back to Contribute"'s too until 2026-11-11, now a ReturnBar's ReturnBar_*) -->
 					<SolidColorBrush x:Key="Schematics_TemporaryBar_Bg">Khaki</SolidColorBrush>
 					<SolidColorBrush x:Key="Schematics_TemporaryBar_Fg">Black</SolidColorBrush>
 					<SolidColorBrush x:Key="Schematics_TemporaryBar_Border">#8C7E2E</SolidColorBrush>
@@ -539,6 +540,12 @@
 		<SolidColorBrush x:Key="Schematics_Region_Own4_Bg">#3A7CA5</SolidColorBrush>
 		<SolidColorBrush x:Key="Schematics_Region_Own4_Fg">White</SolidColorBrush>
 		<SolidColorBrush x:Key="Schematics_Region_Own4_Border">Black</SolidColorBrush>
+		<!-- The bar that takes a person back where they came from (Controls/ReturnBar; owner request, 2026-11-11: "2px black
+		     dashed border, to give it some attention", and white, not lightgray, the same day) - the same in both themes, to
+		     stand out from either. -->
+		<SolidColorBrush x:Key="ReturnBar_Bg">White</SolidColorBrush>
+		<SolidColorBrush x:Key="ReturnBar_Fg">Black</SolidColorBrush>
+		<SolidColorBrush x:Key="ReturnBar_Border">Black</SolidColorBrush>
 	</ResourceDictionary>
 </Application.Resources>
 
@@ -1065,6 +1072,16 @@
 		<Style Selector="Button.RegionToggle.active.Own4 /template/ ContentPresenter">
 			<Setter Property="Background" Value="{DynamicResource Schematics_Region_Own4_Bg}" />
 			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_Own4_Bg}" />
+		</Style>
+		<!-- A region the board gives colors of its own (owner request, 2026-11-11; RegionColors, RegionPaint.UseBoardColors): read
+		     from the button's own resources - after the styles above, so these win over them. -->
+		<Style Selector="Button.RegionToggle.active.BoardColors">
+			<Setter Property="Foreground" Value="{DynamicResource Region_Board_Fg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Region_Board_Bg}" />
+		</Style>
+		<Style Selector="Button.RegionToggle.active.BoardColors /template/ ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Region_Board_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Region_Board_Bg}" />
 		</Style>
 
     </Application.Styles>

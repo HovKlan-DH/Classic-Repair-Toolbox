@@ -158,6 +158,51 @@ public sealed class BoardTableEditorTextWrapTests
         });
     }
 
+    // ###########################################################################################
+    // Owner request, 2026-11-11: "if the cell values in the column does not take more space than the header, then do
+    // "auto-fit" column based on the header name. In some cases I see the header have 0px horizontal spacing to its
+    // right-sided cell border". Every data column of short values - "Board label" holding "U5" and "U11" among them - is at
+    // least as wide as its heading's name with the space before it repeated after it; and pressing the header row (a drag about
+    // to start) lets it be made narrower again, as wide as it then is.
+    // ###########################################################################################
+    [Fact]
+    public void No_column_starts_narrower_than_its_heading_with_space_after_the_name()
+    {
+        UiTest.Run(() =>
+        {
+            BoardTableEditor editor = Editor();
+            Window window = Show(editor);
+            Dispatcher.UIThread.RunJobs();
+
+            List<DataGridColumnHeader> headers = window.GetVisualDescendants().OfType<DataGridColumnHeader>()
+                .Where(header => header.OwningColumn?.Tag is int tag && tag >= 0 && header.Content is string)
+                .ToList();
+
+            Assert.NotEmpty(headers);
+
+            foreach (DataGridColumnHeader header in headers)
+            {
+                string name = (string)header.Content!;
+                TextBlock shown = header.GetVisualDescendants().OfType<TextBlock>().First(text => text.Text == name);
+                double before = shown.TranslatePoint(default, header)!.Value.X;
+
+                var typeface = new Typeface(shown.FontFamily, shown.FontStyle, shown.FontWeight, shown.FontStretch);
+                using var layout = new Avalonia.Media.TextFormatting.TextLayout(name, typeface, shown.FontSize, foreground: null);
+                double after = header.Bounds.Width - before - layout.WidthIncludingTrailingWhitespace;
+
+                Assert.True(after >= before - 1, $"[{name}]: {before:0.0} before the name, {after:0.0} after it");
+            }
+
+            DataGridColumn label = Column(editor, ColumnOf(BoardWorkbookSchema.ColBoardLabel));
+            Assert.True(label.MinWidth > BoardTableEditor.LeastColumnWidth, $"[{label.MinWidth}]");
+
+            editor.FreeColumnWidths();
+            Assert.Equal(BoardTableEditor.LeastColumnWidth, label.MinWidth);
+
+            window.Close();
+        });
+    }
+
     // "If the column size gets reduced": a narrower column wraps its text onto more lines.
     [Fact]
     public void A_column_made_narrower_wraps_its_text_onto_more_lines()
@@ -432,4 +477,123 @@ public sealed class BoardTableEditorTextWrapTests
             window.Close();
         });
     }
+
+    // ###########################################################################################
+    // Owner report, 2026-11-11: "I do not understand why the first row in table is higher than the other rows? I think it
+    // should have same height as the other rows". Four rows with the same three-line "Purpose or note", its column scrolled
+    // out of view: ProDataGrid measured every cell of the FIRST row whatever the scroll, so that row alone grew to the note.
+    // Every row is as tall as the cells on screen - all of them short, then all of them tall once scrolled to the note, and
+    // short again scrolled back.
+    // ###########################################################################################
+    [Fact]
+    public void The_first_row_is_as_tall_as_the_cells_on_screen_as_every_other_row_is()
+    {
+        UiTest.Run(() =>
+        {
+            const string Note = "I have **__no__** idea what this does:\n- Nothing?\n- Something?";
+            var board = new BoardData
+            {
+                Regions = ["PAL", "NTSC", "HEST", "EU"],
+                Components =
+                [
+                    .. new[] { "PAL", "NTSC", "HEST", "EU" }.Select(region => new ComponentEntry
+                    {
+                        BoardLabel = "C1", TechnicalNameOrValue = "0.1 uF", Category = "Capacitor", Region = region, Package = "Disc", Purpose = Note,
+                    }),
+                ],
+            };
+
+            var editor = new BoardTableEditor();
+            editor.Open(BoardTableDocument.Create(board, board));
+            editor.SelectSheet(editor.CommitAndGetDocument()!.FindSheet(BoardWorkbookSchema.SheetComponents)!);
+
+            var window = new Window { Content = editor, Width = 1100, Height = 700 };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            Dispatcher.UIThread.RunJobs();
+
+            DataGrid grid = Grid(editor);
+            List<double> Heights() => grid.GetVisualDescendants().OfType<DataGridRow>().OrderBy(row => row.Index).Select(row => Math.Round(row.Bounds.Height)).ToList();
+
+            List<double> start = Heights();
+            Assert.Equal(4, start.Count);
+            // One line each - a row is its cells and its 1px grid line.
+            Assert.Single(start.Distinct());
+            Assert.True(start[0] < BoardTableEditor.MinRowHeight + 2, $"[{string.Join(", ", start)}]");
+
+            grid.ScrollIntoView(null!, grid.Columns.Last());
+            Dispatcher.UIThread.RunJobs();
+            Dispatcher.UIThread.RunJobs();
+
+            List<double> scrolled = Heights();
+            Assert.Single(scrolled.Distinct());
+            Assert.True(scrolled[0] > 2 * BoardTableEditor.MinRowHeight - 2, $"[{string.Join(", ", scrolled)}]");
+
+            grid.ScrollIntoView(null!, grid.Columns.First(column => column.Tag is int tag && tag >= 0));
+            Dispatcher.UIThread.RunJobs();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(start, Heights());
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // Code review, 2026-11-11: a row moved up to the top (Alt+Up on the second row) gets a container loaded at index 0 while
+    // the grid moves the old first row's container down WITHOUT loading it again - and that one kept its off-screen cells held
+    // to a plain row's height, so scrolled to the note it alone stayed one line tall, its note cut. Every row grows to the
+    // note, the one that was first included.
+    // ###########################################################################################
+    [Fact]
+    public void A_row_moved_above_the_first_leaves_the_old_first_row_free_to_grow()
+    {
+        UiTest.Run(() =>
+        {
+            const string Note = "I have **__no__** idea what this does:\n- Nothing?\n- Something?";
+            var board = new BoardData
+            {
+                Regions = ["PAL", "NTSC", "HEST", "EU"],
+                Components =
+                [
+                    .. new[] { "PAL", "NTSC", "HEST", "EU" }.Select(region => new ComponentEntry
+                    {
+                        BoardLabel = "C1", TechnicalNameOrValue = "0.1 uF", Category = "Capacitor", Region = region, Package = "Disc", Purpose = Note,
+                    }),
+                ],
+            };
+
+            var editor = new BoardTableEditor();
+            editor.Open(BoardTableDocument.Create(board, board));
+            editor.SelectSheet(editor.CommitAndGetDocument()!.FindSheet(BoardWorkbookSchema.SheetComponents)!);
+
+            var window = new Window { Content = editor, Width = 1100, Height = 700 };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            Dispatcher.UIThread.RunJobs();
+
+            DataGrid grid = Grid(editor);
+            List<double> Heights() => grid.GetVisualDescendants().OfType<DataGridRow>().Where(row => row.IsVisible).OrderBy(row => row.Index).Select(row => Math.Round(row.Bounds.Height)).ToList();
+
+            editor.SelectCell(editor.CurrentSheet!.Rows[1], 1);
+            Dispatcher.UIThread.RunJobs();
+            editor.MoveRowUp();
+            Dispatcher.UIThread.RunJobs();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal("NTSC", editor.CurrentSheet!.Rows[0].Cells[ColumnOfComponents(BoardWorkbookSchema.ColRegion)].Text);
+
+            grid.ScrollIntoView(null!, grid.Columns.Last());
+            Dispatcher.UIThread.RunJobs();
+            Dispatcher.UIThread.RunJobs();
+
+            List<double> scrolled = Heights();
+            Assert.Equal(4, scrolled.Count);
+            Assert.True(scrolled.All(height => height > 2 * BoardTableEditor.MinRowHeight - 2), $"[{string.Join(", ", scrolled)}]");
+
+            window.Close();
+        });
+    }
+
+    private static int ColumnOfComponents(string name) => BoardWorkbookSchema.Components.ColumnOrder.ToList().IndexOf(name);
 }

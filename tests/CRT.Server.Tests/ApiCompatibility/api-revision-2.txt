@@ -164,6 +164,7 @@ answer BoardDetailAnswer | .submissions[].changes.files.removedCount number
 answer BoardDetailAnswer | .submissions[].changes.files.replaced array of string
 answer BoardDetailAnswer | .submissions[].changes.files.replacedCount number
 answer BoardDetailAnswer | .submissions[].changes.isNewBoard boolean
+answer BoardDetailAnswer | .submissions[].changes.regionColorsChanged boolean
 answer BoardDetailAnswer | .submissions[].changes.regionNamesBefore array of string
 answer BoardDetailAnswer | .submissions[].changes.regionNamesNow array of string
 answer BoardDetailAnswer | .submissions[].changes.regionsNow boolean
@@ -370,6 +371,10 @@ answer BoardTableAnswer | .rows.kiCadCalibrations[].schematicName string
 answer BoardTableAnswer | .rows.kiCadImportantSignals array of object
 answer BoardTableAnswer | .rows.kiCadImportantSignals[].displayName string
 answer BoardTableAnswer | .rows.kiCadImportantSignals[].kiCadNetName string
+answer BoardTableAnswer | .rows.regionColors array of object
+answer BoardTableAnswer | .rows.regionColors[].background string
+answer BoardTableAnswer | .rows.regionColors[].region string
+answer BoardTableAnswer | .rows.regionColors[].text string
 answer BoardTableAnswer | .rows.regions array of string
 answer BoardTableAnswer | .rows.revisionDate string
 answer BoardTableAnswer | .rows.schematics array of object
@@ -665,6 +670,10 @@ answer ReviewTableData | .published.kiCadCalibrations[].schematicName string
 answer ReviewTableData | .published.kiCadImportantSignals array of object
 answer ReviewTableData | .published.kiCadImportantSignals[].displayName string
 answer ReviewTableData | .published.kiCadImportantSignals[].kiCadNetName string
+answer ReviewTableData | .published.regionColors array of object
+answer ReviewTableData | .published.regionColors[].background string
+answer ReviewTableData | .published.regionColors[].region string
+answer ReviewTableData | .published.regionColors[].text string
 answer ReviewTableData | .published.regions array of string
 answer ReviewTableData | .published.revisionDate string
 answer ReviewTableData | .published.schematics array of object
@@ -760,6 +769,10 @@ answer ReviewTableData | .submitted.kiCadCalibrations[].schematicName string
 answer ReviewTableData | .submitted.kiCadImportantSignals array of object
 answer ReviewTableData | .submitted.kiCadImportantSignals[].displayName string
 answer ReviewTableData | .submitted.kiCadImportantSignals[].kiCadNetName string
+answer ReviewTableData | .submitted.regionColors array of object
+answer ReviewTableData | .submitted.regionColors[].background string
+answer ReviewTableData | .submitted.regionColors[].region string
+answer ReviewTableData | .submitted.regionColors[].text string
 answer ReviewTableData | .submitted.regions array of string
 answer ReviewTableData | .submitted.revisionDate string
 answer ReviewTableData | .submitted.schematics array of object
@@ -777,6 +790,26 @@ answer ReviewTableData | .submitted.schematics[].traceHighlightOpacity string
 answer ReviewTableData | .version number
 answer ServerStatusAnswer | (root) object
 answer ServerStatusAnswer | .unsentMails number
+answer ServerStatusAnswer | .updates object
+answer ServerStatusAnswer | .updates.channel string
+answer ServerStatusAnswer | .updates.checkedUtc string
+answer ServerStatusAnswer | .updates.installedFromVersion string
+answer ServerStatusAnswer | .updates.installedUtc string
+answer ServerStatusAnswer | .updates.installedVersion string
+answer ServerStatusAnswer | .updates.message string
+answer ServerStatusAnswer | .updates.newestVersion string
+answer ServerStatusAnswer | .updates.outcome string
+answer ServerStatusAnswer | .updates.setUp boolean
+answer ServerUpdatesAnswer | (root) object
+answer ServerUpdatesAnswer | .channel string
+answer ServerUpdatesAnswer | .checkedUtc string
+answer ServerUpdatesAnswer | .installedFromVersion string
+answer ServerUpdatesAnswer | .installedUtc string
+answer ServerUpdatesAnswer | .installedVersion string
+answer ServerUpdatesAnswer | .message string
+answer ServerUpdatesAnswer | .newestVersion string
+answer ServerUpdatesAnswer | .outcome string
+answer ServerUpdatesAnswer | .setUp boolean
 answer SessionAccountAnswer | (root) object
 answer SessionAccountAnswer | .displayName string
 answer SessionAccountAnswer | .email string
@@ -840,6 +873,7 @@ answer SubmissionDetailAnswer | .changes.changedSections[].section string
 answer SubmissionDetailAnswer | .changes.changedSections[].totalChanges number
 answer SubmissionDetailAnswer | .changes.hasChanges boolean
 answer SubmissionDetailAnswer | .changes.isNewBoard boolean
+answer SubmissionDetailAnswer | .changes.regionColorsChanged boolean
 answer SubmissionDetailAnswer | .changes.regionNamesBefore array of string
 answer SubmissionDetailAnswer | .changes.regionNamesNow array of string
 answer SubmissionDetailAnswer | .changes.regionsNow boolean
@@ -993,6 +1027,10 @@ answer SubmissionDetailAnswer | .manifest.rows.kiCadCalibrations[].schematicName
 answer SubmissionDetailAnswer | .manifest.rows.kiCadImportantSignals array of object
 answer SubmissionDetailAnswer | .manifest.rows.kiCadImportantSignals[].displayName string
 answer SubmissionDetailAnswer | .manifest.rows.kiCadImportantSignals[].kiCadNetName string
+answer SubmissionDetailAnswer | .manifest.rows.regionColors array of object
+answer SubmissionDetailAnswer | .manifest.rows.regionColors[].background string
+answer SubmissionDetailAnswer | .manifest.rows.regionColors[].region string
+answer SubmissionDetailAnswer | .manifest.rows.regionColors[].text string
 answer SubmissionDetailAnswer | .manifest.rows.regions array of string
 answer SubmissionDetailAnswer | .manifest.rows.revisionDate string
 answer SubmissionDetailAnswer | .manifest.rows.schematics array of object
@@ -1235,6 +1273,10 @@ body POST /api/review/boards/edit | .rows.kiCadCalibrations[].schematicName stri
 body POST /api/review/boards/edit | .rows.kiCadImportantSignals array of object
 body POST /api/review/boards/edit | .rows.kiCadImportantSignals[].displayName string
 body POST /api/review/boards/edit | .rows.kiCadImportantSignals[].kiCadNetName string
+body POST /api/review/boards/edit | .rows.regionColors array of object
+body POST /api/review/boards/edit | .rows.regionColors[].background string
+body POST /api/review/boards/edit | .rows.regionColors[].region string
+body POST /api/review/boards/edit | .rows.regionColors[].text string
 body POST /api/review/boards/edit | .rows.regions array of string
 body POST /api/review/boards/edit | .rows.revisionDate string
 body POST /api/review/boards/edit | .rows.schematics array of object
@@ -1335,6 +1377,10 @@ body POST /api/review/boards/edit/check | .rows.kiCadCalibrations[].schematicNam
 body POST /api/review/boards/edit/check | .rows.kiCadImportantSignals array of object
 body POST /api/review/boards/edit/check | .rows.kiCadImportantSignals[].displayName string
 body POST /api/review/boards/edit/check | .rows.kiCadImportantSignals[].kiCadNetName string
+body POST /api/review/boards/edit/check | .rows.regionColors array of object
+body POST /api/review/boards/edit/check | .rows.regionColors[].background string
+body POST /api/review/boards/edit/check | .rows.regionColors[].region string
+body POST /api/review/boards/edit/check | .rows.regionColors[].text string
 body POST /api/review/boards/edit/check | .rows.regions array of string
 body POST /api/review/boards/edit/check | .rows.revisionDate string
 body POST /api/review/boards/edit/check | .rows.schematics array of object
@@ -1458,6 +1504,10 @@ body POST /api/review/submissions/{submissionId:long}/amend | .rows.kiCadCalibra
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.kiCadImportantSignals array of object
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.kiCadImportantSignals[].displayName string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.kiCadImportantSignals[].kiCadNetName string
+body POST /api/review/submissions/{submissionId:long}/amend | .rows.regionColors array of object
+body POST /api/review/submissions/{submissionId:long}/amend | .rows.regionColors[].background string
+body POST /api/review/submissions/{submissionId:long}/amend | .rows.regionColors[].region string
+body POST /api/review/submissions/{submissionId:long}/amend | .rows.regionColors[].text string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.regions array of string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.revisionDate string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.schematics array of object
@@ -1584,6 +1634,10 @@ body POST /api/submissions | .rows.kiCadCalibrations[].schematicName string
 body POST /api/submissions | .rows.kiCadImportantSignals array of object
 body POST /api/submissions | .rows.kiCadImportantSignals[].displayName string
 body POST /api/submissions | .rows.kiCadImportantSignals[].kiCadNetName string
+body POST /api/submissions | .rows.regionColors array of object
+body POST /api/submissions | .rows.regionColors[].background string
+body POST /api/submissions | .rows.regionColors[].region string
+body POST /api/submissions | .rows.regionColors[].text string
 body POST /api/submissions | .rows.regions array of string
 body POST /api/submissions | .rows.revisionDate string
 body POST /api/submissions | .rows.schematics array of object

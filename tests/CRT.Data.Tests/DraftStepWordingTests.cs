@@ -27,14 +27,11 @@ public sealed class DraftStepWordingTests
         Assert.Equal("Oscilloscope baselines of [U8]", DraftStepWording.ComponentBaselines("U8"));
         Assert.Equal("Files of [U8]", DraftStepWording.ComponentFiles("U8"));
         Assert.Equal("[U9] added", DraftStepWording.ComponentAdded("U9"));
-        Assert.Equal("[U7] copied from Commodore 64 - 250425", DraftStepWording.ComponentCopied("U7", "Commodore 64 - 250425"));
         Assert.Equal("Pins of [U8] from KiCad", DraftStepWording.ComponentPinsFromKiCad("U8"));
         Assert.Equal("1 component added from KiCad", DraftStepWording.ComponentsFromKiCad(1));
         Assert.Equal("214 components added from KiCad", DraftStepWording.ComponentsFromKiCad(214));
         Assert.Equal("1 component marked on [Top] from KiCad", DraftStepWording.ComponentsMarkedFromKiCad("Top", 1));
         Assert.Equal("42 components marked on [Top] from KiCad", DraftStepWording.ComponentsMarkedFromKiCad("Top", 42));
-        Assert.Equal("[Datasheet] copied from Commodore 64 - 250407", DraftStepWording.FilesCopied(["Datasheet"], "Commodore 64 - 250407"));
-        Assert.Equal("Files copied from Commodore 64 - 250407", DraftStepWording.FilesCopied(["Datasheet", "Pinout"], "Commodore 64 - 250407"));
 
         // The board's own lists (slice 4a).
         Assert.Equal("The board's files", DraftStepWording.BoardFiles);

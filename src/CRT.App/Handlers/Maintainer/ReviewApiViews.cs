@@ -256,9 +256,12 @@ namespace Handlers.MaintainerHandling
 
         public IReadOnlyList<string>? RegionNamesNow { get; init; }
 
+        // Whether the submission gives the board's regions other colors (2026-11-11) - false from a server that does not say.
+        public bool RegionColorsChanged { get; init; }
+
         public int TotalChanges => this.Sections.Sum(section => section.TotalChanges);
 
-        public bool HasChanges => this.TotalChanges > 0 || this.ReorderedSections.Count > 0 || this.RegionsNow is not null;
+        public bool HasChanges => this.TotalChanges > 0 || this.ReorderedSections.Count > 0 || this.RegionsNow is not null || this.RegionColorsChanged;
     }
 
     public sealed record ReviewSectionView(

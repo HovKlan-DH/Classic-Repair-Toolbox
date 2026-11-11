@@ -550,6 +550,18 @@
 						ToolTip.Tip="Replace a piece of text in the cells the table shows (Ctrl+H)"
 						Click="OnReplaceClick" />
 
+				<!-- What the table can do - copy, paste, find and replace, its keys - on its Wiki page (owner request, 2026-11-11:
+				     "we need to reference a Wiki, so the user can see what options there is"; AppConfig.WikiPageTableView). -->
+				<Button x:Name="TableHelpButton"
+						Classes="LearnMore"
+						VerticalAlignment="Center"
+						ToolTip.Tip="Opens the &quot;Table view&quot; page of CRT's Wiki in your web browser - copy and paste, find and replace, and every key"
+						Click="OnTableHelpClick">
+					<TextBlock Text="Learn more"
+							   FontSize="12"
+							   TextDecorations="Underline" />
+				</Button>
+
 			</WrapPanel>
 		</DockPanel>
 
@@ -664,7 +676,6 @@
 			<TextBlock x:Name="ComponentsShownText"
 					   TextWrapping="Wrap"
 					   Margin="0,0,0,6"
-					   FontStyle="Italic"
 					   IsVisible="False" />
 
 			<!-- What just happened (saved, refused, a paste that did not fit) or what to know about

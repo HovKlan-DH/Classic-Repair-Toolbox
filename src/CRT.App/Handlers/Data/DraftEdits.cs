@@ -29,27 +29,21 @@ namespace Handlers.DataHandling
             string excelDataFile,
             string description,
             Func<BoardContent, BoardContent?> edit,
-            IReadOnlyDictionary<string, string?>? follow = null,
-            bool takeInNewFiles = false)
+            IReadOnlyDictionary<string, string?>? follow = null)
         {
             ArgumentNullException.ThrowIfNull(edit);
 
-            return DraftEdits.ApplyWithFollowAndSaveAsync(excelDataFile, description, content => (edit(content), follow), takeInNewFiles);
+            return DraftEdits.ApplyWithFollowAndSaveAsync(excelDataFile, description, content => (edit(content), follow));
         }
 
         // The same for a change of the board's rows and highlights alone - what every editor but the
         // calibration changes. A null board, or the board it was handed, is nothing to do - never an
         // empty step in the history.
-        //
-        // `takeInNewFiles`: the editor copied files into the draft folder for this change - a change
-        // that changes no row is then still written, so they are taken in now (a picture replaced
-        // under the name its row already cites; code review, 2026-10-26).
         public static Task<DraftWorkbookEditOutcome> ApplyAndSaveAsync(
             string excelDataFile,
             string description,
             Func<BoardData, BoardData?> transform,
-            IReadOnlyDictionary<string, string?>? follow = null,
-            bool takeInNewFiles = false)
+            IReadOnlyDictionary<string, string?>? follow = null)
         {
             ArgumentNullException.ThrowIfNull(transform);
 
@@ -59,8 +53,7 @@ namespace Handlers.DataHandling
                 content => transform(content.Board) is BoardData board && !ReferenceEquals(board, content.Board)
                     ? content with { Board = board }
                     : null,
-                follow,
-                takeInNewFiles);
+                follow);
         }
 
         // ###########################################################################################
@@ -139,15 +132,11 @@ namespace Handlers.DataHandling
         public static async Task<DraftWorkbookEditOutcome> ApplyWithFollowAndSaveAsync(
             string excelDataFile,
             string description,
-            Func<BoardContent, (BoardContent? Content, IReadOnlyDictionary<string, string?>? Follow)> edit,
-            bool takeInNewFiles = false)
+            Func<BoardContent, (BoardContent? Content, IReadOnlyDictionary<string, string?>? Follow)> edit)
         {
             if (await DraftEdits.ApplyAsync(excelDataFile, description, edit) is not (DraftSession session, object origin))
             {
-                // No step to take back, so a write that fails changes nothing either.
-                return takeInNewFiles && DraftManager.Sessions.Find(DraftManager.DraftsRoot, excelDataFile) is DraftSession unchanged
-                    ? await unchanged.SaveAsync(evenUnchanged: true)
-                    : DraftEdits.NothingToSave(excelDataFile);
+                return DraftEdits.NothingToSave(excelDataFile);
             }
 
             DraftWorkbookEditOutcome outcome = await session.SaveAsync();
@@ -244,46 +233,6 @@ namespace Handlers.DataHandling
                 session.ReadFileIfChanged(DraftSaveWording.ReadAgainStep);
 
             return session;
-        }
-
-        // ###########################################################################################
-        // `files` - each a file and the name the change gives it - copied into the draft's folder, then
-        // `transform` - the rows citing them - applied as ONE step and saved, as every editor's change
-        // (ApplyAndSaveAsync: taken back out when the save cannot be made). The copies the write took
-        // in are kept; when the save is not made, or the write did not take a copy in, the copy is
-        // taken back out with what it replaced (DraftPickedFiles.KeepTakenIn; code review, 2026-10-26 -
-        // left lying there, the next write by any editor took it in unasked). The save's outcome; null
-        // when nothing could be copied. UI thread, as every change.
-        // ###########################################################################################
-        public static async Task<DraftWorkbookEditOutcome?> CopyInAndApplyAsync(
-            string excelDataFile,
-            IReadOnlyList<(string Source, string Name)> files,
-            string description,
-            Func<BoardData, BoardData?> transform)
-        {
-            ArgumentNullException.ThrowIfNull(files);
-            ArgumentNullException.ThrowIfNull(transform);
-
-            string folder = DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, excelDataFile);
-            DraftPickedFiles picked = await Task.Run(() => DraftPickedFiles.CopyInto(folder, files));
-
-            if (!picked.AnyLying)
-            {
-                return null;
-            }
-
-            DraftWorkbookEditOutcome outcome = await DraftEdits.ApplyAndSaveAsync(excelDataFile, description, transform, takeInNewFiles: true);
-
-            if (outcome == DraftWorkbookEditOutcome.Saved)
-            {
-                picked.KeepTakenIn();
-            }
-            else
-            {
-                picked.TakeBack();
-            }
-
-            return outcome;
         }
 
         // The same, all on the calling thread - for ApplyWithFollowAndSaveNow, which nothing may wait for.

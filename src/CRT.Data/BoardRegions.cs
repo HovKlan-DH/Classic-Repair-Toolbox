@@ -147,9 +147,10 @@ namespace Handlers.DataHandling
                     : board;
             }
 
+            // Every region's colors go with them (RegionColors, 2026-11-11).
             return now.Count == 0 || BoardRegions.RegionalRows(board) > 0
                 ? board
-                : board.WithRegions([]);
+                : RegionColors.Tidied(board.WithRegions([]));
         }
 
         // ###########################################################################################
@@ -172,7 +173,8 @@ namespace Handlers.DataHandling
                 return board;
             }
 
-            return board.WithRegions([.. spelt.Select(region => region!), .. BoardRegions.BeyondTheMost(board)]);
+            // Their colors in the same order (RegionColors, 2026-11-11).
+            return RegionColors.Tidied(board.WithRegions([.. spelt.Select(region => region!), .. BoardRegions.BeyondTheMost(board)]));
         }
 
         // ###########################################################################################
@@ -211,7 +213,20 @@ namespace Handlers.DataHandling
         // A region of the board, how many rows hold it (RowsHolding), whether it may be deleted (CanDelete), and how many rows
         // would go WITH it - its rows of components told apart in every region, and their pins (said under it, code review
         // 2026-11-09: they went, with what was typed in them, without a word).
-        public sealed record RegionHolding(string Region, int Rows, bool CanDelete, int Going = 0);
+        //
+        // AND THE COMPONENTS IT IS APPLIED ON (owner request, 2026-11-11: "it should be possible to see which component has the
+        // region applied, so I can find these and change them"): every component with a row saying it - those told apart in
+        // every region too, whose rows go WITH the region rather than hold it (owner report the same day: on a PAL and NTSC
+        // board that is nearly every one, and none was listed) - each label once in the board's order of components; and how
+        // many of the board's own files and links say it.
+        public sealed record RegionHolding(string Region, int Rows, bool CanDelete, int Going = 0)
+        {
+            public IReadOnlyList<string> Components { get; init; } = [];
+
+            public int BoardFiles { get; init; }
+
+            public int BoardLinks { get; init; }
+        }
 
         // ###########################################################################################
         // Every region of the board, in its order, with what RowsHolding and CanDelete say of it - worked out in ONE go
@@ -231,9 +246,48 @@ namespace Handlers.DataHandling
                     int going = BoardRegions.RowsGoingWith(board, region, spread).Count;
                     int rows = BoardRegions.RowsSay(board, [region]) - going;
 
-                    return new RegionHolding(region, rows, rows == 0 && regions.Count > BoardRegions.FewestRegions, going);
+                    return new RegionHolding(region, rows, rows == 0 && regions.Count > BoardRegions.FewestRegions, going)
+                    {
+                        Components = BoardRegions.ComponentsSaying(board, region),
+                        BoardFiles = board.BoardLocalFiles.Count(row => BoardRegions.Says(row.Region, region)),
+                        BoardLinks = board.BoardLinks.Count(row => BoardRegions.Says(row.Region, region)),
+                    };
                 })
                 .ToList();
+        }
+
+        // The components with a row saying `region` - in every list a component's row can say a region in - each label once, in
+        // the board's order of components (a label no component row has, last).
+        private static List<string> ComponentsSaying(BoardData board, string region)
+        {
+            var labels = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            void Take(string? label, string? rowRegion)
+            {
+                string text = BoardRegions.LabelOf(label);
+
+                if (text.Length > 0 && BoardRegions.Says(rowRegion, region) && seen.Add(text))
+                {
+                    labels.Add(text);
+                }
+            }
+
+            foreach (ComponentEntry row in board.Components) Take(row.BoardLabel, row.Region);
+            foreach (ComponentImageEntry row in board.ComponentImages) Take(row.BoardLabel, row.Region);
+            foreach (ComponentPinEntry row in board.ComponentPins) Take(row.BoardLabel, row.Region);
+            foreach (ComponentReplacementEntry row in board.ComponentReplacements) Take(row.BoardLabel, row.Region);
+            foreach (ComponentLocalFileEntry row in board.ComponentLocalFiles) Take(row.BoardLabel, row.Region);
+            foreach (ComponentLinkEntry row in board.ComponentLinks) Take(row.BoardLabel, row.Region);
+
+            var order = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (ComponentEntry row in board.Components)
+            {
+                order.TryAdd(BoardRegions.LabelOf(row.BoardLabel), order.Count);
+            }
+
+            return labels.OrderBy(label => order.TryGetValue(label, out int at) ? at : int.MaxValue).ToList();
         }
 
         // Which components are told apart in each of the board's regions, and which are in every region - that way or with a
@@ -411,7 +465,8 @@ namespace Handlers.DataHandling
                     components: board.Components.Where(row => !going.Contains(row)).ToList(),
                     componentPins: board.ComponentPins.Where(pin => !going.Contains(pin)).ToList());
 
-            return without.WithRegions(left);
+            // Its colors go with it (RegionColors, 2026-11-11).
+            return RegionColors.Tidied(without.WithRegions(left));
         }
 
         public static bool IsPalOrNtsc(string? region)

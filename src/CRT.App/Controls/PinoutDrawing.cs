@@ -21,7 +21,10 @@ namespace CRT
     // WITH PinsCanBePicked (the popup's - owner request, 2026-11-01) a pin lights up under the pointer, and
     // a click on it raises PinPicked. The host can light one up too (HoverPin - the list beside it), and
     // MARKS THE PIN OF THE IMAGE SHOWN, which stays lit whatever the pointer does (MarkPin - owner request,
-    // 2026-11-02: "if I am viewing a specific pin, then do highlight it").
+    // 2026-11-02: "if I am viewing a specific pin, then do highlight it"). A pin the POINTER moves onto or off
+    // raises PinHovered, so the host lights its row in the list too (owner request, 2026-11-09: "hovering the IC
+    // image pin will not highlight the table pin ... do highlight both places") - never for HoverPin, which is
+    // the host's own say and would only come back to it.
     // ###########################################################################################
     public sealed class PinoutDrawing : Control
     {
@@ -29,6 +32,9 @@ namespace CRT
 
         public static readonly RoutedEvent<PinPickedEventArgs> PinPickedEvent =
             RoutedEvent.Register<PinoutDrawing, PinPickedEventArgs>(nameof(PinPicked), RoutingStrategies.Bubble);
+
+        public static readonly RoutedEvent<PinHoveredEventArgs> PinHoveredEvent =
+            RoutedEvent.Register<PinoutDrawing, PinHoveredEventArgs>(nameof(PinHovered), RoutingStrategies.Bubble);
 
         private PinoutLayout? thisLayout;
         private Dictionary<int, string> thisNames = new();
@@ -42,6 +48,12 @@ namespace CRT
         {
             add => this.AddHandler(PinoutDrawing.PinPickedEvent, value);
             remove => this.RemoveHandler(PinoutDrawing.PinPickedEvent, value);
+        }
+
+        public event EventHandler<PinHoveredEventArgs>? PinHovered
+        {
+            add => this.AddHandler(PinoutDrawing.PinHoveredEvent, value);
+            remove => this.RemoveHandler(PinoutDrawing.PinHoveredEvent, value);
         }
 
         public bool PinsCanBePicked { get; set; }
@@ -143,6 +155,7 @@ namespace CRT
                 this.thisHoveredPin = number;
                 this.Cursor = number is null ? null : new Cursor(StandardCursorType.Hand);
                 this.InvalidateVisual();
+                this.RaiseEvent(new PinHoveredEventArgs(PinoutDrawing.PinHoveredEvent, number));
             }
         }
 
@@ -242,5 +255,11 @@ namespace CRT
     public sealed class PinPickedEventArgs(RoutedEvent routedEvent, int pin) : RoutedEventArgs(routedEvent)
     {
         public int Pin { get; } = pin;
+    }
+
+    // The pointer moved onto a pin of a drawn case - its number - or off every pin (null).
+    public sealed class PinHoveredEventArgs(RoutedEvent routedEvent, int? pin) : RoutedEventArgs(routedEvent)
+    {
+        public int? Pin { get; } = pin;
     }
 }

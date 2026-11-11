@@ -60,7 +60,7 @@ namespace Handlers.DataHandling
                 BoardWorkbookSchema.SheetBoardLinks => ContributeEntry.Links,
                 BoardWorkbookSchema.SheetCredits => ContributeEntry.Credits,
                 BoardWorkbookSchema.SheetKiCadImportantSignals => ContributeEntry.ImportantSignals,
-                _ when problem.Code == "regions.unknown" => ContributeEntry.Regions,
+                _ when problem.Code is "regions.unknown" or "regions.color" => ContributeEntry.Regions,
                 _ when problem.Code.StartsWith("highlight.", StringComparison.Ordinal) => ContributeEntry.SchematicImages,
                 _ => ContributeEntry.Overview,
             };

@@ -497,19 +497,11 @@ namespace Handlers.DataHandling
 
         // ---- links ------------------------------------------------------------------------------
 
-        // The component's links in `region` (owner request, 2026-11-02: a link can be of one region).
-        public static List<ComponentLinkEntry> LinksOf(BoardData board, string? label, string? region)
-        {
-            ArgumentNullException.ThrowIfNull(board);
-
-            return board.ComponentLinks.Where(row => ComponentPaneEdits.InScope(row.BoardLabel, row.Region, label, region)).ToList();
-        }
-
         // ###########################################################################################
         // EVERY link of the component, whatever region CRT shows: its "Links" page is the component's whole
         // list, as "Board: Links" is the board's, each row saying what it applies to (owner request,
         // 2026-11-03: "Each file or link will have set a region (if any) and then the complete list can be
-        // viewed and sorted"). What a region shows of them is still LinksOf - the popup, the copies.
+        // viewed and sorted"). What a region shows of them is the popup's (ComponentPopupContent.LinksOf).
         // ###########################################################################################
         public static List<ComponentLinkEntry> AllLinksOf(BoardData board, string? label)
         {
@@ -518,15 +510,8 @@ namespace Handlers.DataHandling
             return board.ComponentLinks.Where(row => ComponentPaneEdits.IsOfComponent(row.BoardLabel, label)).ToList();
         }
 
-        // The same as WithPins, for the component's links.
-        public static BoardData WithLinks(BoardData board, string? label, string? region, IReadOnlyList<ComponentLinkEntry> links) =>
-            ComponentPaneEdits.WithLinksWhere(board, label, region, links, row => ComponentPaneEdits.InScope(row.BoardLabel, row.Region, label, region));
-
         // The component's whole list of links replaced by `links`, each in its own place.
-        public static BoardData WithAllLinks(BoardData board, string? label, IReadOnlyList<ComponentLinkEntry> links) =>
-            ComponentPaneEdits.WithLinksWhere(board, label, region: null, links, row => ComponentPaneEdits.IsOfComponent(row.BoardLabel, label));
-
-        private static BoardData WithLinksWhere(BoardData board, string? label, string? region, IReadOnlyList<ComponentLinkEntry> links, Func<ComponentLinkEntry, bool> inScope)
+        public static BoardData WithAllLinks(BoardData board, string? label, IReadOnlyList<ComponentLinkEntry> links)
         {
             ArgumentNullException.ThrowIfNull(board);
             ArgumentNullException.ThrowIfNull(links);
@@ -536,8 +521,10 @@ namespace Handlers.DataHandling
                 return board;
             }
 
+            bool inScope(ComponentLinkEntry row) => ComponentPaneEdits.IsOfComponent(row.BoardLabel, label);
+
             List<ComponentLinkEntry> before = board.ComponentLinks.Where(inScope).ToList();
-            string filedLabel = ComponentPaneEdits.FiledLabel(board, label, region, before.Select(row => row.BoardLabel));
+            string filedLabel = ComponentPaneEdits.FiledLabel(board, label, region: null, before.Select(row => row.BoardLabel));
 
             List<ComponentLinkEntry> rows = links
                 .Select(row => new ComponentLinkEntry
@@ -707,7 +694,7 @@ namespace Handlers.DataHandling
             string.Equals(rowLabel?.Trim(), wanted, StringComparison.OrdinalIgnoreCase);
 
         // A row's region is shown in `region` when it is blank (every region) or the same. The ONE rule -
-        // ComponentCopy and the popup (ComponentPopupContent) ask it too (code review, 2026-10-26).
+        // the popup (ComponentPopupContent) asks it too (code review, 2026-10-26).
         internal static bool InRegion(string? rowRegion, string? region)
         {
             string own = rowRegion?.Trim() ?? string.Empty;

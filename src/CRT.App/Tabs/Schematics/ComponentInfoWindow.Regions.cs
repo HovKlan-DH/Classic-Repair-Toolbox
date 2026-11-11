@@ -22,6 +22,12 @@ namespace CRT
         // The board's regions, in its order (BoardRegions.Of) - one button each; none without regions.
         private IReadOnlyList<string> _regions = [];
 
+        // The board's own colors for its regions (owner request, 2026-11-11; RegionColors) - handed over by Main with the board,
+        // before SetComponent. None: every region in the colors CRT gives it.
+        internal IReadOnlyList<RegionColorEntry> RegionColorRows { get; set; } = [];
+
+        private (string Background, string Text)? OwnColorsOf(string? region) => RegionColors.Of(this._regions, this.RegionColorRows, region);
+
         // The buttons of a board's own regions, made as a board needs them (2026-11-09).
         private readonly List<Button> _ownRegionButtons = new();
 
@@ -41,7 +47,8 @@ namespace CRT
                 this.NtscRegionButton,
                 this._ownRegionButtons,
                 this.MakeOwnRegionButton,
-                this.PopupRegionGrid);
+                this.PopupRegionGrid,
+                this.OwnColorsOf);
 
             // The grid's two Auto columns are its markup's and never change (RegionButtonLayout's header: Avalonia's Grid
             // threw on a column it had lost); a button of the second column stands 6px off the first by its margin.
@@ -73,9 +80,9 @@ namespace CRT
                 VerticalContentAlignment = Avalonia.Layout.VerticalAlignment.Center,
                 VerticalAlignment = Avalonia.Layout.VerticalAlignment.Bottom,
                 Height = 24,
-                Content = RegionButtonGrid.NameBlock(),
             };
 
+            made.Content = RegionButtonGrid.NameBlock(made);
             made.Click += this.OnOwnRegionClick;
 
             return made;
@@ -180,17 +187,8 @@ namespace CRT
             this.InfoRegionText.Text = this._localRegion;
             this.InfoRegionBorder.IsVisible = this._hasExplicitRegionComponents;
 
-            this.InfoRegionBorder.Bind(
-                Border.BackgroundProperty,
-                this.GetResourceObservable($"{colorPrefix}_Bg"));
-
-            this.InfoRegionBorder.Bind(
-                Border.BorderBrushProperty,
-                this.GetResourceObservable($"{colorPrefix}_Border"));
-
-            this.InfoRegionText.Bind(
-                Avalonia.Controls.TextBlock.ForegroundProperty,
-                this.GetResourceObservable($"{colorPrefix}_Fg"));
+            // The board's own colors where it gives the region any (2026-11-11).
+            Handlers.Theming.RegionPaint.PaintLabel(this, this.InfoRegionBorder, this.InfoRegionText, colorPrefix, this.OwnColorsOf(this._localRegion));
         }
     }
 }

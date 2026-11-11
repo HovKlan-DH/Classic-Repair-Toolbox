@@ -71,21 +71,142 @@ namespace CRT
             this.RegionsListPanel.IsVisible = has;
             this.AddRegionPanel.IsVisible = has && regions.Count < BoardRegions.MostRegions;
 
-            // Every region's facts worked out in one go (BoardRegions.HoldingOf).
+            // Every region's facts worked out in one go (BoardRegions.HoldingOf) - and its colors: the board's own where it gives
+            // any (RegionColors, owner request 2026-11-11), else the ones CRT gives it, which the pickers start from.
             List<ComponentPaneRegionRow.Facts> wanted = BoardRegions.HoldingOf(board)
-                .Select(region => new ComponentPaneRegionRow.Facts(
-                    region.Region,
-                    region.Rows,
-                    region.CanDelete,
-                    RegionChoice.ColorsOf(regions, region.Region),
-                    region.Going))
+                .Select(region =>
+                {
+                    string colors = RegionChoice.ColorsOf(regions, region.Region);
+                    RegionColorEntry? own = RegionColors.RowOf(board, region.Region);
+
+                    return new ComponentPaneRegionRow.Facts(region.Region, region.Rows, region.CanDelete, colors, region.Going)
+                    {
+                        Components = region.Components,
+                        BoardFiles = region.BoardFiles,
+                        BoardLinks = region.BoardLinks,
+                        OwnBackground = RegionColors.Normalised(own?.Background),
+                        OwnText = RegionColors.Normalised(own?.Background) is null ? null : RegionColors.Normalised(own?.Text),
+                        DefaultBackground = this.ColorOfResource($"{colors}_Bg"),
+                        DefaultText = this.ColorOfResource($"{colors}_Fg"),
+                    };
+                })
                 .ToList();
 
-            InPlaceList.Sync(this.thisRegionRows, wanted, (row, facts) => row.Shows(facts), facts => new ComponentPaneRegionRow(facts));
+            this.thisShowingRegionRows = true;
 
-            for (int index = 0; index < wanted.Count && index < this.thisRegionRows.Count; index++)
+            try
             {
-                this.thisRegionRows[index].Use(wanted[index]);
+                InPlaceList.Sync(this.thisRegionRows, wanted, (row, facts) => row.Shows(facts), this.NewRegionRow);
+
+                for (int index = 0; index < wanted.Count && index < this.thisRegionRows.Count; index++)
+                {
+                    this.thisRegionRows[index].Use(wanted[index]);
+                }
+            }
+            finally
+            {
+                this.thisShowingRegionRows = false;
+            }
+        }
+
+        // True while the rows are given what the board holds - their colors changing then is nothing picked.
+        private bool thisShowingRegionRows;
+
+        // A row made for a region, its colors picked followed (OnRegionRowChanged).
+        private ComponentPaneRegionRow NewRegionRow(ComponentPaneRegionRow.Facts facts)
+        {
+            var row = new ComponentPaneRegionRow(facts);
+            row.PropertyChanged += this.OnRegionRowChanged;
+
+            return row;
+        }
+
+        // The color a theme resource gives - for a region's pickers to start from. Gray for none.
+        private Avalonia.Media.Color ColorOfResource(string key) =>
+            this.TryFindResource(key, this.ActualThemeVariant, out object? value) && value is Avalonia.Media.ISolidColorBrush brush
+                ? brush.Color
+                : Avalonia.Media.Colors.Gray;
+
+        // ###########################################################################################
+        // A REGION'S COLORS PICKED (owner request, 2026-11-11: "In "Board: Regions" I would like to be able to set the background
+        // color, and then you should calculate the complementary text color ... However, I would also like to be able to set the
+        // text color"): into the draft once picking pauses, as a picture's colors go (the typing timer, CommitRegionColors) - a
+        // picker dragged over its spectrum changes the color many times a second.
+        // ###########################################################################################
+        private void OnRegionRowChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            if (this.thisShowing || this.thisShowingRegionRows || !ComponentPaneRegionRow.IsColorChange(e.PropertyName))
+            {
+                return;
+            }
+
+            this.thisTypingTimer.Stop();
+            this.thisTypingTimer.Start();
+        }
+
+        // Every region's colors as their rows hold them, into the draft as ONE step - none when nothing changed.
+        internal void CommitRegionColors()
+        {
+            if (this.thisSession is not { } session)
+            {
+                return;
+            }
+
+            List<(string Name, string? Background, string? Text)> wanted = this.thisRegionRows
+                .Select(row => (row.Name, row.OwnBackground, row.OwnText))
+                .ToList();
+
+            BoardData Edit(BoardData board) =>
+                wanted.Aggregate(board, (current, region) => RegionColors.WithColors(current, region.Name, region.Background, region.Text));
+
+            if (ReferenceEquals(Edit(session.Content.Board), session.Content.Board))
+            {
+                return;
+            }
+
+            this.ChangeRegions(Edit, DraftStepWording.RegionColors);
+        }
+
+        // "Automatic text color": the region's text in the color that reads best on its background - one step.
+        private void OnAutomaticTextColorClick(object? sender, RoutedEventArgs e)
+        {
+            if (sender is Control { Tag: ComponentPaneRegionRow row })
+            {
+                this.thisTypingTimer.Stop();
+                row.UseAutomaticText();
+                this.CommitRegionColors();
+            }
+        }
+
+        // "Reset colors": the region back in the colors CRT gives it - one step.
+        private void OnResetRegionColorsClick(object? sender, RoutedEventArgs e)
+        {
+            if (sender is Control { Tag: ComponentPaneRegionRow row })
+            {
+                this.thisTypingTimer.Stop();
+                row.UseCrtColors();
+                this.CommitRegionColors();
+            }
+        }
+
+        // "Show all" and "Show fewer" under a region's components.
+        private void OnRegionShowAllClick(object? sender, RoutedEventArgs e)
+        {
+            if (sender is Control { Tag: ComponentPaneRegionRow row })
+            {
+                row.ShowAll = !row.ShowAll;
+            }
+        }
+
+        // A component a region is applied on, opened - in that region, so its rows of the region are the ones shown.
+        internal event EventHandler<(string Label, string Region)>? OpenComponentRequested;
+
+        private void OnRegionComponentClick(object? sender, RoutedEventArgs e)
+        {
+            if (sender is Control { Tag: ComponentPaneRegionComponent component })
+            {
+                this.CommitHeld();
+                this.OpenComponentRequested?.Invoke(this, (component.Label, component.Region));
             }
         }
 
@@ -95,11 +216,18 @@ namespace CRT
 
         internal void SetRegions(bool has) => this.ChangeRegions(board => BoardRegions.WithRegions(board, has));
 
-        private void ChangeRegions(Func<BoardData, BoardData> edit)
+        private void ChangeRegions(Func<BoardData, BoardData> edit, string step = DraftStepWording.Regions)
         {
             if (this.thisSession is { } session)
             {
-                this.Apply(DraftStepWording.Regions, edit);
+                // A color picked and not in the draft yet (the typing pause) goes in first, as its own step: the rows are
+                // given the board's colors again below, which would take it back without a word.
+                if (step != DraftStepWording.RegionColors)
+                {
+                    this.CommitRegionColors();
+                }
+
+                this.Apply(step, edit);
                 this.ShowRegionsPart(session.Content.Board);
                 this.ShowBoardPartChanged();
             }
@@ -654,16 +782,214 @@ namespace CRT
     // ###########################################################################################
     public sealed class ComponentPaneRegionRow : ComponentPaneDraggableRow
     {
+        // How many components it is applied on are named before "Show all" (owner request, 2026-11-11: "Can you show those
+        // components (all of them) if it is less than X components, and if it has more then it shows something like "... and
+        // <b>X</b> more - click to see all."" - 10, then 7 the same day: "maybe have 7 instead of 10").
+        public const int ComponentsNamedAtMost = 7;
+
+        // The height of a region's line: its pill and its two color pickers alike (owner request, 2026-11-11) - a picked region
+        // button's (12pt text, 4px padding, a 2px edge).
+        public const double LineHeight = 28;
+
+        // ###########################################################################################
         // What a row shows. The same NAME, the same row (InPlaceList), its facts changed in place (Use) - so a drag's row, and a
         // row the keyboard is in, survive the step they make (code review, 2026-11-09: moved, two regions swapped colors, their
         // rows were made again, and the focus Alt+Up had kept was lost).
-        public sealed record Facts(string Name, int Rows, bool CanDelete, string Colors, int Going = 0);
+        //
+        // Since 2026-11-11 also: the components its rows are of, and the board files and links with it applied (BoardRegions
+        // .RegionHolding); the colors the board gives it - "#RRGGBB", null for none - and the ones CRT gives it, which the
+        // pickers show while it has none.
+        // ###########################################################################################
+        public sealed record Facts(string Name, int Rows, bool CanDelete, string Colors, int Going = 0)
+        {
+            public IReadOnlyList<string> Components { get; init; } = [];
+
+            public int BoardFiles { get; init; }
+
+            public int BoardLinks { get; init; }
+
+            public string? OwnBackground { get; init; }
+
+            public string? OwnText { get; init; }
+
+            public Avalonia.Media.Color DefaultBackground { get; init; }
+
+            public Avalonia.Media.Color DefaultText { get; init; }
+        }
 
         private Facts thisFacts;
 
-        public ComponentPaneRegionRow(Facts facts) => this.thisFacts = facts;
+        // The colors as picked here, ahead of the draft until picking pauses - "#RRGGBB", null for none.
+        private string? thisBackground;
+        private string? thisText;
+        private bool thisShowAll;
+
+        public ComponentPaneRegionRow(Facts facts)
+        {
+            this.thisFacts = facts;
+            this.thisBackground = facts.OwnBackground;
+            this.thisText = facts.OwnText;
+        }
 
         public string Name => this.thisFacts.Name;
+
+        // ---- its colors (owner request, 2026-11-11) ----------------------------------------------------
+
+        // Whether a property is one of the colors a person picks - what goes into the draft once picking pauses.
+        public static bool IsColorChange(string? property) =>
+            property is nameof(ComponentPaneRegionRow.BackgroundColor) or nameof(ComponentPaneRegionRow.TextColor);
+
+        // The colors the board is to give it - null for the ones CRT gives it, and for a text worked out from the background.
+        public string? OwnBackground => this.thisBackground;
+
+        public string? OwnText => this.thisBackground is null ? null : this.thisText;
+
+        public bool HasOwnColors => this.thisBackground is not null;
+
+        public bool HasCrtColors => !this.HasOwnColors;
+
+        public bool HasOwnText => this.OwnText is not null;
+
+        // The background: the board's, else CRT's. Picking writes it - unless it is the color shown already, which a picker
+        // writes back as it opens (CLAUDE.md: "A picker writing back the colour it shows writes nothing").
+        public Avalonia.Media.Color BackgroundColor
+        {
+            get => ComponentPaneRegionRow.Parse(this.thisBackground) ?? this.thisFacts.DefaultBackground;
+            set
+            {
+                if (value == this.BackgroundColor)
+                {
+                    return;
+                }
+
+                this.thisBackground = ComponentPaneRegionRow.Hex(value);
+                this.RaiseColors();
+            }
+        }
+
+        // The text: the one set, else - with a background of the board's own - the one that reads best on it
+        // (RegionColors.ContrastText), else CRT's. Picked, it is set; picked while the region has CRT's colors, the background
+        // shown becomes the board's too, as the pair is the region's colors.
+        public Avalonia.Media.Color TextColor
+        {
+            get => ComponentPaneRegionRow.Parse(this.OwnText)
+                   ?? (this.thisBackground is { } background ? ComponentPaneRegionRow.Parse(RegionColors.ContrastText(background)) : null)
+                   ?? this.thisFacts.DefaultText;
+            set
+            {
+                if (value == this.TextColor)
+                {
+                    return;
+                }
+
+                this.thisBackground ??= ComponentPaneRegionRow.Hex(this.thisFacts.DefaultBackground);
+                this.thisText = ComponentPaneRegionRow.Hex(value);
+                this.RaiseColors();
+            }
+        }
+
+        public Avalonia.Media.IBrush BackgroundBrush => new Avalonia.Media.SolidColorBrush(this.BackgroundColor);
+
+        public Avalonia.Media.IBrush TextBrush => new Avalonia.Media.SolidColorBrush(this.TextColor);
+
+        // "Automatic text color": the text worked out from the background again.
+        public void UseAutomaticText()
+        {
+            this.thisText = null;
+            this.RaiseColors();
+        }
+
+        // "Reset colors": the colors CRT gives the region.
+        public void UseCrtColors()
+        {
+            this.thisBackground = null;
+            this.thisText = null;
+            this.RaiseColors();
+        }
+
+        private void RaiseColors()
+        {
+            foreach (string property in new[]
+                     {
+                         nameof(this.BackgroundColor), nameof(this.TextColor), nameof(this.BackgroundBrush), nameof(this.TextBrush),
+                         nameof(this.HasOwnColors), nameof(this.HasCrtColors), nameof(this.HasOwnText), nameof(this.OwnBackground),
+                         nameof(this.OwnText),
+                     })
+            {
+                this.Raise(property);
+            }
+        }
+
+        private static Avalonia.Media.Color? Parse(string? hex) =>
+            RegionColors.Normalised(hex) is { } color && Avalonia.Media.Color.TryParse(color, out Avalonia.Media.Color parsed) ? parsed : null;
+
+        private static string Hex(Avalonia.Media.Color color) =>
+            string.Create(System.Globalization.CultureInfo.InvariantCulture, $"#{color.R:X2}{color.G:X2}{color.B:X2}");
+
+        // ---- what it is applied on (owner request, 2026-11-11) -------------------------------------------
+
+        // The components it is applied on, as buttons opening each - the first ComponentsNamedAtMost unless all are asked for.
+        public IReadOnlyList<ComponentPaneRegionComponent> ComponentsShown =>
+            this.thisFacts.Components
+                .Take(this.thisShowAll ? int.MaxValue : ComponentPaneRegionRow.ComponentsNamedAtMost)
+                .Select(label => new ComponentPaneRegionComponent(label, this.Name))
+                .ToList();
+
+        public bool HasComponents => this.thisFacts.Components.Count > 0;
+
+        // What the line under "Applied on:" holds: the components shown, then - while there are more than are named at first -
+        // "... and <b>N</b> more" with "Show all" (or "Show fewer") as its last item, on the same line (owner request,
+        // 2026-11-11).
+        public IReadOnlyList<object> ChipsShown =>
+            this.CanShowAll
+                ? [.. this.ComponentsShown, new ComponentPaneRegionMore(this.MoreText, this.ShowAllText, this)]
+                : [.. this.ComponentsShown];
+
+        // "... and <b>4</b> more" while some are not named - nothing once all are.
+        public string MoreText => this.HiddenComponents > 0
+            ? $"... and <b>{this.HiddenComponents.ToString(System.Globalization.CultureInfo.InvariantCulture)}</b> more"
+            : string.Empty;
+
+        public bool HasMore => this.HiddenComponents > 0;
+
+        // Offered whenever there are more than are named at first: "Show all" or, once shown, "Show fewer".
+        public bool CanShowAll => this.thisFacts.Components.Count > ComponentPaneRegionRow.ComponentsNamedAtMost;
+
+        public string ShowAllText => this.thisShowAll ? "Show fewer" : "Show all";
+
+        private int HiddenComponents => this.thisShowAll ? 0 : Math.Max(0, this.thisFacts.Components.Count - ComponentPaneRegionRow.ComponentsNamedAtMost);
+
+        public bool ShowAll
+        {
+            get => this.thisShowAll;
+            set
+            {
+                if (this.thisShowAll == value)
+                {
+                    return;
+                }
+
+                this.thisShowAll = value;
+                this.RaiseComponents();
+            }
+        }
+
+        // "Also on <b>1</b> board file and <b>2</b> board links." - nothing when none.
+        public string BoardRowsText => ComponentPaneWording.RegionOnBoardRows(this.thisFacts.BoardFiles, this.thisFacts.BoardLinks);
+
+        public bool HasBoardRows => this.BoardRowsText.Length > 0;
+
+        private void RaiseComponents()
+        {
+            foreach (string property in new[]
+                     {
+                         nameof(this.ComponentsShown), nameof(this.ChipsShown), nameof(this.HasComponents), nameof(this.MoreText), nameof(this.HasMore),
+                         nameof(this.CanShowAll), nameof(this.ShowAllText), nameof(this.BoardRowsText), nameof(this.HasBoardRows),
+                     })
+            {
+                this.Raise(property);
+            }
+        }
 
         public bool CanDelete => this.thisFacts.CanDelete;
 
@@ -697,12 +1023,17 @@ namespace CRT
         // The row's facts as they now are - its colors, whether it can go and why not.
         public void Use(Facts facts)
         {
-            if (this.thisFacts == facts)
+            // The same facts: nothing raised, so its chips are not made again. Its components are compared by what they say -
+            // HoldingOf hands a new list every time, and the record compared it by reference (code review, 2026-11-11).
+            if (this.thisFacts == facts with { Components = this.thisFacts.Components } &&
+                this.thisFacts.Components.SequenceEqual(facts.Components, StringComparer.Ordinal))
             {
                 return;
             }
 
             this.thisFacts = facts;
+            this.thisBackground = facts.OwnBackground;
+            this.thisText = facts.OwnText;
 
             foreach (string property in new[]
                      {
@@ -712,6 +1043,18 @@ namespace CRT
             {
                 this.Raise(property);
             }
+
+            this.RaiseColors();
+            this.RaiseComponents();
         }
+    }
+
+    // One component a region is applied on, as a button on "Board: Regions" - opening it in that region.
+    public sealed record ComponentPaneRegionComponent(string Label, string Region);
+
+    // The end of that line: "... and <b>N</b> more" (empty once all are shown) and "Show all" or "Show fewer" for `Row`.
+    public sealed record ComponentPaneRegionMore(string Text, string ShowAllText, ComponentPaneRegionRow Row)
+    {
+        public bool HasText => this.Text.Length > 0;
     }
 }

@@ -456,11 +456,11 @@ public sealed class ComponentPaneEditsTests
         Assert.Same(before, ComponentPaneEdits.WithReplacements(before, "U8", "PAL", [new ComponentReplacementEntry { PartNumber = " 8500 ", Kind = "Drop-in replacement" }]));
     }
 
-    // A link with no region is the component's in every region, so it is a row of the region shown.
+    // The component's links replaced in their own place, a row with nothing in it left out.
     [Fact]
     public void Links_replace_the_components_links_in_place()
     {
-        BoardData after = ComponentPaneEdits.WithLinks(Board(), "U8", "PAL",
+        BoardData after = ComponentPaneEdits.WithAllLinks(Board(), "U8",
         [
             new ComponentLinkEntry { Name = "Datasheet", Url = "https://example.org/6510.pdf" },
             new ComponentLinkEntry { Name = "Pinout", Url = "https://example.org/pinout" },
@@ -475,8 +475,8 @@ public sealed class ComponentPaneEditsTests
     {
         BoardData before = Board();
 
-        Assert.Same(before, ComponentPaneEdits.WithLinks(before, "U8", "PAL", [new ComponentLinkEntry { Name = "Datasheet", Url = "https://example.org/6510.pdf" }]));
-        Assert.Same(before, ComponentPaneEdits.WithLinks(before, " ", "PAL", [new ComponentLinkEntry { Name = "x", Url = "y" }]));
+        Assert.Same(before, ComponentPaneEdits.WithAllLinks(before, "U8", [new ComponentLinkEntry { Name = "Datasheet", Url = "https://example.org/6510.pdf" }]));
+        Assert.Same(before, ComponentPaneEdits.WithAllLinks(before, " ", [new ComponentLinkEntry { Name = "x", Url = "y" }]));
     }
 
     // ###########################################################################################
@@ -503,7 +503,7 @@ public sealed class ComponentPaneEditsTests
 
         Assert.Same(before, ComponentPaneEdits.WithPins(before, "U8", "PAL", ComponentPaneEdits.PinsOf(before, "U8", "PAL")));
         Assert.Same(before, ComponentPaneEdits.WithReplacements(before, "U8", "PAL", ComponentPaneEdits.ReplacementsOf(before, "U8", "PAL")));
-        Assert.Same(before, ComponentPaneEdits.WithLinks(before, "U8", "PAL", ComponentPaneEdits.LinksOf(before, "U8", "PAL")));
+        Assert.Same(before, ComponentPaneEdits.WithAllLinks(before, "U8", ComponentPaneEdits.AllLinksOf(before, "U8")));
 
         BoardData changed = ComponentPaneEdits.WithPins(before, "U8", "PAL", [new ComponentPinEntry { Pin = "1", Name = "GND" }]);
         Assert.Equal("u8", Assert.Single(changed.ComponentPins).BoardLabel);
@@ -930,43 +930,6 @@ public sealed class ComponentPaneEditsTests
             new ComponentLinkEntry { BoardLabel = "U8", Region = "NTSC", Name = "NTSC page", Url = "https://example.org/b" },
         ],
     };
-
-    [Fact]
-    public void A_region_lists_its_own_links_and_those_for_every_region()
-    {
-        BoardData board = BoardWithRegionalFilesAndLinks();
-
-        Assert.Equal(["Forum"], ComponentPaneEdits.LinksOf(board, "U8", "PAL").Select(row => row.Name));
-        Assert.Equal(["Forum", "NTSC page"], ComponentPaneEdits.LinksOf(board, "U8", "NTSC").Select(row => row.Name));
-    }
-
-    // What the pane holds is the region shown's: the other region's rows are never touched by it.
-    [Fact]
-    public void Changing_what_a_region_shows_leaves_the_other_regions_rows()
-    {
-        BoardData board = BoardWithRegionalFilesAndLinks();
-
-        BoardData after = ComponentPaneEdits.WithLinks(board, "U8", "PAL",
-        [
-            new ComponentLinkEntry { Region = "PAL", Name = "PAL page", Url = "https://example.org/c" },
-        ]);
-
-        Assert.Equal(["PAL page", "NTSC page"], after.ComponentLinks.Select(row => row.Name));
-        Assert.Equal("NTSC", after.ComponentLinks[1].Region);
-    }
-
-    // A row's own "Applies to" moves it, and is a change.
-    [Fact]
-    public void A_file_or_a_link_moved_to_another_region_is_a_change_and_keeps_its_region()
-    {
-        BoardData board = BoardWithRegionalFilesAndLinks();
-
-        BoardData after = ComponentPaneEdits.WithLinks(board, "U8", "PAL", [new ComponentLinkEntry { Region = " PAL ", Name = "Forum", Url = "https://example.org/a" }]);
-
-        Assert.NotSame(board, after);
-        Assert.Equal("PAL", after.ComponentLinks.Single(row => row.Name == "Forum").Region);
-        Assert.Same(board, ComponentPaneEdits.WithLinks(board, "U8", "PAL", ComponentPaneEdits.LinksOf(board, "U8", "PAL")));
-    }
 
     // Reordered, by the handle or Alt+Up: the order goes into the draft.
     [Fact]

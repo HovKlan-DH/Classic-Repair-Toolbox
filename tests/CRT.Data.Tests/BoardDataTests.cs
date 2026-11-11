@@ -36,6 +36,7 @@ public sealed class BoardDataTests
         ComponentPins = [new ComponentPinEntry { BoardLabel = "U1", Pin = "1" }],
         ComponentReplacements = [new ComponentReplacementEntry { BoardLabel = "U1", PartNumber = "6526A" }],
         Regions = ["PAL", "NTSC"],
+        RegionColors = [new RegionColorEntry { Region = "PAL", Background = "#1F3A93" }],
     };
 
     [Fact]

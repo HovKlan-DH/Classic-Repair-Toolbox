@@ -228,6 +228,7 @@ namespace Handlers.DataHandling
 
                     // A workbook has no such field - its rows decide (BoardRegions).
                     Regions = [],
+                    RegionColors = [],
                 };
             }
             catch (Exception ex)

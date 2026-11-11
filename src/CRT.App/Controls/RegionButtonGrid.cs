@@ -48,7 +48,27 @@ namespace CRT
         // button's Tag is its region, an own one's colors RegionChoice's; every button not taken is hidden. Where each stands
         // is the caller's.
         // ###########################################################################################
-        public static List<Button> ButtonsFor(IReadOnlyList<string> regions, Button pal, Button ntsc, List<Button> own, Func<Button> make, Panel host)
+        public static List<Button> ButtonsFor(
+            IReadOnlyList<string> regions,
+            Button pal,
+            Button ntsc,
+            List<Button> own,
+            Func<Button> make,
+            Panel host,
+            Func<string, (string Background, string Text)?>? colorsOf = null)
+        {
+            List<Button> buttons = RegionButtonGrid.ButtonsOf(regions, pal, ntsc, own, make, host);
+
+            // The board's own colors where it gives a region any (owner request, 2026-11-11; RegionColors) - else the region's.
+            foreach (Button button in buttons)
+            {
+                Handlers.Theming.RegionPaint.UseBoardColors(button, colorsOf?.Invoke(button.Tag as string ?? string.Empty));
+            }
+
+            return buttons;
+        }
+
+        private static List<Button> ButtonsOf(IReadOnlyList<string> regions, Button pal, Button ntsc, List<Button> own, Func<Button> make, Panel host)
         {
             ArgumentNullException.ThrowIfNull(regions);
             ArgumentNullException.ThrowIfNull(own);
@@ -95,8 +115,21 @@ namespace CRT
             return buttons;
         }
 
-        // A block for an own region's name that wraps rather than being cut (the render, 2026-11-09) - made once with its button.
-        public static TextBlock NameBlock() => new() { TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center };
+        // ###########################################################################################
+        // A block for an own region's name that wraps rather than being cut (the render, 2026-11-09) - made once with its button,
+        // and IN ITS BUTTON'S TEXT COLOR (owner report, 2026-11-11: "in the left-side panel, then the text color is not the same
+        // as in "Board: Regions""): App.axaml's style for every TextBlock paints one in the window's text color, over what the
+        // button lit in its region's colors says - black on the green of a region of the board's own.
+        // ###########################################################################################
+        public static TextBlock NameBlock(Button owner)
+        {
+            ArgumentNullException.ThrowIfNull(owner);
+
+            var block = new TextBlock { TextWrapping = TextWrapping.Wrap, TextAlignment = TextAlignment.Center };
+            block.Bind(TextBlock.ForegroundProperty, owner.GetObservable(Avalonia.Controls.Primitives.TemplatedControl.ForegroundProperty));
+
+            return block;
+        }
 
         // `text` on `button` - in its name block when it has one, set only where it differs, so nothing is made again.
         public static void ShowText(Button button, string text)

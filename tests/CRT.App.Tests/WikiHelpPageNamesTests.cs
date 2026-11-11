@@ -33,6 +33,7 @@ public class WikiHelpPageNamesTests
         new object[] { AppConfig.WikiPageScopeSync, "Component popup, oscilloscope synchronization" },
         new object[] { AppConfig.WikiPageMaintainer, "Configuration tab, \"?\" beside \"Enable \"Maintainer\" tab\"" },
         new object[] { AppConfig.WikiPageViewOnlineSource, "Configuration tab, \"?\" beside \"View boards as published online\"" },
+        new object[] { AppConfig.WikiPageTableView, "The table view's toolbar, \"Learn more\" beside \"Replace\"" },
     };
 
     // The whole point: a renamed or deleted page leaves the button opening a URL that resolves to

@@ -790,6 +790,7 @@ namespace Handlers.DataHandling
                     ? BoardWorkbookSchema.MapComponentReplacements(materialised)
                     : data.ComponentReplacements,
                 Regions = data.Regions,
+                RegionColors = data.RegionColors,
             };
         }
     }

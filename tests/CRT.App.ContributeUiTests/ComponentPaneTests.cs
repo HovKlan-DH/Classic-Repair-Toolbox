@@ -393,6 +393,47 @@ public sealed class ComponentPaneTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // Owner request, 2026-11-11: "if I manually create/change a package in the table view - e.g. from "Disc" to "Diskette",
+    // then in UI view I should be able to use this new "Diskette" value also in the drop-down. Use the same behaviour for the
+    // "Direction" drop-down". A change made elsewhere (the table) with a package and a direction CRT does not offer: both are
+    // offered in the pane at once, after the usual words - and the pin keeps showing its own direction.
+    // ###########################################################################################
+    [Fact]
+    public void A_package_and_a_direction_typed_in_the_table_are_offered_in_the_pane_too()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+
+            Assert.DoesNotContain("Diskette", pane.PackageChoicesForTests);
+
+            session.Apply("Elsewhere", content =>
+            {
+                BoardData board = ComponentPaneEdits.WithField(content.Board, "U1", "PAL", ComponentField.Package, "Diskette");
+                board = ComponentPaneEdits.WithPins(board, "U1", "PAL", [new ComponentPinEntry { Pin = "1", Name = "D0", Direction = "Open collector" }]);
+                return content with { Board = board };
+            });
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal([.. ComponentVocabulary.Packages, "Diskette"], pane.PackageChoicesForTests);
+
+            ComponentPanePinRow row = Assert.Single(Get<ItemsControl>(pane, "PinsItemsControl").Items.OfType<ComponentPanePinRow>());
+            Assert.Equal(["Not connected", "Input", "Output", "Input/output", "Ground", "Power", "Other", "Open collector", "Unknown"], row.DirectionChoices);
+            Assert.Equal("Ground", row.Direction);
+
+            // Picked in the pane, it goes into the draft as any word does.
+            row.Direction = "Open collector";
+            pane.CommitHeld();
+
+            Assert.Equal("Open collector", ComponentPaneEdits.PinsOf(session.Content.Board, "U8", "PAL").Single().Direction);
+
+            window.Close();
+        });
+    }
+
     [Fact]
     public void Removing_a_pin_takes_it_out_of_the_draft()
     {
@@ -440,7 +481,7 @@ public sealed class ComponentPaneTests : IDisposable
 
             ComponentReplacementEntry saved = Assert.Single(ComponentPaneEdits.ReplacementsOf(session.Content.Board, "U8", "PAL"));
             Assert.Equal("8500|Drop-in replacement", $"{saved.PartNumber}|{saved.Kind}");
-            Assert.Equal(["Datasheet", "Pinout"], ComponentPaneEdits.LinksOf(session.Content.Board, "U8", "PAL").Select(row => row.Name));
+            Assert.Equal(["Datasheet", "Pinout"], ComponentPaneEdits.AllLinksOf(session.Content.Board, "U8").Select(row => row.Name));
 
             pane.ShowPage(ComponentPage.Replacements);
             Dispatcher.UIThread.RunJobs();
@@ -3236,22 +3277,7 @@ public sealed class ComponentPaneTests : IDisposable
         });
     }
 
-    // ---- copy from another board (slice 5) -------------------------------------------------------
-
-    // The PLA of another board, with its package, pins and a replacement part.
-    private static ComponentCopySource OtherPla() =>
-        ComponentCopy.Sources(
-            [(
-                "Commodore 64 - 250425",
-                new BoardData
-                {
-                    Components = [new ComponentEntry { BoardLabel = "U7", FriendlyName = "PLA", PartNumber = "906114-01", Category = "IC", Package = "DIP-28" }],
-                    ComponentPins = [new ComponentPinEntry { BoardLabel = "U7", Pin = "28", Name = "VCC", Direction = "Power" }],
-                    ComponentReplacements = [new ComponentReplacementEntry { BoardLabel = "U7", PartNumber = "PLAnkton", Kind = "Drop-in replacement" }],
-                }
-            )],
-            "906114-01",
-            "PAL")[0];
+    // ---- clone from another board ----------------------------------------------------------------
 
     // ###########################################################################################
     // "Clone component from another board": picked by hardware, board and component, shown what it is,
@@ -3508,65 +3534,6 @@ public sealed class ComponentPaneTests : IDisposable
         });
     }
 
-    // ###########################################################################################
-    // "Also on other boards": offered once the draft changes this component and it has a part number;
-    // the panel lists the same part's boards, every one ticked, and what the draft changed - and hands
-    // what is ticked to the host, saying what came of it.
-    // ###########################################################################################
-    [Fact]
-    public async Task Also_on_other_boards_hands_the_ticked_boards_and_changes_to_the_host()
-    {
-        DraftSession session = this.OpenDraft();
-
-        await UiTest.RunAsync(async () =>
-        {
-            (ComponentPane pane, Window window) = Shown(session);
-            Button also = Get<Button>(pane, "AlsoOnOtherBoardsButton");
-            Assert.False(also.IsVisible);
-
-            var handed = new List<(string Label, List<string> Boards, List<ComponentCopyPart> Parts)>();
-            var searched = new List<string>();
-            pane.FindAlsoTargets = (partNumber, region, files) =>
-            {
-                searched.Add($"{partNumber}|{region}|{files.Count}");
-                return Task.FromResult(new AlsoTargets([OtherPla(), OtherPla() with { BoardName = "Commodore 64 - 250469" }], []));
-            };
-            pane.ApplyToOtherBoards = (here, targets, parts, files) =>
-            {
-                Assert.Empty(files);
-                handed.Add((here!.Row.BoardLabel, targets.Select(target => target.BoardName).ToList(), parts.ToList()));
-                return Task.FromResult("Changed on 1 board, in its own draft: Commodore 64 - 250425.");
-            };
-
-            Get<TextBox>(pane, "PartNumberBox").Text = "906114-01";
-            Get<TextBox>(pane, "DescriptionBox").Text = "Socket it";
-            pane.CommitHeld();
-            Assert.True(also.IsVisible);
-
-            await pane.OpenAlsoPanelAsync();
-
-            // One search of the other boards, for the part and its files at once.
-            Assert.Equal(["906114-01|PAL|0"], searched);
-            Assert.True(pane.IsAlsoPanelOpen);
-            List<CheckBox> boards = Get<StackPanel>(pane, "AlsoBoardsPanel").Children.OfType<CheckBox>().ToList();
-            Assert.Equal(2, boards.Count);
-            Assert.All(boards, box => Assert.True(box.IsChecked));
-            Assert.Equal(["Other technical details"], Get<StackPanel>(pane, "AlsoPartsPanel").Children.OfType<CheckBox>().Select(box => box.Content as string));
-
-            boards[1].IsChecked = false;
-            await pane.ChangeOtherBoardsAsync();
-
-            (string label, List<string> handedBoards, List<ComponentCopyPart> handedParts) = Assert.Single(handed);
-            Assert.Equal("U8", label);
-            Assert.Equal(["Commodore 64 - 250425"], handedBoards);
-            Assert.Equal([ComponentCopyPart.Description], handedParts);
-            Assert.False(pane.IsAlsoPanelOpen);
-            Assert.Equal("Changed on 1 board, in its own draft: Commodore 64 - 250425.", Get<TextBlock>(pane, "PaneMessageText").Text);
-
-            window.Close();
-        });
-    }
-
     // No board to pick from says so; a board that cannot be read says so and offers no "Clone".
     [Fact]
     public async Task Cloning_says_why_when_there_is_nothing_to_clone_from()
@@ -3722,254 +3689,6 @@ public sealed class ComponentPaneTests : IDisposable
             Assert.False(pane.IsClonePanelOpen);
             Assert.False(await pane.ClonePickedAsync());
             Assert.False(session.CanUndo);
-
-            window.Close();
-        });
-    }
-
-    // ---- also on other boards, for files ------------------------------------------------------
-
-    // A published board's own board file, listing `files` - what the draft's files are compared with.
-    private string PublishedBoardFile(BoardData board, params (string Name, byte[] Bytes)[] files)
-    {
-        string path = Path.Combine(this.thisWorkspace.Root, "Published", Guid.NewGuid().ToString("N"), DataTreeLayout.BoardFileName);
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-
-        BoardFiles.Write(path, BoardDocumentMapping.ToDocument(
-            new BoardContent(board, [], []),
-            name => name,
-            files.Select(file => new BoardDocument.StoredFileRow
-            {
-                Name = file.Name,
-                Sha256 = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(file.Bytes)),
-                Size = file.Bytes.Length,
-            }).ToList()));
-
-        return path;
-    }
-
-    // ###########################################################################################
-    // "Also on other boards" for a file (the plan: "This datasheet is also used by 11 other boards -
-    // change it there too?"): a datasheet replaced is offered - with no part number at all - to the
-    // boards the host finds with the same file, each ticked, and handed over as files alone.
-    // ###########################################################################################
-    [Fact]
-    public async Task A_datasheet_replaced_is_offered_to_the_boards_with_the_same_file()
-    {
-        DraftSession session = this.OpenDraftWithFiles();
-        BoardData published = PublishedWithFiles();
-        string publishedFile = this.PublishedBoardFile(
-            published,
-            ("Component images/U8.png", ComponentPaneTests.Png),
-            ("Scope baseline/U8_1.png", ComponentPaneTests.Png),
-            ("Component local files/6510.pdf", [37, 80, 68, 70]));
-        string picked = this.Pickable("6510 rev B.pdf", [37, 80, 68, 70, 66]);
-
-        await UiTest.RunAsync(async () =>
-        {
-            var pane = new ComponentPane { AutoSave = false };
-            var window = new Window { Content = pane, Width = 1100, Height = 1400 };
-            window.Show();
-            pane.Show(session, "U8", "PAL", published, publishedFile);
-            Dispatcher.UIThread.RunJobs();
-
-            Button also = Get<Button>(pane, "AlsoOnOtherBoardsButton");
-            Assert.False(also.IsVisible);
-
-            var asked = new List<ChangedFile>();
-            pane.FindAlsoTargets = (partNumber, _, files) =>
-            {
-                Assert.Equal(string.Empty, partNumber);
-                asked.AddRange(files);
-                return Task.FromResult(new AlsoTargets(
-                    [],
-                    [new ChangedFileElsewhere(files[0], "Commodore 64 - 250425", "Commodore/C64/250425/board.json", "Component local files/6510.pdf")]));
-            };
-
-            var handed = new List<ChangedFileElsewhere>();
-            pane.ApplyToOtherBoards = (here, targets, parts, files) =>
-            {
-                Assert.Empty(targets);
-                Assert.Empty(parts);
-                handed.AddRange(files);
-                return Task.FromResult("Changed on 1 board, in its own draft: Commodore 64 - 250425.");
-            };
-
-            pane.PickFileOverrideForTests = _ => Task.FromResult<string?>(picked);
-            await pane.ChangeFileAsync(pane.FilesForTests[0]);
-
-            // No part number: the file replaced is enough to look for.
-            Assert.True(also.IsVisible);
-
-            await pane.OpenAlsoPanelAsync();
-
-            ChangedFile datasheet = Assert.Single(asked);
-            Assert.Equal(("Datasheet", "Component local files/6510.pdf"), (datasheet.RowName, datasheet.PublishedName));
-            Assert.False(Get<StackPanel>(pane, "AlsoPartsSection").IsVisible);
-            Assert.True(Get<StackPanel>(pane, "AlsoFilesSection").IsVisible);
-
-            StackPanel filesPanel = Get<StackPanel>(pane, "AlsoFilesPanel");
-            Assert.Equal("Datasheet (6510.pdf)", Assert.Single(filesPanel.Children.OfType<TextBlock>()).Text);
-            Assert.True(Assert.Single(filesPanel.Children.OfType<CheckBox>()).IsChecked);
-
-            await pane.ChangeOtherBoardsAsync();
-
-            Assert.Equal("Commodore 64 - 250425", Assert.Single(handed).BoardName);
-            Assert.False(pane.IsAlsoPanelOpen);
-            Assert.Equal("Changed on 1 board, in its own draft: Commodore 64 - 250425.", Get<TextBlock>(pane, "PaneMessageText").Text);
-
-            window.Close();
-        });
-    }
-
-    // ###########################################################################################
-    // Nothing found for a file replaced on a component WITH a part number, whose other parts are as
-    // published: no search by part number ran, so none is said to have found nothing (code review,
-    // 2026-10-26: "No other board ... has a component with the part number [6510]" - never looked for).
-    // ###########################################################################################
-    [Fact]
-    public async Task Nothing_found_for_a_file_alone_says_nothing_of_the_part_number()
-    {
-        DraftSession session = this.OpenDraftWithFiles();
-        BoardData published = PublishedWithFiles();
-        published.Components[0] = new ComponentEntry { BoardLabel = "U8", FriendlyName = "CPU", TechnicalNameOrValue = "6510", Category = "IC", Description = "The processor", PartNumber = "6510" };
-        string publishedFile = this.PublishedBoardFile(published, ("Component local files/6510.pdf", [37, 80, 68, 70]));
-        string picked = this.Pickable("6510 rev B.pdf", [37, 80, 68, 70, 66]);
-
-        session.Apply("Part number", content => content with { Board = ComponentPaneEdits.WithField(content.Board, "U8", "PAL", ComponentField.PartNumber, "6510") });
-
-        await UiTest.RunAsync(async () =>
-        {
-            var pane = new ComponentPane { AutoSave = false };
-            var window = new Window { Content = pane, Width = 1100, Height = 1400 };
-            window.Show();
-            pane.Show(session, "U8", "PAL", published, publishedFile);
-            Dispatcher.UIThread.RunJobs();
-
-            var partsAsked = new List<string>();
-            pane.FindAlsoTargets = (partNumber, _, _) =>
-            {
-                partsAsked.Add(partNumber);
-                return Task.FromResult(AlsoTargets.None);
-            };
-            pane.PickFileOverrideForTests = _ => Task.FromResult<string?>(picked);
-
-            await pane.ChangeFileAsync(pane.FilesForTests[0]);
-            await pane.OpenAlsoPanelAsync();
-
-            // Nothing of the part changed: it is not looked for.
-            Assert.Equal([string.Empty], partsAsked);
-            Assert.Equal("No other board on this machine has the files you replaced.", Get<TextBlock>(pane, "PaneMessageText").Text);
-
-            window.Close();
-        });
-    }
-
-    // ###########################################################################################
-    // A part changed AND a file replaced, with no other board having the part but some having the
-    // file: the panel offers the file - and says the part was not found (code review, 2026-10-26: the
-    // part's section was hidden without a word, and the notes were expected to go across too).
-    // ###########################################################################################
-    [Fact]
-    public async Task A_part_no_other_board_has_is_said_while_its_files_are_offered()
-    {
-        DraftSession session = this.OpenDraftWithFiles();
-        BoardData published = PublishedWithFiles();
-        published.Components[0] = new ComponentEntry { BoardLabel = "U8", FriendlyName = "CPU", TechnicalNameOrValue = "6510", Category = "IC", Description = "The processor", PartNumber = "6510" };
-        string publishedFile = this.PublishedBoardFile(published, ("Component local files/6510.pdf", [37, 80, 68, 70]));
-        string picked = this.Pickable("6510 rev B.pdf", [37, 80, 68, 70, 66]);
-
-        session.Apply("Part number", content => content with { Board = ComponentPaneEdits.WithField(content.Board, "U8", "PAL", ComponentField.PartNumber, "6510") });
-
-        await UiTest.RunAsync(async () =>
-        {
-            var pane = new ComponentPane { AutoSave = false };
-            var window = new Window { Content = pane, Width = 1100, Height = 1400 };
-            window.Show();
-            pane.Show(session, "U8", "PAL", published, publishedFile);
-            Dispatcher.UIThread.RunJobs();
-
-            pane.FindAlsoTargets = (_, _, files) => Task.FromResult(new AlsoTargets(
-                [],
-                [new ChangedFileElsewhere(files[0], "Commodore 64 - 250425", "Commodore/C64/250425/board.json", "Component local files/6510.pdf")]));
-            pane.PickFileOverrideForTests = _ => Task.FromResult<string?>(picked);
-
-            Get<TextBox>(pane, "DescriptionBox").Text = "Runs hot";
-            pane.CommitHeld();
-            await pane.ChangeFileAsync(pane.FilesForTests[0]);
-            await pane.OpenAlsoPanelAsync();
-
-            Assert.True(pane.IsAlsoPanelOpen);
-            Assert.False(Get<StackPanel>(pane, "AlsoPartsSection").IsVisible);
-            Assert.Equal(ComponentPaneWording.CopyFoundNothing("6510"), Get<TextBlock>(pane, "PaneMessageText").Text);
-
-            window.Close();
-        });
-    }
-
-    // ###########################################################################################
-    // The board's own files under Files and links: nothing to offer until one is replaced, then the
-    // button, the boards with the same file ticked, and the files alone handed to the host.
-    // ###########################################################################################
-    [Fact]
-    public async Task A_board_file_replaced_is_offered_to_the_boards_with_the_same_file()
-    {
-        BoardData board = WithBoardParts();
-        byte[] manual = [37, 80, 68, 70, 77];
-
-        Directory.CreateDirectory(this.DraftFolder);
-        BoardFiles.Write(this.BoardFile, BoardDocumentMapping.ToDocument(
-            new BoardContent(board, [], []),
-            name => name,
-            [this.Stored("Board local files/manual.pdf", manual)]));
-
-        DraftSession session = DraftSession.Open(this.DraftsRoot, ComponentPaneTests.BoardKey)!;
-        string publishedFile = this.PublishedBoardFile(WithBoardParts(), ("Board local files/manual.pdf", manual));
-        string picked = this.Pickable("manual 2nd edition.pdf", [37, 80, 68, 70, 50]);
-
-        await UiTest.RunAsync(async () =>
-        {
-            var pane = new ComponentPane { AutoSave = false };
-            var window = new Window { Content = pane, Width = 1100, Height = 1400 };
-            window.Show();
-            pane.ShowBoardPart(session, PaneBoardPart.Files, WithBoardParts(), publishedFile);
-            Dispatcher.UIThread.RunJobs();
-
-            Button also = Get<Button>(pane, "BoardFilesAlsoButton");
-            Assert.False(also.IsVisible);
-
-            await pane.OpenBoardAlsoPanelAsync();
-            Assert.Equal(ComponentPaneWording.AlsoBoardFilesNothingChanged, Get<TextBlock>(pane, "PaneMessageText").Text);
-
-            pane.FindAlsoTargets = (_, _, files) => Task.FromResult(new AlsoTargets(
-                [],
-                [new ChangedFileElsewhere(files[0], "Commodore 64 - 250425", "Commodore/C64/250425/board.json", "Board local files/C64 manual.pdf")]));
-
-            var handed = new List<(ComponentCopySource? Here, ChangedFileElsewhere File)>();
-            pane.ApplyToOtherBoards = (here, _, _, files) =>
-            {
-                handed.AddRange(files.Select(file => (here, file)));
-                return Task.FromResult("Changed on 1 board, in its own draft: Commodore 64 - 250425.");
-            };
-
-            pane.PickFileOverrideForTests = _ => Task.FromResult<string?>(picked);
-            await pane.ChangeBoardFileAsync(pane.BoardFilesForTests.Single(row => row.Name == "Service manual"));
-
-            Assert.True(also.IsVisible);
-
-            await pane.OpenBoardAlsoPanelAsync();
-
-            Assert.True(pane.IsBoardAlsoPanelOpen);
-            StackPanel filesPanel = Get<StackPanel>(pane, "BoardAlsoFilesPanel");
-            Assert.Equal("Service manual (manual.pdf)", Assert.Single(filesPanel.Children.OfType<TextBlock>()).Text);
-            Assert.Equal("Commodore 64 - 250425 - as C64 manual.pdf", Assert.Single(filesPanel.Children.OfType<CheckBox>()).Content);
-
-            await pane.ChangeBoardFilesOnOtherBoardsAsync();
-
-            (ComponentCopySource? here, ChangedFileElsewhere file) = Assert.Single(handed);
-            Assert.Null(here);
-            Assert.Equal("Board local files/C64 manual.pdf", file.NameThere);
-            Assert.False(pane.IsBoardAlsoPanelOpen);
 
             window.Close();
         });
@@ -5899,8 +5618,8 @@ public sealed class ComponentPaneTests : IDisposable
     }
 
     // ###########################################################################################
-    // WHAT THE PANE SAID OF ONE COMPONENT GOES WITH IT: "Moved to NTSC", what a clone came to or an
-    // "Also on other boards" outcome stayed under the title of the next one. A read-again
+    // WHAT THE PANE SAID OF ONE COMPONENT GOES WITH IT: "Moved to NTSC" or what a clone came to stayed
+    // under the title of the next one. A read-again
     // of the same component keeps it - what it says may be what that very read-again followed.
     // ###########################################################################################
     [Fact]

@@ -81,4 +81,80 @@ public sealed class ServerVersionDisplayTests
         Assert.Equal(3, ServerVersionDisplay.Lines("1.1.0", 1, 1, unsentMails: 0).Count);
         Assert.Equal(3, ServerVersionDisplay.Lines("1.1.0", 1, 1, unsentMails: null).Count);
     }
+
+    // ###########################################################################################
+    // *** HOW THE SERVER KEEPS ITSELF UP TO DATE (owner request, 2026-11-09: "it could show the status in
+    // 'Maintainer' => 'Account' => 'Server version'"). *** After the version lines: which builds it installs,
+    // its last look with the updater's own sentence, and the last build it installed - the values bold.
+    // Times in local time, so these are made in local time and read the same on every machine.
+    // ###########################################################################################
+    private static readonly DateTimeOffset Looked = new(new DateTime(2026, 11, 9, 14, 20, 0, DateTimeKind.Local));
+
+    private static readonly DateTimeOffset Installed = new(new DateTime(2026, 11, 9, 14, 5, 0, DateTimeKind.Local));
+
+    [Fact]
+    public void The_updates_say_the_channel_the_last_look_and_the_last_build_installed()
+    {
+        var updates = new Handlers.DataHandling.ServerUpdatesAnswer(
+            SetUp: true,
+            Channel: "releases",
+            CheckedUtc: ServerVersionDisplayTests.Looked,
+            Outcome: "installed",
+            Message: "Installed 10.3.0 (CRT release [4.1.0]) in place of 10.2.1.",
+            NewestVersion: "10.3.0",
+            InstalledUtc: ServerVersionDisplayTests.Installed,
+            InstalledVersion: "10.3.0",
+            InstalledFromVersion: "10.2.1");
+
+        IReadOnlyList<IReadOnlyList<ReviewNoteRun>> lines =
+            ServerVersionDisplay.Lines("10.3.0", 2, 2, updates: updates, now: ServerVersionDisplayTests.Looked.AddMinutes(5));
+
+        Assert.Equal(
+            [
+                "Server version [10.3.0]",
+                "API server version [2]",
+                "API application version [2]",
+                "Automatic updates [releases only]",
+                "Last look [2026-November-9 at 14:20]: Installed 10.3.0 (CRT release [4.1.0]) in place of 10.2.1.",
+                "Last installed [10.3.0] on [2026-November-9 at 14:05], replacing [10.2.1]",
+            ],
+            ServerVersionDisplayTests.Texts(lines));
+
+        // The values bold, never the updater's sentence.
+        Assert.Equal(["releases only"], lines[3].Where(run => run.IsCount).Select(run => run.Text));
+        Assert.Equal(["2026-November-9 at 14:20"], lines[4].Where(run => run.IsCount).Select(run => run.Text));
+        Assert.Equal(["10.3.0", "2026-November-9 at 14:05", "10.2.1"], lines[5].Where(run => run.IsCount).Select(run => run.Text));
+    }
+
+    // The test instance takes every commit to main (owner decision, 2026-11-09: "ALPHA/BETA works on commit").
+    [Fact]
+    public void The_test_instance_says_it_installs_every_commit_to_main() =>
+        Assert.Contains(
+            "Automatic updates [every commit to main]",
+            ServerVersionDisplayTests.Texts(ServerVersionDisplay.Lines(
+                "10.3.0", 2, 2,
+                updates: new Handlers.DataHandling.ServerUpdatesAnswer(SetUp: true, Channel: "main"))));
+
+    // The timer looks every minute (owner request, 2026-11-09): a look over ten minutes old means it may have stopped.
+    [Fact]
+    public void A_look_over_ten_minutes_old_says_the_timer_may_not_be_running()
+    {
+        var updates = new Handlers.DataHandling.ServerUpdatesAnswer(SetUp: true, Channel: "releases", CheckedUtc: ServerVersionDisplayTests.Looked, Message: "Up to date.");
+
+        string[] fresh = ServerVersionDisplayTests.Texts(ServerVersionDisplay.Lines("10.3.0", 2, 2, updates: updates, now: ServerVersionDisplayTests.Looked.AddMinutes(9)));
+        string[] stale = ServerVersionDisplayTests.Texts(ServerVersionDisplay.Lines("10.3.0", 2, 2, updates: updates, now: ServerVersionDisplayTests.Looked.AddMinutes(11)));
+
+        Assert.Contains("Last look [2026-November-9 at 14:20]: Up to date.", fresh);
+        Assert.Contains("Last look [2026-November-9 at 14:20] - over ten minutes ago, so its timer may not be running: Up to date.", stale);
+    }
+
+    [Fact]
+    public void A_server_with_no_updater_says_it_is_not_set_up_and_an_older_server_says_nothing()
+    {
+        Assert.Equal(
+            "Automatic updates [not set up on this server]",
+            ServerVersionDisplayTests.Texts(ServerVersionDisplay.Lines("10.3.0", 2, 2, updates: new Handlers.DataHandling.ServerUpdatesAnswer(SetUp: false))).Last());
+
+        Assert.Equal(3, ServerVersionDisplay.Lines("10.2.1", 2, 2, updates: null).Count);
+    }
 }

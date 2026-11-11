@@ -61,7 +61,7 @@ namespace Handlers.MaintainerHandling
         // the submissions never talk to two different services, but they still differ on purpose.
         // Caught by the route test rather than by a first launch against the live server.
         // ###########################################################################################
-        public const string DefaultBaseAddress = AppConfig.ContributionServerRootUrl;
+        public static string DefaultBaseAddress => AppConfig.ContributionServerRootUrl;
 
         // Signing out. Revokes the ONE session presented, never the whole account - so signing out
         // on a laptop does not sign the project owner out at the bench.

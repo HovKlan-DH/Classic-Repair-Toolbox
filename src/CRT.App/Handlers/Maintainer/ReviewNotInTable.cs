@@ -73,6 +73,10 @@ namespace Handlers.MaintainerHandling
                 // review, 2026-11-02).
                 if (changes.RegionsNow == true)
                     lines.Add(new ReviewNoteLine(BoardRegions.NewBoardLine(changes.RegionNamesNow), ReviewNoteKind.Change));
+
+                // Nor their colors (2026-11-11).
+                if (changes.RegionColorsChanged)
+                    lines.Add(new ReviewNoteLine(RegionColors.NewBoardLine, ReviewNoteKind.Change));
             }
             else
             {
@@ -91,6 +95,10 @@ namespace Handlers.MaintainerHandling
                 // No row says this either - the board's regions (2026-11-01).
                 if (changes.RegionsNow is bool regions)
                     lines.Add(new ReviewNoteLine(BoardRegions.ChangedLine(regions, changes.RegionNamesBefore, changes.RegionNamesNow), ReviewNoteKind.Change));
+
+                // Nor their colors (2026-11-11).
+                if (changes.RegionColorsChanged)
+                    lines.Add(new ReviewNoteLine(RegionColors.ChangedLine, ReviewNoteKind.Change));
             }
 
             foreach (ReviewFindingView finding in findings)

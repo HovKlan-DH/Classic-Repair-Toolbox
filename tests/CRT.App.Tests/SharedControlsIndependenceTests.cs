@@ -19,8 +19,10 @@ namespace ClassicRepairToolbox.Tests;
 // ###########################################################################################
 public sealed class SharedControlsIndependenceTests
 {
+    // ExternalTargetLauncher too (code review, 2026-11-11): its OpenOrSay logs through Logger, so the table's "Learn more"
+    // reached the Logger through it unseen. A control that opens something is handed how (BoardTableEditor.OpensWikiPage).
     private static readonly Regex ForbiddenName =
-        new(@"\b(?:Main|DataManager|UserSettings|Logger)\b", RegexOptions.CultureInvariant);
+        new(@"\b(?:Main|DataManager|UserSettings|Logger|ExternalTargetLauncher)\b", RegexOptions.CultureInvariant);
 
     // Comments and string/char literals, consumed LEFT TO RIGHT as one alternation, so a "//"
     // inside a string and a quote inside a comment are each read as what they really are.
@@ -65,6 +67,7 @@ public sealed class SharedControlsIndependenceTests
     [InlineData("var window = (CRT.Main)topLevel;", "Main")]
     [InlineData("DataManager.ClearBoardCache();", "DataManager")]
     [InlineData("Logger.Info(\"x\");", "Logger")]
+    [InlineData("ExternalTargetLauncher.OpenOrSay(url);", "ExternalTargetLauncher")]
     [InlineData("// Main hands the table its choices", "")]
     [InlineData("/* Logger\n   and DataManager */ int a = 1;", "")]
     [InlineData("string s = \"UserSettings\";", "")]

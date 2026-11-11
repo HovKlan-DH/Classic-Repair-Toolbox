@@ -527,11 +527,19 @@
 						<TextBlock Text="Name" />
 					</Button>
 					<!-- Whether the board comes in PAL and NTSC versions (owner decisions, 2026-11-01). -->
+					<!-- Its name first and whole, the regions after it in what room is left, cut short with "..." (owner report,
+					     2026-11-11: on the Open128-2 board "too many or too long names for the regions ... take all space in the
+					     menu, and I cannot see the "Regions" entry to click" - an Auto column for them took the row). -->
 					<Button x:Name="RegionsNavButton" Classes="WorkspaceNavItem Nested"
 							Click="OnNavEntryClick">
-						<Grid ColumnDefinitions="*,Auto">
+						<Grid ColumnDefinitions="Auto,*">
 							<TextBlock Text="Regions" />
-							<TextBlock x:Name="RegionsCountText" Grid.Column="1" Classes="WorkspaceNavCount" />
+							<TextBlock x:Name="RegionsCountText"
+									   Grid.Column="1"
+									   Classes="WorkspaceNavCount"
+									   Margin="8,0,0,0"
+									   HorizontalAlignment="Right"
+									   TextTrimming="CharacterEllipsis" />
 						</Grid>
 					</Button>
 

@@ -29,7 +29,6 @@ namespace Handlers.DataHandling
     // not change the component name, but all other data should be identical to the one it copies from").
     //
     // "Copy from another board" until then, which offered only the same part number and let parts be ticked.
-    // ComponentCopy stays as what "Also on other boards" puts on other boards.
     //
     //   - EVERYTHING BUT THE LABEL COMES AS ONE STEP: the fields, category and package included, the pins,
     //     replacement parts, pictures, oscilloscope baselines, files and links. What the component held of

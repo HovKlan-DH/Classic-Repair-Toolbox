@@ -89,6 +89,7 @@ namespace Handlers.DataHandling
             {
                 RegionNamesBefore = ReviewSummary.RegionNames(published, regionsNow),
                 RegionNamesNow = ReviewSummary.RegionNames(submitted, regionsNow),
+                RegionColorsChanged = RegionColors.Differ(published, submitted),
             };
         }
 
@@ -703,12 +704,16 @@ namespace Handlers.DataHandling
 
         public IReadOnlyList<string>? RegionNamesNow { get; init; }
 
+        // Whether the submission gives the board's regions other colors (owner request, 2026-11-11; RegionColors) - which no
+        // sheet of the table shows either. False from a server that does not say.
+        public bool RegionColorsChanged { get; init; }
+
         public IReadOnlyList<ReviewSectionChange> ChangedSections =>
             [.. this.Sections.Where(section => section.HasChanges)];
 
         public int TotalChanges => this.Sections.Sum(section => section.TotalChanges);
 
-        public bool HasChanges => this.TotalChanges > 0 || this.RevisionDate != null || this.ReorderedSections.Count > 0 || this.RegionsNow is not null;
+        public bool HasChanges => this.TotalChanges > 0 || this.RevisionDate != null || this.ReorderedSections.Count > 0 || this.RegionsNow is not null || this.RegionColorsChanged;
 
         // ###########################################################################################
         // The one-line summary task 3 asks for: "3 components changed, 1 added, 2 images added".
@@ -752,6 +757,9 @@ namespace Handlers.DataHandling
 
             if (this.RegionsNow is not null)
                 parts.Add("regions changed");
+
+            if (this.RegionColorsChanged)
+                parts.Add("region colors changed");
 
             if (this.RevisionDate != null)
                 parts.Add("revision date changed");

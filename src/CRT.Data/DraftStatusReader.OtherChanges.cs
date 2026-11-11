@@ -254,7 +254,8 @@ namespace Handlers.DataHandling
                 files,
                 DraftStatusReader.ChangedCalibrations(status, based),
                 DraftStatusReader.ReorderedLists(draftBoard, publishedBoard),
-                draftBoard is not null && publishedBoard is not null && BoardRegions.Differ(publishedBoard, draftBoard));
+                draftBoard is not null && publishedBoard is not null &&
+                (BoardRegions.Differ(publishedBoard, draftBoard) || RegionColors.Differ(publishedBoard, draftBoard)));
         }
 
         // How many of the draft's lists stand in another order than the published board's - the rows'

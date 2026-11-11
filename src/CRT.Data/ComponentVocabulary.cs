@@ -199,6 +199,38 @@ namespace Handlers.DataHandling
             (package ?? string.Empty).Trim().StartsWith("DIP", StringComparison.OrdinalIgnoreCase) &&
             ComponentVocabulary.PinCountOf(package) is not null;
 
+        // ###########################################################################################
+        // WHAT THE PANE'S "Package" AND "Direction" OFFER ON A BOARD (owner request, 2026-11-11: "if I manually create/change a
+        // package in the table view - e.g. from "Disc" to "Diskette", then in UI view I should be able to use this new
+        // "Diskette" value also in the drop-down. Use the same behaviour for the "Direction" drop-down"): the usual words, then
+        // every other word the board's components already use, alphabetically - each once, capitals aside, in the board's first
+        // spelling. "Unknown" stays the last direction (owner's order, 2026-11-09), so the board's own come before it.
+        // ###########################################################################################
+        public static IReadOnlyList<string> PackagesOf(BoardData? board) =>
+            ComponentVocabulary.WithWordsOf(ComponentVocabulary.Packages, board?.Components.Select(row => row.Package), lastStaysLast: false);
+
+        public static IReadOnlyList<string> PinDirectionsOf(BoardData? board) =>
+            ComponentVocabulary.WithWordsOf(ComponentVocabulary.PinDirections, board?.ComponentPins.Select(pin => pin.Direction), lastStaysLast: true);
+
+        private static IReadOnlyList<string> WithWordsOf(IReadOnlyList<string> words, IEnumerable<string?>? used, bool lastStaysLast)
+        {
+            List<string> extra = (used ?? [])
+                .Select(word => word?.Trim() ?? string.Empty)
+                .Where(word => word.Length > 0 && !words.Contains(word, StringComparer.OrdinalIgnoreCase))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Order(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (extra.Count == 0)
+            {
+                return words;
+            }
+
+            return lastStaysLast
+                ? [.. words.Take(words.Count - 1), .. extra, words[^1]]
+                : [.. words, .. extra];
+        }
+
         // Whether `value` is one of `words` - or empty, which every one of these allows.
         public static bool IsKnownOrEmpty(IReadOnlyList<string> words, string? value)
         {

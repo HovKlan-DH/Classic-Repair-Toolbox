@@ -158,7 +158,8 @@ namespace Handlers.DataHandling
                     // "not sent" (see SubmissionRows.ComponentPins).
                     ComponentPins = merged.ComponentPins.ToList(),
                     ComponentReplacements = merged.ComponentReplacements.ToList(),
-                    Regions = merged.Regions.ToList()
+                    Regions = merged.Regions.ToList(),
+                    RegionColors = merged.RegionColors.ToList()
                 }
             };
 
@@ -347,7 +348,8 @@ namespace Handlers.DataHandling
                 KiCadImportantSignals = [.. rows.KiCadImportantSignals],
                 ComponentPins = [.. rows.ComponentPins ?? []],
                 ComponentReplacements = [.. rows.ComponentReplacements ?? []],
-                Regions = [.. rows.Regions ?? []]
+                Regions = [.. rows.Regions ?? []],
+                RegionColors = [.. rows.RegionColors ?? []]
             };
         }
     }

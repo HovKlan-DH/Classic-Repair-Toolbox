@@ -368,6 +368,12 @@ namespace Handlers.DataHandling
                 lines.Add(BoardRegions.ChangedLine(BoardRegions.Of(before), BoardRegions.Of(after)));
             }
 
+            // Their colors (owner request, 2026-11-11; RegionColors).
+            if (RegionColors.Differ(before, after))
+            {
+                lines.Add(RegionColors.ChangedLine);
+            }
+
             return lines;
         }
 
@@ -532,6 +538,7 @@ namespace Handlers.DataHandling
             ComponentPins = pins ? board.ComponentPins : [],
             ComponentReplacements = replacements ? board.ComponentReplacements : [],
             Regions = [],
+            RegionColors = [],
         };
 
         private static BoardData PicturesOf(BoardData board) => new()

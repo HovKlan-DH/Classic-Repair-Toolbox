@@ -1,7 +1,10 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using CRT;
 using Handlers.DataHandling;
 
@@ -103,6 +106,74 @@ public sealed class TabDraftsEntriesTests : IDisposable
         }
 
         Assert.True(condition(), what);
+    }
+
+    // ###########################################################################################
+    // Owner report, 2026-11-11: "if I have too many or too long names for the regions, then it will take all space in the
+    // menu, and I cannot see the "Regions" entry to click" (the Open128-2 board). Six long region names: "Regions" stays whole,
+    // and the names are cut short in the room left beside it, never past the entry's edge.
+    // ###########################################################################################
+    [Fact]
+    public void Long_region_names_never_squeeze_the_Regions_entry_out_of_the_column()
+    {
+        UiTest.Run(() =>
+        {
+            BoardData board = Board().WithRegions(["Europe PAL-B 50Hz", "North America NTSC", "Japan NTSC-J", "Brazil PAL-M", "Argentina PAL-N", "Australia"]);
+
+            HardwareBoardEntry entry = Entry();
+            var tab = new TabDrafts
+            {
+                HardwareBoardsOverrideForTests = [entry],
+                PublishedBoardOverrideForTests = _ => board,
+            };
+
+            tab.RefreshDrafts();
+            tab.ShowBoard(entry, board, "Japan NTSC-J", null);
+
+            var window = new Window { Content = tab, Width = 1000, Height = 800 };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            Button regions = tab.GetControl<Button>("RegionsNavButton");
+            TextBlock name = regions.GetVisualDescendants().OfType<TextBlock>().First(text => text.Text == "Regions");
+            TextBlock names = tab.GetControl<TextBlock>("RegionsCountText");
+
+            Assert.StartsWith("Europe PAL-B 50Hz, North America NTSC", names.Text, StringComparison.Ordinal);
+
+            name.Measure(Size.Infinity);
+            Assert.True(name.Bounds.Width >= name.DesiredSize.Width - 0.5, $"\"Regions\" is [{name.Bounds.Width}] wide, needs [{name.DesiredSize.Width}]");
+            Assert.Equal(TextTrimming.CharacterEllipsis, names.TextTrimming);
+
+            Point namesEnd = names.TranslatePoint(new Point(names.Bounds.Width, 0), regions)!.Value;
+            Assert.True(namesEnd.X <= regions.Bounds.Width + 0.5, $"the names end at [{namesEnd.X}] of [{regions.Bounds.Width}]");
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // A component "Board: Regions" names (owner request, 2026-11-11: "so I can find these and change them") opens on
+    // "Basics", picked in the list, from whatever was open - the region switched to the one it was named under.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_component_a_region_is_applied_on_opens_on_Basics_in_that_region()
+    {
+        WriteDraft();
+
+        await UiTest.RunAsync(async () =>
+        {
+            (TabDrafts tab, ListBox list) = Tab();
+
+            await tab.OpenBoardPartAsync(PaneBoardPart.Regions);
+            await tab.OpenComponentInRegionAsync("U1", "NTSC");
+            await Until(() => tab.IsComponentOpen, "The component never opened.");
+
+            Assert.Equal("U1", tab.ComponentPaneForTests.Label);
+            Assert.Equal(ComponentPage.Basics, tab.ComponentPaneForTests.Page);
+            Assert.Equal("BasicsNavButton", tab.SelectedNavEntryForTests);
+            Assert.Equal("6567", tab.ComponentPaneForTests.GetControl<TextBox>("TechnicalNameBox").Text);
+            Assert.Equal("U1", (list.SelectedItem as ComponentListItem)?.BoardLabel);
+        });
     }
 
     // ---- a component's pages -------------------------------------------------------------------------

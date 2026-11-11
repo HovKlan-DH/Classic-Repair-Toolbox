@@ -1,5 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
+		
 		<Title>Classic Repair Toolbox</Title>
 		<Product>Classic Repair Toolbox</Product>
 		<AssemblyTitle>Classic Repair Toolbox</AssemblyTitle>
@@ -10,7 +11,8 @@
 		<!--
 		<InformationalVersion>$(AssemblyVersion)</InformationalVersion>
 		-->
-		<InformationalVersion>4.0.0-alpha.4</InformationalVersion>
+		<InformationalVersion>4.0.0-alpha.6</InformationalVersion>
+		
 		<OutputType>WinExe</OutputType>
 		<TargetFrameworks>net10.0</TargetFrameworks>
 		<RollForward>LatestMajor</RollForward>

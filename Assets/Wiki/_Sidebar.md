@@ -22,6 +22,7 @@
 [MiniPro programmer](MiniPro-programmer)
 
 ### Contributing
+- [Table view](Table-view)
 - [View boards from online source](View-boards-from-online-source)
 - [Maintainer tab](Maintainer-tab)
 

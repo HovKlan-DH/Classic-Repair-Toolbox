@@ -159,9 +159,11 @@ ready to be pasted.
 document them and names any whose code changed while the page did not. It WARNS (whether a change
 is user-visible is a judgement call). When a page starts documenting new code, add it to the `MAP`.
 
-**Six Wiki pages are opened by buttons in the shipped app**, across seven buttons:
+**Seven Wiki pages are opened by buttons in the shipped app**, across eight buttons:
 `Workbooks-tab`, `MiniPro-programmer` (two buttons), `Controlling-oscilloscope-with-keyboard`,
-`Synchronize-oscilloscope`, `Maintainer-tab` and `View-boards-from-online-source`. They are named
+`Synchronize-oscilloscope`, `Maintainer-tab`, `View-boards-from-online-source` and `Table-view` (the table's
+"Learn more", owner request 2026-11-11: "we need to reference a Wiki, so the user can see what options there is -
+e.g. how to copy/paste" - a 4.0 page, pasted on release day with the others). They are named
 once, in `AppConfig` (`WikiPage*` plus `WikiPageUrl`). Renaming or deleting one breaks a button in
 builds already installed, which no update can fix, so `WikiHelpPageNamesTests` asserts each name
 still matches a file in `Assets/Wiki/`. Add an entry there for any new help button. **Since CRT 4.0
@@ -426,8 +428,9 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
 - **Pure logic does not belong in a tab** - see `Handlers/Geometry/` above.
 - **`Controls/` holds the controls more than one tab or window uses** - the table editor
   (`Controls/BoardTable/`), `BusyOverlay`, `ListRowDrag`, `PinoutDrawing`, `ColorDropperButton`. **They touch nothing of CRT's
-  orchestration - no `Main`, `DataManager`, `UserSettings` or `Logger`**; a host hands them what they
-  need, and CRT.Data's `CrtLog` is their logging seam. `SharedControlsIndependenceTests` enforces it.
+  orchestration - no `Main`, `DataManager`, `UserSettings` or `Logger`, nor `ExternalTargetLauncher`, which logs**; a
+  host hands them what they need (`BoardTableEditor.OpensWikiPage`, set in `App`'s static constructor), and CRT.Data's
+  `CrtLog` is their logging seam. `SharedControlsIndependenceTests` enforces it.
   A control used by one tab stays in that tab's folder.
 - **A color picker's list has a dropper in it** (owner requests, 2026-11-03, "a general thing": "I really miss the 'color picker'
   option", and then "merge it with the other color panel next to it" - beside the picker, as large as it, it took the slider's room;
@@ -611,7 +614,16 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
 - `Main/App.axaml.cs` - holds `AppConfig`, nearly every tunable value (file/folder names, URLs,
   timeouts, zoom limits, version helpers, the Wiki page names). **Check here before hardcoding a
   constant.** `App` wires theme application, global exception logging and the startup sequence:
-  `Splash` -> `DataManager.InitializeAsync` -> `Main` -> fire-and-forget check-in.
+  `Splash` -> `DataManager.InitializeAsync` -> `Main` -> fire-and-forget check-in. **The splash stays until
+  the first board is drawn** (owner report, 2026-11-09: "a couple of seconds ... I see an empty UI";
+  `Main.FirstBoard.cs`, `Main.WaitForFirstBoardAsync`, at most `AppConfig.SplashWaitsForFirstBoardAtMost`):
+  the window is shown only once its lists are filled, its thumbnails placed and its picture read - it
+  loads unshown safely, the picture fitted by layout. **Every way a board load ends says so**
+  (`FirstBoardDone`) - a new early return in `ReadSelectedBoardAsync` must too, or the splash waits out
+  its limit. **`Main.StartAsync` awaits nothing before `PopulateHardwareDropDown`** (2026-11-09: an awaited
+  crash-file read there handed the window back to App with empty drop-downs and no board load begun) -
+  start such work, and await it after. Thumbnails decode several at once
+  (`SchematicThumbnailSet.DecodedAtOnce`; 635 ms one at a time, 276 ms four at once on the C64 250407).
 - `Main/Main.axaml.cs` - the main window, the central controller for board selection, schematics,
   and cross-tab state. **Split into partials by area** (`Main.BoardSelection.cs`, `Main.Worklog.cs`,
   `Main.Maintainer.cs`, `Main.SubmissionChecks.cs`, `Main.ModeHint.cs`, ...); its `.axaml.cs` header is
@@ -806,8 +818,7 @@ there, and `await` on a finished task looped for ever on the UI thread. A tool f
   Contribute tab's list and the pane's header; the component list on the left of CRT always said "Draft"), **and A NEW BOARD HAS
   NONE OF IT** - nothing is published to differ from: no mark in either list, on the pane's header or a board part, no tint on the
   Schematics tab (`DataManager`'s summary is Empty with no published board) and no "Undo changes to", in the pane
-  (`ComponentPane.IsComponentChanged`) or "Review changes" (`ReviewChangesAsync`). **"Also on other boards" stays** (code review,
-  2026-11-02; `HoldsWorkOfItsOwn`): all a new board's chip holds is what another board's same chip could take.
+  (`ComponentPane.IsComponentChanged`) or "Review changes" (`ReviewChangesAsync`).
 - **A NEW BOARD'S CREDITS START WITH THEIR ROWS** (owner request, 2026-11-02; CRT.Data's `NewBoardCredits`,
   `TabDrafts.NewBoardCredits.cs`): one per schematic image, "Board data", "Oscilloscope baseline" per region - to be filled in
   or deleted. Nobody named is an error on purpose (`BoardRowRequired`), so Submit waits. Offered as "Board: Credits" opens, as
@@ -866,6 +877,24 @@ there, and `await` on a finished task looped for ever on the UI thread. A tool f
   picked anywhere - `region`, which CRT 3.x reads, so it only ever holds PAL or NTSC - else the board's first (`RegionChoice.ToShow`, as a
   board loads). A change of the list is said by name ("This board now comes in PAL, NTSC and Japan versions" - `BoardRegions.ChangedLine`;
   the review's summary and the history carry `regionNamesBefore`/`regionNamesNow`, null from before meaning PAL and NTSC).
+  **A REGION MAY HAVE COLORS OF THE BOARD'S OWN, IN THE BOARD DATA** (owner request, 2026-11-11: "set the background color, and then you
+  should calculate the complementary text color ... I would also like to be able to set the text color"; asked, "In the board data"; every
+  rule CRT.Data's `RegionColors`): the board file's `regionColors` (`region`, `background`, `text`, written only when any), "#RRGGBB" ONLY -
+  the error `regions.color` on both sides, server 10.4.0 - an empty text being black or white, whichever has the higher WCAG contrast ratio
+  (`ContrastText`; SeaGreen takes black by it). `SubmissionRows.RegionColors` null keeps what is published; `regionColorsChanged` on the
+  review's summary and the history; a change of them is a change of the draft, said in "Review changes". A region deleted or all taken away
+  takes its colors (`RegionColors.Tidied`). With none, a region keeps CRT's colors. Every place a region is drawn asks: the buttons by class
+  `BoardColors` and their own resources (`RegionPaint.UseBoardColors`, styles in App.axaml after the per-region ones), the labels over the
+  pictures by `RegionPaint.PaintLabel`, the popup by `ComponentInfoWindow.RegionColorRows` (set by Main before `SetComponent`), and "Board:
+  Regions" by two pickers on each region's own line (owner request, the same day: "one line instead of 2 lines"), "Automatic text color" and "Reset colors", committed on the typing pause as a picture's colors are. **A
+  region's pill is not bold** and is drawn as its lit button (2px edge in its background). **An own region's button shows its name in a
+  `RegionButtonGrid.NameBlock(button)` bound to the button's text color** (owner report, 2026-11-11): App.axaml's style for every TextBlock
+  painted it in the window's text color, black on the region's green. **Under each region its components are listed** (owner request,
+  2026-11-11; `BoardRegions.RegionHolding.Components` - every component with a row saying it, those told apart in every region too: on a PAL and NTSC board that is nearly every one), the first seven as buttons (a hand over each) opening each on "Basics" in
+  that region (`TabDrafts.OpenComponentInRegionAsync`), "... and **N** more" and "Show all" for the rest as the last item of the same line, the pill and both pickers
+  one height (`ComponentPaneRegionRow.LineHeight`), and the board files and links counted.
+  **The "Regions" entry of the left column keeps its word whole**, the names cut short with "..." in the room left (owner report, 2026-11-11:
+  six long names took the row).
 - **REGIONS** (owner decisions, 2026-11-01: PAL and NTSC or none, stored and published, on a page of their own;
   `BoardRegions` - THE ONE RULE, replacing `HasExplicitRegionComponents`, which asked the component rows alone, so regional
   baselines on a board with no regional component hid the buttons and one region's baselines for good). "Board: Regions" is
@@ -880,8 +909,8 @@ there, and `await` on a finished task looped for ever on the UI thread. A tool f
   Replacement parts, Pictures and Oscilloscope baseline**, each listing what the region shown shows.
   **"Files" and "Links" LIST EVERY ROW of the component** (owner request, 2026-11-03: "the complete list can be viewed and
   sorted ... it should work in same was as 'Board: Files' and 'Board: Links'"; `ComponentPaneEdits.AllFilesOf`/`WithAllFiles`, `AllLinksOf`/`WithAllLinks`):
-  a row given another region stays where it is, and moves past any row. **`LinksOf` by region stays** - what a region shows, for "Also on other
-  boards"'s parts - and a file REPLACED is found whatever its region (`ChangedFiles.OfComponent`), as the page lists them all.
+  a row given another region stays where it is, and moves past any row. What a region shows of them is the popup's
+  (`ComponentPopupContent.LinksOf`).
   **Baselines, pictures and replacement parts have "Applies to" per row, as files and links do** (`ComponentPaneRegionalRow`; of the first three, a row moved out of the region shown is let go of here and said -
   left, it was filed again at the next commit; a new part with nothing typed stays until it holds something - `HoldsNothingYet`;
   **a new part given another region waits, out of the draft and on the page, until the focus leaves it**
@@ -903,12 +932,15 @@ there, and `await` on a finished task looped for ever on the UI thread. A tool f
   list every row whatever region CRT shows - they are the whole lists - with "Applies to" as a column while the board has regions.
   **Any other word in that cell shows the row in neither region: a warning on the cell** (`row.region`, the table only). **A component in
   every region has rows of one region** - the usual shape - **so its rows are read in the region SHOWN, never its row's blank region**
-  (`ComponentCopySource.RowsRegion`, "Also on other boards"; code review, 2026-11-02).
+  (code review, 2026-11-02).
 - **A COMPONENT'S CATEGORY IS PICKED FROM A DROP-DOWN LIST, NEVER TYPED** (owner request, 2026-11-03: "Only in the 'Board: Category' we
   should allow for an input field, as this is the place we define a new category"): Basics (`CategoryBox`, its row's own spelling listed
   too, or showing it would change it - `CategoryChoicesWith`) and the new component's form (`NewCategoryBox`, saying where one is made when
   the board has none - `NoCategoriesToPick`); the label editor's prompt always was. **A file's, link's or credit's category stays a box to
   type in** - their lists are their own and nothing else defines theirs. The table's cells stay text too.
+- **"Package" and a pin's "Direction" offer the usual words AND every other word the board's components use** (owner request, 2026-11-11:
+  "Diskette" typed in the table is offered in the pane too; `ComponentVocabulary.PackagesOf`/`PinDirectionsOf` - after the usual ones,
+  alphabetically, "Unknown" staying the last direction; `ComponentPane.ShowWordsOfBoard`, never under the package box's caret).
 - **"BOARD: CATEGORIES"** (owner request, 2026-11-01; `ComponentPane.RegionsAndCategories.cs`, `BoardCategoryEdits`):
   rename, add, delete. **No list is stored** (owner decision: "kept until first used"): a category is the word its
   components carry, so a rename or delete is one step changing those rows - named as another it joins it, under its
@@ -1020,9 +1052,10 @@ there, and `await` on a finished task looped for ever on the UI thread. A tool f
   read again first and selected once that load has its highlights (`ShowComponentAskedForAfterLoad`),
   the catch-up handed over so leaving the tab reads nothing again. **There a bar offers "Back to
   Contribute"** (owner request, 2026-10-29; a net lit up offers it too - `Main.OfferBackToContribute`,
-  `TabSchematics.ShowBackToContribute`), **KHAKI** (owner request, 2026-10-30: "make this more visible
-  - maybe use the standard(?) Khaki color for the panel, to show this is a temporary thing";
-  `Schematics_TemporaryBar_*`, the Khaki of the image's name): the pane is still open where it was. It goes once the Contribute
+  `TabSchematics.ShowBackToContribute`), **A `ReturnBar` - white, a 2px black dashed frame - AS THE PICTURE TOOL'S BAR IS:
+  every bar taking a person back to the Contribute tab looks the same** (owner request, 2026-11-11: "This panel should be identical
+  everywhere ... lightgrey background with 2px black dashed border", then white in place of the lightgray; `Controls/ReturnBar`, colors `ReturnBar_*` in neither theme -
+  Khaki until then; a new such bar is a ReturnBar too): the pane is still open where it was. It goes once the Contribute
   tab is shown again, another board is shown (the same board read again keeps it), or a picture tool
   starts (whose own end goes back); a tool's bar takes its place while up. **"Preview component info popup"** opens the popup
   on the draft AS HELD IN MEMORY with the draft's folder whatever "view boards as officially published"
@@ -1032,7 +1065,16 @@ there, and `await` on a finished task looped for ever on the UI thread. A tool f
   region shown; owner request, 2026-11-01: **a pin of either lights up under the pointer and a click goes to its first image**,
   `PinoutDrawing.PinsCanBePicked`, `ComponentInfoWindow.GoToPin`, `ComponentPopupContent.FirstImageOfPin`; a drawing takes the
   pointer only where it draws, so it fills itself with Transparent; owner request, 2026-11-02: **the pin of the image shown stays
-  lit on both**, `ShowViewedPin`, `PinoutDrawing.MarkPin` - `HoverPin` for the pointer in the list), replacement parts,
+  lit on both**, `ShowViewedPin`, `PinoutDrawing.MarkPin` - `HoverPin` for the pointer in the list; owner request, 2026-11-09:
+  **the pin under the pointer is lit on BOTH, whichever it is on** - the chip's case and a part drawn as it looks raise
+  `PinHovered` for the POINTER alone, never for `HoverPin`, or the two would answer each other; the row's `IsPointedAt` - and
+  **last, each pin's "Expected oscilloscope reading"**, its heading on three lines, from its baselines in the region shown,
+  readings that differ a line each with what the pin says beside its number, "Pulsing [64K]" (`ComponentPopupContent.ReadingOf`);
+  **every column as wide as its longest text, the same 20 after each** (owner request, 2026-11-09 - the space "Pin" had in its
+  36 wide column; `PinTableGeometry`, `ComponentInfoWindow.PinList.cs`): Auto columns sharing their widths, a `PinCell` style's
+  margin, and only when the room is short do Signal, Net name and the reading wrap - widest first, none below its widest word
+  unless not even the words fit, when they break down to `PinTableGeometry.Narrowest` - to widths put in resources their MaxWidth reads (rows made again as a pin is pointed at take them too); the list stands beside
+  the drawing only when it fits there whole), replacement parts,
   a baseline's machine state (`ComponentPopupContent`); the Overview has a Package column and
   its Notes are the first image's note (`OverviewHtmlBuilder.BuildRows`). **"Show pinout in its own window when the component info window would scroll"** (owner's choice of words, 2026-11-09 - "Detach pinout image in component info popup", then "... window", until then; right under "Open multiple component info windows" since)
   (owner request, 2026-11-07; `ComponentInfoWindow.Pinout.cs`) moves the popup's pinout section into a window of its own,
@@ -1310,42 +1352,10 @@ there, and `await` on a finished task looped for ever on the UI thread. A tool f
   **Regions as far as this component has room** (`ReadingOf`): in every region on both, its rows as they are; of one region there, for every
   region here (the component must not vanish from the other); of one region here, what that region shows there, in it; on a board with no regions nothing
   says a region - a row that did would switch its PAL/NTSC buttons on.
-  **"Also on other boards"** (`ComponentCopy`, `ComponentCopy.Changed`): offered
-  while the draft changes the package, short description, pins, replacement parts or links of a component with a part number, it lists the same
-  part - the same PART NUMBER, trimmed, capitals ignored - on the other published boards, every one ticked, and the parts changed (draft against
-  published), and writes them into EACH board's OWN draft as one step "[U7] copied from <this board>" - **rows of one region replacing only that
-  region's: the component's rows for every region stay, filed for the other** (`KeepingOtherRegions`; code review, 2026-11-02) - saved at once
-  (`TabDrafts.ApplyToOtherBoardsAsync` - a missing draft is seeded from the published file there,
-  NOT through `Main.EnsureDraftAsync`, which reloads the board on screen and words its problems as this
-  board's; refused while the Contribute tab is covered). What came of each board is said in the pane
-  (`ComponentPaneWording.AlsoDone`). Both read PUBLISHED boards only - never another draft. **Each
-  board's change goes through `DraftEdits.ApplyAndSaveAsync`** (code review, 2026-10-26): applied
-  straight to the session, a failed save left the step in for the timer to save after CRT said it had
-  not. **The row a source offers is one that MATCHED the part number** - the region's, else the first
-  (`ComponentCopy.Sources`): the region's row whatever its part number was the other region's chip.
-  **"Also on other boards" takes the FILES the draft replaced too** (2026-10-26 - the plan's "This
-  datasheet is also used by 11 other boards - change it there too?"; `ChangedFiles`, no part number
-  needed): a component's file or picture, or a board file under Files (its own button
-  there), whose row - paired by its NAME and region, as a row's identity is - cites other bytes than published is offered to every other
-  published board listing the SAME BYTES (by SHA-256; the live trees share 2,333 files so), where one
-  of its component files, pictures or board files cites them - never a scope baseline's or a
-  schematic's, the board's own. **The new file goes into THAT board's draft as a change of its rows**
-  (second code review, 2026-10-26: written over the old bytes it was no step, a board file had no
-  way back but discarding the draft, and a PNG sat under a JPG's name): under a name of that board's
-  own and of its own TYPE (`ChangedFiles.NameFor` - the old file's folder, the new file's name, never a
-  name the board has), every component file, picture and board file there citing the old file pointed
-  at it (`ChangedFiles.Repointed`) - ONE step named after this board (`DraftStepWording.FilesCopied`),
-  which that board's Undo takes back - through `DraftEdits.OpenForChangeAsync`/`CopyInAndApplyAsync`
-  (a copy the save did not take in is taken back, `DraftPickedFiles.KeepTakenIn`). Only where that
-  draft still has the published bytes (`ChangedFiles.CanPut` - never over a version of its own), never
-  under a name climbing out of the board's folder (`ChangedFiles.Elsewhere`, `DraftFiles.TryArrivedPath`).
-  **A draft "Also on other boards" MADE for a board that then took nothing is deleted again**
-  (`LetGoOfDraftMadeForNothing`). **The part and its files are found in ONE read of the other boards,
-  read in parallel** (`FindAlsoTargets`; a board's data and file list from one read of its board file),
-  the part looked for only when something of it changed - and said not found while its files are
-  offered; **every ticked component of a board gets the part's change** - each its own step - and what
-  came of each board is `AlsoOnOtherBoardsOutcome`'s to say (one not changed where something else was
-  is said by its label).
+  **"Also on other boards" IS GONE** (owner request, 2026-11-11: "for now we should remove the button 'Also on other
+  boards' and its functionality, as I am not sure I want it done like this"): the component's button and the board files'
+  one, their panels, `ComponentCopy`, `ChangedFiles` and `AlsoOnOtherBoardsOutcome` - all in git history (before
+  2026-11-11) should it come back in another form. A change to the same part on another board is made in that board's draft.
   **"Fill pins from KiCad" ("Fill from KiCad" until 2026-11-03) and "net on this board"** (2026-10-26 - the plan: "On a KiCad board, Fill from
   KiCad adds each pin's net and its name from the symbol. The popup shows the signal name and 'net on
   this board' side by side"; `KiCadComponentPins`, read from the loaded data by `KiCadPinTable`): the
@@ -1903,7 +1913,7 @@ The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainer
   file a copy replaced is set aside in `.crt-set-aside` and put back; code review, 2026-10-26): left
   lying in the draft folder, the next write by ANY editor took them in after "could not be saved". A
   file replaced under the name its row cites changes no row, so the draft is written anyway
-  (`ApplyAndSaveAsync(takeInNewFiles)`).
+  (`DraftSession.SaveAsync(evenUnchanged)`).
 - **A NEW DRAFT IS SEEDED FROM THE PUBLISHED FILE AS IT IS ON DISK** (`DraftSeeder.SeedFromPublishedFile`),
   never from `BoardDataReader`'s cache - an Excel edit made while CRT ran would be lost.
 - **A draft keeps its BASE** (code review, 2026-10-13): `.crt-base.json` (`DraftBase`) - the published
@@ -1964,7 +1974,7 @@ The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainer
   published board is on the machine. A user on the BETA source is told once, when their work reaches
   stable, to switch back (`Main.SourceSwitchNotice.cs`). **Nothing is retired while CRT talks to the
   test instance** (`ContributionServer.RetiresPublishedDrafts`; code review, 2026-10-25): its stable
-  data is replaced on release day, so the draft is the work's only lasting copy.
+  data never reaches the live data, so the draft is the work's only lasting copy.
 
 #### The board table editor (`Controls/BoardTable/`, shown by the Contribute and Maintainer tabs)
 
@@ -2156,7 +2166,15 @@ value in its tooltip), red + strike-through deleted, shown where the row used to
   2026-11-01: "a popup showing the colors 'Changed from' and 'Changed to'"; `BoardTableEditor.ColourChange.cs`, the rule
   `BoardTableColourCells`): a swatch and its text per side, "(not set)" for a blank one - no bytes needed, so with or without a source.
 - **Every cell wraps; a double-click on a heading's edge fits the column to every row**
-  (`BoardTableEditor.TextWrap.cs`, `ColumnAutoFitGeometry`; the grid's own fit measured only built rows).
+  (`BoardTableEditor.TextWrap.cs`, `ColumnAutoFitGeometry`; the grid's own fit measured only built rows). **No column starts narrower
+  than its heading, the space before the name repeated after it** (owner report, 2026-11-11: 0px between a short column's heading and its
+  edge; `FitColumnsToHeadings`, a least width set once the headings are laid out - and dropped back to `LeastColumnWidth` as the header row
+  is pressed, so a drag can still make it narrower).
+- **Every row is as tall as its cells ON SCREEN, the first row too** (owner report, 2026-11-11: the first row twice as tall as
+  the same rows under it): ProDataGrid hides the cells of columns scrolled out of view, so they count for no row's height -
+  except at index 0, whose every cell it shows (`DataGridCellsPresenter.MeasureOverride`, "|| OwningRow.Index == 0": it sizes
+  columns by that row). `BoardTableEditor.FirstRow.cs` holds that row's off-screen cells to a plain row's height after each
+  layout. Scrolled to a long note, every row grows; scrolled back, they all shrink.
 - **Several selected cells: a veil and a 1px blue edge on each** (`BoardTable_Selection_Fill`, `..._Edge`; owner report,
   2026-11-07: the "Board label" cells "miss some dividers" - the veil is as light as the grey grid line, which vanished
   into it), never on the current cell, which keeps its frame.
@@ -2875,20 +2893,81 @@ service to the 4.0 trees"). CRT reads a main file only at or below its own versi
   under `Files/` or `.crt-` is never listed by a draft write (`DraftFiles`), so a file filed there was
   copied in and lost. The drafts flow's words name no Excel: the lock-file check stays, worded "open in
   another program".
-- **CRT 4.0's pre-releases talk to a TEST INSTANCE of the service** (owner decision, 2026-10-25: "We
-  need the test server"): its own program folder, settings, database (`crt_review_test`) and port
-  (5198), at `https://classic-repair-toolbox.dk/crt-test/api/`, publishing into the 4.0 trees, with a
-  shipped unit of its own (`crt-server-test.service` - every line the live unit's but the five naming
-  the instance, `TestInstanceUnitTests`); set up as INSTALLING.md's "A test instance for CRT 4.0's
-  pre-releases". **Only the contribution service moves**: submissions, the Maintainer tab and the
-  health check use `AppConfig.ContributionServerRootUrl` (the test instance now), while the check-in,
-  feedback and board views stay on `CrtServerRootUrl`, the live service - the usage numbers and the
-  feedback mail. What CRT remembers of a service is kept per service (`ContributionServer.FileNameFor`:
-  `maintainer-session-test.json`, `submissions-test.json`) - shared with the files CRT 3.x reads, a
-  pre-release would send the live token to the test instance and forget it on the 401, signing 3.x
-  out. The sign-in screen and the Submit dialog say it is the test server. **On release day
-  `ContributionServerRootUrl` goes back to `CrtServerRootUrl`** - `ContributionServerTests` fails a
-  release version still naming the test instance, which stops the release workflow.
+- **EVERY PRE-RELEASE TALKS TO A TEST INSTANCE OF THE SERVICE, EVERY RELEASE TO THE LIVE ONE, BY ITS
+  VERSION** (owner decisions, 2026-10-25: "We need the test server"; 2026-11-09: "if the
+  <InformationalVersion> is not a 'real' version, then the application will refer to the
+  'crt-server-test' ... If it is a real version, then it should refer to the 'crt-server'";
+  `ContributionServer.RootUrlFor` - no "-" before any "+" is a release; no version at all is not):
+  its own program folder, settings, database (`crt_review_test`) and port (5198), at
+  `https://classic-repair-toolbox.dk/crt-test/api/`, with a shipped unit of its own
+  (`crt-server-test.service` - every line the live unit's but the five naming the instance,
+  `TestInstanceUnitTests`); set up as INSTALLING.md's "A test instance for pre-releases". **Nothing is
+  set back by hand on release day** - `AppConfig.ContributionServerRootUrl` is a PROPERTY over the
+  version (a static field declared above `AppDisplayVersionString` would read it as null, and every
+  release would talk to the test instance; `ContributionServerTests`). **AND EVERY PRE-RELEASE READS THE
+  TEST INSTANCE'S DATA** (owner decision, 2026-11-09: "we need to have a new data source for the test
+  server, so it does not mix data with the real server"; asked, the pre-releases read "The test
+  server's"): the test instance publishes into `app-data-v4-test-BETA` and `app-data-v4-test` - copies of
+  the 4.0 trees, each manifest's addresses rewritten (INSTALLING.md, "Setting it up, once" and "Moving it
+  to trees of its own") - and a pre-release's manifest is there (`ContributionServer.ChecksumsUrlFor`,
+  `AppConfig.LiveDataRootUrl`/`TestDataRootUrl`, properties for the same reason), its BETA source the
+  test BETA tree. Its unit can write those two and nothing of the live service's (`TestInstanceUnitTests`).
+  So nothing is moved on release day, and the test instance stays after it. The local "Data v4" folder is
+  shared, as the BETA source shares it: a release launched after a pre-release syncs it back by its manifest,
+  as switching the BETA source does. **Only the contribution service and the data move**: submissions, the
+  Maintainer tab, the health check and the data use the test instance's, while the check-in, feedback and
+  board views stay on `CrtServerRootUrl`, the live service - the usage numbers and the feedback mail. What CRT remembers of a service is kept
+  per service (`ContributionServer.FileNameFor`: `maintainer-session-test.json`, `submissions-test.json`)
+  - shared with the files a release reads, a pre-release would send the live token to the test
+  instance and forget it on the 401. The sign-in screen and the Submit dialog say it is the test server,
+  in words naming no version of CRT.
+- **THE SERVER UPDATES ITSELF FROM GITHUB** (owner request, 2026-11-09: "The goal would be for me to not
+  manually update this ... This should of course be as secure as possible"; owner decisions the same
+  day: proven by "GitHub attestations", and "the REAL version should work on a release ... But ALPHA/BETA
+  works on commit", "can it then update every minute?"; server 10.3.0; `src/CRT.Server/Handlers/Updates/`,
+  INSTALLING.md "Automatic updates from GitHub"). **Two channels:** the LIVE service ("releases") installs
+  the server build a real CRT release carries - the release workflow's `build-server` job; the TEST
+  instance ("main") the build of every push to main whose tests passed - the push workflow's
+  `server-build-of-main` job, which replaces the files of ONE standing pre-release, `crt-server-main`
+  (Velopack skips a release without its `releases.<channel>.json`, so CRT's update check never sees it;
+  the release workflow's clean-up leaves it alone). Both build through ONE composite action,
+  `.github/actions/crt-server-build` (publish, `crt-server-release.json` inside - server and CRT version,
+  commit, pre-release - pack, `actions/attest-build-provenance`, and the pointer
+  `crt-server-linux-x64.json` - tag, server version, commit, SHA-256). **On the box** `CRT.Server
+  update-server`, run EVERY MINUTE (a minute after the last look ended - `OnUnitInactiveSec=1min`) by
+  `crt-server-update.timer` / `crt-server-test-update.timer` as the user `crt-deploy` - not in `crt-data`,
+  so it cannot read the settings - reads its channel's POINTER (`ServerReleaseFeed.PointerUrlFor`:
+  `releases/latest/download/...` - a pre-release is never "latest" - or `releases/download/crt-server-main/...`;
+  release downloads, which GitHub's API limit of 60 an hour without a login does not count) and downloads
+  only a build it has not looked at and that says it is newer - a commit leaving the server's version as
+  it was costs one small file. **The pointer is not proven and decides only whether to download**; it must
+  name its own channel's release (`ServerBuildPointer.Read`), the build must have its checksum (main's files
+  are replaced at every push - one replaced mid-download is retried next minute). **The trust is fixed in
+  code, never a setting** (`ServerReleaseFeed.SignerWorkflowFor`, `ServerUpdateHost.VerifyArguments`, held by
+  `ServerUpdateCommandTests`): `gh attestation verify` with the bundle, offline from GitHub and with no
+  login, pinned to `HovKlan-DH/Classic-Repair-Toolbox`, the CHANNEL'S workflow (`build-and-release.yml` for
+  live, `build-and-unittest.yml` for test), `refs/heads/main` and a GitHub-hosted runner - **so both jobs
+  must stay in those files, on `ubuntu-latest`, and releases are run from main**; the version and
+  pre-release read from INSIDE the attested build, never a release's flag. Never backwards, never a
+  pre-release's build on the live service, never a build that failed before (`--retry-failed`); a held
+  build is retried every minute from disk; a look saying again what the last said writes nothing to the
+  journal. Layout: `<instance>/releases/<version>/`, `releases/current` switched by rename,
+  `app -> releases/current` so the units stay, settings in `<instance>/settings/` linked into each build,
+  `releases/update-status.json` (`ServerUpdateStatus`) which the service reads beside the build it runs and
+  answers in `GET /api/review/server-status`'s `updates` (CRT.Data's `ServerUpdatesAnswer`), shown under
+  Account > "Server version" (`ServerVersionDisplay`). After the restart `/api/health` must answer the new
+  version within two minutes, else the build before goes back. **A build shipping a changed systemd unit,
+  timer or the polkit rule (`50-crt-server-update.rules`, restart of the two services only) is HELD** until
+  the installed copy matches or `system-files-installed` is put in its folder - a change to any of those
+  files is a step for the project owner, said in VERSION.md. **The updater reads the installed copy as
+  `crt-deploy`, so a unit is installed `install -m 0644`, never `cp`** (2026-11-09: cp gave it the build's
+  0640, and 10.3.1 stayed held with its unit in place); the polkit folder is root's, so a changed rule
+  always needs the marker. The held status says the commands (`ServerUpdater.HeldForSystemFiles`). **A folder the
+  updater makes gets its mode IN THE MKDIR, never after** (`ServerArchive`; 2026-11-09): Linux takes the setgid bit
+  off a folder re-moded by a user outside its group, which `crt-deploy` always is, so 10.3.1's files came in
+  `crt-deploy`'s group and the service died on its runtimeconfig (exit 147) - `ServerArchiveTests` holds it by the
+  source, as no test user is outside its own group. The decisions are `ServerUpdater`'s against
+  `IServerUpdateHost` (tests: a fake host, virtual time); `ServerUpdateHost` is the thin Linux part.
 - **Step 1's foundation, `DraftSession`** (2026-10-25, CRT.Data - used by the Contribute tab's table and,
   through `DraftEdits`, by every other draft editor since the same day): a
   draft held once in memory for every editor. `Apply(description, transform, origin)` edits it in
@@ -2943,10 +3022,10 @@ service to the 4.0 trees"). CRT reads a main file only at or below its own versi
   was empty, every pin the workbook had kept). **A user's Excel-era draft takes the pinouts its published board was converted with, in the
   draft and its base** (`ConversionPinouts.FromPublished`, `DraftConversion`): a draft sends its whole pin list, and without them it read as
   every pin removed.
-- **Not done yet**: the release day itself (stop the test instance, convert once more, work the queue
-  empty, switch the service, point CRT back at the live service - a submission CRT 3.x sent names its
-  files by their Excel-tree paths), and pasting the Wiki's 4.0 pages and deleting the fourteen it no
-  longer has (`Assets/Wiki/README.md`, "Pages removed at CRT 4.0").
+- **Not done yet**: the release day itself (convert once more, work the queue empty, switch the service - a submission CRT 3.x sent names its
+  files by their Excel-tree paths; CRT itself needs nothing, its version picks the service), and pasting
+  the Wiki's 4.0 pages and deleting the fourteen it no longer has (`Assets/Wiki/README.md`, "Pages
+  removed at CRT 4.0").
 
 ### External integrations (`Handlers/`)
 

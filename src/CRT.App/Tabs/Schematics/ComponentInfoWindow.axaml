@@ -589,9 +589,20 @@
 							<Style Selector="Border.PopupPinRow:pointerover">
 								<Setter Property="Background" Value="{DynamicResource Form_Selected_Hover_Bg}" />
 							</Style>
+							<!-- The pin under the pointer in the drawing, lit here as the pointer lights a row (owner request,
+							     2026-11-09: "do highlight both places"). -->
+							<Style Selector="Border.PopupPinRow.pointed">
+								<Setter Property="Background" Value="{DynamicResource Form_Selected_Hover_Bg}" />
+							</Style>
 							<!-- The pin of the image shown (owner request, 2026-11-02) - as the drawing beside it lights it. -->
 							<Style Selector="Border.PopupPinRow.viewed">
 								<Setter Property="Background" Value="{DynamicResource Form_Selected_Bg}" />
+							</Style>
+							<!-- Every cell of the pin list but the last column's: the same space after it, PinTableGeometry.Gap
+							     (owner request, 2026-11-09: "align on empty spacing between columns - it should be the same for
+							     all"). -->
+							<Style Selector="TextBlock.PinCell">
+								<Setter Property="Margin" Value="0,0,20,0" />
 							</Style>
 						</StackPanel.Styles>
 						<TextBlock Text="Pinout"
@@ -606,6 +617,7 @@
 											 Margin="0,2,12,4"
 											 PinsCanBePicked="True"
 											 PinPicked="OnPinPickedInDrawing"
+											 PinHovered="OnPinHoveredInDrawing"
 											 IsVisible="False" />
 						<!-- A leaded part drawn as it looks, each lead labelled with its pin - a capacitor, a diode, a
 						     transistor, a crystal ... (owner request, 2026-11-09; PartPicture decides) - in the case's
@@ -617,6 +629,7 @@
 												  Margin="0,2,12,4"
 												  PinsCanBePicked="True"
 												  PinPicked="OnPinPickedInDrawing"
+												  PinHovered="OnPinHoveredInDrawing"
 												  IsVisible="False" />
 						<!-- A single resistor drawn with its color bands, its value and the bands' colors in words (owner requests,
 						     2026-11-07, and 2026-11-09: "the image/drawing of the resistor should be in the pinout instead (like the
@@ -631,25 +644,62 @@
 											   VerticalAlignment="Top"
 											   Margin="0,10,12,4" />
 						<!-- With the board's KiCad data, each pin's net on this board beside its signal name
-						     (the plan: "side by side") - the headings say which is which. -->
+						     (the plan: "side by side") - the headings say which is which. Last, what the pin's
+						     oscilloscope baselines say the scope should read on it (owner request, 2026-11-09), its
+						     heading on three lines so the column stays narrow, shown only when a pin has one - as
+						     "Net name" is. The headings stand on the bottom line, as a table's do.
+						     EVERY COLUMN IS AS WIDE AS ITS LONGEST TEXT, the same space after each (owner request,
+						     2026-11-09; the PinCell style): the columns share their widths from heading to last row, and
+						     only when the list has too little room do the signal, net and reading wrap, to the widths
+						     ComponentInfoWindow.PinList.cs puts in the three resources their MaxWidth reads. -->
 						<StackPanel x:Name="InfoPinsPanel" Grid.Column="1" Spacing="0" Grid.IsSharedSizeScope="True">
-							<!-- The signal name narrows with the popup, never wider than it was before nets. -->
 							<Grid x:Name="InfoPinsHeading">
 								<Grid.ColumnDefinitions>
-									<ColumnDefinition Width="36" />
-									<ColumnDefinition Width="*" MaxWidth="140" />
+									<ColumnDefinition Width="Auto" SharedSizeGroup="PopupPinNumber" />
+									<ColumnDefinition Width="Auto" SharedSizeGroup="PopupPinSignal" />
 									<ColumnDefinition Width="Auto" SharedSizeGroup="PopupPinNet" />
+									<ColumnDefinition Width="Auto" SharedSizeGroup="PopupPinDirection" />
+									<ColumnDefinition Width="Auto" SharedSizeGroup="PopupPinReading" />
+									<!-- What the columns leave: without it the grid's rounding gave each of them a pixel more. -->
 									<ColumnDefinition Width="*" />
 								</Grid.ColumnDefinitions>
-								<TextBlock Grid.Column="0" Text="Pin" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource Fg}" />
-								<TextBlock Grid.Column="1" Text="Signal" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource Fg}" />
-								<TextBlock x:Name="InfoPinsNetHeading" Grid.Column="2" Text="Net name" Margin="0,0,6,0" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource Fg}" />
-								<TextBlock Grid.Column="3" Text="Direction" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource Fg}" />
+								<TextBlock Grid.Column="0" Classes="PinCell" Text="Pin" VerticalAlignment="Bottom" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource Fg}" />
+								<TextBlock Grid.Column="1"
+										   Classes="PinCell"
+										   Text="Signal"
+										   MaxWidth="{DynamicResource PopupPinSignalWidth}"
+										   TextWrapping="Wrap"
+										   VerticalAlignment="Bottom"
+										   FontSize="10"
+										   FontWeight="Bold"
+										   Foreground="{DynamicResource Fg}" />
+								<TextBlock x:Name="InfoPinsNetHeading"
+										   Grid.Column="2"
+										   Classes="PinCell"
+										   Text="Net name"
+										   MaxWidth="{DynamicResource PopupPinNetWidth}"
+										   TextWrapping="Wrap"
+										   VerticalAlignment="Bottom"
+										   FontSize="10"
+										   FontWeight="Bold"
+										   Foreground="{DynamicResource Fg}" />
+								<TextBlock Grid.Column="3" Classes="PinCell" Text="Direction" VerticalAlignment="Bottom" FontSize="10" FontWeight="Bold" Foreground="{DynamicResource Fg}" />
+								<TextBlock x:Name="InfoPinsReadingHeading"
+										   Grid.Column="4"
+										   Text="Expected&#10;oscilloscope&#10;reading"
+										   MaxWidth="{DynamicResource PopupPinReadingWidth}"
+										   HorizontalAlignment="Left"
+										   TextWrapping="Wrap"
+										   VerticalAlignment="Bottom"
+										   FontSize="10"
+										   FontWeight="Bold"
+										   Foreground="{DynamicResource Fg}" />
 							</Grid>
 							<ItemsControl x:Name="InfoPinsItemsControl">
 								<ItemsControl.ItemTemplate>
 									<DataTemplate x:DataType="data:ComponentPopupPin">
 										<Border Classes="PopupPinRow"
+												Classes.pointed="{Binding IsPointedAt}"
 												Classes.viewed="{Binding IsViewed}"
 												Tag="{Binding}"
 												PointerPressed="OnPinRowPressed"
@@ -657,22 +707,37 @@
 												PointerExited="OnPinRowExited">
 										<Grid>
 											<Grid.ColumnDefinitions>
-												<ColumnDefinition Width="36" />
-												<ColumnDefinition Width="*" MaxWidth="140" />
+												<ColumnDefinition Width="Auto" SharedSizeGroup="PopupPinNumber" />
+												<ColumnDefinition Width="Auto" SharedSizeGroup="PopupPinSignal" />
 												<ColumnDefinition Width="Auto" SharedSizeGroup="PopupPinNet" />
+												<ColumnDefinition Width="Auto" SharedSizeGroup="PopupPinDirection" />
+												<ColumnDefinition Width="Auto" SharedSizeGroup="PopupPinReading" />
 												<ColumnDefinition Width="*" />
 											</Grid.ColumnDefinitions>
-											<TextBlock Grid.Column="0" Text="{Binding Pin}" FontSize="11" Foreground="{DynamicResource Fg}" />
-											<TextBlock Grid.Column="1" Text="{Binding Name}" Margin="0,0,6,0" FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource Fg}" />
-											<TextBlock Grid.Column="2"
-													   Text="{Binding Net}"
-													   IsVisible="{Binding HasNet}"
-													   MaxWidth="110"
-													   Margin="0,0,6,0"
+											<TextBlock Grid.Column="0" Classes="PinCell" Text="{Binding Pin}" FontSize="11" Foreground="{DynamicResource Fg}" />
+											<TextBlock Grid.Column="1"
+													   Classes="PinCell"
+													   Text="{Binding Name}"
+													   MaxWidth="{DynamicResource PopupPinSignalWidth}"
 													   FontSize="11"
 													   TextWrapping="Wrap"
 													   Foreground="{DynamicResource Fg}" />
-											<TextBlock Grid.Column="3" Text="{Binding Direction}" FontSize="11" Opacity="0.75" TextWrapping="Wrap" Foreground="{DynamicResource Fg}" />
+											<TextBlock Grid.Column="2"
+													   Classes="PinCell"
+													   Text="{Binding Net}"
+													   IsVisible="{Binding HasNet}"
+													   MaxWidth="{DynamicResource PopupPinNetWidth}"
+													   FontSize="11"
+													   TextWrapping="Wrap"
+													   Foreground="{DynamicResource Fg}" />
+											<TextBlock Grid.Column="3" Classes="PinCell" Text="{Binding Direction}" FontSize="11" Opacity="0.75" Foreground="{DynamicResource Fg}" />
+											<TextBlock Grid.Column="4"
+													   Text="{Binding Reading}"
+													   MaxWidth="{DynamicResource PopupPinReadingWidth}"
+													   HorizontalAlignment="Left"
+													   FontSize="11"
+													   TextWrapping="Wrap"
+													   Foreground="{DynamicResource Fg}" />
 										</Grid>
 										</Border>
 									</DataTemplate>

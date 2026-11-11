@@ -36,6 +36,25 @@ public sealed class BoardTableEditWordingTests
         bool headings = false) =>
         new(Rows(rows), 0, columns, changed, added, rowsLeftOut, columnsLeftOut, headings);
 
+    // Owner request, 2026-11-11: "have the counter in there in bold, and have the component names in bold" - said as the
+    // "<b>...</b>" BoldRuns draws, the names past the eighth counted in bold too.
+    [Fact]
+    public void The_components_picked_are_named_in_bold_with_their_count_in_bold()
+    {
+        string several = BoardTableEditWording.ComponentsShown(["RP7", "RP8", "RP9"]);
+
+        Assert.StartsWith("Only the rows of the <b>3</b> components picked in the list on the left: <b>RP7</b>, <b>RP8</b>, <b>RP9</b> - ", several);
+
+        string one = BoardTableEditWording.ComponentsShown(["U7"]);
+
+        Assert.StartsWith("Only the rows of <b>U7</b>, picked in the list on the left", one);
+
+        string many = BoardTableEditWording.ComponentsShown([.. Enumerable.Range(1, 11).Select(n => $"C{n}")]);
+
+        Assert.Contains("<b>C8</b> and <b>3</b> more - ", many);
+        Assert.DoesNotContain("<b>C9</b>", many);
+    }
+
     [Fact]
     public void One_cell_pasted_into_one_cell_says_nothing()
     {

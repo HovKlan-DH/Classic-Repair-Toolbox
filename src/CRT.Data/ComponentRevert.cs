@@ -194,6 +194,7 @@ namespace Handlers.DataHandling
                 Credits = draft.Credits,
                 KiCadImportantSignals = draft.KiCadImportantSignals,
                 Regions = draft.Regions,
+                RegionColors = draft.RegionColors,
             };
         }
 

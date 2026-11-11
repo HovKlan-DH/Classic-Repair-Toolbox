@@ -32,6 +32,7 @@ namespace CRT
         //
         //   Main.Updates.cs           - app update notice, install, data-sync notice and flow
         //   Main.BoardSelection.cs    - hardware/board drop-downs, board loading, catalogue visibility
+        //   Main.FirstBoard.cs        - when the first board is drawn, which the splash waits for
         //   Main.SchematicsWindows.cs - detached thumbnails window, fullscreen schematics window
         //   Main.Worklog.cs           - worklog bar, workbook activation, worklog entry mode
         //   Main.Devices.cs           - the worklog bar's two drop-downs: the device, and its workbooks
@@ -253,6 +254,7 @@ namespace CRT
             InitializeComponent();
 
             this.TabSchematicsControl.Initialize(this);
+            this.TabSchematicsControl.PictureSettled += this.OnPictureSettled;
             this.WirePictureTools();
             this.TabOverview.Initialize(this);
             this.TabWorkbooks.Initialize(this);
@@ -478,7 +480,10 @@ namespace CRT
                 this.ShowReceiptsUnreadableNoticeIfNeeded();
 
                 // What went wrong from here on - and before, at launch - and a crash last time (Main.Problems.cs).
-                await this.StartSayingProblemsAsync();
+                // STARTED here and AWAITED only once the first board load has begun (2026-11-09): it reads the
+                // crash file off the UI thread, and awaited first it handed the window back to App before the
+                // drop-downs were filled - shown, it stood empty until that read came back and the load began.
+                Task sayingProblems = this.StartSayingProblemsAsync();
 
                 if (DataManager.DataUpdateRequiresAppUpdate)
                 {
@@ -497,6 +502,8 @@ namespace CRT
                 // Calling it in the constructor would always find an empty HardwareBoards list
                 // (see this method's own header comment on why that population moved here).
                 this.ApplyContributeTabState();
+
+                await sayingProblems;
 
                 if (UserSettings.CheckVersionOnLaunch)
                 {
@@ -576,6 +583,9 @@ namespace CRT
             catch (Exception ex)
             {
                 Logger.Critical($"Main.StartAsync failed: {ex}");
+
+                // No first board is coming from a start that failed: the splash waits no longer (Main.FirstBoard.cs).
+                this.FirstBoardDone();
             }
         }
 
@@ -1275,40 +1285,6 @@ namespace CRT
                 {
                     desktop.Shutdown();
                 });
-            }
-        }
-
-        // ###########################################################################################
-        // Opens the persistent AppData folder that contains the log and settings files.
-        // ###########################################################################################
-        private void OnOpenAppDataFolderClick(object? sender, RoutedEventArgs e)
-        {
-            var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            var directory = Path.Combine(appData, AppConfig.AppFolderName);
-
-            try
-            {
-                Directory.CreateDirectory(directory);
-
-                if (OperatingSystem.IsWindows())
-                {
-                    Process.Start(new ProcessStartInfo("explorer.exe", $"\"{directory}\"")
-                    {
-                        UseShellExecute = true
-                    });
-                }
-                else if (OperatingSystem.IsMacOS())
-                {
-                    Process.Start("open", directory);
-                }
-                else
-                {
-                    Process.Start("xdg-open", directory);
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.Warning($"Failed to open app data folder - [{directory}] - [{ex.Message}]");
             }
         }
 

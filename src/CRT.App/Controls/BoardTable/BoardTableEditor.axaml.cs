@@ -72,7 +72,8 @@ namespace CRT
     // BoardTableEditor.ColourChange.cs (the same card on a changed color cell),
     // BoardTableEditor.SheetParts.cs (the Contribute tab's left column picking what the table shows,
     // "Component images" in two),
-    // BoardTableEditor.Components.cs (the component sheets narrowed to the components picked in the list).
+    // BoardTableEditor.Components.cs (the component sheets narrowed to the components picked in the list),
+    // BoardTableEditor.FirstRow.cs (the first row as tall as the cells it shows, as every other row is).
     // ###########################################################################################
     public partial class BoardTableEditor : UserControl
     {
@@ -149,6 +150,7 @@ namespace CRT
             // Columns dragged wider than they size themselves, and fitted to their text by a
             // double-click on a heading's edge (BoardTableEditor.TextWrap.cs).
             this.WireColumnWidths();
+            this.WireFirstRowHeight();
 
             // Tunnel, so a selected-but-not-editing cell sees Ctrl+C/Ctrl+V before the grid's own
             // row-copy handling does. While a cell IS being edited, the text box inside it is the
@@ -1293,12 +1295,14 @@ namespace CRT
                     // Sized to the text, up to a limit a drag or a double-click on the heading's
                     // edge can go past (BoardTableEditor.TextWrap.cs).
                     Width = DataGridLength.Auto,
-                    MinWidth = 60,
+                    MinWidth = BoardTableEditor.LeastColumnWidth,
                     MaxWidth = BoardTableEditor.MaxColumnWidth,
                     CellTheme = this.BuildCellTheme(i),
                     Tag = i,
                 });
             }
+
+            this.FitColumnsToHeadingsOnceLaidOut();
         }
 
     }

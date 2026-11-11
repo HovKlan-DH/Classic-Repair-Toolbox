@@ -227,8 +227,8 @@ namespace Handlers.DataHandling
                 return false;
             }
 
-            // And so is what it says about the board's regions (2026-11-01).
-            if (BoardRegions.Differ(published, draft))
+            // And so is what it says about the board's regions (2026-11-01), and their colors (2026-11-11).
+            if (BoardRegions.Differ(published, draft) || RegionColors.Differ(published, draft))
             {
                 return false;
             }

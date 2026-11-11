@@ -909,58 +909,50 @@
 		     again or another board is - hidden while a picture tool's bar is up, which goes back by
 		     itself (TabSchematics.PictureTools.cs, Main.PictureTools.cs). KHAKI since 2026-10-30 (owner
 		     request: "please make this more visible - maybe use the standard(?) Khaki color for the panel,
-		     to show this is a temporary thing") - Schematics_TemporaryBar_*, the Khaki of the image's name. -->
-		<Border x:Name="BackToContributeBorder"
-				IsVisible="False"
-				ZIndex="4998"
-				HorizontalAlignment="Center"
-				VerticalAlignment="Top"
-				MaxWidth="720"
-				Margin="12,8,12,0"
-				Background="{DynamicResource Schematics_TemporaryBar_Bg}"
-				BorderBrush="{DynamicResource Schematics_TemporaryBar_Border}"
-				BorderThickness="1"
-				CornerRadius="6"
-				Padding="12,6">
+		     to show this is a temporary thing"). Since 2026-11-11 a ReturnBar, as the picture tool's bar below (owner request:
+		     "This panel should be identical everywhere ... lightgrey background with 2px black dashed border"). -->
+		<local:ReturnBar x:Name="BackToContributeBorder"
+						 IsVisible="False"
+						 ZIndex="4998"
+						 HorizontalAlignment="Center"
+						 VerticalAlignment="Top"
+						 MaxWidth="720"
+						 Margin="12,8,12,0">
 			<StackPanel Orientation="Horizontal" Spacing="12">
 				<TextBlock x:Name="BackToContributeText"
 						   VerticalAlignment="Center"
 						   TextWrapping="Wrap"
 						   MaxWidth="480"
-						   Foreground="{DynamicResource Schematics_TemporaryBar_Fg}" />
+						   Foreground="{DynamicResource ReturnBar_Fg}" />
 				<Button x:Name="BackToContributeButton"
 						Content="Back to Contribute"
 						VerticalAlignment="Center"
 						ToolTip.Tip="Go back to the &quot;Contribute&quot; tab, where this was shown from" />
 			</StackPanel>
-		</Border>
+		</local:ReturnBar>
 
 		<!-- THE PICTURE TOOL'S BAR (slice 6 - the plan: "Mark components and Align KiCad open the
 		     Schematics tab in that tool, with a bar and a Done button"): what the tool is on, how it
 		     is used, and Done (saves into the draft) and Cancel - or, when the tool cannot start on
-		     the picture, why, and Close. Over the top of the picture, in its column. -->
-		<Border x:Name="PictureToolBarBorder"
-				IsVisible="False"
-				ZIndex="4999"
-				HorizontalAlignment="Center"
-				VerticalAlignment="Top"
-				MaxWidth="720"
-				Margin="12,8,12,0"
-				Background="{DynamicResource Schematics_Panels_Bg}"
-				BorderBrush="{DynamicResource Schematics_Panels_Border}"
-				BorderThickness="1"
-				CornerRadius="6"
-				Padding="12,8">
+		     the picture, why, and Close. Over the top of the picture, in its column. A ReturnBar, as "Back to Contribute"
+		     above (owner request, 2026-11-11). -->
+		<local:ReturnBar x:Name="PictureToolBarBorder"
+						 IsVisible="False"
+						 ZIndex="4999"
+						 HorizontalAlignment="Center"
+						 VerticalAlignment="Top"
+						 MaxWidth="720"
+						 Margin="12,8,12,0">
 			<Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto" ColumnSpacing="12">
 				<StackPanel Spacing="2" VerticalAlignment="Center">
 					<TextBlock x:Name="PictureToolTitleText"
 							   FontWeight="Bold"
 							   TextWrapping="Wrap"
-							   Foreground="{DynamicResource Schematics_Panels_Fg}" />
+							   Foreground="{DynamicResource ReturnBar_Fg}" />
 					<TextBlock x:Name="PictureToolHelpText"
 							   FontSize="12"
 							   TextWrapping="Wrap"
-							   Foreground="{DynamicResource Schematics_Panels_Fg}" />
+							   Foreground="{DynamicResource ReturnBar_Fg}" />
 				</StackPanel>
 				<StackPanel Grid.Column="1"
 							Orientation="Horizontal"
@@ -995,18 +987,18 @@
 					<StackPanel Spacing="4">
 						<TextBlock x:Name="UnmarkedHeadingText"
 								   FontWeight="Bold"
-								   Foreground="{DynamicResource Schematics_Panels_Fg}" />
+								   Foreground="{DynamicResource ReturnBar_Fg}" />
 						<TextBlock x:Name="UnmarkedHelpText"
 								   FontSize="12"
 								   TextWrapping="Wrap"
-								   Foreground="{DynamicResource Schematics_Panels_Fg}" />
+								   Foreground="{DynamicResource ReturnBar_Fg}" />
 						<ScrollViewer MaxHeight="140" HorizontalScrollBarVisibility="Disabled">
 							<WrapPanel x:Name="UnmarkedButtonsPanel" />
 						</ScrollViewer>
 					</StackPanel>
 				</Border>
 			</Grid>
-		</Border>
+		</local:ReturnBar>
 
 		<Border x:Name="SchematicsNewLabelPromptBorder"
 				IsVisible="False"
