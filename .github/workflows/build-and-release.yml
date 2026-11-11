@@ -721,8 +721,6 @@ jobs:
             release-assets/crt-server-linux-x64.json
 
       # Leaves at most one pre-release standing, and none at all once a full release ships.
-      # "crt-server-main" - the standing pre-release carrying the newest server build of main for the test
-      # server (build-and-unittest.yml) - is no CRT release, and is always left alone.
       # Deliberately ungated so one step covers both kinds of run - the "keep the current tag"
       # check is what lets a single rule do both jobs:
       #
@@ -767,8 +765,6 @@ jobs:
             | while read tag; do
                 if [ "$tag" = "$CURRENT_TAG" ]; then
                   echo "Keeping current pre-release: $tag"
-                elif [ "$tag" = "crt-server-main" ]; then
-                  echo "Keeping [$tag] - the test server's builds of main, no CRT release."
                 elif ! echo "$tag" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+-'; then
                   echo "SKIPPING [$tag] - flagged as a pre-release, but not shaped like one. Refusing to delete it."
                 else

@@ -7,9 +7,10 @@ namespace CRT.Server.Tests
     // ###########################################################################################
     // Where a server build comes from and who must have built it (ServerReleaseFeed, ServerBuildPointer;
     // owner decisions, 2026-11-09: "the REAL version should work on a release ... But ALPHA/BETA works on
-    // commit"). The live service reads GitHub's newest release, the test instance the standing pre-release of
-    // main; each trusts only its own workflow; a pointer naming anything else is no pointer, so no address is
-    // ever built from it.
+    // commit"; 2026-11-11: main's builds in a repository of their own, "CRT-Server", one release per server
+    // version). The live service reads CRT's newest release, the test instance CRT-Server's; each trusts only
+    // its own workflow of CRT's repository; a pointer naming anything else is no pointer, so no address is ever
+    // built from it.
     // ###########################################################################################
     public sealed class ServerReleaseFeedTests
     {
@@ -19,32 +20,39 @@ namespace CRT.Server.Tests
             JsonSerializer.Serialize(new { tag, serverVersion, commit = ServerBuilds.Commit, sha256 });
 
         [Fact]
-        public void The_live_service_reads_the_newest_release_and_the_test_instance_mains_standing_pre_release()
+        public void The_live_service_reads_crts_newest_release_and_the_test_instance_the_newest_of_crt_server()
         {
             Assert.Equal(
                 "https://github.com/HovKlan-DH/Classic-Repair-Toolbox/releases/latest/download/crt-server-linux-x64.json",
                 ServerReleaseFeed.PointerUrlFor(ServerUpdateOutcomes.ReleasesChannel));
 
             Assert.Equal(
-                "https://github.com/HovKlan-DH/Classic-Repair-Toolbox/releases/download/crt-server-main/crt-server-linux-x64.json",
+                "https://github.com/HovKlan-DH/CRT-Server/releases/latest/download/crt-server-linux-x64.json",
                 ServerReleaseFeed.PointerUrlFor(ServerUpdateOutcomes.MainChannel));
 
             Assert.Equal(
                 "https://github.com/HovKlan-DH/Classic-Repair-Toolbox/releases/download/4.1.0/crt-server-linux-x64.tar.gz",
-                ServerReleaseFeed.DownloadUrl("4.1.0", ServerReleaseFeed.ArchiveName));
+                ServerReleaseFeed.DownloadUrl(ServerUpdateOutcomes.ReleasesChannel, "4.1.0", ServerReleaseFeed.ArchiveName));
+
+            Assert.Equal(
+                "https://github.com/HovKlan-DH/CRT-Server/releases/download/10.4.2/crt-server-linux-x64.tar.gz.sigstore.json",
+                ServerReleaseFeed.DownloadUrl(ServerUpdateOutcomes.MainChannel, "10.4.2", ServerReleaseFeed.BundleName));
         }
 
         // ###########################################################################################
-        // *** EACH CHANNEL TRUSTS ITS OWN WORKFLOW ONLY. *** A build of main - attested by the push workflow - is no
-        // build the live service takes, whatever release it is put on; a release's is the release workflow's.
+        // *** EACH CHANNEL TRUSTS ITS OWN WORKFLOW ONLY - OF CRT'S REPOSITORY, WHEREVER THE BUILD IS DOWNLOADED FROM. ***
+        // A build of main - attested by the push workflow - is no build the live service takes, whatever release it
+        // is put on; a release's is the release workflow's. CRT-Server holds main's builds and proves nothing.
         // ###########################################################################################
         [Fact]
-        public void Each_channel_trusts_only_its_own_workflow_on_main()
+        public void Each_channel_trusts_only_its_own_workflow_of_crts_repository_on_main()
         {
             Assert.Equal("HovKlan-DH/Classic-Repair-Toolbox/.github/workflows/build-and-release.yml", ServerReleaseFeed.SignerWorkflowFor(ServerUpdateOutcomes.ReleasesChannel));
             Assert.Equal("HovKlan-DH/Classic-Repair-Toolbox/.github/workflows/build-and-unittest.yml", ServerReleaseFeed.SignerWorkflowFor(ServerUpdateOutcomes.MainChannel));
+            Assert.Equal("HovKlan-DH/Classic-Repair-Toolbox", ServerReleaseFeed.Repository);
             Assert.Equal("refs/heads/main", ServerReleaseFeed.SourceRef);
-            Assert.Equal("crt-server-main", ServerReleaseFeed.MainTag);
+            Assert.Contains("HovKlan-DH/Classic-Repair-Toolbox", ServerUpdateHost.VerifyArguments("a", "b", ServerUpdateOutcomes.MainChannel));
+            Assert.DoesNotContain(ServerUpdateHost.VerifyArguments("a", "b", ServerUpdateOutcomes.MainChannel), argument => argument.Contains("CRT-Server", StringComparison.Ordinal));
         }
 
         [Fact]
@@ -59,12 +67,13 @@ namespace CRT.Server.Tests
             Assert.Equal(ServerReleaseFeedTests.Sha, pointer.Sha256);
             Assert.Equal("CRT release [4.1.0]", pointer.Source);
 
-            Assert.Equal("main at [7f3a2c1]", ServerBuildPointer.Read(ServerReleaseFeedTests.Pointer("crt-server-main"), ServerUpdateOutcomes.MainChannel, out _)!.Source);
+            Assert.Equal("main at [7f3a2c1]", ServerBuildPointer.Read(ServerReleaseFeedTests.Pointer("10.3.0"), ServerUpdateOutcomes.MainChannel, out _)!.Source);
         }
 
         // ###########################################################################################
         // A pointer is never proven - but no address is built from one that names another channel's release, a
-        // tag that could climb out of the downloads, no version or no checksum.
+        // tag that could climb out of the downloads, no version or no checksum. A build of main is on the release
+        // of the version it carries, and on no other.
         // ###########################################################################################
         [Theory]
         [InlineData(ServerUpdateOutcomes.ReleasesChannel, "crt-server-main", "10.3.0", ServerReleaseFeedTests.Sha)]
@@ -72,9 +81,11 @@ namespace CRT.Server.Tests
         [InlineData(ServerUpdateOutcomes.ReleasesChannel, "../4.1.0", "10.3.0", ServerReleaseFeedTests.Sha)]
         [InlineData(ServerUpdateOutcomes.ReleasesChannel, "4.1.0/x", "10.3.0", ServerReleaseFeedTests.Sha)]
         [InlineData(ServerUpdateOutcomes.MainChannel, "4.1.0", "10.3.0", ServerReleaseFeedTests.Sha)]
-        [InlineData(ServerUpdateOutcomes.MainChannel, "crt-server-main", "../10.3.0", ServerReleaseFeedTests.Sha)]
-        [InlineData(ServerUpdateOutcomes.MainChannel, "crt-server-main", "10.3.0", "not-a-checksum")]
-        [InlineData(ServerUpdateOutcomes.MainChannel, "crt-server-main", "10.3.0", "3B8AC6B30336802FC1A858D7C084E11CDF24AC1A761CA90B68022D7D729208DE")]
+        [InlineData(ServerUpdateOutcomes.MainChannel, "crt-server-main", "10.3.0", ServerReleaseFeedTests.Sha)]
+        [InlineData(ServerUpdateOutcomes.MainChannel, "../10.3.0", "../10.3.0", ServerReleaseFeedTests.Sha)]
+        [InlineData(ServerUpdateOutcomes.MainChannel, "10.3.0/x", "10.3.0/x", ServerReleaseFeedTests.Sha)]
+        [InlineData(ServerUpdateOutcomes.MainChannel, "10.3.0", "10.3.0", "not-a-checksum")]
+        [InlineData(ServerUpdateOutcomes.MainChannel, "10.3.0", "10.3.0", "3B8AC6B30336802FC1A858D7C084E11CDF24AC1A761CA90B68022D7D729208DE")]
         public void A_pointer_naming_anything_but_its_channels_release_and_a_build_is_refused(string channel, string tag, string serverVersion, string sha256)
         {
             Assert.Null(ServerBuildPointer.Read(ServerReleaseFeedTests.Pointer(tag, serverVersion, sha256), channel, out string why));

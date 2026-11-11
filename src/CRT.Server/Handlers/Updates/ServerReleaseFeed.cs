@@ -11,8 +11,14 @@ namespace CRT.Server.Handlers.Updates
     //   - THE LIVE SERVICE ("releases"): the server build a real CRT release carries - built, attested and
     //     attached by the release workflow, build-and-release.yml. Found through GitHub's newest release.
     //   - THE TEST INSTANCE ("main"): the server build of every commit pushed to main whose tests passed -
-    //     built, attested and put by the push workflow, build-and-unittest.yml, on ONE standing pre-release,
-    //     MainTag, its files replaced at every push. No CRT release is needed for it.
+    //     built and attested by the push workflow, build-and-unittest.yml, and put on a release of ITS SERVER
+    //     VERSION in a repository of its own, MainBuildsRepository (owner request, 2026-11-11: a standing
+    //     pre-release here "will polute the list, as this is not something anyone would need to download"),
+    //     its files replaced at every push while the version stands. Found through that repository's newest
+    //     release. No CRT release is needed for it.
+    //
+    // Where a build is DOWNLOADED from proves nothing: the attestation names this repository's workflow
+    // whichever repository's release carries the bytes (Repository, SignerWorkflowFor).
     //
     // Each carries three files: ArchiveName, the build; BundleName, GitHub's attestation that the named
     // workflow built exactly those bytes from main; PointerName, a few lines saying which build that is
@@ -25,19 +31,21 @@ namespace CRT.Server.Handlers.Updates
     // ###########################################################################################
     internal static class ServerReleaseFeed
     {
+        // The repository whose workflows build the server - the one every attestation must name.
         public const string Repository = "HovKlan-DH/Classic-Repair-Toolbox";
 
-        public const string SourceRef = "refs/heads/main";
+        // The repository the push workflow puts main's builds in, one release per server version, tagged with it.
+        public const string MainBuildsRepository = "HovKlan-DH/CRT-Server";
 
-        // The standing pre-release the push workflow keeps the newest build of main on.
-        public const string MainTag = "crt-server-main";
+        public const string SourceRef = "refs/heads/main";
 
         public const string ArchiveName = "crt-server-linux-x64.tar.gz";
         public const string BundleName = ServerReleaseFeed.ArchiveName + ".sigstore.json";
         public const string PointerName = "crt-server-linux-x64.json";
 
-        // Where a release's files are downloaded from - nothing else is ever fetched.
-        public const string DownloadPrefix = "https://github.com/" + ServerReleaseFeed.Repository + "/releases/download/";
+        // The repository a channel's builds are downloaded from - nothing else is ever fetched.
+        public static string DownloadRepositoryFor(string channel) =>
+            channel == ServerUpdateOutcomes.MainChannel ? ServerReleaseFeed.MainBuildsRepository : ServerReleaseFeed.Repository;
 
         public const long ArchiveMaxBytes = 200L * 1024 * 1024;
         public const long BundleMaxBytes = 1L * 1024 * 1024;
@@ -51,24 +59,24 @@ namespace CRT.Server.Handlers.Updates
             (channel == ServerUpdateOutcomes.MainChannel ? "build-and-unittest.yml" : "build-and-release.yml");
 
         // ###########################################################################################
-        // The pointer a channel reads every minute: GitHub's newest release's (a pre-release is never the
-        // newest, so never the live service's), or the standing pre-release's.
+        // The pointer a channel reads every minute: the newest release's of its repository - CRT's newest
+        // release (a pre-release is never the newest, so never the live service's), or the newest server
+        // version's build of main.
         // ###########################################################################################
         public static string PointerUrlFor(string channel) =>
-            channel == ServerUpdateOutcomes.MainChannel
-                ? ServerReleaseFeed.DownloadPrefix + ServerReleaseFeed.MainTag + "/" + ServerReleaseFeed.PointerName
-                : "https://github.com/" + ServerReleaseFeed.Repository + "/releases/latest/download/" + ServerReleaseFeed.PointerName;
+            "https://github.com/" + ServerReleaseFeed.DownloadRepositoryFor(channel) + "/releases/latest/download/" + ServerReleaseFeed.PointerName;
 
-        // A file of release `tag` - a tag the pointer named, held to its channel's shape first (ServerBuildPointer).
-        public static string DownloadUrl(string tag, string fileName) =>
-            ServerReleaseFeed.DownloadPrefix + Uri.EscapeDataString(tag) + "/" + fileName;
+        // A file of `channel`'s release `tag` - a tag the pointer named, held to its channel's shape first
+        // (ServerBuildPointer).
+        public static string DownloadUrl(string channel, string tag, string fileName) =>
+            "https://github.com/" + ServerReleaseFeed.DownloadRepositoryFor(channel) + "/releases/download/" + Uri.EscapeDataString(tag) + "/" + fileName;
     }
 
     // ###########################################################################################
     // WHICH BUILD A RELEASE CARRIES - "crt-server-linux-x64.json", written by the workflows beside the build
     // (2026-11-09):
     //
-    //   tag            the release it is on - a CRT release's version, or ServerReleaseFeed.MainTag
+    //   tag            the release it is on - a CRT release's version, or for main's builds the server version
     //   serverVersion  the server version inside it
     //   commit         the commit it was built from
     //   sha256         the build's checksum - a new build is a new checksum, even of the same version
@@ -87,10 +95,13 @@ namespace CRT.Server.Handlers.Updates
 
         [JsonPropertyName("sha256")] public string Sha256 { get; set; } = string.Empty;
 
+        // Read for the test instance's channel - a build of main, not a CRT release.
+        [JsonIgnore] private bool thisOfMain;
+
         // ###########################################################################################
         // The pointer in `json` for `channel`, or null with the reason. Its tag must be its channel's - a real
-        // release's version for the live service, the standing pre-release for the test instance - so no URL is
-        // ever built from anything else; its checksum a SHA-256; its version one that can name a folder.
+        // release's version for the live service, the server version it carries for the test instance - so no
+        // URL is ever built from anything else; its checksum a SHA-256; its version one that can name a folder.
         // ###########################################################################################
         public static ServerBuildPointer? Read(string? json, string channel, out string why)
         {
@@ -112,8 +123,10 @@ namespace CRT.Server.Handlers.Updates
                 return null;
             }
 
-            bool tagFits = channel == ServerUpdateOutcomes.MainChannel
-                ? pointer.Tag == ServerReleaseFeed.MainTag
+            pointer.thisOfMain = channel == ServerUpdateOutcomes.MainChannel;
+
+            bool tagFits = pointer.thisOfMain
+                ? ServerReleaseInfo.IsFolderSafeVersion(pointer.Tag) && string.Equals(pointer.Tag, pointer.ServerVersion, StringComparison.Ordinal)
                 : ServerReleaseInfo.IsFolderSafeVersion(pointer.Tag) && !pointer.Tag.Contains('-');
 
             if (!tagFits)
@@ -144,7 +157,7 @@ namespace CRT.Server.Handlers.Updates
 
         // Where it came from, in the status's words: "CRT release [4.1.0]" or "main at [63431ff]".
         public string Source =>
-            this.Tag == ServerReleaseFeed.MainTag
+            this.thisOfMain
                 ? $"main at [{(this.Commit.Length > 7 ? this.Commit[..7] : this.Commit)}]"
                 : $"CRT release [{this.Tag}]";
     }

@@ -11,8 +11,8 @@ name: Build and Unit Test
 # these steps as a gate, because a tag can point at any commit.
 #
 # ONE SIDE EFFECT, FENCED OFF (owner decision, 2026-11-09: "ALPHA/BETA works on commit"): a push to MAIN
-# whose tests passed also builds the contribution service and puts it on the standing pre-release
-# "crt-server-main", for the test server to install (job "server-build-of-main" below). Nothing else -
+# whose tests passed also builds the contribution service and puts it on its version's release in the
+# repository HovKlan-DH/CRT-Server, for the test server to install (job "server-build-of-main" below). Nothing else -
 # no other branch, no pull request - does anything but build and test.
 #
 # Note: a "branches" filter means tag pushes do NOT trigger this - the release
@@ -200,27 +200,34 @@ jobs:
   ###############################################################
   # THE TEST SERVER'S BUILD OF MAIN
   ###############################################################
-  # Every push to main whose tests passed builds the contribution service, attests it and replaces the files of
-  # ONE standing pre-release, "crt-server-main" (owner decision, 2026-11-09: "the REAL version should work on a
-  # release ... But ALPHA/BETA works on commit"). The test server's updater (CRT.Server's update-server,
-  # INSTALLING.md "Automatic updates from GitHub") reads its pointer every minute and installs a newer server
-  # version within the minute. The live service never takes these builds: each says it is a pre-release's, and
-  # its attestation names this workflow, which the live service does not trust.
+  # Every push to main whose tests passed builds the contribution service, attests it and puts it on the release
+  # of its SERVER VERSION in a repository of its own, HovKlan-DH/CRT-Server (owner decisions, 2026-11-09: "the
+  # REAL version should work on a release ... But ALPHA/BETA works on commit"; 2026-11-11: a standing pre-release
+  # here "will polute the list, as this is not something anyone would need to download" - "please create a repo
+  # named 'CRT-Server' and have it in there"), its notes that version's row of VERSION.md
+  # (crt-server-publish-main.sh, crt-server-release-notes.py). The test server's updater (CRT.Server's
+  # update-server, INSTALLING.md "Automatic updates from GitHub") reads that repository's newest release's pointer
+  # every minute and installs a newer server version within the minute. The live service never takes these
+  # builds: each says it is a pre-release's, and its attestation names this workflow, which the live service does
+  # not trust. CRT's own releases carry nothing of it.
   #
-  # The release is a pre-release with no Velopack feed in it, so CRT's own update check passes it over (Velopack
-  # skips a release without its releases.<channel>.json) and the release workflow's clean-up leaves it alone.
+  # Writing another repository needs the secret CRT_SERVER_REPO_TOKEN (a fine-grained token, Contents read and
+  # write on CRT-Server only); without it this job fails and says so.
   #
   # Must stay on ubuntu-latest (the box refuses a build attested on a self-hosted runner) and in this file
-  # (ServerReleaseFeed.SignerWorkflowFor). A newer push cancels this run with the rest (the concurrency above),
-  # so the newest commit's build is the one that lands. The pointer goes up LAST: until it does, the box goes on
-  # reading the previous one, and a build half replaced is never taken.
+  # (ServerReleaseFeed.SignerWorkflowFor) - the attestation is made HERE, in CRT's repository, wherever the build
+  # is then put. A newer push cancels this run with the rest (the concurrency above), so the newest commit's
+  # build is the one that lands. The pointer goes up LAST: until it does, the box goes on reading the previous
+  # one, and a build half replaced is never taken.
   server-build-of-main:
     needs: build-and-test
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     name: Build the server for the test server
     runs-on: ubuntu-latest
+    # Reading CRT's repository is all its own token does since the builds went to CRT-Server (written with
+    # CRT_SERVER_REPO_TOKEN); the attestation needs the other two.
     permissions:
-      contents: write
+      contents: read
       id-token: write
       attestations: write
     steps:
@@ -232,42 +239,35 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Read CRT's version
-        id: crt
-        run: echo "version=$(dotnet msbuild src/CRT.App/CRT.App.csproj -getProperty:InformationalVersion -nologo)" >> "$GITHUB_OUTPUT"
+      - name: Read CRT's and the server's versions
+        id: versions
+        run: |
+          echo "crt=$(dotnet msbuild src/CRT.App/CRT.App.csproj -getProperty:InformationalVersion -nologo)" >> "$GITHUB_OUTPUT"
+          echo "server=$(dotnet msbuild src/CRT.Server/CRT.Server.csproj -getProperty:InformationalVersion -nologo)" >> "$GITHUB_OUTPUT"
 
+      # The release - and so the pointer's tag - is the server version (ServerBuildPointer.Read holds the two equal).
       - name: Build, attest and point at the server
         uses: ./.github/actions/crt-server-build
         with:
-          crt-version: ${{ steps.crt.outputs.version }}
+          crt-version: ${{ steps.versions.outputs.crt }}
           pre-release: 'true'
-          tag: crt-server-main
+          tag: ${{ steps.versions.outputs.server }}
 
-      - name: Put it on the standing pre-release
+      - name: Put it on its version's release in CRT-Server
         id: upload
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          if ! gh release view crt-server-main --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
-            gh release create crt-server-main --repo "$GITHUB_REPOSITORY" --prerelease --target "$GITHUB_SHA" \
-              --title "CRT.Server - newest build of main (for the test server - not a CRT release)" \
-              --notes "The contribution service as built from the newest commit to main whose tests passed. The test server installs it by itself (src/CRT.Server/INSTALLING.md, \"Automatic updates from GitHub\"). This is no release of Classic Repair Toolbox - nothing here is for installing CRT."
-          fi
-
-          gh release upload crt-server-main crt-server-linux-x64.tar.gz crt-server-linux-x64.tar.gz.sigstore.json \
-            --repo "$GITHUB_REPOSITORY" --clobber
-          gh release upload crt-server-main crt-server-linux-x64.json --repo "$GITHUB_REPOSITORY" --clobber
+          GH_TOKEN: ${{ secrets.CRT_SERVER_REPO_TOKEN }}
+          VERSION: ${{ steps.versions.outputs.server }}
+        run: bash .github/workflows/crt-server-publish-main.sh
 
       # A newer push cancelling this run between the build's upload and its pointer's left the two disagreeing, and the
       # test server downloaded the build every minute to find the wrong checksum until a later push passed its tests
-      # (code review, 2026-11-11). always() runs on a cancel too: an upload broken off is done again WHOLE, the pointer
+      # (code review, 2026-11-11). always() runs on a cancel too: the upload broken off is done again WHOLE, the pointer
       # last - this commit's tests passed, so its build is a right one to stand until the next. Nothing replaced yet
       # (the step never ran) is "skipped", and needs nothing.
       - name: Finish an upload that was broken off
         if: always() && (steps.upload.outcome == 'cancelled' || steps.upload.outcome == 'failure')
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release upload crt-server-main crt-server-linux-x64.tar.gz crt-server-linux-x64.tar.gz.sigstore.json \
-            --repo "$GITHUB_REPOSITORY" --clobber
-          gh release upload crt-server-main crt-server-linux-x64.json --repo "$GITHUB_REPOSITORY" --clobber
+          GH_TOKEN: ${{ secrets.CRT_SERVER_REPO_TOKEN }}
+          VERSION: ${{ steps.versions.outputs.server }}
+        run: bash .github/workflows/crt-server-publish-main.sh

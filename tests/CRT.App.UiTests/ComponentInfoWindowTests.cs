@@ -863,7 +863,12 @@ public class ComponentInfoWindowTests : IDisposable
 
             try
             {
+                // At its smallest the popup has no room for forty pins, whatever the fonts (PinoutFitsInPopup) - at its
+                // default size they fitted with Windows' fonts and not with Linux', and this test is about WHEN it is
+                // decided, not whether it fits.
                 var window = CreateWindow();
+                window.Width = window.MinWidth;
+                window.Height = window.MinHeight;
                 window.Show();
                 Dispatcher.UIThread.RunJobs();
 

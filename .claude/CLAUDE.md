@@ -2928,16 +2928,23 @@ service to the 4.0 trees"). CRT reads a main file only at or below its own versi
   INSTALLING.md "Automatic updates from GitHub"). **Two channels:** the LIVE service ("releases") installs
   the server build a real CRT release carries - the release workflow's `build-server` job; the TEST
   instance ("main") the build of every push to main whose tests passed - the push workflow's
-  `server-build-of-main` job, which replaces the files of ONE standing pre-release, `crt-server-main`
-  (Velopack skips a release without its `releases.<channel>.json`, so CRT's update check never sees it;
-  the release workflow's clean-up leaves it alone). Both build through ONE composite action,
+  `server-build-of-main` job, which puts it on the release of its SERVER VERSION in a public repository of
+  its own, **`HovKlan-DH/CRT-Server`** (owner request, 2026-11-11: the standing pre-release `crt-server-main`
+  in CRT's repository "will polute the list" - gone since server 10.4.2; `.github/workflows/crt-server-publish-main.sh`:
+  a new version's release made as a draft, its files put on it, then published as the newest; an existing one's
+  files replaced, the pointer last), with the secret `CRT_SERVER_REPO_TOKEN` (a fine-grained token, Contents
+  write on CRT-Server alone). **Its release notes are that version's row of VERSION.md**
+  (`crt-server-release-notes.py`, rewritten at every push of the version) - so the row IS the release note,
+  written for whoever reads that release. **CRT-Server's README is kept in that repository alone** (no copy
+  here): it says what the builds are and that nobody needs them. Both build through ONE composite action,
   `.github/actions/crt-server-build` (publish, `crt-server-release.json` inside - server and CRT version,
   commit, pre-release - pack, `actions/attest-build-provenance`, and the pointer
   `crt-server-linux-x64.json` - tag, server version, commit, SHA-256). **On the box** `CRT.Server
   update-server`, run EVERY MINUTE (a minute after the last look ended - `OnUnitInactiveSec=1min`) by
   `crt-server-update.timer` / `crt-server-test-update.timer` as the user `crt-deploy` - not in `crt-data`,
   so it cannot read the settings - reads its channel's POINTER (`ServerReleaseFeed.PointerUrlFor`:
-  `releases/latest/download/...` - a pre-release is never "latest" - or `releases/download/crt-server-main/...`;
+  `releases/latest/download/...` of CRT's repository - a pre-release is never "latest" - or of CRT-Server's, where
+  a pointer's tag must equal its server version; the attestation names CRT's repository whichever one the bytes came from;
   release downloads, which GitHub's API limit of 60 an hour without a login does not count) and downloads
   only a build it has not looked at and that says it is newer - a commit leaving the server's version as
   it was costs one small file. **The pointer is not proven and decides only whether to download**; it must

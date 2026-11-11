@@ -57,13 +57,13 @@ namespace CRT.Server.Tests
 
         // ###########################################################################################
         // A build put on GitHub as the workflows put it: the archive and its bundle on the release, and the
-        // pointer naming it - a real release's (the newest release's pointer) or main's (the standing
-        // pre-release's). `pointerVersion` lets a pointer say another version than the build does.
+        // pointer naming it - a real release's (CRT's newest release's pointer) or main's (CRT-Server's
+        // newest release, its server version's). `pointerVersion` lets a pointer say another version than the build does.
         // ###########################################################################################
         private void Publish(string tag, byte[] build, string serverVersion, string channel = ServerUpdateOutcomes.ReleasesChannel, string? pointerSha = null)
         {
-            this.thisHost.Files[ServerReleaseFeed.DownloadUrl(tag, ServerReleaseFeed.ArchiveName)] = build;
-            this.thisHost.Files[ServerReleaseFeed.DownloadUrl(tag, ServerReleaseFeed.BundleName)] = "{\"bundle\":true}"u8.ToArray();
+            this.thisHost.Files[ServerReleaseFeed.DownloadUrl(channel, tag, ServerReleaseFeed.ArchiveName)] = build;
+            this.thisHost.Files[ServerReleaseFeed.DownloadUrl(channel, tag, ServerReleaseFeed.BundleName)] = "{\"bundle\":true}"u8.ToArray();
             this.thisHost.Pointers[ServerReleaseFeed.PointerUrlFor(channel)] = JsonSerializer.Serialize(new
             {
                 tag,
@@ -77,7 +77,7 @@ namespace CRT.Server.Tests
             this.Publish(tag, ServerBuilds.Build(serverVersion, preRelease), serverVersion);
 
         private void PublishMain(string serverVersion, string commit = ServerBuilds.Commit) =>
-            this.Publish(ServerReleaseFeed.MainTag, ServerBuilds.Build(serverVersion, preRelease: true, commit: commit), serverVersion, ServerUpdateOutcomes.MainChannel);
+            this.Publish(serverVersion, ServerBuilds.Build(serverVersion, preRelease: true, commit: commit), serverVersion, ServerUpdateOutcomes.MainChannel);
 
         [Fact]
         public async Task A_newer_build_proven_genuine_is_installed_and_the_service_answers_as_it()
@@ -237,7 +237,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task A_build_replaced_while_it_was_downloaded_is_not_taken()
         {
-            this.Publish(ServerReleaseFeed.MainTag, ServerBuilds.Build("10.3.0", preRelease: true), "10.3.0", ServerUpdateOutcomes.MainChannel, pointerSha: new string('a', 64));
+            this.Publish("10.3.0", ServerBuilds.Build("10.3.0", preRelease: true), "10.3.0", ServerUpdateOutcomes.MainChannel, pointerSha: new string('a', 64));
 
             Assert.False(await this.Updater(ServerUpdateOutcomes.MainChannel).RunAsync(CancellationToken.None));
             Assert.Equal(ServerUpdaterTests.Running, this.thisHost.Current);
@@ -252,7 +252,7 @@ namespace CRT.Server.Tests
 
         // A pointer naming another channel's release is no pointer: no URL is ever built from it.
         [Theory]
-        [InlineData(ServerUpdateOutcomes.ReleasesChannel, ServerReleaseFeed.MainTag)]
+        [InlineData(ServerUpdateOutcomes.ReleasesChannel, "crt-server-main")]
         [InlineData(ServerUpdateOutcomes.ReleasesChannel, "4.1.0-beta.1")]
         [InlineData(ServerUpdateOutcomes.MainChannel, "4.1.0")]
         public async Task A_pointer_naming_another_channels_release_downloads_nothing(string channel, string tag)
@@ -518,7 +518,7 @@ namespace CRT.Server.Tests
         {
             Dictionary<string, string> files = ServerBuilds.Files("10.3.0", preRelease: true);
             files[ServerUpdater.PolkitRuleFile] += "// changed\n";
-            this.Publish(ServerReleaseFeed.MainTag, ServerBuilds.Pack(files), "10.3.0", ServerUpdateOutcomes.MainChannel);
+            this.Publish("10.3.0", ServerBuilds.Pack(files), "10.3.0", ServerUpdateOutcomes.MainChannel);
             await this.Updater(ServerUpdateOutcomes.MainChannel).RunAsync(CancellationToken.None);
             Assert.Equal(ServerUpdateOutcomes.Held, this.Status.Outcome);
 
@@ -526,7 +526,7 @@ namespace CRT.Server.Tests
 
             // The next push lands before the next minute: the same server version and system files, other program bytes.
             files["CRT.Server.dll"] += " - the next commit";
-            this.Publish(ServerReleaseFeed.MainTag, ServerBuilds.Pack(files), "10.3.0", ServerUpdateOutcomes.MainChannel);
+            this.Publish("10.3.0", ServerBuilds.Pack(files), "10.3.0", ServerUpdateOutcomes.MainChannel);
 
             Assert.True(await this.Updater(ServerUpdateOutcomes.MainChannel).RunAsync(CancellationToken.None));
             Assert.Equal("10.3.0", this.thisHost.Current);
@@ -539,13 +539,13 @@ namespace CRT.Server.Tests
         {
             Dictionary<string, string> files = ServerBuilds.Files("10.3.0", preRelease: true);
             files[ServerUpdater.PolkitRuleFile] += "// changed\n";
-            this.Publish(ServerReleaseFeed.MainTag, ServerBuilds.Pack(files), "10.3.0", ServerUpdateOutcomes.MainChannel);
+            this.Publish("10.3.0", ServerBuilds.Pack(files), "10.3.0", ServerUpdateOutcomes.MainChannel);
             await this.Updater(ServerUpdateOutcomes.MainChannel).RunAsync(CancellationToken.None);
 
             File.WriteAllText(Path.Combine(this.Releases, "10.3.0", ServerUpdater.SystemFilesInstalledMarker), string.Empty);
 
             files[ServerUpdater.PolkitRuleFile] += "// changed again\n";
-            this.Publish(ServerReleaseFeed.MainTag, ServerBuilds.Pack(files), "10.3.0", ServerUpdateOutcomes.MainChannel);
+            this.Publish("10.3.0", ServerBuilds.Pack(files), "10.3.0", ServerUpdateOutcomes.MainChannel);
 
             Assert.True(await this.Updater(ServerUpdateOutcomes.MainChannel).RunAsync(CancellationToken.None));
             Assert.Equal(ServerUpdaterTests.Running, this.thisHost.Current);

@@ -265,8 +265,8 @@ namespace CRT.Server.Handlers.Updates
 
                 try
                 {
-                    await this.thisHost.DownloadAsync(ServerReleaseFeed.DownloadUrl(pointer.Tag, ServerReleaseFeed.ArchiveName), archive, ServerReleaseFeed.ArchiveMaxBytes, cancellationToken);
-                    await this.thisHost.DownloadAsync(ServerReleaseFeed.DownloadUrl(pointer.Tag, ServerReleaseFeed.BundleName), bundle, ServerReleaseFeed.BundleMaxBytes, cancellationToken);
+                    await this.thisHost.DownloadAsync(ServerReleaseFeed.DownloadUrl(this.thisOptions.Channel, pointer.Tag, ServerReleaseFeed.ArchiveName), archive, ServerReleaseFeed.ArchiveMaxBytes, cancellationToken);
+                    await this.thisHost.DownloadAsync(ServerReleaseFeed.DownloadUrl(this.thisOptions.Channel, pointer.Tag, ServerReleaseFeed.BundleName), bundle, ServerReleaseFeed.BundleMaxBytes, cancellationToken);
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {

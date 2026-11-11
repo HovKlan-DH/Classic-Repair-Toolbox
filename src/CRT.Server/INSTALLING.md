@@ -551,9 +551,26 @@ server build, and installs it (server 10.3.0 and up):
 | Test instance | the server of **every commit pushed to main** whose tests passed | the push workflow, `build-and-unittest.yml` | `crt-server-test-update.service`, `.timer` |
 
 So no release is needed for the test instance: a push to main is on it a few minutes later (the tests take
-that long). The live service only ever gets what a real release carries. Main's builds stand on one
-pre-release on GitHub, `crt-server-main`, its files replaced at every push - it is no CRT release, and CRT's
-own update check never offers it.
+that long). The live service only ever gets what a real release carries. Main's builds go to a repository
+of their own, [HovKlan-DH/CRT-Server](https://github.com/HovKlan-DH/CRT-Server), so they never show among
+CRT's releases: one release per server version, its files replaced at every push while that version stands,
+its notes that version's row of [VERSION.md](VERSION.md). The test instance reads that repository's newest
+release.
+
+**Writing to CRT-Server needs a secret, made once.** The push workflow's own token can only write CRT's
+repository, so it uses a token of yours that can write CRT-Server and nothing else:
+
+1. On GitHub: Settings > Developer settings > Personal access tokens > **Fine-grained tokens** > Generate new
+   token. Repository access: **Only select repositories**, `HovKlan-DH/CRT-Server`. Permissions:
+   **Contents: Read and write** (Metadata: Read-only comes with it). Nothing else.
+2. In CRT's repository: Settings > Secrets and variables > Actions > New repository secret, named
+   `CRT_SERVER_REPO_TOKEN`, the token as its value. Or from a shell logged in to GitHub:
+   `gh secret set CRT_SERVER_REPO_TOKEN --repo HovKlan-DH/Classic-Repair-Toolbox` (it asks for the value).
+
+**Check:** the next push to main's "Build and Unit Test" run has its last job, "Build the server for the test
+server", green, and CRT-Server has a release named after the server version. Without the secret - or once the
+token has expired - that job fails saying the secret is not set, or with GitHub's 401; make a new token and put
+it in the same secret. Nothing else reads it: the box needs no token at all.
 
 A minute's look is cheap: it reads one small file on GitHub naming the newest build (not GitHub's API,
 which allows only 60 calls an hour without a login), and downloads only a build it has not seen that
@@ -562,7 +579,8 @@ says it is newer. A commit that leaves the server's version as it was is not eve
 **How it stays safe:**
 
 - **Nothing unproven is installed, or even unpacked.** Each workflow attests the server build it makes;
-  the box checks it with `gh attestation verify`, held to this repository, that instance's workflow, the
+  the box checks it with `gh attestation verify`, held to CRT's repository (wherever the build was downloaded
+  from - CRT-Server only holds main's builds, and proves nothing), that instance's workflow, the
   `main` branch and a GitHub-hosted runner. A build made anywhere else, by the other workflow, or changed
   after it was built, is refused. The box needs no GitHub login and holds no key: the attestation travels
   with the build.
@@ -590,7 +608,7 @@ list.
 
 **Before starting:** push a commit to main with server 10.3.0 or newer in it, and wait for its "Build and
 Unit Test" run on GitHub to finish green. Its last job, "Build the server for the test server", puts the
-build on the pre-release `crt-server-main`. The box is set up from THAT build - so the very first install
+build on its version's release in CRT-Server (with the secret above). The box is set up from THAT build - so the very first install
 already goes through the check every later one does.
 
 Then on the box, each step in the same shell:
@@ -619,8 +637,8 @@ Then on the box, each step in the same shell:
    ```bash
    mkdir -p ~/crt-server-first && cd ~/crt-server-first
    rm -f crt-server-linux-x64.*
-   curl -fsSLO https://github.com/HovKlan-DH/Classic-Repair-Toolbox/releases/download/crt-server-main/crt-server-linux-x64.tar.gz
-   curl -fsSLO https://github.com/HovKlan-DH/Classic-Repair-Toolbox/releases/download/crt-server-main/crt-server-linux-x64.tar.gz.sigstore.json
+   curl -fsSLO https://github.com/HovKlan-DH/CRT-Server/releases/latest/download/crt-server-linux-x64.tar.gz
+   curl -fsSLO https://github.com/HovKlan-DH/CRT-Server/releases/latest/download/crt-server-linux-x64.tar.gz.sigstore.json
    gh attestation verify crt-server-linux-x64.tar.gz --bundle crt-server-linux-x64.tar.gz.sigstore.json \
      --repo HovKlan-DH/Classic-Repair-Toolbox \
      --signer-workflow HovKlan-DH/Classic-Repair-Toolbox/.github/workflows/build-and-unittest.yml \
@@ -1234,6 +1252,50 @@ itself the minute after:
    `sudo install -m 0644 .../crt-server-test/releases/10.3.1/crt-server-test.service /etc/systemd/system/ && sudo
    systemctl daemon-reload && sudo systemctl start crt-server-test`.
 5. The next minute the updater installs 10.3.1 and restarts it: `update-status.json` says `"installed"`.
+
+### Moving its builds to CRT-Server (once, 2026-11-11)
+
+From server 10.4.2 the builds of main go to [HovKlan-DH/CRT-Server](https://github.com/HovKlan-DH/CRT-Server),
+one release per server version, and nothing writes the pre-release `crt-server-main` in CRT's repository any
+more. **But the updater the test instance runs (10.4.1 or older) reads only `crt-server-main`**, so it never
+sees 10.4.2: with that pre-release gone it says "No build of main is published yet" every minute. 10.4.2 is
+handed to it there ONCE - the very files and attestation of CRT-Server's release, so the box proves them as
+always - and from 10.4.2 on it reads CRT-Server by itself.
+
+Before starting: the secret `CRT_SERVER_REPO_TOKEN` is set ("Automatic updates from GitHub"), a commit with
+server 10.4.2 is pushed to main, and https://github.com/HovKlan-DH/CRT-Server/releases shows `10.4.2`.
+
+1. **On your PC**, in Git Bash, logged in to GitHub with `gh` (not on the box, which has no login):
+
+   ```bash
+   cd "$(mktemp -d)"
+   gh release download 10.4.2 --repo HovKlan-DH/CRT-Server --pattern 'crt-server-linux-x64*'
+   # The old updater takes only a pointer that names crt-server-main:
+   python -c "import json; p='crt-server-linux-x64.json'; d=json.load(open(p)); d['tag']='crt-server-main'; json.dump(d, open(p, 'w'))"
+   cat crt-server-linux-x64.json        # "tag": "crt-server-main", "serverVersion": "10.4.2"
+   gh release create crt-server-main --repo HovKlan-DH/Classic-Repair-Toolbox --prerelease \
+     --title "CRT.Server 10.4.2 - handover to HovKlan-DH/CRT-Server (deleted again shortly)" \
+     --notes "Temporary: moves the test server to https://github.com/HovKlan-DH/CRT-Server. Not a CRT release." \
+     crt-server-linux-x64.tar.gz crt-server-linux-x64.tar.gz.sigstore.json
+   gh release upload crt-server-main crt-server-linux-x64.json --repo HovKlan-DH/Classic-Repair-Toolbox
+   ```
+
+   (The tag `crt-server-main` may still be there from before - the release is then made on it.)
+
+2. **Check, within a few minutes:** CRT's Maintainer tab on a pre-release, Account > "Server version", says
+   10.4.2 installed - or on the box `sudo cat /mydir/http/classic-repair-toolbox.dk/crt-server-test/releases/update-status.json`
+   says `"installed"` and `10.4.2`.
+
+3. **Then delete `crt-server-main` and its tag**, on your PC:
+
+   ```bash
+   gh release delete crt-server-main --repo HovKlan-DH/Classic-Repair-Toolbox --cleanup-tag --yes
+   git ls-remote --tags https://github.com/HovKlan-DH/Classic-Repair-Toolbox crt-server-main   # prints nothing
+   ```
+
+   **Check:** the next minute's look on the box still says up to date with 10.4.2 - it now reads CRT-Server.
+   While `crt-server-main` stands, a CRT release run's clean-up logs "SKIPPING [crt-server-main] - flagged as a
+   pre-release, but not shaped like one" and leaves it: it is deleted here, by hand, never by a workflow.
 
 ### Running it
 

@@ -27,7 +27,7 @@ inputs:
     description: '"true" for a build the live service must never install (every build of main), "false" for a real release.'
     required: true
   tag:
-    description: The GitHub release the build goes on - the CRT release's tag, or crt-server-main.
+    description: The GitHub release the build goes on - the CRT release's tag, or for a build of main the server version (its release in HovKlan-DH/CRT-Server).
     required: true
 
 runs:
