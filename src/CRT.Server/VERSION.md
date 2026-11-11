@@ -6,7 +6,9 @@ The version this service reports from `GET /api/health`, and why each number cha
 server's version to be handled for them: they bump CRT themselves, but this one
 is to be judged and bumped by whoever changes the server. So when you change anything under
 `src/CRT.Server/`, you decide the bump, edit `InformationalVersion` in
-[CRT.Server.csproj](CRT.Server.csproj), and add the line here. There is nothing else to remember -
+[CRT.Server.csproj](CRT.Server.csproj), add the line here, and add the version's one-line bullets to
+[RELEASE-NOTES.md](RELEASE-NOTES.md) (its release's text in HovKlan-DH/CRT-Server; this row keeps the why). There is
+nothing else to remember -
 the `Stop` hook [server-version-bump.sh](../../.claude/hooks/server-version-bump.sh) names this
 file and the csproj when server code changed and neither moved.
 

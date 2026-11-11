@@ -2933,9 +2933,10 @@ service to the 4.0 trees"). CRT reads a main file only at or below its own versi
   in CRT's repository "will polute the list" - gone since server 10.4.2; `.github/workflows/crt-server-publish-main.sh`:
   a new version's release made as a draft, its files put on it, then published as the newest; an existing one's
   files replaced, the pointer last), with the secret `CRT_SERVER_REPO_TOKEN` (a fine-grained token, Contents
-  write on CRT-Server alone). **Its release notes are that version's row of VERSION.md**
-  (`crt-server-release-notes.py`, rewritten at every push of the version) - so the row IS the release note,
-  written for whoever reads that release. **CRT-Server's README is kept in that repository alone** (no copy
+  write on CRT-Server alone). **Its release notes are that version's section of
+  [src/CRT.Server/RELEASE-NOTES.md](../src/CRT.Server/RELEASE-NOTES.md)** - one-liners in CHANGELOG.md's shape
+  (owner request, 2026-11-11: VERSION.md's row as notes was "very hard to read"), with the bump and API revision
+  from VERSION.md under them (`crt-server-release-notes.py`, rewritten at every push of the version). **CRT-Server's README is kept in that repository alone** (no copy
   here): it says what the builds are and that nobody needs them. Both build through ONE composite action,
   `.github/actions/crt-server-build` (publish, `crt-server-release.json` inside - server and CRT version,
   commit, pre-release - pack, `actions/attest-build-provenance`, and the pointer
@@ -3448,8 +3449,10 @@ then holds that day's API). The earlier numberings (development up to `5.1.0`, t
 only the live table. A server version named in an older comment ("server 4.3.0") is one of those
 series; every version since the second restart holds all of it. The next breaking change is `4.0.0`.
 
-Two edits per bump: `InformationalVersion` in [CRT.Server.csproj](../src/CRT.Server/CRT.Server.csproj),
-and a row in VERSION.md's history saying what a caller would notice. `GET /api/health` reports it,
+Three edits per bump: `InformationalVersion` in [CRT.Server.csproj](../src/CRT.Server/CRT.Server.csproj),
+a row in VERSION.md's history saying what a caller would notice and why, and a section of one-line bullets in
+[RELEASE-NOTES.md](../src/CRT.Server/RELEASE-NOTES.md) - the release's text in CRT-Server, said as a reader of
+that list meets it. `GET /api/health` reports it,
 without the `+<commit>` metadata (the endpoint is public). **Machine-checked:** the `Stop` hook
 [hooks/server-version-bump.sh](hooks/server-version-bump.sh) warns when a file the service is built
 from changed while the version stood still - "nothing a caller can observe changed" is sometimes the

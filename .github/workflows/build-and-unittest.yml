@@ -204,7 +204,7 @@ jobs:
   # of its SERVER VERSION in a repository of its own, HovKlan-DH/CRT-Server (owner decisions, 2026-11-09: "the
   # REAL version should work on a release ... But ALPHA/BETA works on commit"; 2026-11-11: a standing pre-release
   # here "will polute the list, as this is not something anyone would need to download" - "please create a repo
-  # named 'CRT-Server' and have it in there"), its notes that version's row of VERSION.md
+  # named 'CRT-Server' and have it in there"), its notes that version's section of src/CRT.Server/RELEASE-NOTES.md
   # (crt-server-publish-main.sh, crt-server-release-notes.py). The test server's updater (CRT.Server's
   # update-server, INSTALLING.md "Automatic updates from GitHub") reads that repository's newest release's pointer
   # every minute and installs a newer server version within the minute. The live service never takes these

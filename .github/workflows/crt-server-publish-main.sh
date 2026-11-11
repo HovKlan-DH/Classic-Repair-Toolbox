@@ -19,7 +19,7 @@
 #   - an existing version's files are replaced, the build first and its pointer LAST (a newer commit of the same
 #     version: the box takes it while that version is not installed - a HELD build is replaced by it - but a
 #     version that FAILED to come up is not tried again by itself, whatever its checksum; that needs a new server
-#     version, or `update-server --retry-failed` on the box), and its notes rewritten from VERSION.md.
+#     version, or `update-server --retry-failed` on the box), and its notes rewritten from RELEASE-NOTES.md.
 # The tag is made on CRT-Server's own default branch (CRT's commits are not in that repository); the commit
 # built is in the pointer, the notes and the attestation.
 # ###########################################################################################
@@ -37,7 +37,7 @@ if [ -z "${GH_TOKEN:-}" ]; then
   exit 1
 fi
 
-python3 .github/workflows/crt-server-release-notes.py "$VERSION" "$GITHUB_SHA" src/CRT.Server/VERSION.md > crt-server-notes.md
+python3 .github/workflows/crt-server-release-notes.py "$VERSION" "$GITHUB_SHA" src/CRT.Server/RELEASE-NOTES.md src/CRT.Server/VERSION.md > crt-server-notes.md
 cat crt-server-notes.md
 
 if gh release view "$VERSION" --repo "$REPO" > /dev/null 2>&1; then
