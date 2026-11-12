@@ -264,6 +264,10 @@ public sealed class MainPictureToolsTests : IDisposable
 
             tab.SelectSchematicByName(UserSettings.GetLastSchematicForBoard(MainPictureToolsTests.BoardKey)!);
             tab.ImageSettledForTests("Bottom");
+
+            // A real board's load reads its KiCad data again after this: not settled yet. (With no board to read, this
+            // test's load ended early and said none is coming - Main.NoKiCadDataComing.)
+            tab.KiCadLoadingForTests();
             window.DoWhatWasAskedAfterLoad(MainPictureToolsTests.BoardKey);
 
             Assert.Equal("Bottom", tab.GetCurrentSchematicName());

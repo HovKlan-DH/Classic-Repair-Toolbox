@@ -661,45 +661,88 @@
 					</Border>
 				</Grid>
 
-				<!-- BOTTOM-RIGHT OVERLAY STACK -->
+				<!-- BOTTOM-RIGHT OVERLAY: the view's tools in a row, LEFT of the "Traces visible" panel, never over it
+				     (owner request, 2026-11-12: "Do have the "Draw trace" button and the "KiCad data" badge to the left of
+				     that - not on top of it"). Both stand on the bottom edge. -->
 				<StackPanel x:Name="SchematicsBottomRightOverlayStack"
+							Orientation="Horizontal"
 							HorizontalAlignment="Right"
 							VerticalAlignment="Bottom"
 							Margin="0,0,10,10"
 							Spacing="8"
 							ZIndex="200">
 
-					<!-- KICAD DATA INITIALIZING INDICATOR -->
-					<Border x:Name="KiCadInitializingIndicator"
-							IsVisible="False"
-							IsHitTestVisible="False"
-							HorizontalAlignment="Right"
-							Background="{DynamicResource Schematics_Name_Bg}"
-							BorderBrush="{DynamicResource Schematics_Name_Border}"
-							BorderThickness="1"
-							CornerRadius="4"
-							Padding="8,4">
-						<TextBlock x:Name="KiCadInitializingIndicatorText"
-								   Text="KiCad data initializing..."
-								   FontSize="11"
-								   FontWeight="Normal"
-								   Foreground="{DynamicResource Schematics_Name_Fg}" />
-					</Border>
-
 					<!-- "DRAW TRACE" (CRT 4.0 step 5 - the plan: "Traces are drawn only with Draw trace"):
 					     traces are drawn and changed only while it is on; "Done drawing" or Escape stops.
 					     Shown with a picture. TabSchematics.ViewTools.cs. -->
-					<Button x:Name="DrawTraceButton"
-							IsVisible="False"
-							HorizontalAlignment="Right"
-							Content="Draw trace"
-							FontSize="11"
-							Padding="8,4"
-							Click="OnDrawTraceClick" />
+					<!-- A badge beside it, ONE PLACE FOR TWO (owner requests, 2026-11-12: "a discrete badge, maybe next to "Draw
+					     trace" button. This info should show per schematic image", and "while it is loading the KiCad data, then do
+					     show that "Loading KiCad data..." badge in the same position"): "Loading KiCad data..." while the board's
+					     KiCad project is read, then "Has KiCad data" while the schematic image shown has the board's KiCad traces
+					     on it (a KiCad view associated) - where a trace can be highlighted (TabSchematics.ShowKiCadBadges). Never both. -->
+					<StackPanel x:Name="SchematicsViewToolsRow"
+								Orientation="Horizontal"
+								VerticalAlignment="Bottom"
+								Spacing="6">
+						<!-- In the colors of the three panels over the schematic image, and dimmed (owner request, 2026-11-12:
+						     "the same background color as the 3 panels ... and then try and dim it, so it gets more discrete").
+						     A status, not a panel: the pointer reaches the schematic image under it - both badges, so a wheel
+						     turn, a pan or a trace pointed at in that corner is the schematic image's (code review, 2026-11-12:
+						     "Has KiCad data" took them for a tooltip; the "Schematics" tour's trace step says what it means). -->
+						<Border x:Name="KiCadInitializingIndicator"
+								IsVisible="False"
+								IsHitTestVisible="False"
+								VerticalAlignment="Center"
+								Opacity="0.6"
+								Background="{DynamicResource Schematics_Panels_Bg}"
+								BorderBrush="{DynamicResource Schematics_Panels_Border}"
+								BorderThickness="1"
+								CornerRadius="4"
+								Padding="6,2">
+							<TextBlock x:Name="KiCadInitializingIndicatorText"
+									   Text="Loading KiCad data..."
+									   FontSize="11"
+									   Foreground="{DynamicResource Schematics_Panels_Fg}" />
+						</Border>
+						<Border x:Name="KiCadDataBadge"
+								IsVisible="False"
+								IsHitTestVisible="False"
+								VerticalAlignment="Center"
+								Opacity="0.6"
+								Background="{DynamicResource Schematics_Panels_Bg}"
+								BorderBrush="{DynamicResource Schematics_Panels_Border}"
+								BorderThickness="1"
+								CornerRadius="4"
+								Padding="6,2">
+							<TextBlock Text="Has KiCad data"
+									   FontSize="11"
+									   Foreground="{DynamicResource Schematics_Panels_Fg}" />
+						</Border>
+						<!-- Solid under the pointer and pressed, with a hand (owner request, 2026-11-12: "when hovering the "Draw
+						     trace" button, then do not transparent its background - instead use the hand icon on it, as it can be
+						     pressed"): the theme's fills there let the schematic image show through. -->
+						<Button x:Name="DrawTraceButton"
+								IsVisible="False"
+								VerticalAlignment="Center"
+								Cursor="Hand"
+								Content="Draw trace"
+								FontSize="11"
+								Padding="8,4"
+								Click="OnDrawTraceClick">
+							<Button.Styles>
+								<Style Selector="Button#DrawTraceButton:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button#DrawTraceButton:pressed /template/ ContentPresenter#PART_ContentPresenter">
+									<Setter Property="Background" Value="{DynamicResource Button_Bg}" />
+									<Setter Property="BorderBrush" Value="{DynamicResource Button_Border}" />
+									<Setter Property="Foreground" Value="{DynamicResource Button_Fg}" />
+								</Style>
+							</Button.Styles>
+						</Button>
+					</StackPanel>
 
 					<!-- DYNAMIC POLYLINE TRACES LIST PANEL -->
 					<Border x:Name="TracesPanel"
 							IsVisible="False"
+							VerticalAlignment="Bottom"
 							HorizontalAlignment="Right"
 							Background="{DynamicResource Schematics_Panels_Bg}"
 							BorderBrush="{DynamicResource Schematics_Panels_Border}"
@@ -967,7 +1010,7 @@
 					     opens calibration on the Schematics tab with a Done - next picture button"). -->
 					<Button x:Name="PictureToolDoneNextButton"
 							Classes="Accept"
-							Content="Done - next picture"
+							Content="Done - next schematic image"
 							IsVisible="False" />
 				</StackPanel>
 

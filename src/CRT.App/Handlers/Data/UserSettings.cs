@@ -275,6 +275,16 @@ namespace Handlers.DataHandling
         // (CRT 4.0 step 5).
         [JsonPropertyName("schematicsPanHintSeen")] public bool SchematicsPanHintSeen { get; set; }
 
+        // Each tab's introduction tour as last seen here - by the tab's name ("Schematics"), the newest version of a step of
+        // the tour then (TourPlan.VersionToRemember; owner request, 2026-11-11, Main.Tours.cs). A tab not here has never
+        // shown its tour; one at an older version shows what came since.
+        [JsonPropertyName("introductionToursSeen")] public Dictionary<string, string> IntroductionToursSeen { get; set; } = new();
+
+        // The steps of each tab's tour its last showing left out, or said only in part, as what they are about was not on
+        // screen then - by the tab's name, each step by its headline (TourPlan.LeftOutBefore; code review, 2026-11-12). A
+        // tab not here left nothing out.
+        [JsonPropertyName("introductionTourStepsLeftOut")] public Dictionary<string, List<string>> IntroductionTourStepsLeftOut { get; set; } = new();
+
         // When each of the user's own oscilloscope models was last sent in (CRT 4.0 step 5, "Submit
         // this model"), by "<vendor>\n<series or model>" lower-cased - the date as yyyy-MM-dd. Only
         // shown in the model editor; the outcome comes by mail.
@@ -689,6 +699,64 @@ namespace Handlers.DataHandling
         {
             get => _data.SchematicsPanHintSeen;
             set { _data.SchematicsPanHintSeen = value; Save(); }
+        }
+
+        // ###########################################################################################
+        // The version of a tab's introduction tour last seen here - null when it never was (Main.Tours.cs).
+        // ###########################################################################################
+        public static string? IntroductionTourSeen(string tab) =>
+            (_data.IntroductionToursSeen ??= new()).TryGetValue(tab, out string? version) ? version : null;
+
+        // The headlines of the steps of a tab's tour its last showing left out - empty for none.
+        public static IReadOnlyList<string> IntroductionTourStepsLeftOut(string tab) =>
+            (_data.IntroductionTourStepsLeftOut ??= new()).TryGetValue(tab, out List<string>? steps) && steps is not null ? steps : [];
+
+        // ###########################################################################################
+        // A tab's tour seen at `version` - and, from a tour that ended, the steps it left out (null leaves them as they
+        // are). Saved once.
+        // ###########################################################################################
+        public static void SetIntroductionTourSeen(string tab, string version, IReadOnlyList<string>? stepsLeftOut = null)
+        {
+            Dictionary<string, string> seen = _data.IntroductionToursSeen ??= new();
+            Dictionary<string, List<string>> left = _data.IntroductionTourStepsLeftOut ??= new();
+
+            bool versionChanged = !(seen.TryGetValue(tab, out string? was) && string.Equals(was, version, StringComparison.Ordinal));
+            bool leftOutChanged = stepsLeftOut is not null && !UserSettings.IntroductionTourStepsLeftOut(tab).SequenceEqual(stepsLeftOut, StringComparer.Ordinal);
+
+            if (!versionChanged && !leftOutChanged)
+                return;
+
+            seen[tab] = version;
+
+            if (leftOutChanged)
+            {
+                if (stepsLeftOut!.Count == 0)
+                {
+                    left.Remove(tab);
+                }
+                else
+                {
+                    left[tab] = stepsLeftOut.ToList();
+                }
+            }
+
+            Logger.Info($"Setting changed: [IntroductionToursSeen] [{tab}] [{version}]{(leftOutChanged ? $" [left out: {stepsLeftOut!.Count}]" : string.Empty)}");
+            Save();
+        }
+
+        // "Take the introduction tours again" (the "Configuration" tab): every tab's tour as never seen.
+        public static void ForgetIntroductionToursSeen()
+        {
+            Dictionary<string, string> seen = _data.IntroductionToursSeen ??= new();
+            Dictionary<string, List<string>> left = _data.IntroductionTourStepsLeftOut ??= new();
+
+            if (seen.Count == 0 && left.Count == 0)
+                return;
+
+            seen.Clear();
+            left.Clear();
+            Logger.Info("Setting changed: [IntroductionToursSeen] [none]");
+            Save();
         }
 
         // When the user's own oscilloscope model `vendor` + `seriesOrModel` was last sent in - null
@@ -1990,6 +2058,8 @@ namespace Handlers.DataHandling
                 Logger.Info($"        [SchematicsBoardSettingsPanelExpanded] [{SchematicsBoardSettingsPanelExpanded}]");
                 Logger.Info($"        [SchematicsGlobalSettingsPanelExpanded] [{SchematicsGlobalSettingsPanelExpanded}]");
                 Logger.Info($"        [SchematicsPanHintSeen] [{SchematicsPanHintSeen}]");
+                Logger.Info($"        [IntroductionToursSeen] [{string.Join(", ", (_data.IntroductionToursSeen ?? new()).Select(seen => $"{seen.Key} {seen.Value}"))}]");
+                Logger.Info($"        [IntroductionTourStepsLeftOut] [{string.Join(", ", (_data.IntroductionTourStepsLeftOut ?? new()).Select(left => $"{left.Key} {left.Value?.Count ?? 0}"))}]");
                 Logger.Info($"        [SchematicsShowTracesOnComponentSelect] [{SchematicsShowTracesOnComponentSelect}]");
                 Logger.Info($"        [SchematicsNetConnectionsPanelExpanded] [{SchematicsNetConnectionsPanelExpanded}]");
                 Logger.Info($"        [SchematicsImportantSignalsPanelExpanded] [{SchematicsImportantSignalsPanelExpanded}]");

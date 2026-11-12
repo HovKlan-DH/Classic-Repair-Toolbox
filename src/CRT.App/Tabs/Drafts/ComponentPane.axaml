@@ -1431,7 +1431,7 @@
 												<WrapPanel Grid.Column="2" ItemSpacing="6" LineSpacing="6" VerticalAlignment="Center">
 													<TextBlock Text="Background" VerticalAlignment="Center" />
 													<ColorPicker Classes="RegionColor" Color="{Binding BackgroundColor, Mode=TwoWay}"
-																 ToolTip.Tip="The region's button and its name over the pictures in this color - for everybody, once published" />
+																 ToolTip.Tip="The region's button and its name over the schematic images in this color - for everybody, once published" />
 													<TextBlock Text="Text" VerticalAlignment="Center" Margin="12,0,0,0" />
 													<ColorPicker Classes="RegionColor" Color="{Binding TextColor, Mode=TwoWay}"
 																 ToolTip.Tip="Worked out from the background as the one that reads best on it, black or white - pick another to set your own" />
@@ -1472,7 +1472,7 @@
 											     it in this region; past ComponentsNamedAtMost, "... and N more" and "Show all" ON THE SAME LINE (owner
 											     request, the same day), the last item of the very list. -->
 											<StackPanel Spacing="4" IsVisible="{Binding HasComponents}">
-												<TextBlock Text="Applied on:" Classes="EmptyLine" />
+												<TextBlock Text="Region applied on:" Classes="EmptyLine" />
 												<ItemsControl ItemsSource="{Binding ChipsShown}">
 													<ItemsControl.ItemsPanel>
 														<ItemsPanelTemplate>
@@ -1682,7 +1682,7 @@
 													Height="100"
 													HorizontalAlignment="Left"
 													Background="{DynamicResource Card_Bg}"
-													ToolTip.Tip="The image as its thumbnail beside the &quot;Schematics&quot; tab's picture shows it, with a component selected">
+													ToolTip.Tip="The image as its thumbnail beside the &quot;Schematics&quot; tab's schematic image shows it, with a component selected">
 												<local:PicturePreview Source="{Binding Thumbnail}"
 																	  ImageSize="{Binding ImageSize}"
 																	  Highlights="{Binding Highlights}"
@@ -2166,7 +2166,7 @@
 				<!-- ==== Credits ==== -->
 				<StackPanel x:Name="CreditsPart" Spacing="4" Grid.IsSharedSizeScope="True">
 					<TextBlock Classes="PaneIntro"
-							   Text="Who made the board's data - the pictures, the labelling, the measurements. The &quot;About&quot; tab shows them; a name or a handle is fine, and the contact is shown to everybody. Drag a credit by its handle to move it up or down - the &quot;About&quot; tab lists them in this order." />
+							   Text="Who made the board's data - the schematic images, the labelling, the measurements. The &quot;About&quot; tab shows them; a name or a handle is fine, and the contact is shown to everybody. Drag a credit by its handle to move it up or down - the &quot;About&quot; tab lists them in this order." />
 
 					<TextBlock x:Name="NoCreditsText" Classes="EmptyLine" Text="No credits yet." />
 
@@ -2268,7 +2268,7 @@
 				<!-- ==== Important signals ==== -->
 				<StackPanel x:Name="ImportantSignalsPart" Spacing="4" Grid.IsSharedSizeScope="True">
 					<TextBlock Classes="PaneIntro"
-							   Text="The signals worth checking first on this board. Each lights up its KiCad net on the &quot;Schematics&quot; tab - pick the net from the board's KiCad data, then give it the name people know it by. Drag one by its handle to set the order the &quot;Schematics&quot; tab lists them in." />
+							   Text="The signals worth checking first on this board. Each highlights its KiCad net on the &quot;Schematics&quot; tab - pick the net from the board's KiCad data, then give it the name people know it by. Drag one by its handle to set the order the &quot;Schematics&quot; tab lists them in." />
 
 					<TextBlock x:Name="KiCadNetsLineText" Classes="EmptyLine" IsVisible="False" />
 					<TextBlock x:Name="NoSignalsText" Classes="EmptyLine" Text="No important KiCad signals yet." />
@@ -2333,7 +2333,7 @@
 													<Button Content="Show on board"
 															Tag="{Binding}"
 															IsEnabled="{Binding CanShowOnBoard}"
-															ToolTip.Tip="Light this net up on the &quot;Schematics&quot; tab"
+															ToolTip.Tip="Highlight this net on the &quot;Schematics&quot; tab"
 															ToolTip.ShowOnDisabled="True"
 															Click="OnShowSignalOnBoardClick" />
 													<Button Classes="Danger"
@@ -2404,7 +2404,7 @@
 										<StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6">
 											<Button Content="Show on board"
 													Tag="{Binding}"
-													ToolTip.Tip="Light this net up on the &quot;Schematics&quot; tab"
+													ToolTip.Tip="Highlight this net on the &quot;Schematics&quot; tab"
 													Click="OnShowSuggestionOnBoardClick" />
 											<Button Classes="Accept"
 													Content="Add"
@@ -2454,7 +2454,7 @@
 										<StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6">
 											<Button Content="Show on board"
 													Tag="{Binding}"
-													ToolTip.Tip="Light this net up on the &quot;Schematics&quot; tab"
+													ToolTip.Tip="Highlight this net on the &quot;Schematics&quot; tab"
 													Click="OnShowOtherNetOnBoardClick" />
 											<Button Classes="Accept"
 													Content="Add"

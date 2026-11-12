@@ -224,13 +224,8 @@ public partial class TabSchematics : UserControl
 
         UserSettings.InteractiveCadTraceHoverModeChanged += this.OnInteractiveCadTraceHoverModeChanged;
 
-        bool isGlobalSettingsExpanded = UserSettings.SchematicsGlobalSettingsPanelExpanded;
-        this.GlobalSettingsListPanel.IsVisible = isGlobalSettingsExpanded;
-        this.ToggleGlobalSettingsPanelButton.Content = isGlobalSettingsExpanded ? "Collapse" : "Expand";
-
-        bool isLabelsExpanded = UserSettings.SchematicsLabelsPanelExpanded;
-        this.LabelsListPanel.IsVisible = isLabelsExpanded;
-        this.ToggleLabelsPanelButton.Content = isLabelsExpanded ? "Collapse" : "Expand";
+        this.ShowGlobalSettingsPanelExpanded(UserSettings.SchematicsGlobalSettingsPanelExpanded);
+        this.ShowLabelsPanelExpanded(UserSettings.SchematicsLabelsPanelExpanded);
 
         bool isImportantSignalsExpanded = UserSettings.SchematicsImportantSignalsPanelExpanded;
         this.UpdateImportantSignalsPanelExpandedState(isImportantSignalsExpanded);
@@ -705,27 +700,76 @@ public partial class TabSchematics : UserControl
         e.Handled = true;
     }
 
+    // ###########################################################################################
+    // *** THE "SCHEMATICS" TOUR SHOWS THE THREE PANELS EXPANDED (owner request, 2026-11-11: "Please show them expanded and
+    // write some text to each of the panels"). *** For its step only, and remembering nothing: the states before it are
+    // held here and put back as the step is left - "Next", "Back", "Skip tour" or the tour put away - and the stored
+    // "...PanelExpanded" settings are never written, so a panel folded away by its owner is folded away again.
+    // ###########################################################################################
+    private (bool Global, bool Labels, bool Signals)? thisPanelsBeforeTour;
+
+    internal void ExpandPanelsForTour()
+    {
+        this.thisPanelsBeforeTour ??= (this.GlobalSettingsListPanel.IsVisible, this.LabelsListPanel.IsVisible, this.ImportantSignalsListPanel.IsVisible);
+        this.ShowPanelsExpanded(global: true, labels: true, signals: true);
+    }
+
+    internal void PutPanelsBackAfterTour()
+    {
+        if (this.thisPanelsBeforeTour is not { } before)
+            return;
+
+        this.thisPanelsBeforeTour = null;
+        this.ShowPanelsExpanded(before.Global, before.Labels, before.Signals);
+    }
+
+    private void ShowPanelsExpanded(bool global, bool labels, bool signals)
+    {
+        this.ShowGlobalSettingsPanelExpanded(global);
+        this.ShowLabelsPanelExpanded(labels);
+        this.ShowImportantSignalsPanelExpanded(signals);
+    }
+
+    // ###########################################################################################
+    // How each panel shows itself expanded or folded away - ONE setter per panel, used by its toggle, the constructor and
+    // the tour alike (code review, 2026-11-12: three copies each), so the tour's panels look as the owner's do.
+    // ###########################################################################################
+    private void ShowGlobalSettingsPanelExpanded(bool expanded)
+    {
+        this.GlobalSettingsListPanel.IsVisible = expanded;
+        this.ToggleGlobalSettingsPanelButton.Content = expanded ? "Collapse" : "Expand";
+    }
+
+    private void ShowLabelsPanelExpanded(bool expanded)
+    {
+        this.LabelsListPanel.IsVisible = expanded;
+        this.ToggleLabelsPanelButton.Content = expanded ? "Collapse" : "Expand";
+    }
+
+    private void ShowImportantSignalsPanelExpanded(bool expanded)
+    {
+        this.UpdateImportantSignalsPanelExpandedState(expanded);
+        this.UpdateImportantSignalsClearButtonState(this.ImportantSignalsPanel.IsVisible);
+    }
+
     private void ToggleGlobalSettingsPanel()
     {
         bool willBeExpanded = !this.GlobalSettingsListPanel.IsVisible;
-        this.GlobalSettingsListPanel.IsVisible = willBeExpanded;
-        this.ToggleGlobalSettingsPanelButton.Content = willBeExpanded ? "Collapse" : "Expand";
+        this.ShowGlobalSettingsPanelExpanded(willBeExpanded);
         UserSettings.SchematicsGlobalSettingsPanelExpanded = willBeExpanded;
     }
 
     private void ToggleLabelsPanel()
     {
         bool willBeExpanded = !this.LabelsListPanel.IsVisible;
-        this.LabelsListPanel.IsVisible = willBeExpanded;
-        this.ToggleLabelsPanelButton.Content = willBeExpanded ? "Collapse" : "Expand";
+        this.ShowLabelsPanelExpanded(willBeExpanded);
         UserSettings.SchematicsLabelsPanelExpanded = willBeExpanded;
     }
 
     private void ToggleImportantSignalsPanel()
     {
         bool willBeExpanded = !this.ImportantSignalsListPanel.IsVisible;
-        this.UpdateImportantSignalsPanelExpandedState(willBeExpanded);
-        this.UpdateImportantSignalsClearButtonState(this.ImportantSignalsPanel.IsVisible);
+        this.ShowImportantSignalsPanelExpanded(willBeExpanded);
         UserSettings.SchematicsImportantSignalsPanelExpanded = willBeExpanded;
     }
 

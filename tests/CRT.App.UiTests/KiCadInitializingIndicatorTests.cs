@@ -1,18 +1,22 @@
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Layout;
 using CRT;
 
 namespace ClassicRepairToolbox.Tests.Ui;
 
 // ###########################################################################################
-// The "KiCad data initializing..." indicator in the bottom-right corner of the schematics view.
+// The "Loading KiCad data..." badge in the bottom-right corner of the schematics view.
 //
 // A board's KiCad project loads in the background (TabSchematics.LoadKiCadProjectForCurrentBoardAsync)
 // so the schematic image can be shown immediately. For the few seconds that load takes, hovering a
 // trace, clicking a pad or picking a net does nothing at all, which is indistinguishable from a
-// broken overlay. The indicator exists to make that wait visible, so what matters here is that it
+// broken overlay. The badge exists to make that wait visible, so what matters here is that it
 // is hidden by default, that it can be turned on and off, and that it sits where the user was told
 // to look for it without stealing pointer input from the schematic underneath.
+//
+// It stands where "Has KiCad data" stands, beside "Draw trace" (owner request, 2026-11-12) - that the
+// two take turns there is KiCadCalibrationInteractionTests', which has a schematic image with traces.
 //
 // The load method itself is not driven here: it needs a Main window, real board data and a real
 // KiCad project on disk. What is covered is the switch that method flips, plus the markup it
@@ -30,7 +34,7 @@ public class KiCadInitializingIndicatorTests
     }
 
     [Fact]
-    public void Showing_the_indicator_puts_the_initializing_text_on_screen()
+    public void Showing_the_indicator_puts_the_loading_text_on_screen()
     {
         UiTest.Run(() =>
         {
@@ -39,7 +43,7 @@ public class KiCadInitializingIndicatorTests
             tab.SetKiCadInitializingIndicatorVisible(true);
 
             Assert.True(IndicatorOf(tab).IsVisible);
-            Assert.Equal("KiCad data initializing...", IndicatorTextOf(tab).Text);
+            Assert.Equal("Loading KiCad data...", IndicatorTextOf(tab).Text);
         });
     }
 
@@ -76,23 +80,61 @@ public class KiCadInitializingIndicatorTests
     }
 
     [Fact]
-    public void The_indicator_sits_in_the_bottom_right_corner_and_ignores_the_pointer()
+    public void The_indicator_sits_beside_Draw_trace_and_ignores_the_pointer()
     {
         UiTest.Run(() =>
         {
             TabSchematics tab = new();
 
-            // The corner comes from the shared bottom-right stack it lives in, above the traces
-            // panel, so the two cannot land on top of each other when a board has saved traces.
             StackPanel stack = tab.FindControl<StackPanel>("SchematicsBottomRightOverlayStack")!;
+            StackPanel row = tab.FindControl<StackPanel>("SchematicsViewToolsRow")!;
 
             Assert.Equal(HorizontalAlignment.Right, stack.HorizontalAlignment);
             Assert.Equal(VerticalAlignment.Bottom, stack.VerticalAlignment);
-            Assert.Same(stack, IndicatorOf(tab).Parent);
+
+            // One place for the two badges, before "Draw trace" (owner request, 2026-11-12: "in the same position").
+            Assert.Same(row, IndicatorOf(tab).Parent);
+            Assert.Equal(
+                ["KiCadInitializingIndicator", "KiCadDataBadge", "DrawTraceButton"],
+                row.Children.Select(child => child.Name).ToArray());
 
             // It is a status message, not a panel: wheel-zoom and click-drag over that corner
-            // must keep reaching the schematic underneath.
+            // must keep reaching the schematic underneath - the "Has KiCad data" badge's too
+            // (code review, 2026-11-12).
             Assert.False(IndicatorOf(tab).IsHitTestVisible);
+            Assert.False(tab.KiCadDataBadge.IsHitTestVisible);
+        });
+    }
+
+    // "Draw trace" and its badges stand LEFT of the "Traces visible" panel, never on top of it (owner request,
+    // 2026-11-12: "Do have the "Draw trace" button and the "KiCad data" badge to the left of that - not on top of it").
+    [Fact]
+    public void Draw_trace_and_its_badges_stand_left_of_the_traces_panel()
+    {
+        UiTest.Run(() =>
+        {
+            TabSchematics tab = new();
+
+            StackPanel stack = tab.FindControl<StackPanel>("SchematicsBottomRightOverlayStack")!;
+            StackPanel row = tab.FindControl<StackPanel>("SchematicsViewToolsRow")!;
+            Border traces = tab.FindControl<Border>("TracesPanel")!;
+
+            Assert.Equal(Orientation.Horizontal, stack.Orientation);
+            Assert.True(stack.Children.IndexOf(row) < stack.Children.IndexOf(traces));
+            Assert.Equal(VerticalAlignment.Bottom, row.VerticalAlignment);
+            Assert.Equal(VerticalAlignment.Bottom, traces.VerticalAlignment);
+        });
+    }
+
+    // "Draw trace" shows the hand, as it can be pressed (owner request, 2026-11-12).
+    [Fact]
+    public void Draw_trace_shows_the_hand()
+    {
+        UiTest.Run(() =>
+        {
+            TabSchematics tab = new();
+
+            Assert.Equal(new Cursor(StandardCursorType.Hand).ToString(), tab.DrawTraceButton.Cursor?.ToString());
         });
     }
 

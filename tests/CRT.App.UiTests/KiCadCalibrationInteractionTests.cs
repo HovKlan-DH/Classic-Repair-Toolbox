@@ -198,6 +198,56 @@ public sealed class KiCadCalibrationInteractionTests : IDisposable
     }
 
     // ###########################################################################################
+    // A schematic image with the board's KiCad traces on it says so beside "Draw trace" (owner request, 2026-11-12: "add
+    // that as a discrete badge, maybe next to "Draw trace" button. This info should show per schematic image") - the one
+    // without is SchematicsViewToolsTests'. Here the top of the board, its KiCad view named.
+    // ###########################################################################################
+    [Fact]
+    public void A_schematic_image_with_KiCad_traces_shows_the_KiCad_data_badge()
+    {
+        UiTest.Run(() =>
+        {
+            (CRT.Main window, TabSchematics tab) = Aligning();
+
+            // The picture shown, as its image read is (TabSchematics.Thumbnails.cs).
+            tab.ShowViewToolsForPicture(true);
+            Assert.True(tab.KiCadDataBadge.IsVisible);
+
+            // With no picture shown - its image could not be read - no badge either, as no "Draw trace" (code review,
+            // 2026-11-12: it stood beside the words saying the image was missing).
+            tab.ShowViewToolsForPicture(false);
+            Assert.False(tab.KiCadDataBadge.IsVisible);
+
+            tab.ShowViewToolsForPicture(true);
+            Assert.True(tab.KiCadDataBadge.IsVisible);
+            End(window, tab);
+        });
+    }
+
+    // While the board's KiCad data is read again, "Loading KiCad data..." takes the badge's place, and the badge comes
+    // back as the load ends (owner request, 2026-11-12: "do show that "Loading KiCad data..." badge in the same position").
+    [Fact]
+    public void Loading_KiCad_data_takes_the_badges_place_until_it_ends()
+    {
+        UiTest.Run(() =>
+        {
+            (CRT.Main window, TabSchematics tab) = Aligning();
+            tab.ShowViewToolsForPicture(true);
+
+            tab.SetKiCadInitializingIndicatorVisible(true);
+
+            Assert.True(tab.KiCadInitializingIndicator.IsVisible);
+            Assert.False(tab.KiCadDataBadge.IsVisible);
+
+            tab.SetKiCadInitializingIndicatorVisible(false);
+
+            Assert.False(tab.KiCadInitializingIndicator.IsVisible);
+            Assert.True(tab.KiCadDataBadge.IsVisible);
+            End(window, tab);
+        });
+    }
+
+    // ###########################################################################################
     // An arrow key moves the box one pixel and its traces by a matrix - the very same primitives, a
     // translation on the overlay - and they are not built again once the keys have gone quiet: a box
     // only moved is drawn exactly as a rebuild would draw it.

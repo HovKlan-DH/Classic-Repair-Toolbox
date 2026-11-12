@@ -6,6 +6,7 @@ using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Handlers.DataHandling;
+using Handlers.Tours;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -25,6 +26,9 @@ namespace CRT
         public TabConfiguration()
         {
             this.InitializeComponent();
+
+            // The tours' own name for it, written once (code review, 2026-11-12: the markup said it a second time).
+            this.TakeToursAgainButton.Content = TourWording.TakeAgainButton;
 
             this.ApplyCatalogueSplitterWidth();
             this.WireCatalogueSplitterPersistence();
@@ -796,6 +800,14 @@ namespace CRT
                 Logger.Critical($"OnOpenWorkbooksFolderClick failed - [{ex}]");
             }
         }
+
+        // ###########################################################################################
+        // "Take the introduction tours again" (owner request, 2026-11-11): Main forgets which tours were seen and shows
+        // the "Schematics" tab, whose tour starts as it is shown (Main.Tours.cs).
+        // ###########################################################################################
+        internal event Action? TakeToursAgainRequested;
+
+        private void OnTakeToursAgainClick(object? sender, RoutedEventArgs e) => this.TakeToursAgainRequested?.Invoke();
 
         // "Errors and warnings" - every one since CRT started (ProblemsWindow; owner request, 2026-11-07).
         private void OnShowProblemsClick(object? sender, RoutedEventArgs e)

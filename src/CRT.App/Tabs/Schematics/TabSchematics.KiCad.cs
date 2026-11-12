@@ -402,15 +402,41 @@ public partial class TabSchematics
     }
 
     // ###########################################################################################
-    // Shows or hides the bottom-right "KiCad data initializing..." indicator.
+    // Shows or hides the bottom-right "Loading KiCad data..." badge.
     //
     // A board's KiCad project loads in the background so the schematic image can appear straight
     // away, which leaves a few seconds where traces, nets and pads do not respond yet. The
-    // indicator is what tells the user that gap is data still arriving rather than a dead overlay.
+    // badge is what tells the user that gap is data still arriving rather than a dead overlay.
     // ###########################################################################################
     public void SetKiCadInitializingIndicatorVisible(bool isVisible)
     {
-        this.KiCadInitializingIndicator.IsVisible = isVisible;
+        this.thisKiCadLoadingShown = isVisible;
+        this.ShowKiCadBadges();
+    }
+
+    // ###########################################################################################
+    // *** ONE PLACE, TWO BADGES, NEVER BOTH (owner request, 2026-11-12: "while it is loading the KiCad data, then do show
+    // that "Loading KiCad data..." badge in the same position"). ***
+    // Beside "Draw trace": "Loading KiCad data..." while the board's KiCad project is read, else "Has KiCad data" while the
+    // schematic image shown has KiCad traces on it - only while it IS shown, as "Draw trace" (code review, 2026-11-12: the
+    // badge stood beside the words saying the image could not be read). Each is told by its own caller, in either order,
+    // so all three are kept here.
+    // ###########################################################################################
+    private bool thisKiCadLoadingShown;
+    private bool thisKiCadTracesOnImage;
+    private bool thisImageShownForBadge;
+
+    private void ShowKiCadBadges()
+    {
+        this.KiCadInitializingIndicator.IsVisible = this.thisKiCadLoadingShown;
+        this.KiCadDataBadge.IsVisible = this.thisKiCadTracesOnImage && this.thisImageShownForBadge && !this.thisKiCadLoadingShown;
+    }
+
+    // The schematic image shown, or none (ShowViewToolsForPicture).
+    private void ShowKiCadBadgesForImage(bool shown)
+    {
+        this.thisImageShownForBadge = shown;
+        this.ShowKiCadBadges();
     }
 
     // ###########################################################################################

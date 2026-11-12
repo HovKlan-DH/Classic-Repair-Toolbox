@@ -55,7 +55,7 @@
         </Grid>
 
 		<!-- Attachments Configuration -->
-		<StackPanel Grid.Row="2" Spacing="8" Margin="0,0,0,16">
+		<StackPanel x:Name="AttachmentsPanel" Grid.Row="2" Spacing="8" Margin="0,0,0,16">
 			<TextBlock Text="Attachments:" FontWeight="Bold" FontSize="12" />
 			<CheckBox x:Name="AttachLogfileCheckBox" Content="Attach application logfile and crash reports" FontSize="12" />
 			<CheckBox x:Name="AttachConfigsCheckBox" Content="Attach configuration and traces data files" FontSize="12" />

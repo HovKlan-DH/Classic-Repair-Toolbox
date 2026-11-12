@@ -76,6 +76,7 @@ src/CRT.Data/SubmissionReceipt|src/CRT.App/Tabs/Drafts/SubmitDraftWindow=Informa
 src/CRT.Data/DraftFileResolver|src/CRT.Data/DraftBoardSource=View-boards-from-online-source
 src/CRT.App/Main/Main\.DataSyncStatus|src/CRT.App/Handlers/Data/DataSyncStatusTip|src/CRT.App/Handlers/Data/DataCheckNotice=Explanation-of-data-files
 src/CRT.App/Main/Main\.NoticeDemo=Commandline-parameters
+src/CRT.App/Main/Main\.Tours|src/CRT.App/Handlers/Tours/|src/CRT.App/Main/TourOverlay=Getting-started Commandline-parameters
 src/CRT.App/CRT\.App\.csproj|Classic-Repair-Toolbox\.slnx=Compiling-yourself-from-source Development-tools-used
 src/CRT.App/Handlers/Online/BoardView|src/CRT.App/Main/Main\.BoardViews|src/CRT.Data/BoardViewContract|src/CRT.Data/CheckInContract|src/CRT.Server/Handlers/Usage/ApiUsage=Information-collected
 src/CRT.App/Tabs/Maintainer/|src/CRT.App/Main/Main\.Maintainer|src/CRT.App/Handlers/Maintainer/=Maintainer-tab

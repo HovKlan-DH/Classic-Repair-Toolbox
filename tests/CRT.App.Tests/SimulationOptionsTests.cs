@@ -252,6 +252,93 @@ public class SimulationOptionsTests
     }
 
     // ###########################################################################################
+    // "--show-tours" (owner request, 2026-11-11: "I need a possibility to enforce this every time when in implementation
+    // mode"): bare, each tab's introduction tour; with a version, the tour of what came since it (Main.Tours.cs).
+    // ###########################################################################################
+    [Theory]
+    [InlineData("--show-tours")]
+    [InlineData("--SHOW-TOURS")]
+    [InlineData("  --show-tours  ")]
+    [InlineData("--show-tours=")]
+    [InlineData("--show-tours=  ")]
+    public void The_bare_tours_switch_shows_the_introductions(string arg)
+    {
+        var options = SimulationOptions.Parse(new[] { arg });
+
+        Assert.True(options.ShowTours);
+        Assert.Null(options.ToursSeenAs);
+        Assert.False(options.SimulateUpdate);
+        Assert.False(options.DemoNotices);
+        Assert.True(options.IsAnyActive);
+    }
+
+    [Theory]
+    [InlineData("--show-tours=4.0.0", "4.0.0")]
+    [InlineData("--show-tours=\"4.1.0\"", "4.1.0")]
+    [InlineData("--Show-Tours= 4.0.0-beta.2 ", "4.0.0-beta.2")]
+    public void A_version_shows_the_tours_of_what_came_since_it(string arg, string seen)
+    {
+        var options = SimulationOptions.Parse(new[] { arg });
+
+        Assert.True(options.ShowTours);
+        Assert.Equal(seen, options.ToursSeenAs);
+    }
+
+    // The first occurrence wins, as for the other switches.
+    [Fact]
+    public void The_first_tours_switch_wins()
+    {
+        Assert.Equal("4.0.0", SimulationOptions.Parse(new[] { "--show-tours=4.0.0", "--show-tours=4.1.0" }).ToursSeenAs);
+        Assert.Null(SimulationOptions.Parse(new[] { "--show-tours", "--show-tours=4.1.0" }).ToursSeenAs);
+        Assert.Equal("4.0.0", SimulationOptions.Parse(new[] { "--show-tours=4.0.0", "--show-tours" }).ToursSeenAs);
+    }
+
+    [Fact]
+    public void The_tours_switch_combines_with_the_others()
+    {
+        var options = SimulationOptions.Parse(new[] { "--demo-notices", "--show-tours", "--simulate-update=4.5.6" });
+
+        Assert.True(options.ShowTours);
+        Assert.True(options.DemoNotices);
+        Assert.Equal("4.5.6", options.SimulatedUpdateVersion);
+    }
+
+    [Theory]
+    [InlineData("--show-tour")]
+    [InlineData("--show-toursx")]
+    [InlineData("--show-tours-now")]
+    public void A_near_miss_shows_no_tours(string arg)
+    {
+        Assert.False(SimulationOptions.Parse(new[] { arg }).ShowTours);
+        Assert.False(SimulationOptions.None.ShowTours);
+    }
+
+    [Fact]
+    public void The_log_says_the_tours_are_forced_and_nothing_is_remembered()
+    {
+        string bare = Assert.Single(SimulationOptions.Parse(new[] { "--show-tours" }).DescribeForLog(checkVersionOnLaunchEnabled: true));
+        string since = Assert.Single(SimulationOptions.Parse(new[] { "--show-tours=4.0.0" }).DescribeForLog(checkVersionOnLaunchEnabled: true));
+
+        Assert.Contains(SimulationOptions.ShowToursArg, bare);
+        Assert.Contains("nothing is remembered", bare);
+        Assert.Contains("since [4.0.0]", since);
+    }
+
+    // A value that is no version counts as nothing seen (TourPlan), so each tab shows its introduction - and the log says
+    // so, never "what is new since [4.0]" (code review, 2026-11-12).
+    [Theory]
+    [InlineData("--show-tours=4.0")]
+    [InlineData("--show-tours=four")]
+    public void The_log_says_a_value_that_is_no_version_shows_the_introductions(string arg)
+    {
+        string line = Assert.Single(SimulationOptions.Parse(new[] { arg }).DescribeForLog(checkVersionOnLaunchEnabled: true));
+
+        Assert.Contains("is no version", line);
+        Assert.Contains("introduction tour", line);
+        Assert.DoesNotContain("what is new since", line);
+    }
+
+    // ###########################################################################################
     // Below here the process-wide SimulationOptions.Current is assigned, so these belong to the
     // "SimulationOptions" collection - alone they pass either way, but in a full parallel run an
     // unserialised assignment here could be read by another test's code under test.

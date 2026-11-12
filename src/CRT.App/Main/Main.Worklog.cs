@@ -319,6 +319,11 @@ namespace CRT
                 // Back where "Show on board" was asked for - the way back is no longer offered.
                 this.TakeBackToContributeAway();
             }
+
+            // The tab's introduction tour, the first time it is shown - and one showing for another tab put away
+            // (Main.Tours.cs).
+            this.PutTourAwayForAnotherTab();
+            this.OfferTourSoon(Main.TourAfterTabShown);
         }
 
         // ###########################################################################################

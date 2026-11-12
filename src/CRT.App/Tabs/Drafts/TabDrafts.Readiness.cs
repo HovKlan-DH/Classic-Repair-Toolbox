@@ -684,7 +684,7 @@ namespace CRT
                 var panel = new StackPanel { Spacing = 4, Margin = new Avalonia.Thickness(0, 6, 0, 0) };
                 var rows = new StackPanel { Spacing = 4 };
                 var useAll = new Button { HorizontalAlignment = HorizontalAlignment.Left, Classes = { "Accept" } };
-                ToolTip.SetTip(useAll, "Give every picture listed its suggested KiCad view - one step, so \"Undo\" takes them all back");
+                ToolTip.SetTip(useAll, "Give every schematic image listed its suggested KiCad view - one step, so \"Undo\" takes them all back");
                 useAll.Click += (_, _) => this.RunGuarded(() => this.UseSuggestedMatchesAsync(this.thisShownMatches), "Use all suggestions");
 
                 panel.Children.Add(new TextBlock { Text = BoardReadiness.MatchesHeading, Classes = { "ReadinessDetail" } });

@@ -266,7 +266,7 @@ namespace Handlers.DataHandling
         // The matches suggested under Board status's Schematic images (slice 3d): each pair, its "Use",
         // the button for all of them, and what taking them did.
         // ###########################################################################################
-        public const string MatchesHeading = "Suggested from the names of the pictures and their files:";
+        public const string MatchesHeading = "Suggested from the names of the schematic images and their files:";
 
         public const string UseMatch = "Use";
 
@@ -279,9 +279,9 @@ namespace Handlers.DataHandling
         public static string MatchesUsed(IReadOnlyList<SchematicCadNameSuggestion> used) =>
             used.Count switch
             {
-                0 => "Those pictures, or their KiCad views, have been matched already.",
+                0 => "Those schematic images, or their KiCad views, have been matched already.",
                 1 => $"[{used[0].SchematicName}] now shows [{used[0].CadName}].",
-                _ => $"{BoardReadiness.Count(used.Count)} pictures now show their KiCad views.",
+                _ => $"{BoardReadiness.Count(used.Count)} schematic images now show their KiCad views.",
             };
 
         public const string KiCadNotRead = "The board's KiCad data could not be read, so nothing was added.";
@@ -308,7 +308,7 @@ namespace Handlers.DataHandling
 
         public const string NoPicturesGap = "No schematic images yet - images of both sides and the schematic sheets, which everything else is marked on.";
 
-        public const string NoSignalsGap = "No important KiCad signals yet - the signals worth checking first, each lighting up its KiCad net.";
+        public const string NoSignalsGap = "No important KiCad signals yet - the signals worth checking first, each highlighting its KiCad net.";
 
         public const string NoCreditsGap = "Nobody is credited for the board's data yet.";
 
@@ -318,7 +318,7 @@ namespace Handlers.DataHandling
             : $"\"{BoardReadiness.CreditsAction}\" adds {BoardReadiness.Count(rows)} rows to fill in or delete.";
 
         // The headings of "What's missing", counted.
-        public static string NotInKiCadHeading(int count) => $"Not in the KiCad data - their traces cannot light up ({BoardReadiness.Count(count)})";
+        public static string NotInKiCadHeading(int count) => $"Not in the KiCad data - their traces cannot be highlighted ({BoardReadiness.Count(count)})";
 
         public static string WithoutDescriptionHeading(int count) => $"No \"{BoardWorkbookSchema.DescriptionHeading}\" ({BoardReadiness.Count(count)})";
 

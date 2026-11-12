@@ -669,8 +669,9 @@ namespace CRT
         // ###########################################################################################
         private void OnMainKeyDownCloseSinglePopup(object? sender, KeyEventArgs e)
         {
-            // A color dropper on: the key is its own (2026-11-03).
-            if (ColorDropperButton.IsAnyPicking)
+            // A color dropper on: the key is its own (2026-11-03). And so is every key while an introduction tour shows
+            // (Main.Tours.cs) - F11 would open the schematics' fullscreen under it.
+            if (ColorDropperButton.IsAnyPicking || this.TourOverlay.IsShowing)
                 return;
 
             // The arrow keys move the box "Align KiCad" aligns wherever the keyboard is (owner report,

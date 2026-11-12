@@ -167,7 +167,7 @@ namespace CRT
             catch (Exception ex)
             {
                 // Nothing may leave an async void handler: App lets such an exception end CRT.
-                Logger.Critical($"Adding pictures of the board in the component pane failed - [{ex}]");
+                Logger.Critical($"Adding schematic images of the board in the component pane failed - [{ex}]");
             }
         }
 
@@ -496,7 +496,7 @@ namespace CRT
             catch (Exception ex)
             {
                 // Nothing may leave an async void handler: App lets such an exception end CRT.
-                Logger.Critical($"Removing a picture of the board in the component pane failed - [{ex}]");
+                Logger.Critical($"Removing a schematic image of the board in the component pane failed - [{ex}]");
             }
         }
 

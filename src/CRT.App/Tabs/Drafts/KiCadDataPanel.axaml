@@ -291,7 +291,7 @@
 						</StackPanel>
 
 						<StackPanel x:Name="ViewNamesPanel" Spacing="3" IsVisible="False">
-							<TextBlock Text="KiCad views a picture can show" FontWeight="SemiBold" />
+							<TextBlock Text="KiCad views a schematic image can show" FontWeight="SemiBold" />
 							<!-- Its text is ComponentPaneWording.KiCadViewsHint, set with the report - it names the
 							     part as the Contribute tab's left column does. -->
 							<TextBlock x:Name="ViewNamesHintText"

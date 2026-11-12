@@ -455,7 +455,7 @@ public sealed class WorkbooksBoardPreviewTests : IDisposable
             Assert.Empty(PreviewPanel(tab).Children);
             TextBlock said = tab.GetControl<TextBlock>("NoBoardPreviewsText");
             Assert.True(said.IsVisible);
-            Assert.Equal("The pictures these worklogs are on could not be found.", said.Text);
+            Assert.Equal("The schematic images these worklogs are on could not be found.", said.Text);
         });
     }
 

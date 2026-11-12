@@ -596,7 +596,7 @@ public sealed class TabDraftsReadinessTests : IDisposable
             Assert.Equal("Use all 2 suggestions", UseAllButton(tab).Content);
 
             UseAllButton(tab).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
-            await Until(() => tab.ReadinessNoteForTests == "2 pictures now show their KiCad views.");
+            await Until(() => tab.ReadinessNoteForTests == "2 schematic images now show their KiCad views.");
             await tab.ReadinessShownForTests;
 
             Assert.Equal(["Issue 4 - PCB Top", "Issue 4 - PCB Bottom", "Main sheet"], session.Content.Board.Schematics.Select(row => row.CadName));

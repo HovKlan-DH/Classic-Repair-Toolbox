@@ -40,8 +40,8 @@ namespace CRT
 
             this.UnresolvedSignalsPanel.IsVisible = report.UnresolvedSignals.Count > 0;
             this.UnresolvedSignalsHeaderText.Text = report.UnresolvedSignals.Count == 1
-                ? "1 important KiCad signal will NOT light up"
-                : $"{report.UnresolvedSignals.Count} important KiCad signals will NOT light up";
+                ? "1 important KiCad signal can NOT be highlighted"
+                : $"{report.UnresolvedSignals.Count} important KiCad signals can NOT be highlighted";
             this.UnresolvedSignalsList.ItemsSource = report.UnresolvedSignals
                 .Select(signal => $"{signal.DisplayName}: {signal.KiCadNetName}")
                 .ToList();

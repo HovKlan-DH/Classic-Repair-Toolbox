@@ -280,7 +280,7 @@ public sealed class BoardStatusPageTests
             [
                 "5 nets available",
                 "3 nets used, shown as 2 names on the \"Schematics\" tab",
-                "  1 names a net the KiCad data does not have - it will not light up",
+                "  1 names a net the KiCad data does not have - it cannot be highlighted",
             ],
             Lines(signals));
 

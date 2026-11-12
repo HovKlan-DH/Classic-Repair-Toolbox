@@ -28,9 +28,11 @@ namespace Handlers.DataHandling
         public const string MarkButton = "Mark components manually";
         public const string AlignButton = "Align KiCad data";
 
-        public const string MarkTip = "Opens the \"Schematics\" tab on this picture, to draw a rectangle around each component";
-        public const string AlignTip = "Opens the \"Schematics\" tab on this picture, to line the KiCad traces up with it";
-        public const string AlignNeedsKiCadTip = "Needs the board's KiCad data and a CAD name for this picture";
+        // The board's pictures are "schematic images" in every word a person reads (owner request, 2026-11-11: "Always
+        // refer to the 'picture' in the 'Schematics' tab as a 'schematic image'"); a component's pictures stay pictures.
+        public const string MarkTip = "Opens the \"Schematics\" tab on this schematic image, to draw a rectangle around each component";
+        public const string AlignTip = "Opens the \"Schematics\" tab on this schematic image, to line the KiCad traces up with it";
+        public const string AlignNeedsKiCadTip = "Needs the board's KiCad data and a CAD name for this schematic image";
 
         // ---- marking from KiCad, on the Contribute tab (step 3, slice 3c) ---------------------------------
 
@@ -53,9 +55,9 @@ namespace Handlers.DataHandling
             " Every mark already there stays exactly where it is, also one moved or drawn by hand. \"Undo\" takes the new marks back.";
 
         public const string MarkAutomaticallyTip =
-            "Draws a rectangle around every component not marked on this picture yet, from the KiCad data it is aligned with";
+            "Draws a rectangle around every component not marked on this schematic image yet, from the KiCad data it is aligned with";
 
-        public const string MarkAutomaticallyNeedsAlignTip = "Needs the board's KiCad data, a CAD name for this picture, and KiCad aligned on it";
+        public const string MarkAutomaticallyNeedsAlignTip = "Needs the board's KiCad data, a CAD name for this schematic image, and KiCad aligned on it";
 
         public static string MarkedAutomatically(int count, string picture) => count switch
         {
@@ -75,7 +77,7 @@ namespace Handlers.DataHandling
         // TabDrafts.MarkAfterAligningAsync), which the card then says.
         // ###########################################################################################
         public const string AlignFirst =
-            "Next: press \"Align KiCad data\" below and line the KiCad traces up on this image. When you press \"Done\" there, CRT marks every component on it for you.";
+            "Next: press \"Align KiCad data\" below and line the KiCad traces up on this schematic image. When you press \"Done\" there, CRT marks every component on it for you.";
 
         public static string MarkedAfterAligning(int count, string picture) => count == 1
             ? $"KiCad is aligned on [{Trimmed(picture)}], and 1 component is marked on it from the KiCad data - check it with \"{MarkButton}\". \"Undo\" takes it back."
@@ -114,11 +116,11 @@ namespace Handlers.DataHandling
         // ---- the components not marked yet, beside the label editor (step 3, slice 3c) -------------------
 
         public static string UnmarkedHeading(int count) =>
-            $"Not marked on this picture ({count.ToString(System.Globalization.CultureInfo.InvariantCulture)})";
+            $"Not marked on this schematic image ({count.ToString(System.Globalization.CultureInfo.InvariantCulture)})";
 
         public const string UnmarkedHelp = "Pick one, then draw its rectangle - it is named for you.";
 
-        public const string AllMarked = "Every component of the board is marked on this picture.";
+        public const string AllMarked = "Every component of the board is marked on this schematic image.";
 
         // ---- the bar ------------------------------------------------------------------------------------
 
@@ -127,7 +129,7 @@ namespace Handlers.DataHandling
         public const string Close = "Close";
 
         // While aligning, with another picture to align (step 3, slice 3d).
-        public const string DoneNext = "Done - next picture";
+        public const string DoneNext = "Done - next schematic image";
 
         public static string DoneNextTip(string picture) => $"Saves this alignment, then aligns the KiCad data on [{Trimmed(picture)}]";
 
@@ -139,10 +141,10 @@ namespace Handlers.DataHandling
 
         // The keys in bold (owner request, 2026-11-03) - the bar shows it through BoldRuns.ShowMarked.
         public static string Help(PictureTool tool) => tool == PictureTool.MarkComponents
-            ? "Drag on the picture to draw a component's rectangle. Drag a rectangle to move it or its edges to resize it, " +
+            ? "Drag on the schematic image to draw a component's rectangle. Drag a rectangle to move it or its edges to resize it, " +
               "right-click it to remove it, press <b>Delete</b> to remove the ones selected, and press <b>D</b> to copy the one " +
               "selected. <b>Arrow keys</b> nudge it; <b>Ctrl+Z</b> undoes. \"Done\" saves it all into your draft."
-            : "Drag the box, its edges and its corners until the KiCad traces lie on the picture. <b>Arrow keys</b> move it a " +
+            : "Drag the box, its edges and its corners until the KiCad traces lie on the schematic image. <b>Arrow keys</b> move it a " +
               "pixel - with <b>Shift</b> they grow it, with <b>Alt</b> they shrink it. \"Done\" saves it into your draft; <b>Esc</b> cancels.";
 
         public static string CannotStart(PictureTool tool, string picture) => tool == PictureTool.MarkComponents
@@ -152,7 +154,7 @@ namespace Handlers.DataHandling
         // ---- why a tool cannot start --------------------------------------------------------------------
 
         public static string PictureNotFound(string picture) =>
-            $"[{Trimmed(picture)}] is not a picture of the board shown.";
+            $"[{Trimmed(picture)}] is not a schematic image of the board shown.";
 
         public static string ImageMissing(string picture) =>
             $"The image of [{Trimmed(picture)}] could not be read.";

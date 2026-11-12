@@ -38,11 +38,21 @@ namespace Handlers.DataHandling
         public const string DemoNoticesArg = "--demo-notices";
 
         // ###########################################################################################
+        // Shows each tab's introduction tour the first time the tab is shown in this run, whatever was seen before, and
+        // remembers nothing (owner request, 2026-11-11: "I need a possibility to enforce this every time when in
+        // implementation mode - maybe via a commandline?"; Main.Tours.cs). Bare: the introduction. With a version,
+        // "--show-tours=3.1.1": as somebody who last saw the tours in that version - the tour of what came since.
+        // ###########################################################################################
+        public const string ShowToursArg = "--show-tours";
+
+        private const string ShowToursValueArg = ShowToursArg + "=";
+
+        // ###########################################################################################
         // The "no simulation" value - what an ordinary launch gets, and the starting value of Current
         // so that anything constructed before Initialize (or in a test) sees real behaviour.
         // ###########################################################################################
         public static readonly SimulationOptions None =
-            new(simulateUpdate: false, simulatedUpdateVersion: AppConfig.SimulatedUpdateVersion, demoNotices: false);
+            new(simulateUpdate: false, simulatedUpdateVersion: AppConfig.SimulatedUpdateVersion, demoNotices: false, showTours: false, toursSeenAs: null);
 
         // ###########################################################################################
         // The options this process was started with. Set once by Program.Main.
@@ -58,14 +68,23 @@ namespace Handlers.DataHandling
         // True when every notice is to be played once after launch (--demo-notices).
         public bool DemoNotices { get; }
 
-        // True when any simulation at all is active, so callers can log the warning block once.
-        public bool IsAnyActive => this.SimulateUpdate || this.DemoNotices;
+        // True when each tab's introduction tour is shown once a run, whatever was seen (--show-tours).
+        public bool ShowTours { get; }
 
-        private SimulationOptions(bool simulateUpdate, string simulatedUpdateVersion, bool demoNotices)
+        // With ShowTours, the version the tours count as last seen in ("--show-tours=3.1.1") - null for none, which
+        // shows the introduction.
+        public string? ToursSeenAs { get; }
+
+        // True when any simulation at all is active, so callers can log the warning block once.
+        public bool IsAnyActive => this.SimulateUpdate || this.DemoNotices || this.ShowTours;
+
+        private SimulationOptions(bool simulateUpdate, string simulatedUpdateVersion, bool demoNotices, bool showTours, string? toursSeenAs)
         {
             this.SimulateUpdate = simulateUpdate;
             this.SimulatedUpdateVersion = simulatedUpdateVersion;
             this.DemoNotices = demoNotices;
+            this.ShowTours = showTours;
+            this.ToursSeenAs = toursSeenAs;
         }
 
         // ###########################################################################################
@@ -86,6 +105,8 @@ namespace Handlers.DataHandling
             bool simulateUpdate = false;
             string simulatedVersion = AppConfig.SimulatedUpdateVersion;
             bool demoNotices = false;
+            bool showTours = false;
+            string? toursSeenAs = null;
 
             foreach (var arg in args)
             {
@@ -98,6 +119,26 @@ namespace Handlers.DataHandling
                 if (string.Equals(candidate, SimulationOptions.DemoNoticesArg, StringComparison.OrdinalIgnoreCase))
                 {
                     demoNotices = true;
+                    continue;
+                }
+
+                // The tours: bare, or with the version they count as seen in - the first occurrence wins, an empty
+                // version is the bare switch.
+                if (string.Equals(candidate, SimulationOptions.ShowToursArg, StringComparison.OrdinalIgnoreCase))
+                {
+                    showTours = true;
+                    continue;
+                }
+
+                if (candidate.StartsWith(SimulationOptions.ShowToursValueArg, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!showTours)
+                    {
+                        string seen = candidate[SimulationOptions.ShowToursValueArg.Length..].Trim('"', '\'').Trim();
+                        showTours = true;
+                        toursSeenAs = seen.Length == 0 ? null : seen;
+                    }
+
                     continue;
                 }
 
@@ -124,8 +165,8 @@ namespace Handlers.DataHandling
                 }
             }
 
-            return simulateUpdate || demoNotices
-                ? new SimulationOptions(simulateUpdate, simulatedVersion, demoNotices)
+            return simulateUpdate || demoNotices || showTours
+                ? new SimulationOptions(simulateUpdate, simulatedVersion, demoNotices, showTours, toursSeenAs)
                 : SimulationOptions.None;
         }
 
@@ -163,6 +204,20 @@ namespace Handlers.DataHandling
                 lines.Add(
                     $"[{SimulationOptions.DemoNoticesArg}] every notice is played once after launch, with example words - " +
                     "none of them is real");
+            }
+
+            // A value that is no version ("4.0", "four") counts as nothing seen - TourPlan's rule - so the line says the
+            // introduction, and why (code review, 2026-11-12: it claimed a tour of what is new since the typo). A version
+            // shows only what is NEWER - one as new as every step shows nothing, which the line says too.
+            if (this.ShowTours)
+            {
+                bool sinceAVersion = CrtVersion.TryParse(this.ToursSeenAs, out CrtVersion? seen) && seen is not null;
+
+                lines.Add(this.ToursSeenAs is null
+                    ? $"[{SimulationOptions.ShowToursArg}] each tab's introduction tour is shown the first time the tab is shown, and nothing is remembered"
+                    : sinceAVersion
+                        ? $"[{SimulationOptions.ShowToursArg}={this.ToursSeenAs}] each tab's tour of what is new since [{this.ToursSeenAs}] is shown the first time the tab is shown - a tab with nothing newer shows none - and nothing is remembered"
+                        : $"[{SimulationOptions.ShowToursArg}={this.ToursSeenAs}] is no version, so each tab's introduction tour is shown the first time the tab is shown, and nothing is remembered");
             }
 
             return lines;

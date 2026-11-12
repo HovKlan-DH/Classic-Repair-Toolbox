@@ -479,8 +479,8 @@ namespace Handlers.DataHandling
                     {
                         lines.Add(new BoardStatusLine(
                             notFound == 1
-                                ? "1 names a net the KiCad data does not have - it will not light up"
-                                : $"{Number(notFound)} name a net the KiCad data does not have - they will not light up",
+                                ? "1 names a net the KiCad data does not have - it cannot be highlighted"
+                                : $"{Number(notFound)} name a net the KiCad data does not have - they cannot be highlighted",
                             1,
                             BoardStatusState.ToDo));
                     }

@@ -1756,4 +1756,81 @@ public sealed class UserSettingsTests : IDisposable
         Assert.Equal(330, UserSettings.ContributeNavWidthFor("Commodore 64|250407"));
         Assert.Equal(480, UserSettings.ContributeImagePreviewWidthFor("Commodore 64|250407"));
     }
+
+    // ###########################################################################################
+    // The introduction tours (owner request, 2026-11-11; Main.Tours.cs): each tab's tour as last seen, kept by the tab's
+    // name - none for a tab never shown one, and "Take the introduction tours again" forgets them all.
+    // ###########################################################################################
+    [Fact]
+    public void Each_tabs_introduction_tour_is_remembered_by_its_version_until_forgotten()
+    {
+        string path = this.LoadSettings("{}");
+
+        Assert.Null(UserSettings.IntroductionTourSeen("Schematics"));
+
+        UserSettings.SetIntroductionTourSeen("Schematics", "4.0.0");
+        UserSettings.SetIntroductionTourSeen("Contribute", "4.1.0");
+        UserSettings.LoadFrom(path);
+
+        Assert.Equal("4.0.0", UserSettings.IntroductionTourSeen("Schematics"));
+        Assert.Equal("4.1.0", UserSettings.IntroductionTourSeen("Contribute"));
+        Assert.Null(UserSettings.IntroductionTourSeen("Workbooks"));
+        Assert.Equal("4.0.0", ReadJson(path)["introductionToursSeen"]!["Schematics"]!.GetValue<string>());
+
+        UserSettings.ForgetIntroductionToursSeen();
+        UserSettings.LoadFrom(path);
+
+        Assert.Null(UserSettings.IntroductionTourSeen("Schematics"));
+        Assert.Null(UserSettings.IntroductionTourSeen("Contribute"));
+    }
+
+    // A settings file written by hand, or by a CRT before the tours, with null where the tours are: none seen.
+    [Fact]
+    public void A_settings_file_with_no_tours_reads_as_none_seen()
+    {
+        this.LoadSettings("""{ "introductionToursSeen": null, "introductionTourStepsLeftOut": null }""");
+
+        Assert.Null(UserSettings.IntroductionTourSeen("Schematics"));
+        Assert.Empty(UserSettings.IntroductionTourStepsLeftOut("Schematics"));
+
+        UserSettings.SetIntroductionTourSeen("Schematics", "4.0.0");
+
+        Assert.Equal("4.0.0", UserSettings.IntroductionTourSeen("Schematics"));
+    }
+
+    // ###########################################################################################
+    // The steps a tour left out, as what they are about was not on screen (code review, 2026-11-12): kept with the version
+    // seen, replaced by the next tour's, left as they are when none is handed in, and forgotten with the tours.
+    // ###########################################################################################
+    [Fact]
+    public void The_steps_a_tour_left_out_are_kept_with_it_until_forgotten()
+    {
+        string path = this.LoadSettings("{}");
+
+        UserSettings.SetIntroductionTourSeen("Workbooks", "4.0.0", ["Your repairs", "The repair, step by step"]);
+        UserSettings.LoadFrom(path);
+
+        Assert.Equal(["Your repairs", "The repair, step by step"], UserSettings.IntroductionTourStepsLeftOut("Workbooks"));
+        Assert.Empty(UserSettings.IntroductionTourStepsLeftOut("Schematics"));
+        Assert.Equal("Your repairs", ReadJson(path)["introductionTourStepsLeftOut"]!["Workbooks"]![0]!.GetValue<string>());
+
+        // Handed none, they stay; handed a list, it replaces them; handed an empty one, the tab leaves nothing out.
+        UserSettings.SetIntroductionTourSeen("Workbooks", "4.1.0");
+        Assert.Equal(["Your repairs", "The repair, step by step"], UserSettings.IntroductionTourStepsLeftOut("Workbooks"));
+
+        UserSettings.SetIntroductionTourSeen("Workbooks", "4.1.0", ["Your repairs"]);
+        Assert.Equal(["Your repairs"], UserSettings.IntroductionTourStepsLeftOut("Workbooks"));
+
+        UserSettings.SetIntroductionTourSeen("Workbooks", "4.1.0", []);
+        UserSettings.LoadFrom(path);
+        Assert.Empty(UserSettings.IntroductionTourStepsLeftOut("Workbooks"));
+        Assert.Equal("4.1.0", UserSettings.IntroductionTourSeen("Workbooks"));
+
+        UserSettings.SetIntroductionTourSeen("Contribute", "4.0.0", ["Pick a component"]);
+        UserSettings.ForgetIntroductionToursSeen();
+        UserSettings.LoadFrom(path);
+
+        Assert.Empty(UserSettings.IntroductionTourStepsLeftOut("Contribute"));
+        Assert.Null(UserSettings.IntroductionTourSeen("Contribute"));
+    }
 }

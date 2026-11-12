@@ -41,7 +41,7 @@ public sealed class PictureToolStartTests
     {
         PictureToolStart gone = Decide(PictureTool.MarkComponents, onBoard: false, selected: false);
         Assert.Equal(PictureToolStep.Refuse, gone.Step);
-        Assert.Equal("[Top] is not a picture of the board shown.", gone.Reason);
+        Assert.Equal("[Top] is not a schematic image of the board shown.", gone.Reason);
 
         PictureToolStart missing = Decide(PictureTool.AlignKiCad, image: PictureImage.Missing);
         Assert.Equal(PictureToolStep.Refuse, missing.Step);

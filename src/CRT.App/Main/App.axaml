@@ -305,6 +305,12 @@
 					<SolidColorBrush x:Key="Badge_Count_Bg">#E2E2E2</SolidColorBrush>
 					<SolidColorBrush x:Key="Badge_Count_Fg">#505050</SolidColorBrush>
 
+					<!-- Light, the introduction tours (Main/TourOverlay, 2026-11-11): the window dimmed, the card -->
+					<SolidColorBrush x:Key="Tour_Dim">#96000000</SolidColorBrush>
+					<SolidColorBrush x:Key="Tour_Card_Bg">White</SolidColorBrush>
+					<SolidColorBrush x:Key="Tour_Card_Fg">Black</SolidColorBrush>
+					<SolidColorBrush x:Key="Tour_Card_Border">#3C000000</SolidColorBrush>
+
 				</ResourceDictionary>
 
 			<!-- ########################################################################### -->
@@ -524,6 +530,12 @@
 				<SolidColorBrush x:Key="Badge_Count_Bg">#3A3A3A</SolidColorBrush>
 				<SolidColorBrush x:Key="Badge_Count_Fg">#C8C8C8</SolidColorBrush>
 
+				<!-- Dark, the introduction tours (see the Light twin) -->
+				<SolidColorBrush x:Key="Tour_Dim">#AF000000</SolidColorBrush>
+				<SolidColorBrush x:Key="Tour_Card_Bg">#2B2623</SolidColorBrush>
+				<SolidColorBrush x:Key="Tour_Card_Fg">#E8E0DA</SolidColorBrush>
+				<SolidColorBrush x:Key="Tour_Card_Border">#5AFFFFFF</SolidColorBrush>
+
 			</ResourceDictionary>
 		</ResourceDictionary.ThemeDictionaries>
 		<!-- A board's own regions (2026-11-09; RegionChoice): four colors they take turns with - the same in both themes, so
@@ -546,6 +558,10 @@
 		<SolidColorBrush x:Key="ReturnBar_Bg">White</SolidColorBrush>
 		<SolidColorBrush x:Key="ReturnBar_Fg">Black</SolidColorBrush>
 		<SolidColorBrush x:Key="ReturnBar_Border">Black</SolidColorBrush>
+		<!-- The introduction tours' frame round what a step shows, and its dots (Main/TourOverlay, 2026-11-11) - amber,
+		     the same in both themes: IndianRed says "danger" in CRT and green "go ahead", so a tour has a color of its own. -->
+		<SolidColorBrush x:Key="Tour_Frame">#FFB400</SolidColorBrush>
+		<SolidColorBrush x:Key="Tour_Dot_Off">#46808080</SolidColorBrush>
 	</ResourceDictionary>
 </Application.Resources>
 

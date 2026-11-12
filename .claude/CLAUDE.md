@@ -204,6 +204,9 @@ Wiki describes what everybody runs.
     shouts about it and the update notice says `(simulated)`. Set for F5 and `watch`.
   - `--demo-notices` - play every notice once after launch, narrated by the mode hint, with example
     words (`Main.NoticeDemo.cs`). Leaves a notice showing for a real reason alone. Not set for F5.
+  - `--show-tours[=<version>]` - each tab's introduction tour the first time the tab is shown in the run,
+    whatever was seen, remembering nothing; with a version, the tour of what came since it
+    (`Main.Tours.cs`). Not set for F5 - its own launch profile, "(introduction tours)", in VS and VS Code.
 - **To skip the online data sync while iterating, untick "Check for new or updated data at
   application launch" in the Configuration tab.** It is a normal user setting.
 - **macOS data folder**: .NET 8+ maps `LocalApplicationData` to `~/Library/Application Support` on
@@ -581,6 +584,39 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
   MiniPro test, the scope's live output, the synchronous table LOAD, and a draft saving itself (the
   Drafts table's session, a second after a change). Waiting for that save because the contributor
   pressed something - closing the table, submitting, quitting - IS under it (`TabDrafts.SaveTableNowAsync`).
+- **EVERY TAB BUT "Resources", "About" AND "Maintainer" has an INTRODUCTION TOUR, the first time it is shown** (owner
+  request, 2026-11-11: "I do not like Wiki documentation (too much to read), nor creating YouTube videos ... the tool itself
+  provide basic introduction per tab"; decisions: "Everyone should see it", "this is a view-demo only"; "Schematics",
+  "Contribute" and "Workbooks" first, the rest the same day - "OK, now do the rest" - and 2026-11-12: "no need to have an
+  introduction for the "About" and "Resources" tabs", the Maintainer tab "much more limited and specialized";
+  `Main.Tours.cs`, `Main/TourOverlay`, every step `Handlers/Tours/TourCatalogue`): the window dimmed but for an amber
+  frame round what a step is about, a card beside it, nothing under it clickable. **A new tab gets a tour or goes on the
+  list of tabs without** (`MainToursTests.Every_tab_of_the_window_has_a_tour_or_is_left_without_on_purpose`,
+  `Main.TourTabItems`, `TabItemsWithoutTour`), and the first introduction taken ends on a card saying the other tabs have
+  one, framing them (`OtherToursCard`, only while no other tour has been seen). **A tour grows with CRT, and a change
+  to a tab's UI is checked against its tour in the same change**: each step carries the RELEASE version it came with
+  (`Since`; `TourCatalogueTests`), CRT remembers per tab the newest version seen (`UserSettings.IntroductionToursSeen`),
+  and somebody who saw an older one gets "Tour of what's new" - every step newer than it, of EVERY version skipped, in the
+  tab's order (`TourPlan`). So: a feature worth showing gets a step with the version it ships in (`InIntroduction: false`
+  when it is for those who update only - a first look stays at most seven steps of its own, `TourCatalogueTests` - the first introduction taken ends on one card
+  more, on the other tabs, which is no step of the tab); a step about something that CHANGED gets
+  the new version, so it counts as new again; a step about something gone goes. A step names its controls by x:Name
+  ("Tab/Name" inside a tab) - `MainToursTests` fails on a name the window no longer has; one not on screen as the tour
+  starts is left out of that showing, a paragraph about a control not on screen too (`TourPart.Shows`) - **and what a
+  showing left out, or said only in part, is remembered by its headline and comes back WHOLE the first time the tab is
+  shown with all of it on screen** (`UserSettings.IntroductionTourStepsLeftOut`, `TourPlan.LeftOutBefore`, the kind
+  `LeftOut`; code review, 2026-11-12: "Export to PDF" never reached a new user with no workbook). So no two steps of a
+  tour share a headline (`TourCatalogueTests`). A tour waits while a tool of the schematic image is on (a picture tool,
+  a worklog's area, "Draw trace"). A step may set the window up for itself (`TourStage` - the "Schematics" tour's
+  panels shown expanded, owner request 2026-11-11), put back however the step is left and NEVER stored (the panels'
+  "...PanelExpanded" settings are not written). A step's body may mark bold pieces `<b>...</b>`. "Take the introduction tours again" (the "Configuration" tab) forgets them all.
+  Tours start only once `StartAsync` ran (`LetToursStartForTests` in a test), so no other test of `Main` meets one.
+  **Kept in step with the UI two ways, as the Wiki is** (owner question, 2026-11-12: "Isn't Wiki a hook that never can be
+  forgotten/missed, and should this also then be?"): **every bold name in a tour is the text of a control** of CRT's
+  window, the worklog editor or "Errors and warnings" (`TourLabelsTests` - a button renamed fails it; keys and typed
+  examples are its `NoControls` list), and the `Stop` hook [hooks/remind-tours.sh](hooks/remind-tours.sh) names the tours
+  whose tab's code changed while THEIR part of `TourCatalogue.cs` did not - per tour, as the Wiki's goes per page - and it
+  WARNS, as the Wiki's does. A tab given a tour goes in its `MAP`.
 - **A picture is moved ONE way everywhere, the Schematics tab's** (owner request, 2026-11-06: "I do think we need to unify
   how pan works, and then have the same pan functionality as present in the 'Schematics' tab"; `Handlers/Geometry/PanGesture`):
   a drag with the RIGHT or the MIDDLE button pans, the wheel zooms at the pointer, and the left button is left to what it does
@@ -596,12 +632,27 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
   server's. A name that only opens a heading or a title ("Align KiCad data on [Top]") is the label itself. **Machine-checked:**
   `UiReferenceQuotingTests` (every tab, and a list of names that cannot be anything else, a sentence carried over to the next
   line read as one); a word that is also plain English
-  ("the board's KiCad data", "Try again in a moment") is left to whoever writes it.
+  ("the board's KiCad data", "Try again in a moment") is left to whoever writes it. **The introduction tours are the
+  exception: they name a tab, a button, a panel or a key in BOLD, never in quotes** (owner request, 2026-11-11: "in all
+  introductions, then try and use bold instead of encapsulating in """; `<b>Contribute</b> tab` - the test takes a bold
+  name as marked, and `TourCatalogueTests` refuses a quote in a tour).
 - **User-visible text says "color", never "colour"** (owner request, repeated 2026-10-30: "always use the
   American 'color' spelling") - in the app, the undo steps' names and the Wiki alike. Code comments and
   stored names (`PictureColours`, `traceHighlightColor`) are not text anybody reads. **Machine-checked:**
   `AmericanSpellingTests` (string literals in `src/`, and the markup's text attributes); grep the Wiki
   by hand.
+- **A component, a trace or a net is HIGHLIGHTED in every word a person reads, never "lit up" or "lights up"** (owner
+  request, 2026-11-11: "Please always use the term "highlight" for it") - the app, the tours and the Wiki; "can NOT be
+  highlighted" where a heading said "will NOT light up". Code comments and names (`LitColor`, "Lit" classes) are not
+  read by anybody. `TourCatalogueTests` holds the tours to it; grep the rest by hand.
+- **The board's pictures are "schematic images" in every word a person reads** (owner request, 2026-11-11: "Always
+  refer to the 'picture' in the 'Schematics' tab as a 'schematic image'"): the Schematics tab and its tips, the picture
+  tools' bar, the Contribute tab's cards of "Board: Schematic images" and the board status about them, the Workbooks
+  tab's board pane, warnings the "Errors and warnings" window lists, the tours and the Wiki. **A component's pictures
+  stay pictures** (its "Pictures" page, the popup's), as do a worklog's or a device's photos, the "Feedback" tab's
+  pictures and the scope's screen picture - and the photo viewer's pan tip (`PanGesture.Hint`; the Schematics tab's is
+  `SchematicImageHint`). Code names (`PictureToolWording`, `PicturePreview`, `PaneBoardPart.Pictures`) are read by
+  nobody and stay. `TourCatalogueTests` and `PanGestureTests` hold the tour and the tip to it; grep the rest by hand.
 - Biggest files, for context budgeting: `Tabs/Schematics/ComponentInfoWindow.axaml.cs`, `Handlers/Data/UserSettings.cs`,
   `Handlers/Data/WorklogManager.cs`, `Tabs/Schematics/TabSchematics.Worklog.cs`,
   `Handlers/Data/DataManager.cs` (~1,700-2,200 lines each). Read the part you need.
@@ -2541,7 +2592,14 @@ worklog area, aligning KiCad) **"Draw trace" is greyed out, its tooltip saying w
 (`FollowToolsInDrawTrace`, from `FollowPictureTool` and the worklog area's begin and cancel) - and a press
 on it greyed out is not the picture's (`IsPointerOnDrawTraceButton`: a disabled button takes no pointer,
 and the label editor lost its selection); "Done
-drawing" is PLAIN - it turns a mode off and saves nothing (second review, 2026-10-29). **A middle drag pans as the right one does**, and only a
+drawing" is PLAIN - it turns a mode off and saves nothing (second review, 2026-10-29). **A "Has KiCad data" badge stands beside
+"Draw trace" while the schematic image shown has the board's KiCad traces on it** (owner request, 2026-11-12: "a discrete
+badge ... This info should show per schematic image"; `KiCadDataBadge`, set with the KiCad settings' rows in
+`UpdateInteractiveCadTraceHoverModeUi`) - the "Schematics" tour's trace step frames it, so that step shows only where it does.
+**"Loading KiCad data..." takes its place while the board's KiCad project is read** (owner request, the same day; never both -
+`ShowKiCadBadges`), **and the row - the badge and "Draw trace" - stands LEFT of the "Traces visible" panel, never over it**
+(`SchematicsViewToolsRow`). **"Draw trace" stays solid under the pointer, with a hand** (owner request: the theme's hover fill let
+the schematic image show through - its own style in the markup). **A middle drag pans as the right one does**, and only a
 right click that did not move is a click (a component's highlight). **The one-time tip** sits under the
 picture's name until "Got it" or the first pan (`UserSettings.SchematicsPanHintSeen`). **"Global
 settings" is a panel as the two beside it** (owner request, 2026-11-05: "use that name again instead of the gear icon" - a gear

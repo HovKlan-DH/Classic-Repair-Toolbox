@@ -4,8 +4,8 @@ See every board exactly as everybody else sees it, without your own local change
 
 ---
 
-When you change a board in CRT - on the "Contribute" tab (a component, a picture, the table view),
-with **Mark components manually** or **Align KiCad data** on a picture, or with **Edit component** on a
+When you change a board in CRT - on the "Contribute" tab (a component, a schematic image, the table view),
+with **Mark components manually** or **Align KiCad data** on a schematic image, or with **Edit component** on a
 component's popup - the change goes into your own local **draft** of that board. A draft saves itself;
 there is no Save button. CRT shows the board WITH your changes from then on, which is usually what
 you want: you see your own work as you build it.
@@ -25,9 +25,9 @@ it. Untick it again to see your changes as usual.
 
 Every board shows exactly what CRT downloaded from its online source, as if you had no draft at all:
 
-* Components, pictures and every other part you added, changed or removed are shown as they were
+* Components, schematic images and every other part you added, changed or removed are shown as they were
   before your changes.
-* Pictures and other files you replaced show the downloaded version again.
+* Schematic images and other files you replaced show the downloaded version again.
 * KiCad data you imported, and KiCad alignments you changed, are not used.
 * The warning that the online data has changed since you started your draft is hidden.
 
@@ -51,7 +51,7 @@ same tab.
 ## When it is useful
 
 * To check how a board looks for everybody else, before or after you submit a change to it.
-* To compare: tick and untick it while looking at the same picture to see what your draft changes.
+* To compare: tick and untick it while looking at the same schematic image to see what your draft changes.
 * To be sure a problem you see is in the downloaded data and not caused by something in your own
   draft.
 

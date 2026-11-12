@@ -334,6 +334,7 @@
 					<!-- View options -->
 					<Grid ColumnDefinitions="*,6,*">
 						<Button Grid.Column="0"
+								x:Name="FullscreenSchematicsButton"
 								Content="Fullscreen"
 								HorizontalAlignment="Stretch"
 								HorizontalContentAlignment="Center"
@@ -506,11 +507,11 @@
 						<local:TabSchematics x:Name="TabSchematicsControl" />
 					</TabItem>
 
-					<TabItem Header="Overview">
+					<TabItem x:Name="OverviewTabItem" Header="Overview">
 						<local:TabOverview x:Name="TabOverview" />
 					</TabItem>
 
-					<TabItem Header="Resources">
+					<TabItem x:Name="ResourcesTabItem" Header="Resources">
 						<local:TabResources x:Name="TabResources" />
 					</TabItem>
 
@@ -1083,6 +1084,13 @@
 				<Run Text="&#xf059;" FontFamily="{StaticResource FontAwesomeRegular}" /><Run Text="  Hint:" FontWeight="Bold" /><LineBreak /><LineBreak /><Run x:Name="ModeHintText" />
 			</TextBlock>
 		</Panel>
+
+		<!-- The introduction tours (owner request, 2026-11-11; Main.Tours.cs): a tab's tour the first time it is shown,
+		     over the whole window - above the mode hint, below the wait, which stays the last word. -->
+		<local:TourOverlay x:Name="TourOverlay"
+						   Grid.Column="0"
+						   Grid.ColumnSpan="3"
+						   ZIndex="1500" />
 
 		<!-- "Please wait" over the whole window - BusyOverlay, the one wait of the whole
 		     application (owner decision, 2026-09-28: "I want this method everywhere in the entire

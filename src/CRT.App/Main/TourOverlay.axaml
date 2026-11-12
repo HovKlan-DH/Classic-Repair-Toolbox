@@ -1,0 +1,103 @@
+<!--
+    An introduction tour over a whole window (owner request, 2026-11-11). See the header of TourOverlay.axaml.cs.
+
+    A host places ONE of these in its window's root Grid, spanning every row and column, above everything but the
+    BusyOverlay. Hidden until a tour is shown.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:CRT"
+             x:Class="CRT.TourOverlay"
+             IsVisible="False"
+             Cursor="Arrow"
+             Background="Transparent"
+             HorizontalAlignment="Stretch"
+             VerticalAlignment="Stretch">
+
+    <UserControl.Styles>
+        <Style Selector="Ellipse.TourDot">
+            <Setter Property="Width" Value="7" />
+            <Setter Property="Height" Value="7" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Fill" Value="{DynamicResource Tour_Dot_Off}" />
+        </Style>
+        <Style Selector="Ellipse.TourDot.Done">
+            <Setter Property="Fill" Value="{DynamicResource Tour_Frame}" />
+        </Style>
+        <!-- In styles, not on the element: a value set there would outrank the first card's. -->
+        <Style Selector="Border#Card">
+            <Setter Property="BorderBrush" Value="{DynamicResource Tour_Card_Border}" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <!-- The first card stands out: framed as the steps' holes are. -->
+        <Style Selector="Border#Card.Welcome">
+            <Setter Property="BorderBrush" Value="{DynamicResource Tour_Frame}" />
+            <Setter Property="BorderThickness" Value="2" />
+        </Style>
+        <Style Selector="TextBlock.TourText">
+            <Setter Property="Foreground" Value="{DynamicResource Tour_Card_Fg}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+    </UserControl.Styles>
+
+    <Canvas x:Name="Layer">
+        <local:TourShade x:Name="Shade" />
+
+        <Border x:Name="Card"
+                Width="340"
+                Background="{DynamicResource Tour_Card_Bg}"
+                CornerRadius="8"
+                Padding="18,16"
+                BoxShadow="0 8 28 0 #70000000">
+            <StackPanel Spacing="8">
+                <!-- The first card: "Introduction tour" or "Tour of what's new", with its icon. -->
+                <StackPanel x:Name="KickerRow" Orientation="Horizontal" Spacing="10">
+                    <TextBlock x:Name="KickerIcon"
+                               Classes="TourText"
+                               FontFamily="{StaticResource FontAwesomeSolid}"
+                               FontSize="18"
+                               Padding="0,2,0,0"
+                               Foreground="{DynamicResource Tour_Frame}"
+                               VerticalAlignment="Center" />
+                    <TextBlock x:Name="KickerText"
+                               Classes="TourText"
+                               FontSize="19"
+                               FontWeight="Bold"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+
+                <!-- A step: a dot per step, the ones up to this filled, and "Step 2 of 5". -->
+                <StackPanel x:Name="ProgressRow" Orientation="Horizontal" Spacing="5">
+                    <StackPanel x:Name="ProgressDots" Orientation="Horizontal" Spacing="5" VerticalAlignment="Center" />
+                    <TextBlock x:Name="ProgressText"
+                               Classes="TourText"
+                               FontSize="11"
+                               Opacity="0.7"
+                               Margin="6,0,0,0"
+                               VerticalAlignment="Center" />
+                </StackPanel>
+
+                <!-- A step of a tour of what changed: the version it came with. -->
+                <Border x:Name="NewBadge"
+                        HorizontalAlignment="Left"
+                        Background="{DynamicResource Tour_Frame}"
+                        CornerRadius="3"
+                        Padding="6,1">
+                    <TextBlock x:Name="NewBadgeText" FontSize="11" FontWeight="Bold" Foreground="Black" />
+                </Border>
+
+                <TextBlock x:Name="HeadlineText" Classes="TourText" FontSize="15" FontWeight="Bold" />
+                <TextBlock x:Name="BodyText" Classes="TourText" FontSize="13" LineHeight="19" />
+                <TextBlock x:Name="FootText" Classes="TourText" FontSize="11" Opacity="0.7" />
+
+                <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,8,0,0">
+                    <Button x:Name="SkipButton" Grid.Column="0" Content="Skip tour" Click="OnSkipClick" />
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6">
+                        <Button x:Name="BackButton" Content="Back" Click="OnBackClick" />
+                        <Button x:Name="NextButton" Content="Next" FontWeight="Bold" Click="OnNextClick" />
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+        </Border>
+    </Canvas>
+</UserControl>

@@ -17,6 +17,12 @@
           },
           {
             "type": "command",
+            "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/remind-tours.sh\"",
+            "timeout": 20,
+            "statusMessage": "Checking whether any introduction tour needs updating..."
+          },
+          {
+            "type": "command",
             "command": "bash \"${CLAUDE_PROJECT_DIR:-.}/.claude/hooks/server-version-bump.sh\"",
             "timeout": 20,
             "statusMessage": "Checking whether CRT.Server's version needs bumping..."

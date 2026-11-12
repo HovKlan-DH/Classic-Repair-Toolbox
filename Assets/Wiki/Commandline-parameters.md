@@ -4,12 +4,14 @@ Move the data, workbooks or drafts folder elsewhere, and fake an update.
 
 ---
 
-CRT has four commandline parameters:
+CRT has six commandline parameters:
 
 * [--data-root](#--data-root)
 * [--workbooks-root](#--workbooks-root)
 * [--drafts-root](#--drafts-root)
 * [--simulate-update](#--simulate-update)
+* [--demo-notices](#--demo-notices)
+* [--show-tours](#--show-tours)
 
 ## --data-root
 
@@ -92,6 +94,17 @@ Shows every kind of notice CRT can put in the bottom-right corner, one after the
 ```
 
 The words in the notices are examples: the version, the board and the files are made up. A notice that is already showing for a real reason is left as it is. You can click the buttons and close the notices as usual. "Install" says the update could not be installed, unless there really is an update, or you also use `--simulate-update`.
+
+## --show-tours
+
+Shows the introduction tour of every tab that has one - all but "Resources", "About" and "Maintainer" - the first time you open each tab, every time CRT starts - whether you have seen them before or not. Nothing is remembered, so without the parameter CRT shows only the tours you have not seen.
+
+```
+--show-tours
+--show-tours=3.1.1
+```
+
+With a version number it shows the tours as somebody who last saw them in that version would see them after updating: a tour of what is new since then. A version as new as every part of a tour, or newer, shows nothing for that tab.
 
 ## Which folders am I actually using?
 

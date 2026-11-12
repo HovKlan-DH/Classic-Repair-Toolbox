@@ -591,6 +591,10 @@ public partial class TabSchematics
         // Only while it has a setting to show - every row is a KiCad one, so a board without KiCad data
         // has none, and a headline over nothing is no setting.
         this.GlobalSettingsPanel.IsVisible = this.GlobalSettingsListPanel.Children.Any(row => row.IsVisible);
+
+        // The schematic image shown has KiCad traces to highlight - a badge beside "Draw trace" (owner request, 2026-11-12).
+        this.thisKiCadTracesOnImage = hasKiCadTraces;
+        this.ShowKiCadBadges();
     }
 
     // ###########################################################################################

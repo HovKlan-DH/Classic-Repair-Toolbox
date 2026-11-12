@@ -341,7 +341,8 @@
 			</Grid>
 		</Border>
 
-		<StackPanel Orientation="Horizontal"
+		<StackPanel x:Name="PrintButtonsPanel"
+		            Orientation="Horizontal"
 		            HorizontalAlignment="Right"
 		            VerticalAlignment="Bottom"
 		            Margin="0,0,12,12"

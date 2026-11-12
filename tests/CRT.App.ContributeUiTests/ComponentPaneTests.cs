@@ -1709,7 +1709,7 @@ public sealed class ComponentPaneTests : IDisposable
 
             Button show = Get<Button>(pane, "ShowOnBoardButton");
             Assert.False(show.IsEnabled);
-            Assert.Contains("not marked on any picture", ToolTip.GetTip(show) as string, StringComparison.Ordinal);
+            Assert.Contains("not marked on any schematic image", ToolTip.GetTip(show) as string, StringComparison.Ordinal);
 
             session.Apply(
                 "Marked",

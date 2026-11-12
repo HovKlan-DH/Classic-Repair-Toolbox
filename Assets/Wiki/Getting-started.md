@@ -10,7 +10,9 @@ CRT shows you the schematics, component data and known-good oscilloscope reading
 
 Download the installer for your system from the [releases page](https://github.com/HovKlan-DH/Classic-Repair-Toolbox/releases) and run it. CRT updates itself after that - it tells you when a new version is ready. On Linux, see [Installing application in Linux](Installing-application-in-Linux).
 
-The first launch sets up the data for every board - copied from the installer, then checked against the online source for anything newer - which takes a moment. Newer pictures keep downloading in the background after CRT has opened.
+The first launch sets up the data for every board - copied from the installer, then checked against the online source for anything newer - which takes a moment. Newer schematic images and other files keep downloading in the background after CRT has opened.
+
+The first time you open most tabs, a short introduction tour shows its most important parts. **Skip tour** puts it away, and **Take the introduction tours again** on the "Configuration" tab shows them again. After an update that changed a tab, it shows a short tour of what is new there.
 
 ## 2. Pick your board
 
@@ -22,7 +24,7 @@ The board number is printed on the PCB itself - `250407`, `250469` and so on. Pi
 
 The list below the drop-downs is every component on the board. Type in the search box under it to narrow it - `U19`, `VIC`, `capacitor`.
 
-**Click one, and it lights up on the picture** - the one you clicked alone. Hold **Ctrl** (**Cmd** on a Mac) and click to add another, or to take one away again; hold **Shift** and click to add every component between. **Clear** under the list unhighlights them all.
+**Click one, and it is highlighted on the schematic image** - the one you clicked alone. Hold **Ctrl** (**Cmd** on a Mac) and click to add another, or to take one away again; hold **Shift** and click to add every component between. **Clear** under the list unhighlights them all.
 
 Two filters narrow the list:
 
@@ -35,13 +37,13 @@ Two filters narrow the list:
 The "Schematics" tab is where you will spend your time.
 
 * Mouse wheel (or a trackpad pinch) zooms
-* Drag with the **right** or **middle** mouse button (or two fingers on a trackpad) to move the picture
-* The thumbnails down the side switch between schematics and photos of the board
-* **Click a component on the picture** to open its popup - what it is, its pins, datasheet links, replacement parts, local files, and any oscilloscope baseline readings. **Edit component** there lets you correct it
+* Drag with the **right** or **middle** mouse button (or two fingers on a trackpad) to move the schematic image
+* The thumbnails down the side switch between the board's schematic images - its schematics and its photos
+* **Click a component on the schematic image** to open its popup - what it is, its pins, datasheet links, replacement parts, local files, and any oscilloscope baseline readings. **Edit component** there lets you correct it
 * **Right-click a component** to highlight it
-* **Draw trace** lets you draw lines of your own over the picture, while you follow a signal
+* **Draw trace** lets you draw lines of your own over the schematic image, while you follow a signal
 
-If the board has [KiCad data](KiCad-folder), clicking a pin or a trace lights up the whole copper net it belongs to, across every picture.
+If the board has [KiCad data](KiCad-folder), clicking a pin or a trace highlights the whole copper net it belongs to, across every schematic image.
 
 ## 5. The other tabs
 
@@ -64,7 +66,7 @@ Each tab says what it is for as you use it. Where a setting has more to it, **Le
 
 ## 6. Record what you find
 
-The **Workbooks** tab lets you write down each fault as you find it, mark where it is on the picture, log time and cost, attach photos, and export the finished repair as a PDF or a ZIP to keep or to share.
+The **Workbooks** tab lets you write down each fault as you find it, mark where it is on the schematic image, log time and cost, attach photos, and export the finished repair as a PDF or a ZIP to keep or to share.
 
 That is the one feature worth reading about before you need it - see [Workbooks](Workbooks-tab).
 
@@ -78,7 +80,7 @@ The **Contribute** tab is always there. Change anything on the board you are loo
 | --- | --- |
 | No hardware in the drop-down | The first data download has not finished, or was blocked - check "Configuration" |
 | Your board revision is not listed | Nobody has added it yet - **Add a new board** on the "Contribute" tab |
-| A component does not highlight | It is not marked on that picture yet, or the **Region** filter is excluding it |
+| A component does not highlight | It is not marked on that schematic image yet, or the **Region** filter is excluding it |
 | Clicking a trace does nothing | That board has no [KiCad data](KiCad-folder) - not every board does - or **Traces visible** is off |
 | No **Workbooks** or **Oscilloscope** tab | Both can be switched off in "Configuration" - check they are still ticked |
 | No **Maintainer** tab | It shows only with `Enable "Maintainer" tab` ticked in "Configuration" |

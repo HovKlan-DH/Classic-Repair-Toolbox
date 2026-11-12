@@ -211,7 +211,7 @@ public sealed class ComponentPaneWordingTests
     public void The_whole_components_buttons_say_what_they_do_and_why_not()
     {
         Assert.StartsWith("Show [U8] on the schematics", ComponentPaneWording.ShowOnBoardTip("U8", marked: true), StringComparison.Ordinal);
-        Assert.Equal("[U8] is not marked on any picture yet, so there is nothing to show", ComponentPaneWording.ShowOnBoardTip("U8", marked: false));
+        Assert.Equal("[U8] is not marked on any schematic image yet, so there is nothing to show", ComponentPaneWording.ShowOnBoardTip("U8", marked: false));
         Assert.Contains("every region", ComponentPaneWording.DeleteTip("U8"), StringComparison.Ordinal);
         Assert.Contains("\"Undo\" brings it back", ComponentPaneWording.DeleteTip("U8"), StringComparison.Ordinal);
         Assert.Equal("Bring [U8] back", ComponentPaneWording.BringBack("U8"));
@@ -232,7 +232,7 @@ public sealed class ComponentPaneWordingTests
         Assert.Equal("Board: Categories", ComponentPaneWording.Title(PaneBoardPart.Categories));
         Assert.Equal("KiCad: Important signals", ComponentPaneWording.Title(PaneBoardPart.ImportantSignals));
         Assert.Equal(
-            "[NRESET] is no net in the board's KiCad data - the \"Schematics\" tab will not light this signal up.",
+            "[NRESET] is no net in the board's KiCad data - the \"Schematics\" tab cannot highlight this signal.",
             ComponentPaneWording.NetNotFound(" NRESET "));
 
         // The part's one headline, with its count (owner request, 2026-10-29).

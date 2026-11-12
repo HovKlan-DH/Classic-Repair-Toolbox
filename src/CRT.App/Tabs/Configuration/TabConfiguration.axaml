@@ -130,7 +130,8 @@
 		<Grid Grid.Column="0"
               RowDefinitions="*,Auto">
 
-		<ScrollViewer Grid.Row="0"
+		<ScrollViewer x:Name="SettingsScrollViewer"
+                      Grid.Row="0"
                       HorizontalScrollBarVisibility="Disabled"
                       VerticalScrollBarVisibility="Auto"
                       AllowAutoHide="False">
@@ -411,6 +412,24 @@
 					  ToolTip.Tip="The tab appears only while its badge shows a number - a submission to review, or a board waiting to go from BETA to stable. A tab you are already on stays until you leave it" />
 
 			<TextBlock Text="The &quot;Maintainer&quot; tab requires a maintainer account, given by the administrator through an invitation."
+                       TextWrapping="Wrap"
+                       Opacity="0.7"
+                       Margin="0,2,0,0" />
+
+			<!-- The introduction tours (owner request, 2026-11-11; Main.Tours.cs): every tab's tour as never seen, and the
+			     "Schematics" tab's started at once - the others come as their tabs are shown. -->
+			<Border Classes="SectionHeading">
+				<TextBlock Text="Introduction tours" />
+			</Border>
+
+			<!-- Its label is TourWording.TakeAgainButton, set in code - the one place the tours name it too. -->
+			<Button x:Name="TakeToursAgainButton"
+                    HorizontalAlignment="Left"
+                    Width="260"
+                    HorizontalContentAlignment="Center"
+                    Click="OnTakeToursAgainClick" />
+
+			<TextBlock Text="A short tour of the most important things on most tabs. The &quot;Schematics&quot; tab's starts at once, the others the next time their tab is opened."
                        TextWrapping="Wrap"
                        Opacity="0.7"
                        Margin="0,2,0,0" />

@@ -332,7 +332,7 @@ public partial class TabSchematics
             }
             catch (Exception inner)
             {
-                Logger.Critical($"OnSchematicsThumbnailSelectionChanged could not say the picture settled - [{inner}]");
+                Logger.Critical($"OnSchematicsThumbnailSelectionChanged could not say the schematic image settled - [{inner}]");
             }
         }
     }

@@ -74,6 +74,7 @@ nunit-*.xml
 .claude/.server-version-reminded
 .claude/.api-version-reported
 .claude/.nuget-check-reminded
+.claude/.tours-reminded
 
 # Server configuration that can hold credentials.
 #

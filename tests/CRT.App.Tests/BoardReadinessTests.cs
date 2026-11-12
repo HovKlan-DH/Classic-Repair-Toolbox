@@ -186,7 +186,7 @@ public sealed class BoardReadinessTests
         Assert.Equal("Give [Top (replica)] the KiCad view [Issue 4 - PCB Top]", BoardReadiness.UseMatchTip(top));
         Assert.Equal("Use all 3 suggestions", BoardReadiness.UseAllMatches(3));
         Assert.Equal("[Top (replica)] now shows [Issue 4 - PCB Top].", BoardReadiness.MatchesUsed([top]));
-        Assert.Equal("2 pictures now show their KiCad views.", BoardReadiness.MatchesUsed([top, top with { SchematicName = "Bottom" }]));
-        Assert.Equal("Those pictures, or their KiCad views, have been matched already.", BoardReadiness.MatchesUsed([]));
+        Assert.Equal("2 schematic images now show their KiCad views.", BoardReadiness.MatchesUsed([top, top with { SchematicName = "Bottom" }]));
+        Assert.Equal("Those schematic images, or their KiCad views, have been matched already.", BoardReadiness.MatchesUsed([]));
     }
 }

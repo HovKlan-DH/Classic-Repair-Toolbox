@@ -352,7 +352,7 @@ namespace CRT
                     DataManager.DataRoot,
                     DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, entry.ExcelDataFile),
                     entry.ExcelDataFile,
-                    "its pictures' KiCad views");
+                    "its schematic images' KiCad views");
 
                 views = root is null
                     ? []

@@ -8,6 +8,11 @@
       "commandName": "Project",
       "commandLineArgs": "--demo-notices --simulate-update",
       "hotReloadEnabled": false
+    },
+    "Classic-Repair-Toolbox (introduction tours)": {
+      "commandName": "Project",
+      "commandLineArgs": "--show-tours",
+      "hotReloadEnabled": false
     }
   }
 }

@@ -212,6 +212,26 @@ namespace CRT
             {
                 await this.ReadSelectedBoardAsync(clearComponentSearch);
             }
+            catch
+            {
+                // A step that threw ends the load as surely as an early return: nothing waits for its KiCad data any more
+                // (code review, 2026-11-12: left "still loading" until another board, the "Schematics" tour polled at every
+                // visit and an "Align KiCad" sat at "Opening..."). Its own KiCad load, already settled, is left as it is.
+                // Guarded: a second failure here must not take the place of the load's own, which goes on to the log.
+                try
+                {
+                    if (this._boardSelectionLoadVersion == unchecked(loadsBefore + 1) && this.TabSchematicsControl.IsKiCadStillLoading)
+                    {
+                        this.NoKiCadDataComing();
+                    }
+                }
+                catch (Exception cleanup)
+                {
+                    Logger.Warning($"A board load failed, and so did ending its wait for KiCad data - [{cleanup}]");
+                }
+
+                throw;
+            }
             finally
             {
                 if (this._boardSelectionLoadVersion == unchecked(loadsBefore + 1))
@@ -298,6 +318,7 @@ namespace CRT
             this.UpdateRegionButtonsState();
             this.PopulateBoardInfoSection(null, null);
             this.TabSchematicsControl.ResetSchematicsViewer();
+            this.ThrowAfterViewerResetForTests?.Invoke();
 
             var selectedHardware = this.HardwareComboBox.SelectedItem as string;
             var selectedBoard = this.BoardComboBox.SelectedItem as string;
@@ -308,10 +329,7 @@ namespace CRT
                 // empty state rather than leaving the bar and the Workbooks tab showing the board
                 // that WAS selected a moment ago - stale worklog surfaces above a blank schematic
                 // view read as the previous board still being loaded.
-                this.NoteBoardOnScreen(null);
-                this.RefreshWorklogBar();
-                this.ShowBoardInContributeTab(null);
-                this.FirstBoardDone();
+                this.EndLoadWithNoBoard(letGoOfLists: false);
                 return;
             }
 
@@ -334,11 +352,7 @@ namespace CRT
                 // surfaces show THIS board (its workbook list does not need board data) with an
                 // empty board pane, rather than the previous board's previews. Its rows go too: no new
                 // ones are coming to replace those LetGoOfListsForLoad kept.
-                this.LetGoOfOtherTabsLists();
-                this.NoteBoardOnScreen(null);
-                this.RefreshWorklogBar();
-                this.ShowBoardInContributeTab(null);
-                this.FirstBoardDone();
+                this.EndLoadWithNoBoard(letGoOfLists: true);
                 return;
             }
 
@@ -357,11 +371,7 @@ namespace CRT
                 // The board's Excel file is missing or unreadable. Still the currently selected
                 // board, so its worklog surfaces must show IT (empty board pane, real workbook
                 // list) rather than whatever the previously selected board left on screen.
-                this.LetGoOfOtherTabsLists();
-                this.NoteBoardOnScreen(null);
-                this.RefreshWorklogBar();
-                this.ShowBoardInContributeTab(null);
-                this.FirstBoardDone();
+                this.EndLoadWithNoBoard(letGoOfLists: true);
                 return;
             }
 
@@ -463,7 +473,7 @@ namespace CRT
                     }
                     catch (Exception ex)
                     {
-                        Logger.Warning($"Could not find where the pictures of [{excelDataFile}] lie - [{ex.Message}]");
+                        Logger.Warning($"Could not find where the schematic images of [{excelDataFile}] lie - [{ex.Message}]");
                         placed = [];
                     }
 
@@ -545,6 +555,7 @@ namespace CRT
                         // The schematic image is about to appear while the KiCad project is still
                         // loading behind it, so flag that wait as soon as the board has KiCad data.
                         this.TabSchematicsControl.SetKiCadInitializingIndicatorVisible(rawPaths.Count > 0);
+                        this.ThrowInBackgroundLoadForTests?.Invoke();
 
                         this.SetComponentHighlightRects(highlightRects);
                         this.TabSchematicsControl.schematicByName = schematicByName;
@@ -632,11 +643,57 @@ namespace CRT
                 {
                     Logger.Warning($"Background board load failed - [{ex}]");
 
-                    // Over all the same: the splash waits no longer (Main.FirstBoard.cs).
+                    // Over all the same: the splash waits no longer (Main.FirstBoard.cs), nor does anything waiting for
+                    // this board's KiCad data - unless its own load settled it already.
                     this.FirstBoardDoneSoon();
+
+                    Dispatcher.UIThread.Post(() =>
+                    {
+                        if (loadVersion == this._boardSelectionLoadVersion && this.TabSchematicsControl.IsKiCadStillLoading)
+                            this.NoKiCadDataComing();
+                    });
                 }
             });
         }
+
+        // ###########################################################################################
+        // A board load that ends with no board shown - none selected, no data file, or one that cannot be read: every
+        // surface shows THIS state rather than the board before, and everything waiting for the load's end is told. ONE
+        // ending for the three (code review, 2026-11-12: each copied the calls, and an early return that forgot one
+        // left the splash - or the "Schematics" tour and "Align KiCad" - waiting). `letGoOfLists`: the rows
+        // LetGoOfListsForLoad kept go too, as no new ones are coming.
+        // ###########################################################################################
+        private void EndLoadWithNoBoard(bool letGoOfLists)
+        {
+            if (letGoOfLists)
+                this.LetGoOfOtherTabsLists();
+
+            this.NoteBoardOnScreen(null);
+            this.RefreshWorklogBar();
+            this.ShowBoardInContributeTab(null);
+            this.NoKiCadDataComing();
+            this.FirstBoardDone();
+        }
+
+        // ###########################################################################################
+        // A board load that ends before its KiCad data has settled - no board, no file, a board that cannot be read, or
+        // a failure - says no more is coming, and takes "Loading KiCad data..." away (code review, 2026-11-12: left "still
+        // loading", the "Schematics" tour polled for two minutes at every visit, an "Align KiCad" waited on, and after a
+        // failure the badge stood until the next board). Settled as what the tab HOLDS: none after the load's reset, or the
+        // project its KiCad load read before a later step of it threw - an "Align KiCad" waiting is then not refused for
+        // KiCad data that is drawn (second code review, the same day).
+        // ###########################################################################################
+        private void NoKiCadDataComing()
+        {
+            this.TabSchematicsControl.SetKiCadInitializingIndicatorVisible(false);
+            this.TabSchematicsControl.KiCadSettled(hasProject: this.TabSchematicsControl.HasKiCadProjectLoaded);
+        }
+
+        // For a test: a step of the board load that throws - right after the viewer's reset, on the UI thread, and in the
+        // background half as its thumbnails are put on screen.
+        internal Action? ThrowAfterViewerResetForTests { get; set; }
+
+        internal Action? ThrowInBackgroundLoadForTests { get; set; }
 
         // ###########################################################################################
         // Handles component selection changes and drives highlight updates in both the main viewer

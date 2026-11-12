@@ -36,16 +36,16 @@ Data v4/
 ## One board, one file
 
 Each board has a folder of its own - `Commodore/C64/250407` - holding just its `board.json`.
-That one file is the whole board: its pictures, its components and their pins, pictures, scope
+That one file is the whole board: its schematic images, its components and their pins, pictures, scope
 baselines, files and links, its credits and important signals, where each component is marked on
-each picture, and how each picture lines up with the KiCad data. See [Board JSON](Board-JSON).
+each schematic image, and how each schematic image lines up with the KiCad data. See [Board JSON](Board-JSON).
 
 The folder's path is the board's **id**, which is how everything else - the main file, your
 drafts, your workbooks - names it.
 
 ## Files are a board's own, stored once
 
-Every file a board uses - a picture, a datasheet, a scope screenshot - has a name of the board's
+Every file a board uses - a schematic image, a datasheet, a scope screenshot - has a name of the board's
 own, such as `Component images/7406.png`. The board's file lists each name with the file's
 SHA-256 checksum, and the bytes are stored under that checksum in `Files/`: `Files/82/829d...ca07.png`.
 

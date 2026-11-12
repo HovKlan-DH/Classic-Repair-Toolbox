@@ -75,7 +75,7 @@ Working in a workbook of another device picks that device. A workbook on no devi
 
 ## Export history
 
-**Export history to PDF** writes one document for the whole machine: the device on every page, then what it is - its condition, description, links and comments - the totals of every repair, the list of workbooks associated to the device and its photos - and after that every repair, oldest first, each drawn as its own workbook export on its own board's pictures.
+**Export history to PDF** writes one document for the whole machine: the device on every page, then what it is - its condition, description, links and comments - the totals of every repair, the list of workbooks associated to the device and its photos - and after that every repair, oldest first, each drawn as its own workbook export on its own board's schematic images.
 
 **Export history to ZIP** holds the same PDF, the device's photos under `device photos/`, and each repair's files under `workbook_<id>/worklog_<id>/`.
 

@@ -11,7 +11,8 @@ namespace ClassicRepairToolbox.Tests;
 // KiCad data", "Try again in a moment" - cannot be told apart by a test, and is left to whoever writes it.
 //
 // A label's own text is no reference: a name that OPENS a literal ("Align KiCad data on [Top]") is
-// allowed for the listed names. What is written to the log is not UI.
+// allowed for the listed names. What is written to the log is not UI. A name marked BOLD ("<b>Contribute</b>
+// tab") is marked too: the introduction tours name things in bold, never in quotes (owner request, 2026-11-11).
 // ###########################################################################################
 public sealed class UiReferenceQuotingTests
 {
@@ -108,9 +109,9 @@ public sealed class UiReferenceQuotingTests
     [Theory]
     [InlineData("0 nets used in KiCad: Important signals", true)]
     [InlineData("0 nets used in \"KiCad: Important signals\"", false)]
-    [InlineData("Light this net up on the Schematics tab", true)]
+    [InlineData("Highlight this net on the Schematics tab", true)]
     [InlineData("the Schematics tab's picture", true)]
-    [InlineData("Light this net up on the \"Schematics\" tab", false)]
+    [InlineData("Highlight this net on the \"Schematics\" tab", false)]
     [InlineData("KiCad: Important signals (3)", false)]
     [InlineData("Board: Schematic images", false)]
     [InlineData("under Board: Schematic images on the", true)]
@@ -119,6 +120,8 @@ public sealed class UiReferenceQuotingTests
     [InlineData("Undo takes it back", true)]
     [InlineData("\"Undo\" takes it back", false)]
     [InlineData("the board's KiCad data", false)]
+    [InlineData("You can take the tours again from the <b>Configuration</b> tab.", false)]
+    [InlineData("then press <b>Show on board</b> to see it", false)]
     public void The_detector_tells_a_reference_from_a_label(string text, bool found)
     {
         Assert.Equal(found, IsOffender(text));

@@ -658,6 +658,11 @@ public sealed class SchematicsViewToolsTests : IDisposable
             {
                 Assert.All(tab.GlobalSettingsListPanel.Children, row => Assert.False(row.IsVisible));
                 Assert.False(tab.GlobalSettingsPanel.IsVisible);
+
+                // Nor is there a "KiCad data" badge beside "Draw trace" (owner request, 2026-11-12) - it says a schematic
+                // image has traces to highlight.
+                Assert.True(tab.DrawTraceButton.IsVisible);
+                Assert.False(tab.KiCadDataBadge.IsVisible);
             }
             finally
             {

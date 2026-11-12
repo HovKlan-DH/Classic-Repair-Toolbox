@@ -116,7 +116,7 @@ public sealed class KiCadDataPanelTests : IDisposable
                 unused: Array.Empty<string>()));
 
             Assert.True(VisibleOf(panel, "UnmatchedPanel"));
-            Assert.Equal("2 components will NOT light up", TextOf(panel, "UnmatchedHeaderText"));
+            Assert.Equal("2 components' copper can NOT be highlighted", TextOf(panel, "UnmatchedHeaderText"));
             Assert.Equal(new[] { "PLA/U17", "C15" }, ItemsOf(panel, "UnmatchedList"));
         });
     }
@@ -1253,7 +1253,7 @@ public sealed class KiCadDataPanelTests : IDisposable
                 [Signal("PHI2", "PH12"), Signal("Reset", "RES")]));
 
             Assert.True(VisibleOf(panel, "UnresolvedSignalsPanel"));
-            Assert.Equal("2 important KiCad signals will NOT light up", TextOf(panel, "UnresolvedSignalsHeaderText"));
+            Assert.Equal("2 important KiCad signals can NOT be highlighted", TextOf(panel, "UnresolvedSignalsHeaderText"));
             Assert.Equal(["PHI2: PH12", "Reset: RES"], ItemsOf(panel, "UnresolvedSignalsList"));
         });
     }

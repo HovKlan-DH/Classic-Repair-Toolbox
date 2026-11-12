@@ -57,9 +57,9 @@ namespace CRT
         // The workbook HAS worklogs on the board's pictures and none could be drawn: said, never a
         // blank pane (code review, 2026-10-29) - CRT still finding where the board's pictures lie, or
         // those pictures not where the board says.
-        private const string FindingPicturesMessage = "Finding the board's pictures...";
+        private const string FindingPicturesMessage = "Finding the board's schematic images...";
 
-        private const string PicturesNotFoundMessage = "The pictures these worklogs are on could not be found.";
+        private const string PicturesNotFoundMessage = "The schematic images these worklogs are on could not be found.";
 
         // The schematic currently selected in the board pane - drives the entry list on the right.
         // Null means none selected (before the first RefreshBoardPreviews call, or the workbook has

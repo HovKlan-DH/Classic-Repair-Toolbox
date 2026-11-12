@@ -62,7 +62,7 @@ namespace Handlers.DataHandling
             {
                 if (this.PcbFileCount == 0)
                 {
-                    return "No PCB file was found in this KiCad data, so no component can light up any copper.";
+                    return "No PCB file was found in this KiCad data, so no component's copper can be highlighted.";
                 }
 
                 int total = this.MatchedLabels.Count + this.UnmatchedLabels.Count;
@@ -81,7 +81,7 @@ namespace Handlers.DataHandling
                         : $"All {total} components on the board match a component in the KiCad data.";
                 }
 
-                return $"{this.UnmatchedLabels.Count} of {total} components on the board found no match in the KiCad data - those will not light up any copper.";
+                return $"{this.UnmatchedLabels.Count} of {total} components on the board found no match in the KiCad data - their copper cannot be highlighted.";
             }
         }
 

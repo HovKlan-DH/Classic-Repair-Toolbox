@@ -20,6 +20,19 @@
 			"stopAtEntry": false
 		},
 		{
+			// Every tab's introduction tour, the first time the tab is shown, whatever was seen before - and nothing
+			// remembered (Main.Tours.cs). "--show-tours=3.1.1" shows the tours of what came since that version instead.
+			"name": ".NET Core Launch (introduction tours)",
+			"type": "coreclr",
+			"request": "launch",
+			"preLaunchTask": "build",
+			"program": "${workspaceFolder}/src/CRT.App/bin/Debug/net10.0/Classic-Repair-Toolbox.dll",
+			"args": ["--show-tours"],
+			"cwd": "${workspaceFolder}",
+			"console": "internalConsole",
+			"stopAtEntry": false
+		},
+		{
 			"name": ".NET Core Attach",
 			"type": "coreclr",
 			"request": "attach"

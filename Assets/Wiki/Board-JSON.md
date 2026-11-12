@@ -41,7 +41,7 @@ one entry per line, so two versions of a board compare line by line:
 
 | List | One entry per | What it holds |
 | --- | --- | --- |
-| `schematics` | Picture of the board | Its name, its image file, the colors and opacities components are marked in (on the picture and on its thumbnail), how lit KiCad traces are drawn on it (this side's color and opacity, the other side's color and opacity - left out until set, and then the picture's highlight is used), and the KiCad view it shows (`cadName`) |
+| `schematics` | Schematic image of the board | Its name, its image file, the colors and opacities components are marked in (on the schematic image and on its thumbnail), how highlighted KiCad traces are drawn on it (this side's color and opacity, the other side's color and opacity - left out until set, and then the schematic image's highlight is used), and the KiCad view it shows (`cadName`) |
 | `components` | Component | Board label (`U8`), friendly name, technical name or value, part number, category (every component needs one), region (one of the board's, or empty for every region), its other technical details (`description`) - and, from CRT 4, its package and its purpose (`purpose` - what it is there for, a note that can carry formatting as a picture's note does; left out when there is none) |
 | `componentPins` | Pin of a component | Pin number, its name (`VCC`, `~RESET`), its direction (Not connected, Input, Output, Input/output, Ground, Power, Other, Unknown) |
 | `componentReplacements` | Replacement part | Its part number, whether it is a drop-in, needs changes or is an improvement, and a note: what to change, and where that is known from |
@@ -51,9 +51,9 @@ one entry per line, so two versions of a board compare line by line:
 | `boardFiles`, `boardLinks` | File or web page about the board | Service manuals, schematics, forum threads - each with a category and, from CRT 4, the `region` it applies to, left out for every region, and a `note` of one or more lines saying what it is about, which the "Resources" tab shows under it (left out when there is none) |
 | `credits` | Person thanked | What they did, their name or handle, and how to reach them |
 | `importantSignals` | Signal the "Schematics" tab's panel lists | Its name (`+5VDC`) and the KiCad net it is (`+5V`) |
-| `highlights` | Rectangle marking a component on a picture | The picture, the board label, and `x`, `y`, `width`, `height` in the picture's own pixels |
-| `kiCadCalibrations` | Picture lined up with a KiCad view | Offset, scale and mirroring that put the KiCad copper on top of the picture |
-| `schematicRenames` | Picture renamed by a publish | Old name, new name, its file, the date - so your own worklogs and settings follow it |
+| `highlights` | Rectangle marking a component on a schematic image | The schematic image, the board label, and `x`, `y`, `width`, `height` in the schematic image's own pixels |
+| `kiCadCalibrations` | Schematic image lined up with a KiCad view | Offset, scale and mirroring that put the KiCad copper on top of the schematic image |
+| `schematicRenames` | Schematic image renamed by a publish | Old name, new name, its file, the date - so your own worklogs and settings follow it |
 | `files` | File of the board | The board's name for it, its SHA-256 and size |
 
 A component on a board with regional variants can have one entry per region; everything that

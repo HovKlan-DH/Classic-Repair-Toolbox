@@ -216,7 +216,7 @@ namespace CRT
             }
             catch (Exception ex)
             {
-                Logger.Critical($"Marking the pictures just aligned with KiCad failed - [{ex}]");
+                Logger.Critical($"Marking the schematic images just aligned with KiCad failed - [{ex}]");
             }
         }
 

@@ -397,9 +397,23 @@ public partial class TabSchematics
         this.FollowPictureTool();
     }
 
+    // The board's KiCad data still being read - the "Schematics" tour waits for it, so its panels' step finds "Global
+    // settings" and "Important KiCad signals" there (Main.Tours.cs).
+    internal bool IsKiCadStillLoading => this.thisKiCadSettled is null;
+
+    // The board's KiCad project read and held - what a load that failed after reading it settles as (Main.NoKiCadDataComing).
+    internal bool HasKiCadProjectLoaded => this.thisKiCadProject is not null;
+
+    // A picture tool asked for and waiting for its image or the KiCad data - a tour waits for it too, or the tool would
+    // start under the tour (Main.Tours.cs; code review, 2026-11-12).
+    internal bool IsPictureToolPending => this.thisPendingTool is not null;
+
     // ---- for tests ------------------------------------------------------------------------------------
 
     internal void ImageSettledForTests(string picture, bool shown = true) => this.ImageSettled(picture, shown);
+
+    // As a board load begins: its KiCad data not settled yet.
+    internal void KiCadLoadingForTests() => this.thisKiCadSettled = null;
 
     internal bool IsComponentSelectedForTests(string boardLabel) => this.IsComponentBoardLabelSelected(boardLabel);
 

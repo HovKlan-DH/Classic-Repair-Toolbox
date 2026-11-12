@@ -30,16 +30,16 @@ public partial class TabSchematics
 {
     // The one-time tip - CRT's one way of moving a picture (PanGesture, 2026-11-06) - and what the mode hint says while
     // traces are drawn.
-    internal const string PanHint = PanGesture.Hint;
+    internal const string PanHint = PanGesture.SchematicImageHint;
 
     internal const string DrawTraceHint =
-        "Drag on the picture to draw a trace, or drag a trace's points. Right-click a trace to remove it. Escape stops.";
+        "Drag on the schematic image to draw a trace, or drag a trace's points. Right-click a trace to remove it. Escape stops.";
 
     private const string DrawTraceLabel = "Draw trace";
 
     private const string StopDrawingLabel = "Done drawing";
 
-    internal const string DrawTraceNotNow = "Finish what you are doing on the picture first - then you can draw traces.";
+    internal const string DrawTraceNotNow = "Finish what you are doing on the schematic image first - then you can draw traces.";
 
     // "Draw trace" on.
     private bool thisIsDrawingTraces;
@@ -151,6 +151,9 @@ public partial class TabSchematics
 
         this.DrawTraceButton.IsVisible = true;
 
+        // "Has KiCad data" beside "Draw trace" only with the picture there (TabSchematics.KiCad.cs).
+        this.ShowKiCadBadgesForImage(true);
+
         if (!UserSettings.SchematicsPanHintSeen)
         {
             this.PanHintText.Text = PanHint;
@@ -165,6 +168,7 @@ public partial class TabSchematics
         this.SetDrawingTraces(false, navigating: true);
         this.DrawTraceButton.IsVisible = false;
         this.PanHintBorder.IsVisible = false;
+        this.ShowKiCadBadgesForImage(false);
     }
 
     // The tip put away for good - by "Got it", or by the first pan while it shows.

@@ -66,6 +66,8 @@ namespace CRT
         //   Main.PictureTools.cs      - "Mark components" and "Align KiCad" from the Contribute tab, on
         //                               the Schematics tab and back, "Back to Contribute" after "Show
         //                               on board", and "Edit component" from a component's popup
+        //   Main.Tours.cs             - the introduction tours: a tab's tour the first time it is shown, "Tour
+        //                               of what's new" after an update, "--show-tours"
         // ###########################################################################################
 
         // Window placement: tracks the last known normal-state size and position
@@ -386,6 +388,10 @@ namespace CRT
             // (Main.Devices.cs).
             this.WireDevicePicker();
 
+            // The introduction tours: what is remembered as one ends, and the "Configuration" tab's "Take the
+            // introduction tours again" (Main.Tours.cs).
+            this.WireTours();
+
             var versionString = AppConfig.AppDisplayVersionString;
             var assembly = Assembly.GetExecutingAssembly();
 
@@ -502,6 +508,10 @@ namespace CRT
                 // Calling it in the constructor would always find an empty HardwareBoards list
                 // (see this method's own header comment on why that population moved here).
                 this.ApplyContributeTabState();
+
+                // The introduction tours may start from here on - the first a moment after the window opens, never in
+                // a test, which does not run this (Main.Tours.cs).
+                this.StartOfferingTours();
 
                 await sayingProblems;
 
@@ -1109,6 +1119,13 @@ namespace CRT
         {
             // Do not steal focus while the schematics label editor is active
             if (this.TabSchematicsControl.IsLabelEditorActive)
+            {
+                return false;
+            }
+
+            // Nor while an introduction tour shows: it holds the keyboard on its own buttons, so no key reaches a control
+            // under it (Main/TourOverlay; code review, 2026-11-12).
+            if (this.TourOverlay.IsShowing)
             {
                 return false;
             }

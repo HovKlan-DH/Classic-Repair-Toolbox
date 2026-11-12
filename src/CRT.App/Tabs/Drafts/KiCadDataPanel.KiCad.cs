@@ -818,8 +818,8 @@ namespace CRT
 
             this.UnmatchedPanel.IsVisible = report.UnmatchedLabels.Count > 0;
             this.UnmatchedHeaderText.Text = report.UnmatchedLabels.Count == 1
-                ? "1 component will NOT light up"
-                : $"{report.UnmatchedLabels.Count} components will NOT light up";
+                ? "1 component's copper can NOT be highlighted"
+                : $"{report.UnmatchedLabels.Count} components' copper can NOT be highlighted";
             this.UnmatchedList.ItemsSource = report.UnmatchedLabels;
 
             this.MatchedPanel.IsVisible = report.MatchedLabels.Count > 0;

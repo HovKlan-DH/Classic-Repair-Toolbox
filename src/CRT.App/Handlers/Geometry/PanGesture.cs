@@ -13,8 +13,12 @@ namespace Handlers.Geometry
     // ###########################################################################################
     public static class PanGesture
     {
-        // What the Schematics tab's one-time tip and the photo viewer say about it.
+        // What the photo viewer says about it.
         public const string Hint = "Drag with the right or middle mouse button to move the picture, and scroll to zoom.";
+
+        // And the Schematics tab's one-time tip - the board's pictures are "schematic images" in every word a person reads
+        // (owner request, 2026-11-11).
+        public const string SchematicImageHint = "Drag with the right or middle mouse button to move the schematic image, and scroll to zoom.";
 
         // A press that starts a pan: the right or the middle button.
         public static bool IsPanPress(PointerPointProperties properties) =>

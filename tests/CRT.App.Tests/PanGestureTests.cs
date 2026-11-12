@@ -23,7 +23,19 @@ public sealed class PanGestureTests
     [Fact]
     public void The_tip_names_both_buttons_and_the_wheel()
     {
-        Assert.Contains("right or middle mouse button", PanGesture.Hint, StringComparison.Ordinal);
-        Assert.Contains("scroll to zoom", PanGesture.Hint, StringComparison.Ordinal);
+        foreach (string tip in (string[])[PanGesture.Hint, PanGesture.SchematicImageHint])
+        {
+            Assert.Contains("right or middle mouse button", tip, StringComparison.Ordinal);
+            Assert.Contains("scroll to zoom", tip, StringComparison.Ordinal);
+        }
+    }
+
+    // The Schematics tab's tip says "schematic image", never "picture" (owner request, 2026-11-11: "Always refer to the
+    // 'picture' in the 'Schematics' tab as a 'schematic image'"); the photo viewer's moves a picture.
+    [Fact]
+    public void The_Schematics_tab_s_tip_moves_the_schematic_image()
+    {
+        Assert.Contains("move the schematic image", PanGesture.SchematicImageHint, StringComparison.Ordinal);
+        Assert.DoesNotContain("picture", PanGesture.SchematicImageHint, StringComparison.OrdinalIgnoreCase);
     }
 }

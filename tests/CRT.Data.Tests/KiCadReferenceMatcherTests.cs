@@ -198,7 +198,7 @@ public sealed class KiCadReferenceMatcherTests
         var report = Build(new[] { "U8", "PLA/U17" }, new[] { "U8" });
 
         Assert.StartsWith("1 of 2", report.Summary);
-        Assert.Contains("will not light up", report.Summary);
+        Assert.Contains("their copper cannot be highlighted", report.Summary);
     }
 
     [Fact]

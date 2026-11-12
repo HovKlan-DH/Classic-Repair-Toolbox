@@ -262,7 +262,7 @@ namespace Handlers.DataHandling
         public static string ShowOnBoardTip(string label, bool marked) =>
             marked
                 ? $"Show [{label}] on the schematics - the \"Schematics\" tab, with only this component selected"
-                : $"[{label}] is not marked on any picture yet, so there is nothing to show";
+                : $"[{label}] is not marked on any schematic image yet, so there is nothing to show";
 
         public static string DeleteTip(string label) =>
             $"Take [{label}] off the board in your draft - every row of it in every region, with its pictures, oscilloscope baselines, pins and files. \"Undo\" brings it back.";
@@ -317,12 +317,13 @@ namespace Handlers.DataHandling
         // Under the KiCad views "KiCad: Files" lists - where a picture is matched to one, the part named
         // as the left column names it (code review, 2026-10-30: it still said "Pictures").
         public const string KiCadViewsHint =
-            "Each of these can be matched to one picture of the board. Pick it under \"Associate KiCad file\" on the picture's card - \"" +
+            "Each of these can be matched to one schematic image of the board. Pick it under \"Associate KiCad file\" on the schematic image's card - \"" +
             SchematicImages + "\" on the left of the \"Contribute\" tab.";
 
-        // Under an important signal whose net the Schematics tab's panel will not find.
+        // Under an important signal whose net the Schematics tab's panel will not find - "highlighted", never "lit up"
+        // (owner request, 2026-11-11; code review, 2026-11-12: this one was missed).
         public static string NetNotFound(string net) =>
-            $"[{net.Trim()}] is no net in the board's KiCad data - the \"Schematics\" tab will not light this signal up.";
+            $"[{net.Trim()}] is no net in the board's KiCad data - the \"Schematics\" tab cannot highlight this signal.";
 
         // A signal's net is picked from the board's KiCad data, never typed (owner request, 2026-10-29).
         public const string NoKiCadNets =
@@ -535,10 +536,10 @@ namespace Handlers.DataHandling
         // ---- the previews on a schematic image's card (2026-10-29) ----------------------------------
 
         public const string ThisSideTracesTip =
-            "Draw every trace on this side of the board on the preview, in the color of the traces on this side - on the \"Schematics\" tab only the traces of the net lit up are drawn so";
+            "Draw every trace on this side of the board on the preview, in the color of the traces on this side - on the \"Schematics\" tab only the traces of the highlighted net are drawn so";
 
         public const string OtherSideTracesTip =
-            "Draw every trace on the board's other side on the preview, in the color of the traces on the other side - on the \"Schematics\" tab only the traces of the net lit up are drawn so";
+            "Draw every trace on the board's other side on the preview, in the color of the traces on the other side - on the \"Schematics\" tab only the traces of the highlighted net are drawn so";
 
         // Why the traces cannot be shown - the image names no KiCad view, or is not aligned with it.
         public const string ShowTracesNeedsAlignTip =
@@ -546,15 +547,15 @@ namespace Handlers.DataHandling
 
         // The KiCad options of an image with no KiCad data (owner request, 2026-10-29: "if the
         // schematic image has no KiCad data, then the KiCad (traces) options should be disabled").
-        public const string TraceColourTip = "With KiCad data: the color of a lit trace on the board's other side";
+        public const string TraceColourTip = "With KiCad data: the color of a highlighted trace on the board's other side";
 
         // Each side's traces have a colour and an opacity of their own (owner request, 2026-10-30).
         public const string ThisSideTraceColourTip =
-            "With KiCad data: the color of a lit trace on the image's own side - the Schematic image color until one is picked";
+            "With KiCad data: the color of a highlighted trace on the image's own side - the Schematic image color until one is picked";
 
-        public const string ThisSideTraceOpacityTip = "With KiCad data: how strongly a lit trace on the image's own side shows";
+        public const string ThisSideTraceOpacityTip = "With KiCad data: how strongly a highlighted trace on the image's own side shows";
 
-        public const string OtherSideTraceOpacityTip = "With KiCad data: how strongly a lit trace on the board's other side shows";
+        public const string OtherSideTraceOpacityTip = "With KiCad data: how strongly a highlighted trace on the board's other side shows";
 
         public const string TraceColourNeedsKiCadTip =
             "Only for an image with KiCad data - the board's KiCad project, and a KiCad view picked for this image";
@@ -586,14 +587,14 @@ namespace Handlers.DataHandling
 
         // The name is a box since 2026-10-30 (owner request) - said here, so it reads as one to change.
         public const string SignalSuggestionsIntro =
-            "Nets of this board whose names say what they are - a supply, ground, a clock, reset, a bus line. Add the ones worth checking first - change a name before adding it if you want another; \"Show on board\" lights a net up on the \"Schematics\" tab, so you can see which it is.";
+            "Nets of this board whose names say what they are - a supply, ground, a clock, reset, a bus line. Add the ones worth checking first - change a name before adding it if you want another; \"Show on board\" highlights a net on the \"Schematics\" tab, so you can see which it is.";
 
         // The board's other nets, under the suggestions (owner request, 2026-11-01).
         public static string OtherNetsHeading(int count) =>
             $"Other KiCad nets ({count.ToString(CultureInfo.InvariantCulture)})";
 
         public const string OtherNetsIntro =
-            "Every other net of this board, each with a proposed name you can change. \"Add\" makes it an important KiCad signal under that name; \"Show on board\" lights it up on the \"Schematics\" tab.";
+            "Every other net of this board, each with a proposed name you can change. \"Add\" makes it an important KiCad signal under that name; \"Show on board\" highlights it on the \"Schematics\" tab.";
 
         // What a new component needs next (owner request, 2026-11-01).
         public const string NewComponentMarkNote =

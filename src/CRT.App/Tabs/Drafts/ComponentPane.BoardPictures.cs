@@ -428,7 +428,7 @@ namespace CRT
             catch (Exception ex)
             {
                 // A picture that does not decode is a card without a preview, never a pane that fails.
-                Logger.Warning($"Could not read the picture [{path}] for its preview - [{ex.Message}]");
+                Logger.Warning($"Could not read the schematic image [{path}] for its preview - [{ex.Message}]");
                 return PaneImage.None;
             }
         }
