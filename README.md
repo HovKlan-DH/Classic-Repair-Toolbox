@@ -20,7 +20,7 @@ It is (for now) having Commodore computers with the most documented systems, but
 - [Full documentation](#full-documentation)
 - [Installation and usage](#installation-and-usage)
 - [YouTube Quick-Help videos available](#youtube-quick-help-videos-available)
-- [Noticeable mentions}(#noticeable-mentions)
+- [Noticeable mentions](#noticeable-mentions)
 - [Built-in hardware and boards](#built-in-hardware-and-boards)
 - [Data contributions being worked on currently](#data-contributions-being-worked-on-currently)
 - [Supported oscilloscopes](#supported-oscilloscopes)
