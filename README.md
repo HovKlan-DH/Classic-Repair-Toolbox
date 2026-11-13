@@ -78,7 +78,7 @@ CRT has throughout time received some noticeable mentions from the community and
 - 2026-September
   - [More Fun Retro](https://www.youtube.com/watch?v=ZhOXidbrUXw&t=980s) gave another mentioning, this time on the new **Classic Repair Toolbox**.
 - 2026-October
-  - [Adrian's Digital Basement](https://youtu.be/NpClmSsoqO8?t=2707) met Jacek from [AmericanRetro.shop](https://americanretro.shop/) and Jacek gave Adrian some flyers he has printed for CRT.
+  - [Adrian's Digital Basement](https://youtu.be/NpClmSsoqO8?t=2707) met Jacek from [AmericanRetro.shop](https://americanretro.shop/) at _VCF Midwest 21_ and Jacek gave Adrian a CRT flyer that he did print.
 
 
 ## Built-in hardware and boards
