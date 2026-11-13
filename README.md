@@ -70,9 +70,14 @@ You can view the below _Quick Help_ videos for introduction to specific topics i
 
 ## Noticeable mentions
 
-CRT has throughout time received some noticeable mentions from the community or others, and I have listed the ones that I know.
+CRT has throughout time received some noticeable mentions from the community and others, and I have listed the ones that I know.
 
-- 2026-February, [More Fun Retro](https://www.youtube.com/watch?v=RtHxzH9Cu3A&t=69s) gave the first mentioning of **Commodore Repair Toolbox**, which sparked a lot of interest (visible in the [Fun facts](https://classic-repair-toolbox.dk/funfacts/) graphs), and it was the inspiration to port this to a new and better cross-platform application named **Classic Repair Toolbox**
+- 2026-February
+  - [More Fun Retro](https://www.youtube.com/watch?v=RtHxzH9Cu3A&t=69s) gave the first mentioning of **Commodore Repair Toolbox**, which sparked a lot of interest (visible in the [Fun facts](https://classic-repair-toolbox.dk/funfacts/) graphs), and it was the inspiration to port this to a new and better cross-platform application named **Classic Repair Toolbox**
+- 2026-September
+  - [More Fun Retro](https://www.youtube.com/watch?v=ZhOXidbrUXw&t=980s) gave another mentioning, this time on the new **Classic Repair Toolbox**
+- 2026-October
+  - [Adrian's Digital Basement](https://youtu.be/NpClmSsoqO8?t=2707) met Jacek from [AmericanRetro.shop](https://americanretro.shop/) and Jacek gave Adrian some flyers he has printed for CRT
 
 
 ## Built-in hardware and boards
