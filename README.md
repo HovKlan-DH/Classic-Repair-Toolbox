@@ -68,11 +68,11 @@ You can view the below _Quick Help_ videos for introduction to specific topics i
 - [How to use workbooks](https://youtu.be/yg7CT0yrglA)
 
 
-## Noticeable mentiones
+## Noticeable mentions
 
 CRT has throughout time received some noticeable mentions from the community or others, and I have listed the ones that I know.
 
-- [More Fun Retro](https://www.youtube.com/watch?v=RtHxzH9Cu3A&t=69s) gave the first mentioning of **Commodore Repair Toolbox**, which sparked a lot of interest (visible in the [Fun facts](https://classic-repair-toolbox.dk/funfacts/) graphs), and it was the inspiration to port this to a new and better cross-platform application named **Classic Repair Toolbox**
+- 2026-February, [More Fun Retro](https://www.youtube.com/watch?v=RtHxzH9Cu3A&t=69s) gave the first mentioning of **Commodore Repair Toolbox**, which sparked a lot of interest (visible in the [Fun facts](https://classic-repair-toolbox.dk/funfacts/) graphs), and it was the inspiration to port this to a new and better cross-platform application named **Classic Repair Toolbox**
 
 
 ## Built-in hardware and boards
