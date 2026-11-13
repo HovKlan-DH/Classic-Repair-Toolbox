@@ -79,6 +79,8 @@ CRT has throughout time received some noticeable mentions from the community and
   - [More Fun Retro](https://www.youtube.com/watch?v=ZhOXidbrUXw&t=980s) gave another mentioning, this time on the new **Classic Repair Toolbox**.
 - 2026-October
   - [Adrian's Digital Basement](https://youtu.be/NpClmSsoqO8?t=2707) met Jacek from [AmericanRetro.shop](https://americanretro.shop/) at _VCF Midwest 21_ and Jacek gave Adrian a CRT flyer that he did print.
+  - 2026-November
+    - CRT won the _Best Cross-Platform Port_ price for the [Avalonia Port Challenge](https://avaloniaui.net/blog/avalonia-port-challenge-winners). Avalonia is the cross-platform UI platform used in CRT, and I am truly honored that CRT has been recognized for this achievement. For sure all my work has been done because it is pure fun, and I love this is being used by the community, but it still makes me proud, that a professional company has given it a rubber stamp and approving my work.
 
 
 ## Built-in hardware and boards
