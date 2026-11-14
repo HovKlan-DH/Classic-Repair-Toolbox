@@ -20,6 +20,7 @@ It is (for now) having Commodore computers with the most documented systems, but
 - [Full documentation](#full-documentation)
 - [Installation and usage](#installation-and-usage)
 - [YouTube Quick-Help videos available](#youtube-quick-help-videos-available)
+- [Noticeable mentions](#noticeable-mentions)
 - [Built-in hardware and boards](#built-in-hardware-and-boards)
 - [Data contributions being worked on currently](#data-contributions-being-worked-on-currently)
 - [Supported oscilloscopes](#supported-oscilloscopes)
@@ -66,6 +67,20 @@ You can view the below _Quick Help_ videos for introduction to specific topics i
 - [How to use component label editor](https://youtu.be/u-UkD-m4Z6o)
 - [How to use interactive traces](https://youtu.be/Y55nC_gJbH4)
 - [How to use workbooks](https://youtu.be/yg7CT0yrglA)
+
+
+## Noticeable mentions
+
+CRT has throughout time received some noticeable mentions from the community and others, and I have listed the ones that I know.
+
+- 2026-February
+  - [More Fun Retro](https://www.youtube.com/watch?v=RtHxzH9Cu3A&t=69s) (Lee) gave the first mentioning of **Commodore Repair Toolbox**, which sparked a lot of interest (very visible in the [Fun facts](https://classic-repair-toolbox.dk/funfacts/) graphs), and it was the inspiration to port this to a new and better cross-platform application named **Classic Repair Toolbox**. Since then the community home for CRT has been on Lee's Discord server, as he was so kind to invite me there.
+- 2026-September
+  - [More Fun Retro](https://www.youtube.com/watch?v=ZhOXidbrUXw&t=980s) gave another mentioning, this time on the new **Classic Repair Toolbox**.
+- 2026-October
+  - [Adrian's Digital Basement](https://youtu.be/NpClmSsoqO8?t=2707) met Jacek from [AmericanRetro.shop](https://americanretro.shop/) at _VCF Midwest 21_ and Jacek gave Adrian a CRT flyer that he did print.
+- 2026-November
+  - CRT won the _Best Cross-Platform Port_ price for the [Avalonia Port Challenge](https://avaloniaui.net/blog/avalonia-port-challenge-winners). [Avalonia](https://avaloniaui.net/) is the cross-platform UI used in CRT (Windows, Linux and macOS), and I am truly honored that CRT has been recognized for this achievement. For sure all my work has been done because it is pure fun, and I love this is being used by the community, but it still makes me proud, that a professional company has given it a rubber stamp and approving my work.
 
 
 ## Built-in hardware and boards
