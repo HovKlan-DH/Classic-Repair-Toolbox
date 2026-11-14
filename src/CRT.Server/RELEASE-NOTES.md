@@ -11,6 +11,11 @@ every push of that version, so a section reworded later reaches the release with
 - Plain ASCII punctuation.
 -->
 
+# 10.4.3, 2026-November-13
+--------------------------
+- The database driver and the Excel library are updated to their newest versions
+- Nothing changed in what the server answers
+
 # 10.4.2, 2026-November-11
 --------------------------
 - The test server's builds are published in this repository, one release per server version

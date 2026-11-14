@@ -84,7 +84,7 @@
                                 Padding="0"
                                 Background="Transparent"
                                 BorderThickness="0"
-                                Foreground="SteelBlue"
+                                Foreground="{DynamicResource Link_Fg}"
                                 Click="OnHaveCodeClick" />
                     </StackPanel>
 

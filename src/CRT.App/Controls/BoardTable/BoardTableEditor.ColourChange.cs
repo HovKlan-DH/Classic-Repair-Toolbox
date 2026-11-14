@@ -67,14 +67,17 @@ namespace CRT
             var side = new StackPanel { Spacing = 4 };
 
             side.Children.Add(new TextBlock { Text = heading, FontWeight = FontWeight.SemiBold });
-            side.Children.Add(new Border
+            var swatch = new Border
             {
                 Width = 96,
                 Height = 48,
                 BorderThickness = new Thickness(1),
-                BorderBrush = Brushes.DarkGray,
                 Background = new SolidColorBrush(RectGeometry.ParseColorOrDefault(value, Colors.Transparent)),
-            });
+            };
+
+            // The edge of an input's box, the theme's (DarkGray in every theme until 2026-11-12).
+            Handlers.Theming.ThemeResources.Paint(swatch, Border.BorderBrushProperty, "Form_Border");
+            side.Children.Add(swatch);
             side.Children.Add(new TextBlock { Text = value.Length > 0 ? value : ColourNotSet });
 
             return side;

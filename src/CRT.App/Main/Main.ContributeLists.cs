@@ -922,40 +922,21 @@ namespace CRT
         // ###########################################################################################
         private void SelectInComponentList(IReadOnlyList<ComponentListItem> rows, HashSet<string> selectionKeys)
         {
-            // A key no row has any more - its component's names changed on the Contribute tab since it was held (code review,
-            // 2026-11-09: as the board was read again it lost its selection, and coming back to the tab closed its pane) - is
-            // found by its label and region, the row it was.
-            var present = new HashSet<string>(rows.Select(row => row.SelectionKey), StringComparer.OrdinalIgnoreCase);
-            var renamed = new HashSet<string>(
-                selectionKeys.Where(key => !present.Contains(key)).Select(Main.LabelAndRegionOf),
-                StringComparer.OrdinalIgnoreCase);
-
             this.ComponentFilterListBox.Selection.BeginBatchUpdate();
 
             try
             {
-                for (int i = 0; i < rows.Count; i++)
+                // A key no row has any more - its component's names changed since it was held, or the list is of the other
+                // region - is found again by its label (ComponentListBuilder.RowsToSelect, the one rule).
+                foreach (int i in ComponentListBuilder.RowsToSelect(rows, selectionKeys))
                 {
-                    if (selectionKeys.Contains(rows[i].SelectionKey) ||
-                        (renamed.Count > 0 && renamed.Contains(Main.LabelAndRegionOf(rows[i].SelectionKey))))
-                    {
-                        this.ComponentFilterListBox.Selection.Select(i);
-                    }
+                    this.ComponentFilterListBox.Selection.Select(i);
                 }
             }
             finally
             {
                 this.ComponentFilterListBox.Selection.EndBatchUpdate();
             }
-        }
-
-        // A component list row's key (ComponentListItem.SelectionKey: label, friendly name, technical name, region) as its
-        // label and region alone - what stays as its names change.
-        internal static string LabelAndRegionOf(string selectionKey)
-        {
-            string[] parts = selectionKey.Split('\u001F');
-
-            return parts.Length >= 2 ? string.Concat(parts[0], "\u001F", parts[^1]) : selectionKey;
         }
 
         // ###########################################################################################

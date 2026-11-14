@@ -2262,6 +2262,42 @@ public sealed class ComponentPaneTests : IDisposable
     }
 
     // ###########################################################################################
+    // A name typed for one of them stays in its box as the page scrolls on (code review, 2026-11-14): "Other nets" built only
+    // the rows in view since before the other lists did, and was left out when the rows typed in were first kept - its row
+    // was let go of, and the box and the caret with it. Its panel is the other lists' (RowsInViewPanel).
+    // ###########################################################################################
+    [Fact]
+    public void A_name_typed_for_another_net_stays_in_its_box_as_the_page_scrolls_on()
+    {
+        DraftSession session = this.OpenDraftWithBoardParts();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.ImportantSignals);
+
+            pane.UseNetChoices(KiCadNetNames.Choices(Enumerable.Range(1, 450).Select(number => ((string?)$"N${number}", (string?)$"N${number}", false))));
+            Dispatcher.UIThread.RunJobs();
+
+            ItemsControl list = Get<ItemsControl>(pane, "OtherNetsItemsControl");
+            TextBox box = list.ContainerFromIndex(1)!.GetVisualDescendants().OfType<TextBox>().First();
+            object? row = box.DataContext;
+            box.Focus();
+            Dispatcher.UIThread.RunJobs();
+
+            // Far down the list, the page scrolled with it.
+            list.ScrollIntoView(440);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.DoesNotContain(1, list.GetRealizedContainers().Select(list.IndexFromContainer));
+            Assert.NotNull(TopLevel.GetTopLevel(box));
+            Assert.Same(row, box.DataContext);
+            Assert.True(box.IsFocused);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
     // *** UNDER A PICTURE'S THUMBNAIL: ITS KiCad COMPONENTS AND ITS MARKS (owner request, 2026-11-01: "if
     // it has KiCad data and the image has been mapped to a KiCad file, then per image I want to see status
     // of how many components is available from KiCad and how many has been marked"). *** Only once it

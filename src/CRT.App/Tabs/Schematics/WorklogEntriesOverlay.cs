@@ -87,6 +87,19 @@ namespace Tabs.TabSchematics
             set => this.SetValue(FillOpacityProperty, value);
         }
 
+        // The room round the image as the tab fits it (ImageFrameGeometry) - the image stands inside it.
+        public Thickness ContentFrame
+        {
+            get => this.thisContentFrame;
+            set
+            {
+                this.thisContentFrame = value;
+                this.InvalidateVisual();
+            }
+        }
+
+        private Thickness thisContentFrame;
+
         // ###########################################################################################
         // Forces a re-render whenever the control is re-arranged (e.g. after a splitter drag),
         // ensuring the marked areas are redrawn with up-to-date bounds.
@@ -111,7 +124,7 @@ namespace Tabs.TabSchematics
             if (this.BitmapPixelSize.Width <= 0 || this.BitmapPixelSize.Height <= 0)
                 return;
 
-            var contentRect = RectGeometry.GetImageContentRect(this.Bounds.Size, this.BitmapPixelSize);
+            var contentRect = RectGeometry.GetImageContentRect(this.Bounds.Size, this.BitmapPixelSize, this.ContentFrame);
             if (contentRect.Width <= 0 || contentRect.Height <= 0)
                 return;
 

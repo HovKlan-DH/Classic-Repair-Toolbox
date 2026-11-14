@@ -391,15 +391,8 @@ namespace CRT
         }
 
         // Red for a refusal, green for a change made - the sign-in screen's two colours.
-        private void ShowMessage(string name, string? message, bool isError = true)
-        {
-            if (this.FindControl<TextBlock>(name) is not TextBlock text)
-                return;
-
-            text.Text = message ?? string.Empty;
-            text.IsVisible = !string.IsNullOrWhiteSpace(message);
-            text.Foreground = isError ? Brushes.IndianRed : Brushes.SeaGreen;
-        }
+        private void ShowMessage(string name, string? message, bool isError = true) =>
+            WindowMessage.ShowOutcome(this.FindControl<TextBlock>(name), message, isError);
 
         private TextBox Box(string name) => this.FindControl<TextBox>(name)!;
 

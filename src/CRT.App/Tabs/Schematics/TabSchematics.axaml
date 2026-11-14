@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:local="clr-namespace:CRT"
              xmlns:ts="clr-namespace:Tabs.TabSchematics"
+             xmlns:data="clr-namespace:Handlers.DataHandling"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
              x:Class="CRT.TabSchematics">
 
@@ -33,16 +34,21 @@
                            Foreground="{DynamicResource Fg}"
                            IsVisible="False" />
 
-				<Image x:Name="SchematicsImage"
-                       Stretch="Uniform"
-                       HorizontalAlignment="Left"
-                       VerticalAlignment="Top"
-                       RenderTransformOrigin="0%,0%"
-                       RenderOptions.BitmapInterpolationMode="HighQuality">
-					<Image.RenderTransform>
+				<!-- The image in a layer as large as the overlays over it, which carries the view's matrix as each of them
+				     does: the image stands inside the room round it (its Margin, ImageFrameGeometry - 2026-11-13), where every
+				     overlay and every pointer finds it (RectGeometry.GetImageContentRect with the frame). On the image itself the
+				     matrix would turn about the image's corner, not the layer's, and it would drift from the overlays as it zooms. -->
+				<Panel x:Name="SchematicsImageHost"
+					   RenderTransformOrigin="0%,0%">
+					<Panel.RenderTransform>
 						<MatrixTransform />
-					</Image.RenderTransform>
-				</Image>
+					</Panel.RenderTransform>
+					<Image x:Name="SchematicsImage"
+						   Stretch="Uniform"
+						   HorizontalAlignment="Left"
+						   VerticalAlignment="Top"
+						   RenderOptions.BitmapInterpolationMode="HighQuality" />
+				</Panel>
 
 				<ts:SchematicHighlightsOverlay x:Name="SchematicsHighlightsOverlay"
 	  IsHitTestVisible="False"
@@ -876,13 +882,15 @@
 							<ScrollViewer HorizontalScrollBarVisibility="Disabled"
 										  Margin="0,4,0,0"
 										  MaxHeight="260">
+								<!-- "[U17 | 74LS373] pin 5", the label and the pin bold (owner requests, 2026-11-13;
+								     KiCadNetConnectionLine). The runs stand on ONE line with nothing between them: whitespace
+								     between inlines in markup is text of its own. -->
 								<ItemsControl x:Name="KiCadNetConnectionsList">
 									<ItemsControl.ItemTemplate>
-										<DataTemplate>
-											<TextBlock Text="{Binding}"
-													   FontSize="11"
+										<DataTemplate x:DataType="data:KiCadNetConnectionLine">
+											<TextBlock FontSize="11"
 													   Foreground="{DynamicResource Schematics_Panels_Fg}"
-													   Margin="8,2,0,0"/>
+													   Margin="8,2,0,0"><Run Text="[" /><Run Text="{Binding Label}" FontWeight="Bold" /><Run Text="{Binding AfterLabel}" /><Run Text="{Binding Pin}" FontWeight="Bold" /><Run Text="{Binding AfterPin}" /></TextBlock>
 										</DataTemplate>
 									</ItemsControl.ItemTemplate>
 								</ItemsControl>

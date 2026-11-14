@@ -43,6 +43,35 @@ public sealed class TabSchematicsShowNetTests
     };
 
     // ###########################################################################################
+    // The "KiCad nets" panel's "Connected to:" line as drawn (owner request, 2026-11-13: "[<b>U17</b> | 74LS373] pin
+    // <b>5</b>"): the template's runs read the line's pieces, the label and the pin bold and nothing else - and no space
+    // creeps in between the runs, which markup whitespace between inlines would add.
+    // ###########################################################################################
+    [Fact]
+    public void A_connected_to_line_draws_the_label_and_the_pin_bold()
+    {
+        UiTest.Run(() =>
+        {
+            var tab = new TabSchematics();
+            var template = Avalonia.Controls.ControlExtensions.GetControl<Avalonia.Controls.ItemsControl>(tab, "KiCadNetConnectionsList").ItemTemplate!;
+
+            var line = new KiCadNetConnectionLine("U17", " | 74LS373", "5", string.Empty);
+            var block = Assert.IsType<Avalonia.Controls.TextBlock>(template.Build(line));
+            block.DataContext = line;
+
+            var window = new Avalonia.Controls.Window { Content = block };
+            window.Show();
+
+            var runs = block.Inlines!.OfType<Avalonia.Controls.Documents.Run>().ToList();
+
+            Assert.Equal("[U17 | 74LS373] pin 5", string.Concat(runs.Select(run => run.Text)));
+            Assert.Equal(["U17", "5"], runs.Where(run => run.FontWeight == Avalonia.Media.FontWeight.Bold).Select(run => run.Text));
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
     // ONLY that net: a component selected on the board - its highlight and its nets lit - is let go
     // of too (code review, 2026-10-26: one selected only on the schematic kept its nets lit beside the
     // net asked for, since clearing the list's selection changed nothing).

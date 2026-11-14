@@ -287,8 +287,16 @@ public sealed class WorkbooksListTests : IDisposable
 
         UiTest.Run(() =>
         {
-            Assert.Equal(Colors.IndianRed, StatusLabelColour(BuildTab(this.thisBoardKey), "Open"));
+            Assert.Equal(SharedColour("Worklog_Status_Open"), StatusLabelColour(BuildTab(this.thisBoardKey), "Open"));
         });
+    }
+
+    // The shared brush's color in the theme shown - asserted through the key, as the values moved on 2026-11-12 (IndianRed
+    // and #4C8C31 until then, ThemeContrastTests since).
+    private static Color SharedColour(string key)
+    {
+        Assert.True(Avalonia.Application.Current!.TryGetResource(key, Avalonia.Application.Current.ActualThemeVariant, out object? brush));
+        return ((ISolidColorBrush)brush!).Color;
     }
 
     // A workbook closes when all its entries are resolved, and the card must follow - showing
@@ -306,7 +314,7 @@ public sealed class WorkbooksListTests : IDisposable
 
         UiTest.Run(() =>
         {
-            Assert.Equal(Color.Parse("#4C8C31"), StatusLabelColour(BuildTab(this.thisBoardKey), "Closed"));
+            Assert.Equal(SharedColour("Worklog_Status_Closed"), StatusLabelColour(BuildTab(this.thisBoardKey), "Closed"));
         });
     }
 
@@ -504,11 +512,11 @@ public sealed class WorkbooksListTests : IDisposable
 
             tab.SelectWorkbookForTests(closed.Id);
             Assert.Equal("Closed", HeaderStatusText(tab));
-            Assert.Equal(Color.Parse("#4C8C31"), ((ISolidColorBrush)tab.GetControl<TextBlock>("WorkbookHeaderStatusText").Foreground!).Color);
+            Assert.Equal(SharedColour("Worklog_Status_Closed"), ((ISolidColorBrush)tab.GetControl<TextBlock>("WorkbookHeaderStatusText").Foreground!).Color);
 
             tab.SelectWorkbookForTests(open!.Id);
             Assert.Equal("Open", HeaderStatusText(tab));
-            Assert.Equal(Colors.IndianRed, ((ISolidColorBrush)tab.GetControl<TextBlock>("WorkbookHeaderStatusText").Foreground!).Color);
+            Assert.Equal(SharedColour("Worklog_Status_Open"), ((ISolidColorBrush)tab.GetControl<TextBlock>("WorkbookHeaderStatusText").Foreground!).Color);
         });
     }
 

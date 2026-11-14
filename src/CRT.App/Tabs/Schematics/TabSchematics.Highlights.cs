@@ -273,9 +273,7 @@ public partial class TabSchematics
 
             if (!byLabel.TryGetValue(item.BoardLabel, out var rects) || rects.Count == 0) continue;
 
-            var parts = item.SelectionKey?.Split('\u001F') ?? Array.Empty<string>();
-            string friendlyName = parts.Length > 1 ? parts[1] : string.Empty;
-            string technicalName = parts.Length > 2 ? parts[2] : string.Empty;
+            (string friendlyName, string technicalName) = ComponentListBuilder.NamesOf(item.SelectionKey);
 
             var lines = new List<string>();
             if (this.CheckLabelBoard.IsChecked == true && !string.IsNullOrWhiteSpace(item.BoardLabel)) lines.Add(item.BoardLabel);
@@ -750,15 +748,19 @@ public partial class TabSchematics
                 this.SchematicsHoverLabelBorder.ClearValue(Border.BorderBrushProperty);
                 this.SchematicsHoverLabelText.ClearValue(TextBlock.ForegroundProperty);
 
+                // The words, and the edge, in white or black - whichever reads on the category's color (always white until
+                // 2026-11-12: the dark theme's lighter categories took it at 2:1 to 3:1).
+                IBrush onCategory = ThemeResources.TextOn(hoveredWorklogColor);
+
                 this.SchematicsHoverLabelIdText.Text = $"#{hoveredWorklogEntry.Id}";
-                this.SchematicsHoverLabelIdText.Foreground = Brushes.White;
+                this.SchematicsHoverLabelIdText.Foreground = onCategory;
                 this.SchematicsHoverLabelIdText.IsVisible = true;
                 this.SchematicsHoverLabelIconBorder.Background = new SolidColorBrush(this.ResolveWorklogStateColor(hoveredWorklogEntry.State));
                 this.SchematicsHoverLabelIconBorder.IsVisible = true;
                 this.SchematicsHoverLabelText.Text = hoveredWorklogEntry.Title;
                 this.SchematicsHoverLabelBorder.Background = new SolidColorBrush(hoveredWorklogColor);
-                this.SchematicsHoverLabelBorder.BorderBrush = Brushes.White;
-                this.SchematicsHoverLabelText.Foreground = Brushes.White;
+                this.SchematicsHoverLabelBorder.BorderBrush = onCategory;
+                this.SchematicsHoverLabelText.Foreground = onCategory;
                 this.SchematicsHoverLabelBorder.IsVisible = true;
             }
 

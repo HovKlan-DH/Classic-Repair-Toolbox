@@ -60,8 +60,9 @@ public class WorklogStatusBrushTests
     [Fact]
     public void An_open_worklog_is_red_and_a_closed_one_is_green()
     {
-        Assert.Equal(Colors.IndianRed, ResolveThemeColor("Worklog_Status_Open"));
-        Assert.Equal(Color.Parse("#4C8C31"), ResolveThemeColor("Worklog_Status_Closed"));
+        // IndianRed and #4C8C31 until 2026-11-12, when every theme color was held to 4.5:1 (ThemeContrastTests).
+        Assert.Equal(Color.Parse("#B53535"), ResolveThemeColor("Worklog_Status_Open"));
+        Assert.Equal(Color.Parse("#447D2C"), ResolveThemeColor("Worklog_Status_Closed"));
     }
 
     // The whole point of the last palette change: the worklog bar's "Open" and a worklog entry's

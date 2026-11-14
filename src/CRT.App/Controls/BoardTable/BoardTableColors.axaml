@@ -82,7 +82,8 @@
             <SolidColorBrush x:Key="BoardTable_Header_Fg">#EDEDED</SolidColorBrush>
             <SolidColorBrush x:Key="BoardTable_Header_Separator">#4A4A4A</SolidColorBrush>
             <SolidColorBrush x:Key="BoardTable_Header_Line">#8A8A8A</SolidColorBrush>
-            <SolidColorBrush x:Key="BoardTable_Error_Mark">#F44336</SolidColorBrush>
+            <!-- #F44336 until 2026-11-12: 3.7:1 with the white count of an "Errors" pill on it. -->
+            <SolidColorBrush x:Key="BoardTable_Error_Mark">#D73B30</SolidColorBrush>
             <SolidColorBrush x:Key="BoardTable_Error_Fg">#FFFFFF</SolidColorBrush>
             <SolidColorBrush x:Key="BoardTable_Warning_Mark">#FFB300</SolidColorBrush>
             <SolidColorBrush x:Key="BoardTable_Warning_Fg">#1F1F1F</SolidColorBrush>

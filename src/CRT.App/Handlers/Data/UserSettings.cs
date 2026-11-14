@@ -207,6 +207,12 @@ namespace Handlers.DataHandling
         [JsonPropertyName("regionByBoard")] public Dictionary<string, string> RegionByBoard { get; set; } = new();
         [JsonPropertyName("theme")] public string ThemeVariant { get; set; } = "Light";
         [JsonPropertyName("userThemeColors")] public Dictionary<string, string> UserThemeColors { get; set; } = new();
+
+        // How far the colors above have followed the defaults' moves (UserSettings.UserThemeEarlierDefaults) - each is
+        // followed ONCE, so a color typed back to an old default afterwards stays (code review, 2026-11-13). None is 0.
+        [JsonPropertyName("userThemeDefaultsRevision")]
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public int? UserThemeDefaultsRevision { get; set; }
         [JsonPropertyName("hasWindowPlacement")] public bool HasWindowPlacement { get; set; } = false;
         [JsonPropertyName("windowState")] public string WindowState { get; set; } = "Normal";
         [JsonPropertyName("windowWidth")] public double WindowWidth { get; set; } = 1024.0;
@@ -380,7 +386,12 @@ namespace Handlers.DataHandling
         private static UserSettingsData _data = new();
         private static string _settingsFilePath = string.Empty;
 
-        private static readonly Dictionary<string, string> UserThemeDefaultColors = new(StringComparer.Ordinal)
+        // ###########################################################################################
+        // The "User preference" theme's colors as first seeded into the settings file: the light theme's (App.axaml), its
+        // ground excepted. A key not here is the light theme's own. ThemeContrastTests reads it, so every text pair of this
+        // theme is held to 4.5:1 as the light and dark ones are.
+        // ###########################################################################################
+        internal static readonly Dictionary<string, string> UserThemeDefaultColors = new(StringComparer.Ordinal)
         {
             { "Bg", "#E0E4D9" },
             { "Fg", "Black" },
@@ -389,18 +400,18 @@ namespace Handlers.DataHandling
             { "Form_Fg", "Black" },
             { "Form_Border", "Gray" },
             { "Form_Selected_Bg", "LightBlue" },
-            { "Form_Selected_Fg", "White" },
+            { "Form_Selected_Fg", "Black" },
             { "Form_Selected_Hover_Bg", "SkyBlue" },
             { "Splitter", "Gray" },
             { "Button_Bg", "LightGray" },
             { "Button_Fg", "Black" },
             { "Button_Border", "DarkGray" },
-            { "Button_Ok_Bg", "#4F8A5B" },
+            { "Button_Ok_Bg", "#497F54" },
             { "Button_Ok_Fg", "White" },
             { "Button_Ok_Border", "#3E6E48" },
-            { "Button_Cancel_Bg", "IndianRed" },
+            { "Button_Cancel_Bg", "#BC5454" },
             { "Button_Cancel_Fg", "White" },
-            { "Button_Cancel_Border", "#B85C5C" },
+            { "Button_Cancel_Border", "#A34747" },
             { "Panel_Border", "Gray" },
             { "Link_Fg", "Blue" },
             { "LinkHover_Fg", "Black" },
@@ -410,9 +421,9 @@ namespace Handlers.DataHandling
             { "Table_Fg", "Black" },
             { "Table_BorderRowLine", "#EEEEEE" },
             { "Table_RowHover_Bg", "#E1F0FA" },
-            { "Text_Success_Fg", "#547131" },
-            { "Text_Fail_Fg", "IndianRed" },
-            { "Main_TabUnderline_Selected", "IndianRed" },
+            { "Text_Success_Fg", "#516C2F" },
+            { "Text_Fail_Fg", "#B53535" },
+            { "Main_TabUnderline_Selected", "#B53535" },
             { "Main_TabUnderline_Hover", "#ecc3c3" },
             { "Main_Banner_Bg", "#4C1515" },
             { "Main_Banner_Fg", "White" },
@@ -421,7 +432,7 @@ namespace Handlers.DataHandling
             { "Schematics_Name_Bg", "Khaki" },
             { "Schematics_Name_Fg", "Black" },
             { "Schematics_Name_Border", "Black" },
-            { "Schematics_Region_PAL_Bg", "IndianRed" },
+            { "Schematics_Region_PAL_Bg", "#BC5454" },
             { "Schematics_Region_PAL_Fg", "White" },
             { "Schematics_Region_PAL_Border", "Black" },
             { "Schematics_Region_NTSC_Bg", "#CBD6E5" },
@@ -446,7 +457,7 @@ namespace Handlers.DataHandling
             { "Thumbnail_BorderSelected", "IndianRed" },
             { "Thumbnail_Bg", "Khaki" },
             { "Thumbnail_Fg", "Black" },
-            { "Thumbnail_Selection_Bg", "#4682B4" },
+            { "Thumbnail_Selection_Bg", "#4076A4" },
             { "Thumbnail_Selection_Fg", "White" },
             { "ComponentPopup_Name_Bg", "Khaki" },
             { "ComponentPopup_Name_Fg", "Black" },
@@ -463,13 +474,75 @@ namespace Handlers.DataHandling
             { "ComponentPopup_ImageXofY_Bg", "#BB000000" },
             { "ComponentPopup_ImageXofY_Border", "Black" },
             { "ComponentPopup_ImageXofY_Fg", "White" },
-            { "ComponentPopup_KeyboardTyping_Bg", "#778461" },
+            { "ComponentPopup_KeyboardTyping_Bg", "#6B7657" },
             { "ComponentPopup_KeyboardTyping_Fg", "White" },
             { "ComponentPopup_KeyboardTyping_Border", "Black" },
             { "ComponentPopup_ImageTransparent_Bg", "White" },
-            { "ComponentPopup_BulletList_Fg", "Red" },
-            { "Feedback_TrashIcon_Fg", "IndianRed" }
+            { "Feedback_TrashIcon_Fg", "#B53535" }
         };
+
+        // ###########################################################################################
+        // What the defaults above WERE, for each one changed since (2026-11-12, the theme color review: white on LightBlue,
+        // white on IndianRed, ...). A color in the settings file still at one of these was never picked by anybody - it is
+        // the default as it stood - so it follows the default; any other color is the user's own and stays.
+        // EACH MOVE IS FOLLOWED ONCE (code review, 2026-11-13): the colors are typed into the file by hand, and somebody who
+        // wants the old look types the old default back - followed at every load, it was taken from them at every launch
+        // and "Reload". So each earlier default names the revision that moved it, and the file keeps how far it has
+        // followed (userThemeDefaultsRevision). A default that moves again: its old value here with the next revision, and
+        // UserThemeDefaultsRevisionNow raised to it. (CRT 3.x, saving the same file, drops the stamp - a color still at a
+        // default then follows it once more, which is what it would do anyway.)
+        // ###########################################################################################
+        private const int UserThemeDefaultsRevisionNow = 1;
+
+        private static readonly Dictionary<string, (string Was, int MovedIn)[]> UserThemeEarlierDefaults = new(StringComparer.Ordinal)
+        {
+            { "Form_Selected_Fg", [("White", 1)] },
+            { "Button_Ok_Bg", [("#4F8A5B", 1)] },
+            { "Button_Cancel_Bg", [("IndianRed", 1)] },
+            { "Button_Cancel_Border", [("#B85C5C", 1)] },
+            { "Text_Success_Fg", [("#547131", 1)] },
+            { "Text_Fail_Fg", [("IndianRed", 1)] },
+            { "Main_TabUnderline_Selected", [("IndianRed", 1)] },
+            { "Schematics_Region_PAL_Bg", [("IndianRed", 1)] },
+            { "Thumbnail_Selection_Bg", [("#4682B4", 1)] },
+            { "ComponentPopup_KeyboardTyping_Bg", [("#778461", 1)] },
+            { "Feedback_TrashIcon_Fg", [("IndianRed", 1)] }
+        };
+
+        // ###########################################################################################
+        // What each of those reads against - its ground for words or a mark, its words for a ground. A move is followed only
+        // while that one is still the theme's, at its default now or before (code review, 2026-11-13): the white on a
+        // selection a user made navy was the user's choice as much as the navy, and moved to black it read 1.6:1.
+        // ###########################################################################################
+        private static readonly Dictionary<string, string> UserThemeMovedAgainst = new(StringComparer.Ordinal)
+        {
+            { "Form_Selected_Fg", "Form_Selected_Bg" },
+            { "Button_Ok_Bg", "Button_Ok_Fg" },
+            { "Button_Cancel_Bg", "Button_Cancel_Fg" },
+            { "Button_Cancel_Border", "Button_Cancel_Bg" },
+            { "Text_Success_Fg", "Bg" },
+            { "Text_Fail_Fg", "Bg" },
+            { "Main_TabUnderline_Selected", "Bg" },
+            { "Schematics_Region_PAL_Bg", "Schematics_Region_PAL_Fg" },
+            { "Thumbnail_Selection_Bg", "Thumbnail_Selection_Fg" },
+            { "ComponentPopup_KeyboardTyping_Bg", "ComponentPopup_KeyboardTyping_Fg" },
+            { "Feedback_TrashIcon_Fg", "Bg" }
+        };
+
+        // Whether `key` holds a color the theme gave it - its default now, or one it had before.
+        private static bool IsThemesOwnColor(string key)
+        {
+            if (!_data.UserThemeColors.TryGetValue(key, out string? value) || string.IsNullOrWhiteSpace(value))
+            {
+                return true;
+            }
+
+            string held = value.Trim();
+
+            return (UserThemeDefaultColors.TryGetValue(key, out string? now) && string.Equals(now, held, StringComparison.OrdinalIgnoreCase)) ||
+                   (UserThemeEarlierDefaults.TryGetValue(key, out (string Was, int MovedIn)[]? earlier) &&
+                    earlier.Any(old => string.Equals(old.Was, held, StringComparison.OrdinalIgnoreCase)));
+        }
 
         public static bool AllowDeletionOfOrphanAndNonUsedFiles
         {
@@ -1879,21 +1952,32 @@ namespace Handlers.DataHandling
             => UserThemeColorResourceKeys.Contains(resourceKey);
 
         // ###########################################################################################
-        // Ensures all JSON-backed user theme color entries exist, seeding missing values from Light.
+        // Ensures all JSON-backed user theme color entries exist, seeding missing values from Light - and moves one still at
+        // an earlier default to the default now (UserThemeEarlierDefaults).
         // ###########################################################################################
         private static bool EnsureUserThemeColors()
         {
             _data.UserThemeColors ??= new Dictionary<string, string>();
 
             var changed = false;
+            int followed = _data.UserThemeDefaultsRevision ?? 0;
 
             foreach (var entry in UserThemeDefaultColors)
             {
-                if (!_data.UserThemeColors.TryGetValue(entry.Key, out var value) || string.IsNullOrWhiteSpace(value))
+                if (!_data.UserThemeColors.TryGetValue(entry.Key, out var value) || string.IsNullOrWhiteSpace(value) ||
+                    (UserThemeEarlierDefaults.TryGetValue(entry.Key, out (string Was, int MovedIn)[]? earlier) &&
+                     earlier.Any(old => old.MovedIn > followed && string.Equals(old.Was, value.Trim(), StringComparison.OrdinalIgnoreCase)) &&
+                     (!UserThemeMovedAgainst.TryGetValue(entry.Key, out string? against) || UserSettings.IsThemesOwnColor(against))))
                 {
                     _data.UserThemeColors[entry.Key] = entry.Value;
                     changed = true;
                 }
+            }
+
+            if (followed < UserThemeDefaultsRevisionNow)
+            {
+                _data.UserThemeDefaultsRevision = UserThemeDefaultsRevisionNow;
+                changed = true;
             }
 
             return changed;
@@ -2586,7 +2670,10 @@ namespace Handlers.DataHandling
                     return;
                 }
 
+                // The colors and how far they followed the defaults, from the same file (code review, 2026-11-14): the
+                // revision held in memory says what THIS run followed, and a save of it that failed left the file behind.
                 _data.UserThemeColors = loaded.UserThemeColors ?? new Dictionary<string, string>();
+                _data.UserThemeDefaultsRevision = loaded.UserThemeDefaultsRevision;
 
                 var addedMissingDefaults = EnsureUserThemeColors();
 

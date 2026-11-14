@@ -6,7 +6,8 @@
         Width="420"
         Height="600"
         MinWidth="200"
-        MinHeight="200">
+        MinHeight="200"
+        Background="{DynamicResource Bg}">
 
 	<local:SchematicsThumbnailGallery x:Name="Gallery" />
 </Window>

@@ -302,16 +302,18 @@ namespace CRT
         private void RenderResult(IcTestResult r)
         {
             this.ResultBorder.IsVisible = true;
-            (string label, Color colour) = r.Outcome switch
+            // The theme's pass, fail and muted colors, the word in it over a faint wash of it (a fixed dark green, red and
+            // grey until 2026-11-12 - about 3:1 on the dark theme's ground).
+            (string label, string colourKey) = r.Outcome switch
             {
-                TestOutcome.Pass => ("PASS", Color.FromRgb(0x2e, 0x7d, 0x32)),
-                TestOutcome.Fail => ("FAIL", Color.FromRgb(0xc6, 0x28, 0x28)),
-                TestOutcome.Unsupported => ("NOT TESTED", Color.FromRgb(0x61, 0x61, 0x61)),
-                _ => ("ERROR", Color.FromRgb(0xc6, 0x28, 0x28)),
+                TestOutcome.Pass => ("PASS", "Text_Success_Fg"),
+                TestOutcome.Fail => ("FAIL", "Text_Fail_Fg"),
+                TestOutcome.Unsupported => ("NOT TESTED", "Text_Muted_Fg"),
+                _ => ("ERROR", "Text_Fail_Fg"),
             };
             this.OutcomeText.Text = label;
-            this.OutcomeText.Foreground = new SolidColorBrush(colour);
-            this.ResultBorder.Background = new SolidColorBrush(Color.FromArgb(0x22, colour.R, colour.G, colour.B));
+            Handlers.Theming.ThemeResources.Paint(this.OutcomeText, TextBlock.ForegroundProperty, colourKey);
+            Handlers.Theming.ThemeResources.PaintWash(this.ResultBorder, Border.BackgroundProperty, colourKey, 0x22);
 
             // OutcomeText already shows PASS/FAIL big — don't repeat it in the headline.
             var headline = r.Headline;

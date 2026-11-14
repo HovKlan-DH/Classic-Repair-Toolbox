@@ -69,6 +69,55 @@ public sealed class ContributeProblemsTests
     }
 
     // ###########################################################################################
+    // Submit stopped by errors goes to the FIRST (owner request, 2026-11-13: "If it has multiple problems, then just go to
+    // the first problem when the user clicks "Submit""): first in the left column's order, whatever order the checks found
+    // them in, and on one entry the checks' own order. A warning never stops a submit, so it is never where Submit goes -
+    // even on an entry above every error.
+    // ###########################################################################################
+    [Fact]
+    public void The_first_error_is_the_topmost_in_the_left_column_never_a_warning()
+    {
+        EntryProblem Placed(ContributeEntry entry, string code, BoardProblemLevel level = BoardProblemLevel.Error) =>
+            new(Problem(null, -1, code, level), entry, string.Empty);
+
+        List<EntryProblem> placed =
+        [
+            Placed(ContributeEntry.ComponentLinks, "links"),
+            Placed(ContributeEntry.Name, "a warning", BoardProblemLevel.Warning),
+            Placed(ContributeEntry.Credits, "credits first"),
+            Placed(ContributeEntry.Credits, "credits second"),
+            Placed(ContributeEntry.ComponentBasics, "basics"),
+        ];
+
+        Assert.Equal("credits first", ContributeProblems.FirstError(placed)!.Problem.Code);
+        Assert.Null(ContributeProblems.FirstError([Placed(ContributeEntry.Name, "only a warning", BoardProblemLevel.Warning)]));
+        Assert.Null(ContributeProblems.FirstError([]));
+    }
+
+    // Said on the tab's line in the "UI" view: how many, and where the first and the others are.
+    [Fact]
+    public void A_blocked_submit_says_how_many_errors_and_where_the_first_is()
+    {
+        Assert.Equal("This draft has 1 error to fix before it can be submitted. It is shown below.", ContributeProblems.SubmitBlocked(1));
+        Assert.StartsWith("This draft has 3 errors to fix before it can be submitted. The first is shown below", ContributeProblems.SubmitBlocked(3), StringComparison.Ordinal);
+        Assert.All(ContributeProblems.SubmitBlocked(3), character => Assert.True(character < 128, $"[{character}] is not plain ASCII"));
+
+        // The "Table" view's says the same first sentence - one wording, CRT.Data's (code review, 2026-11-13).
+        Assert.StartsWith(BoardTableProblemWording.ErrorsToFix(3), BoardTableProblemWording.SubmitBlocked(3, onFirst: false), StringComparison.Ordinal);
+        Assert.StartsWith(BoardTableProblemWording.ErrorsToFix(3), ContributeProblems.SubmitBlocked(3), StringComparison.Ordinal);
+
+        // The first not reached - a page held the tab where it was: nothing claimed "below", the badges say where.
+        Assert.Equal(
+            "This draft has 1 error to fix before it can be submitted. The red badges on the left say where they are.",
+            ContributeProblems.SubmitBlocked(1, firstShown: false));
+
+        // A draft whose board is not the one shown: nothing opened, so it names the board and says nothing is "below".
+        string elsewhere = ContributeProblems.SubmitBlockedOf("Commodore 64", "250407", 2);
+        Assert.Contains("Commodore 64 / 250407 has 2 errors", elsewhere, StringComparison.Ordinal);
+        Assert.DoesNotContain("below", elsewhere, StringComparison.Ordinal);
+    }
+
+    // ###########################################################################################
     // Through the real checks, a real problem of each kind: on its entry, of its component - and none
     // lost, so the badges add up to what the checks found.
     // ###########################################################################################

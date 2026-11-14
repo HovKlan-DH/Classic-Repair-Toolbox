@@ -150,6 +150,17 @@ namespace CRT
             this.InvalidateVisual();
         }
 
+        // ###########################################################################################
+        // Another row's preview, in a card made again for another schematic image as the list scrolls (the cards are built
+        // only in view since 2026-11-13): the image whole, not as far in as the card's previous one was zoomed - two images
+        // of one size set no new ImageSize to reset it.
+        // ###########################################################################################
+        protected override void OnDataContextChanged(EventArgs e)
+        {
+            base.OnDataContextChanged(e);
+            this.ShowWhole();
+        }
+
         // Zoomed by `factor` at `pointer` - for the wheel, and for a test.
         internal void ZoomAt(Point pointer, double factor)
         {

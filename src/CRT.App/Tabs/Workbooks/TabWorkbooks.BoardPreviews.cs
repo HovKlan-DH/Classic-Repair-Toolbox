@@ -621,7 +621,8 @@ namespace CRT
                     Text = $"#{entry.Id}",
                     FontSize = 13,
                     FontWeight = FontWeight.Bold,
-                    Foreground = Brushes.White
+                    // White or black, whichever reads on the category's color (always white until 2026-11-12).
+                    Foreground = ThemeResources.TextOn(categoryColor)
                 }
             };
 

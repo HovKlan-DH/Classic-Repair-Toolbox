@@ -266,13 +266,15 @@ public sealed class MainWindowTests : IDisposable
     }
 
     // ###########################################################################################
-    // The Contribute tab's title is IndianRed in both themes WHILE A DRAFT EXISTS (owner request,
-    // 2026-09-25, for the Drafts tab: a draft is temporary, and the tab says so), and the tab's own
-    // colour otherwise (CRT 4.0 step 2 - the tab is always on screen). Read off a SHOWN window,
-    // where the styles apply, through the theme key - a key missing from one theme fails here.
+    // The Contribute tab's title is red WHILE A DRAFT EXISTS (owner request, 2026-09-25, for the
+    // Drafts tab: a draft is temporary, and the tab says so) - in each theme the red of the selected
+    // tab's underline, the owner's pairing (IndianRed in both themes until 2026-11-12, when each
+    // theme took a red its 12px text reads in) - and the tab's own colour otherwise (CRT 4.0 step 2 -
+    // the tab is always on screen). Read off a SHOWN window, where the styles apply, through the
+    // theme key - a key missing from one theme fails here.
     // ###########################################################################################
     [Fact]
-    public void The_Contribute_tab_title_is_IndianRed_in_both_themes_while_a_draft_exists()
+    public void The_Contribute_tab_title_is_the_underline_red_in_both_themes_while_a_draft_exists()
     {
         this.RedirectWorklogToTemp();
         this.RedirectSettingsToTemp();
@@ -287,21 +289,28 @@ public sealed class MainWindowTests : IDisposable
             Assert.Equal("Contribute", header.Text);
             Assert.Contains(header, Assert.IsType<StackPanel>(main.ContributeTabItem.Header).Children);
 
-            foreach (Avalonia.Styling.ThemeVariant variant in new[] { Avalonia.Styling.ThemeVariant.Light, Avalonia.Styling.ThemeVariant.Dark })
+            Avalonia.Media.Color ThemeColour(string key, Avalonia.Styling.ThemeVariant variant)
             {
-                Assert.True(Avalonia.Application.Current!.TryGetResource("Main_TabHeader_Drafts_Fg", variant, out object? brush));
-                Assert.Equal(Avalonia.Media.Colors.IndianRed, Assert.IsAssignableFrom<Avalonia.Media.ISolidColorBrush>(brush).Color);
+                Assert.True(Avalonia.Application.Current!.TryGetResource(key, variant, out object? brush));
+                return Assert.IsAssignableFrom<Avalonia.Media.ISolidColorBrush>(brush).Color;
             }
 
+            foreach (Avalonia.Styling.ThemeVariant variant in new[] { Avalonia.Styling.ThemeVariant.Light, Avalonia.Styling.ThemeVariant.Dark })
+            {
+                Assert.Equal(ThemeColour("Main_TabUnderline_Selected", variant), ThemeColour("Main_TabHeader_Drafts_Fg", variant));
+                Assert.NotEqual(ThemeColour("Fg", variant), ThemeColour("Main_TabHeader_Drafts_Fg", variant));
+            }
+
+            Avalonia.Media.Color red = ThemeColour("Main_TabHeader_Drafts_Fg", main.ActualThemeVariant);
             Avalonia.Media.Color Colour() => Assert.IsAssignableFrom<Avalonia.Media.ISolidColorBrush>(header.Foreground).Color;
 
-            Assert.NotEqual(Avalonia.Media.Colors.IndianRed, Colour());
+            Assert.NotEqual(red, Colour());
 
             this.GiveTheDraftsTabSomethingToShow(main);
             main.ApplyContributeTabState();
             Dispatcher.UIThread.RunJobs();
 
-            Assert.Equal(Avalonia.Media.Colors.IndianRed, Colour());
+            Assert.Equal(red, Colour());
 
             main.Close();
         });

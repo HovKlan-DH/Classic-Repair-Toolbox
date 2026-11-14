@@ -598,9 +598,10 @@ namespace CRT
                         }
 
                         this.ShowResources(boardData, entry, dataRoot, draftBoardFolder);
-                        this.TabOverview.LoadData(boardData);
                         this.ShowBoardInContributeTab(entry);
-                        this.TabOverview.ApplyFilter(this.ComponentSearchTextBox?.Text ?? string.Empty);
+
+                        // Its rows and the filter at once - the list handed its rows ONCE (code review, 2026-11-14).
+                        this.TabOverview.LoadData(boardData, this._localRegion, this.ComponentSearchTextBox?.Text ?? string.Empty);
 
                         // What the lists have selected by now, on the board as it now is.
                         this.ShowHighlightsOfSelectionAfterLoad();

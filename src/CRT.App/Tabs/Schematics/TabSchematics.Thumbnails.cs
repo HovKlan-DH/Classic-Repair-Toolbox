@@ -216,7 +216,7 @@ public partial class TabSchematics
             this.SchematicsImage.Source = null;
             this.SchematicsMissingImageText.IsVisible = false; // Hide while loading
             this.schematicsMatrix = Matrix.Identity;
-            ((MatrixTransform)this.SchematicsImage.RenderTransform!).Matrix = this.schematicsMatrix;
+            ((MatrixTransform)this.SchematicsImageHost.RenderTransform!).Matrix = this.schematicsMatrix;
             ((MatrixTransform)this.SchematicsHighlightsOverlay.RenderTransform!).Matrix = this.schematicsMatrix;
             ((MatrixTransform)this.SchematicsHoverHighlightsOverlay.RenderTransform!).Matrix = this.schematicsMatrix;
 
@@ -245,15 +245,21 @@ public partial class TabSchematics
                 return;
             }
 
-            var bitmap = await Task.Run(() =>
+            // Read with how much empty border it has of its own, which the room round it in the first view tops up
+            // (ApplyImageFrame) - measured here, off the UI thread, with the image just read.
+            (Bitmap? bitmap, Thickness blankBorder) = await Task.Run<(Bitmap?, Thickness)>(() =>
             {
-                if (cts.Token.IsCancellationRequested) return null;
+                if (cts.Token.IsCancellationRequested) return (null, default);
 
-                try { return new Bitmap(selected.ImageFilePath); }
+                try
+                {
+                    var read = new Bitmap(selected.ImageFilePath);
+                    return (read, TabSchematics.BlankBorderOf(read, selected.ImageFilePath));
+                }
                 catch (Exception ex)
                 {
                     Logger.Warning($"Cannot load image file [{selected.ImageFilePath}] - [{ex.Message}]");
-                    return null;
+                    return (null, default);
                 }
             }, cts.Token);
 
@@ -265,6 +271,8 @@ public partial class TabSchematics
 
             this.currentFullResBitmap?.Dispose();
             this.currentFullResBitmap = bitmap;
+            this.thisImageBlankBorder = blankBorder;
+            this.ApplyImageFrame();
             this.SchematicsImage.Source = bitmap;
 
             // "Draw trace" and the one-time tip follow the picture (TabSchematics.ViewTools.cs).

@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.VisualTree;
 using Handlers.DataHandling;
 using Handlers.Theming;
 using System;
@@ -238,6 +239,28 @@ namespace CRT
 
             this.FilesAppliesToHeading.IsVisible = has;
             this.LinksAppliesToHeading.IsVisible = has;
+            ComponentPane.SizeAppliesToColumn(this.FilesAppliesToSizer, has, this.thisFiles);
+            ComponentPane.SizeAppliesToColumn(this.LinksAppliesToSizer, has, this.thisLinks);
+        }
+
+        // ###########################################################################################
+        // A list's "Applies to" column as wide as the widest choice any of its rows offers, made or not (code review,
+        // 2026-11-14): a row's box is as wide as what it shows, and a column the rows share counts only the rows made - in a
+        // list that makes only the rows in view, it widened and narrowed as the page scrolled. The heading's ColumnSizer
+        // holds a box per choice.
+        // ###########################################################################################
+        internal static void SizeAppliesToColumn(ItemsControl sizer, bool shown, IEnumerable<ComponentPaneRegionalRow> rows)
+        {
+            List<string> choices = shown
+                ? rows.SelectMany(row => row.AppliesToChoices).Distinct(StringComparer.Ordinal).ToList()
+                : [];
+
+            if (sizer.ItemsSource is not IEnumerable<string> held || !held.SequenceEqual(choices, StringComparer.Ordinal))
+            {
+                sizer.ItemsSource = choices;
+            }
+
+            sizer.IsVisible = choices.Count > 0;
         }
 
         // ###########################################################################################
@@ -513,10 +536,32 @@ namespace CRT
         // ###########################################################################################
         private string thisPackageTextAtFocus = string.Empty;
 
+        // ###########################################################################################
+        // Only the box ENTERED opens the list, never the focus moving inside it (2026-11-13, Avalonia 12.1.4 -> 12.1.6):
+        // a press on a row of the list takes the focus to the row, and 12.1.6 keeps the list open for it, so the row's
+        // GotFocus reaches the box, whose OnGotFocus takes the focus straight back to the text - closing the list
+        // while the press is still picking. Opened again here, the list was made anew and the pick was lost: a package
+        // could not be picked with the mouse. (In 12.1.4 the list closed as the row took the focus, and none of this
+        // reached the box.)
+        // ###########################################################################################
         private void OnPackageBoxFocused(object? sender, RoutedEventArgs e)
         {
+            if (e is FocusChangedEventArgs { OldFocusedElement: Visual from } && this.IsInPackageBox(from))
+                return;
+
             this.thisPackageTextAtFocus = this.PackageBox.Text ?? string.Empty;
             this.PackageBox.IsDropDownOpen = true;
+        }
+
+        // The box's text, or a row of its list - a popup of its own, outside the box's visual tree.
+        private bool IsInPackageBox(Visual element)
+        {
+            if (this.PackageBox.IsVisualAncestorOf(element))
+                return true;
+
+            Control? list = this.PackageBox.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.Popup>().FirstOrDefault()?.Child;
+
+            return list is not null && (ReferenceEquals(list, element) || list.IsVisualAncestorOf(element));
         }
 
         private bool PackageShowsAll(string? search, object? item) =>

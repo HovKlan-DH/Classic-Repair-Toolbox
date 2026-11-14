@@ -80,6 +80,21 @@ namespace Handlers.Geometry
         }
 
         // ###########################################################################################
+        // The same, with the bitmap fitted inside the control less `frame` and standing at the frame's top-left - the
+        // "Schematics" tab's image, given room round it so its badges cover none of it (ImageFrameGeometry, 2026-11-13).
+        // A frame leaving no room is no frame.
+        // ###########################################################################################
+        public static Rect GetImageContentRect(Size controlSize, PixelSize bitmapPixelSize, Thickness frame)
+        {
+            var inside = new Size(controlSize.Width - frame.Left - frame.Right, controlSize.Height - frame.Top - frame.Bottom);
+
+            if (inside.Width <= 0 || inside.Height <= 0)
+                return RectGeometry.GetImageContentRect(controlSize, bitmapPixelSize);
+
+            return RectGeometry.GetImageContentRect(inside, bitmapPixelSize).Translate(new Vector(frame.Left, frame.Top));
+        }
+
+        // ###########################################################################################
         // Returns the area the bitmap occupies inside its control when the control centers its
         // content instead of anchoring it top-left - the schematic thumbnail gallery's Image is
         // HorizontalAlignment/VerticalAlignment="Stretch" with Stretch="Uniform", so its rendered

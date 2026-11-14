@@ -79,6 +79,14 @@ public sealed class MyAccountViewTests
     private static Color ColourOf(MyAccountView view, string name) =>
         ((ISolidColorBrush)view.FindControl<TextBlock>(name)!.Foreground!).Color;
 
+    // The theme's color for `key` in the theme the view is shown in - the message colors follow the theme since 2026-11-12
+    // (SeaGreen and IndianRed in every theme until then).
+    private static Color ThemeColour(MyAccountView view, string key)
+    {
+        Assert.True(Avalonia.Application.Current!.TryGetResource(key, view.ActualThemeVariant, out object? brush));
+        return ((ISolidColorBrush)brush!).Color;
+    }
+
     private static void Click(MyAccountView view, string name) =>
         view.FindControl<Button>(name)!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
 
@@ -127,7 +135,7 @@ public sealed class MyAccountViewTests
             Assert.Equal("Signed in as Dennis H (dh@example.com)", MyAccountViewTests.SignedIn(view));
 
             Assert.Equal("Your name is now Dennis H.", MyAccountViewTests.Said(view, "NameMessageText"));
-            Assert.Equal(Colors.SeaGreen, MyAccountViewTests.ColourOf(view, "NameMessageText"));
+            Assert.Equal(MyAccountViewTests.ThemeColour(view, "Text_Success_Fg"), MyAccountViewTests.ColourOf(view, "NameMessageText"));
 
             // Nothing left to save.
             Assert.False(MyAccountViewTests.IsOn(view, "SaveNameButton"));
@@ -240,7 +248,7 @@ public sealed class MyAccountViewTests
 
             Assert.Equal(["/api/accounts/me/password"], opened.Paths);
             Assert.Equal("At least 12 characters.", MyAccountViewTests.Said(view, "PasswordMessageText"));
-            Assert.Equal(Colors.IndianRed, MyAccountViewTests.ColourOf(view, "PasswordMessageText"));
+            Assert.Equal(MyAccountViewTests.ThemeColour(view, "Text_Fail_Fg"), MyAccountViewTests.ColourOf(view, "PasswordMessageText"));
             Assert.Equal("too short", MyAccountViewTests.Typed(view, "NewPasswordTextBox"));
             Assert.Empty(opened.PassedOn);
 

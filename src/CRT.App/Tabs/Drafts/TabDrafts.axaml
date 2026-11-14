@@ -351,9 +351,10 @@
 						Click="OnMySubmissionsClick">
 					<StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
 						<TextBlock Text="My submissions" VerticalAlignment="Center" />
+						<!-- The attention badge's colors, the Maintainer tab's (IndianRed and White until 2026-11-12, 4.0:1). -->
 						<Border x:Name="MySubmissionsBadge"
 								IsVisible="False"
-								Background="IndianRed"
+								Background="{DynamicResource Badge_Attention_Bg}"
 								CornerRadius="11"
 								Width="22"
 								Height="22"
@@ -361,7 +362,7 @@
 								Padding="2,0"
 								VerticalAlignment="Center">
 							<TextBlock x:Name="MySubmissionsBadgeText"
-									   Foreground="White"
+									   Foreground="{DynamicResource Badge_Attention_Fg}"
 									   FontSize="13"
 									   FontWeight="SemiBold"
 									   HorizontalAlignment="Center"

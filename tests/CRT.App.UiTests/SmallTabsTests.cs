@@ -278,6 +278,44 @@ public class SmallTabsTests : IDisposable
     }
 
     // ###########################################################################################
+    // A row scrolled away and back is the same Border loaded again (the list is virtualized since 2026-11-13): subscribed
+    // at each Loaded, a click toggled its print tick twice - so not at all (code review, 2026-11-13: the fix came without
+    // its test). A press on the row ticks it off once, however often it was loaded.
+    // ###########################################################################################
+    [Fact]
+    public void An_overview_row_loaded_again_toggles_its_print_tick_once_per_press()
+    {
+        UiTest.Run(() =>
+        {
+            var tab = new TabOverview();
+            tab.LoadData(OverviewBoard());
+
+            var window = new Window { Content = tab, Width = 1000, Height = 700 };
+            window.Show();
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            OverviewRow u8 = OverviewRows(tab).First(row => row.Component == "U8");
+            Border border = tab.GetVisualDescendants().OfType<Border>().First(b => b.Classes.Contains("OverviewRow") && ReferenceEquals(b.DataContext, u8));
+
+            // Loaded once more, as a row scrolled away and back is - twice in all, so two subscriptions would toggle it back.
+            border.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Control.LoadedEvent));
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            Assert.True(u8.IsSelectedForPrint);
+
+            // On the row's third column - text, no button or tick of its own.
+            Point centre = border.TranslatePoint(new Point(150, border.Bounds.Height / 2), window)!.Value;
+            Avalonia.Headless.HeadlessWindowExtensions.MouseDown(window, centre, Avalonia.Input.MouseButton.Left);
+            Avalonia.Headless.HeadlessWindowExtensions.MouseUp(window, centre, Avalonia.Input.MouseButton.Left);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            Assert.False(u8.IsSelectedForPrint);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
     // *** A LINK CLICK OPENS THROUGH ExternalTargetLauncher, SO IT NEEDS THE RIGHT ROOT (code
     // review, 2026-09-25). ***
     //
@@ -413,6 +451,112 @@ public class SmallTabsTests : IDisposable
             tab.ApplyFilter("   ");
 
             Assert.Equal(2, OverviewRows(tab).Count);
+        });
+    }
+
+    // ###########################################################################################
+    // *** THE OVERVIEW BUILDS ONLY THE ROWS IN VIEW (owner report, 2026-11-13: "Changing to the "Overview" tab takes a little
+    // time on large boards"). *** Every row is a dozen controls, and a plain ItemsControl in a ScrollViewer built all of
+    // them as the tab was shown - on the UI thread, so no "please wait" could even be drawn meanwhile. A virtualized list
+    // builds what fits in the window, and the rest as it scrolls into view (TabOverview.axaml, as TabAbout's).
+    // ###########################################################################################
+    [Fact]
+    public void The_overview_builds_only_the_rows_in_view()
+    {
+        UiTest.Run(() =>
+        {
+            var board = new BoardData();
+
+            for (int index = 1; index <= 400; index++)
+            {
+                board.Components.Add(new ComponentEntry
+                {
+                    BoardLabel = $"U{index}",
+                    FriendlyName = "Quad NAND gate",
+                    TechnicalNameOrValue = "74LS00",
+                    Description = "Four two-input NAND gates",
+                });
+            }
+
+            var tab = new TabOverview();
+            var window = new Window { Content = tab, Width = 1200, Height = 600 };
+
+            tab.LoadData(board);
+
+            var watch = System.Diagnostics.Stopwatch.StartNew();
+            window.Show();
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            watch.Stop();
+
+            int built = tab.GetVisualDescendants().OfType<Border>().Count(row => row.Classes.Contains("OverviewRow") && row.IsVisible);
+            window.Close();
+
+            Assert.True(built is > 0 and < 60, $"{built} of 400 rows were built as the tab was shown ({watch.ElapsedMilliseconds} ms)");
+        });
+    }
+
+    // ###########################################################################################
+    // Another region shown: each component as that region has it - still ONE row each (owner report, 2026-11-13) - with the
+    // search kept and a component unticked for printing still unticked: it is the same component.
+    // ###########################################################################################
+    [Fact]
+    public void Another_region_shows_each_component_as_it_has_it_keeping_the_search_and_the_print_ticks()
+    {
+        UiTest.Run(() =>
+        {
+            var board = new BoardData();
+            board.Components.Add(new ComponentEntry { BoardLabel = "C116", FriendlyName = "Filter", TechnicalNameOrValue = "10uF", Region = "PAL" });
+            board.Components.Add(new ComponentEntry { BoardLabel = "C116", FriendlyName = "Filter", TechnicalNameOrValue = "47uF", Region = "NTSC" });
+            board.Components.Add(new ComponentEntry { BoardLabel = "C117", FriendlyName = "Filter", TechnicalNameOrValue = "100nF" });
+            board.Components.Add(new ComponentEntry { BoardLabel = "U8", FriendlyName = "SuperPLA" });
+
+            var tab = new TabOverview();
+            tab.LoadData(board, "PAL");
+            tab.ApplyFilter("Filter");
+
+            Assert.Equal(["C116", "C117"], OverviewRows(tab).Select(row => row.Component));
+            Assert.Equal("10uF", OverviewRows(tab)[0].TechnicalName);
+
+            OverviewRows(tab)[0].IsSelectedForPrint = false;
+
+            tab.ShowRegion("NTSC");
+
+            List<OverviewRow> rows = OverviewRows(tab);
+            Assert.Equal(["C116", "C117"], rows.Select(row => row.Component));
+            Assert.Equal("47uF", rows[0].TechnicalName);
+            Assert.False(rows[0].IsSelectedForPrint);
+            Assert.True(rows[1].IsSelectedForPrint);
+        });
+    }
+
+    // ###########################################################################################
+    // A board loaded, or another region shown, hands the list its rows ONCE (code review, 2026-11-14): every row first, then
+    // the rows the filter keeps, it reset the list twice and built the rows in view twice - on the UI thread, at every load.
+    // ###########################################################################################
+    [Fact]
+    public void Loading_a_board_or_showing_another_region_hands_the_list_its_rows_once()
+    {
+        UiTest.Run(() =>
+        {
+            var board = new BoardData();
+            board.Components.Add(new ComponentEntry { BoardLabel = "C116", FriendlyName = "Filter", TechnicalNameOrValue = "10uF", Region = "PAL" });
+            board.Components.Add(new ComponentEntry { BoardLabel = "C116", FriendlyName = "Filter", TechnicalNameOrValue = "47uF", Region = "NTSC" });
+            board.Components.Add(new ComponentEntry { BoardLabel = "U8", FriendlyName = "SuperPLA" });
+
+            var tab = new TabOverview();
+            ItemsControl list = tab.GetControl<ItemsControl>("OverviewItemsControl");
+            int handed = 0;
+            list.PropertyChanged += (_, e) => handed += e.Property == ItemsControl.ItemsSourceProperty ? 1 : 0;
+
+            tab.LoadData(board, "PAL", "Filter");
+
+            Assert.Equal(1, handed);
+            Assert.Equal(["10uF"], OverviewRows(tab).Select(row => row.TechnicalName));
+
+            tab.ShowRegion("NTSC");
+
+            Assert.Equal(2, handed);
+            Assert.Equal(["47uF"], OverviewRows(tab).Select(row => row.TechnicalName));
         });
     }
 

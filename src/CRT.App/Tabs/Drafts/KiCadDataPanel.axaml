@@ -14,70 +14,16 @@
 			<Setter Property="Padding" Value="12" />
 		</Style>
 
-		<!-- One component reference in the match report. Each reference is its own badge rather
-		     than a run in a comma-separated sentence: a board runs to hundreds of them, and in
-		     prose "C1, C10, C100, C101" blurs into one line of text where no single reference
-		     can be picked out by eye. -->
-		<Style Selector="Border.ReferenceBadge">
-			<Setter Property="Background" Value="{DynamicResource Draft_ReferenceBadge_Bg}" />
-			<Setter Property="BorderBrush" Value="{DynamicResource Draft_ReferenceBadge_Border}" />
-			<Setter Property="BorderThickness" Value="1" />
-			<Setter Property="CornerRadius" Value="3" />
-			<Setter Property="Padding" Value="6,1" />
-		</Style>
-
-		<!-- The components left to label: IndianRed (owner request, 2026-10-10), so the to-do list
-		     stands out from the components that already match. -->
-		<Style Selector="Border.ReferenceBadge.Todo">
-			<Setter Property="Background" Value="{DynamicResource Draft_ReferenceBadge_Todo_Bg}" />
-			<Setter Property="BorderBrush" Value="{DynamicResource Draft_ReferenceBadge_Todo_Border}" />
-		</Style>
-		<Style Selector="Border.ReferenceBadge.Todo > TextBlock">
-			<Setter Property="Foreground" Value="{DynamicResource Draft_ReferenceBadge_Todo_Fg}" />
-		</Style>
-
-		<!-- A KiCad net name an "Important signals" row already uses: filled green, white text - the
-		     to-do badges' look in green (owner report, 2026-10-29: green text on the grey badge was
-		     "almost impossible to see"). -->
-		<Style Selector="Border.ReferenceBadge.Used">
-			<Setter Property="Background" Value="{DynamicResource Draft_ReferenceBadge_Used_Bg}" />
-			<Setter Property="BorderBrush" Value="{DynamicResource Draft_ReferenceBadge_Used_Border}" />
-		</Style>
-		<Style Selector="Border.ReferenceBadge.Used > TextBlock">
-			<Setter Property="Foreground" Value="{DynamicResource Draft_ReferenceBadge_Used_Fg}" />
-			<Setter Property="FontWeight" Value="SemiBold" />
-		</Style>
+		<!-- The match report's component references and the KiCad nets are each a badge rather than a run
+		     in a comma-separated sentence: a board runs to hundreds of them, and in prose "C1, C10, C100,
+		     C101" blurs into one line of text where no single reference can be picked out by eye. Each list
+		     is ONE BadgeCloud, drawing its badges itself (2026-11-13: as a container, a Border and a TextBlock
+		     each, ~3,400 controls on the Open128-2 board) - the components left to label in the danger red
+		     (IsTodo; owner request, 2026-10-10), a net an "Important signals" row already uses filled green
+		     with white text (owner report, 2026-10-29: green text on the grey badge was "almost impossible to
+		     see"). Nothing to click since 2026-11-01 (owner request): every net has its "Add" in the
+		     Important KiCad signals part. -->
 	</UserControl.Styles>
-
-	<UserControl.Resources>
-		<!-- Shared by the component lists (not labelled / will not light up / match), so they cannot
-		     drift into looking different. -->
-		<DataTemplate x:Key="ReferenceBadgeTemplate">
-			<Border Classes="ReferenceBadge">
-				<TextBlock Text="{Binding}" FontSize="12" />
-			</Border>
-		</DataTemplate>
-
-		<DataTemplate x:Key="TodoReferenceBadgeTemplate">
-			<Border Classes="ReferenceBadge Todo">
-				<TextBlock Text="{Binding}" FontSize="12" />
-			</Border>
-		</DataTemplate>
-
-		<!-- One KiCad net - nothing to click since 2026-11-01 (owner request): every net has its "Add" in
-		     the Important KiCad signals part. -->
-		<DataTemplate x:Key="NetNameBadgeTemplate" DataType="local:KiCadNetNameBadge">
-			<Border Classes="ReferenceBadge NetName"
-					Classes.Used="{Binding IsUsed}"
-					ToolTip.Tip="{Binding ToolTipText}">
-				<TextBlock Text="{Binding Name}" FontSize="12" />
-			</Border>
-		</DataTemplate>
-
-		<ItemsPanelTemplate x:Key="ReferenceBadgePanel">
-			<WrapPanel Orientation="Horizontal" ItemSpacing="4" LineSpacing="4" />
-		</ItemsPanelTemplate>
-	</UserControl.Resources>
 
 	<Grid RowDefinitions="Auto,*,Auto">
 
@@ -267,16 +213,12 @@
 									   FontSize="11"
 									   Opacity="0.8"
 									   Text="These component labels have no component of the same name in the KiCad data. Rename them to match the KiCad reference (U17, not PLA/U17) or the traces will never appear." />
-							<ItemsControl x:Name="UnmatchedList"
-										  ItemTemplate="{StaticResource ReferenceBadgeTemplate}"
-										  ItemsPanel="{StaticResource ReferenceBadgePanel}" />
+							<local:BadgeCloud x:Name="UnmatchedList" />
 						</StackPanel>
 
 						<StackPanel x:Name="MatchedPanel" Spacing="3" IsVisible="False">
 							<TextBlock x:Name="MatchedHeaderText" FontWeight="SemiBold" />
-							<ItemsControl x:Name="MatchedList"
-										  ItemTemplate="{StaticResource ReferenceBadgeTemplate}"
-										  ItemsPanel="{StaticResource ReferenceBadgePanel}" />
+							<local:BadgeCloud x:Name="MatchedList" />
 						</StackPanel>
 
 						<StackPanel x:Name="UnusedPanel" Spacing="3" IsVisible="False">
@@ -285,9 +227,7 @@
 									   FontSize="11"
 									   Opacity="0.8"
 									   Text="Components the KiCad data knows about that this board has no label for yet - in other words, what is left to label." />
-							<ItemsControl x:Name="UnusedList"
-										  ItemTemplate="{StaticResource TodoReferenceBadgeTemplate}"
-										  ItemsPanel="{StaticResource ReferenceBadgePanel}" />
+							<local:BadgeCloud x:Name="UnusedList" IsTodo="True" />
 						</StackPanel>
 
 						<StackPanel x:Name="ViewNamesPanel" Spacing="3" IsVisible="False">
@@ -310,9 +250,7 @@
 									   FontSize="11"
 									   Opacity="0.8"
 									   Text="These rows of the board's &quot;Important signals&quot; sheet (display name: KiCad net name) name a net the KiCad data does not have, so the &quot;Schematics&quot; tab leaves them out. Use one of the nets below." />
-							<ItemsControl x:Name="UnresolvedSignalsList"
-										  ItemTemplate="{StaticResource ReferenceBadgeTemplate}"
-										  ItemsPanel="{StaticResource ReferenceBadgePanel}" />
+							<local:BadgeCloud x:Name="UnresolvedSignalsList" />
 						</StackPanel>
 
 						<!-- Every net of the KiCad data (owner request, 2026-10-10) - what the logfile
@@ -323,9 +261,7 @@
 									   TextWrapping="Wrap"
 									   FontSize="11"
 									   Opacity="0.8" />
-							<ItemsControl x:Name="NetNamesList"
-										  ItemTemplate="{StaticResource NetNameBadgeTemplate}"
-										  ItemsPanel="{StaticResource ReferenceBadgePanel}" />
+							<local:BadgeCloud x:Name="NetNamesList" />
 						</StackPanel>
 					</StackPanel>
 				</Border>

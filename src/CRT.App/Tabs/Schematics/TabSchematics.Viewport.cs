@@ -102,28 +102,123 @@ public partial class TabSchematics
     private Rect GetSchematicsContentRect()
     {
         var bitmap = this.currentFullResBitmap;
-
-        Size controlSize = this.SchematicsHighlightsOverlay.Bounds.Size;
-        if (controlSize.Width <= 0 || controlSize.Height <= 0)
-        {
-            controlSize = this.SchematicsContainer.Bounds.Size;
-        }
+        Size controlSize = this.LayerSize();
 
         if (bitmap == null || controlSize.Width <= 0 || controlSize.Height <= 0)
         {
             return new Rect(controlSize);
         }
 
-        double containerAspect = controlSize.Width / controlSize.Height;
-        double bitmapAspect = (double)bitmap.PixelSize.Width / bitmap.PixelSize.Height;
+        // Inside the room round it (ApplyImageFrame) - the overlays' own rule, given the same frame.
+        return RectGeometry.GetImageContentRect(controlSize, bitmap.PixelSize, this.thisImageFrame);
+    }
 
-        if (bitmapAspect > containerAspect)
+    // The size of the layers the image and its overlays are drawn in - the container's while they have none yet.
+    private Size LayerSize()
+    {
+        Size controlSize = this.SchematicsHighlightsOverlay.Bounds.Size;
+
+        return controlSize.Width > 0 && controlSize.Height > 0 ? controlSize : this.SchematicsContainer.Bounds.Size;
+    }
+
+    // ###########################################################################################
+    // *** ROOM ROUND THE IMAGE, SO ITS BADGES COVER NONE OF IT (owner request, 2026-11-13; ImageFrameGeometry). *** The
+    // image's own empty border, measured as it was read (BlankBorderOf), and the room the first view adds to it for the
+    // layers' size now - handed to the image (its Margin in its layer) and every overlay as ONE value, so the image and
+    // what is drawn over it stand together at any zoom. Worked out again as the image or the layers' size changes.
+    // ###########################################################################################
+    private Thickness thisImageBlankBorder;
+
+    private Thickness thisImageFrame;
+
+    internal Thickness ImageFrameForTests => this.thisImageFrame;
+
+    // For a test: `bitmap` shown as the load shows it - its own border measured, the room round it applied. The headless
+    // platform keeps no pixels in a bitmap, so a test hands over the border the image has (`blankBorder`).
+    internal void ShowImageForTests(Bitmap bitmap, Thickness? blankBorder = null)
+    {
+        this.currentFullResBitmap = bitmap;
+        this.thisImageBlankBorder = blankBorder ?? TabSchematics.BlankBorderOf(bitmap);
+        this.ApplyImageFrame();
+        this.SchematicsImage.Source = bitmap;
+        this.SchematicsHighlightsOverlay.BitmapPixelSize = bitmap.PixelSize;
+    }
+
+    private void ApplyImageFrame()
+    {
+        Thickness frame = this.currentFullResBitmap is { } bitmap
+            ? ImageFrameGeometry.Frame(this.LayerSize(), bitmap.PixelSize, this.thisImageBlankBorder, ImageFrameGeometry.Wanted)
+            : default;
+
+        // In whole pixels of the screen, as layout rounds the image's Margin: a frame of 35.62 put the image at 36, and
+        // every overlay - fitted at 35.62 - drew beside it, further the more it was zoomed.
+        double scaling = TopLevel.GetTopLevel(this)?.RenderScaling ?? 1.0;
+        frame = Avalonia.Layout.LayoutHelper.RoundLayoutThickness(frame, scaling);
+
+        if (frame == this.thisImageFrame && this.SchematicsImage.Margin == frame)
         {
-            return new Rect(0, 0, controlSize.Width, controlSize.Width / bitmapAspect);
+            return;
         }
-        else
+
+        this.thisImageFrame = frame;
+        this.SchematicsImage.Margin = frame;
+
+        this.SchematicsHighlightsOverlay.ContentFrame = frame;
+        this.SchematicsHighlightsOverlay.InvalidateVisual();
+        this.SchematicsHoverHighlightsOverlay.ContentFrame = frame;
+        this.SchematicsHoverHighlightsOverlay.InvalidateVisual();
+        this.SchematicsLabelEditorOverlay.ContentFrame = frame;
+        this.SchematicsWorklogEntryOverlay.ContentFrame = frame;
+        this.SchematicsWorklogEntriesOverlay.ContentFrame = frame;
+    }
+
+    // ###########################################################################################
+    // How much empty border the image has of its own (ImageFrameGeometry.BlankBorder) - a band of its rows or columns at a
+    // time, off the UI thread as it is read. None when its pixels cannot be read: the whole room is added then.
+    //
+    // A bitmap of 32 bits a pixel is read where it is. Any other - a grayscale PNG or JPEG decodes as Gray8, which
+    // Avalonia 12.1.4 names no format for, so CopyPixels refuses it (code review, 2026-11-13, decompiled; eleven shipped
+    // images, C128 250477's schematic sheets among them, drew with the whole room added over their own) - is read from
+    // `file` again, by SkiaSharp, Avalonia's own decoder, as 32 bits a pixel (ImageFrameGeometry.BlankBorderOfFile).
+    // ###########################################################################################
+    internal static Thickness BlankBorderOf(Bitmap bitmap, string? file = null)
+    {
+        int width = bitmap.PixelSize.Width;
+        int height = bitmap.PixelSize.Height;
+
+        uint[] Read(PixelRect rect)
         {
-            return new Rect(0, 0, controlSize.Height * bitmapAspect, controlSize.Height);
+            var pixels = new uint[rect.Width * rect.Height];
+            var pinned = System.Runtime.InteropServices.GCHandle.Alloc(pixels, System.Runtime.InteropServices.GCHandleType.Pinned);
+
+            try
+            {
+                bitmap.CopyPixels(rect, pinned.AddrOfPinnedObject(), pixels.Length * 4, rect.Width * 4);
+            }
+            finally
+            {
+                pinned.Free();
+            }
+
+            return pixels;
+        }
+
+        try
+        {
+            if (bitmap.Format is { BitsPerPixel: 32 })
+            {
+                return ImageFrameGeometry.BlankBorder(width, height, Read);
+            }
+
+            return file is null ? default : ImageFrameGeometry.BlankBorderOfFile(file);
+        }
+        catch (Exception ex)
+        {
+            // Whatever it is: measuring is optional, and must never decide whether an image that decoded is shown - with
+            // only three kinds caught, any other reached the load's catch, which said the image could not be read and
+            // left the bitmap undisposed (code review, 2026-11-13).
+            Logger.Info($"The empty border of a schematic image could not be measured - [{ex.Message}]");
+            return default;
         }
     }
 
@@ -320,7 +415,7 @@ public partial class TabSchematics
         this.schematicsMatrix = new Matrix(scale, 0, 0, scale, tx, ty);
 
 
-        ((MatrixTransform)this.SchematicsImage.RenderTransform!).Matrix = this.schematicsMatrix;
+        ((MatrixTransform)this.SchematicsImageHost.RenderTransform!).Matrix = this.schematicsMatrix;
         ((MatrixTransform)this.SchematicsHighlightsOverlay.RenderTransform!).Matrix = this.schematicsMatrix;
         ((MatrixTransform)this.SchematicsHoverHighlightsOverlay.RenderTransform!).Matrix = this.schematicsMatrix;
         ((MatrixTransform)this.SchematicsLabelEditorOverlay.RenderTransform!).Matrix = this.schematicsMatrix;

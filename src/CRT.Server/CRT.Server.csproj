@@ -62,7 +62,7 @@
     fields on purpose - InformationalVersion is the one /api/health reports and the one to bump.
     -->
     <AssemblyVersion>1.0.0</AssemblyVersion>
-    <InformationalVersion>10.4.2</InformationalVersion>
+    <InformationalVersion>10.4.3</InformationalVersion>
 
   </PropertyGroup>
 
@@ -124,7 +124,7 @@
 
   <ItemGroup>
     <PackageReference Include="Konscious.Security.Cryptography.Argon2" Version="1.3.1" />
-    <PackageReference Include="MySqlConnector" Version="2.6.2" />
+    <PackageReference Include="MySqlConnector" Version="3.0.0" />
   </ItemGroup>
 
 </Project>

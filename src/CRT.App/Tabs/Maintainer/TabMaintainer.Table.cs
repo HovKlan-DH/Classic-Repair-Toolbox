@@ -469,15 +469,8 @@ namespace CRT
         }
 
         // Under the header: "Loading the table...", or why it could not be read.
-        private void ShowTableLoadMessage(string? message, bool isError = true)
-        {
-            if (this.FindControl<TextBlock>("TableLoadMessageText") is not TextBlock text)
-                return;
-
-            text.Text = message ?? string.Empty;
-            text.IsVisible = !string.IsNullOrWhiteSpace(message);
-            text.Foreground = isError ? Avalonia.Media.Brushes.IndianRed : Avalonia.Media.Brushes.Gray;
-        }
+        private void ShowTableLoadMessage(string? message, bool isError = true) =>
+            WindowMessage.Show(this.FindControl<TextBlock>("TableLoadMessageText"), message, isError);
 
         // Hands a file the preview saved to the operating system - a PDF opens in the PDF viewer.
         private Task<bool> LaunchFileAsync(string fullPath) => MaintainerFileLauncher.LaunchAsync(this, fullPath);

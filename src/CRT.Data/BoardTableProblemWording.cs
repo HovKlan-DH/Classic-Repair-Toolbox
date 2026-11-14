@@ -105,17 +105,27 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // Said when Submit is pressed on a draft with errors: nothing is sent, and the table opens on
-        // them (TabDrafts) - showing only the rows with errors when `rowsFiltered`, which it is
-        // unless every error is on a schematic, in no row. Every error is something the server
-        // would refuse.
+        // Said when Submit is pressed on a draft with errors while the table is the view: nothing is
+        // sent, and the table goes to the first error (TabDrafts) - its cell the cursor's when
+        // `onFirst`, which it is unless the first is on a schematic, in no row. The rows are not
+        // narrowed (owner request, 2026-11-13: "use the current view as-is"); the "Errors" pill does
+        // that when wanted. Every error is something the server would refuse. `hiddenByFilter`: no error
+        // in the rows a pill or the search lets through - so no cell to be on, and it says so (code
+        // review, 2026-11-13: it said a red corner marks a cell nobody could see).
         // ###########################################################################################
-        public static string SubmitBlocked(int errorCount, bool rowsFiltered) =>
-            (errorCount == 1
+        public static string SubmitBlocked(int errorCount, bool onFirst, bool hiddenByFilter = false) =>
+            BoardTableProblemWording.ErrorsToFix(errorCount) +
+            (onFirst ? (errorCount == 1 ? " The cursor is on it." : " The cursor is on the first.") : string.Empty) +
+            (!onFirst && hiddenByFilter
+                ? " The rows the pills or the search let through hide them - pick \"Errors\" to see them."
+                : " Each error is listed above the table, and its cell has a red corner.");
+
+        // The sentence Submit stopped on errors opens with, in the "Table" view (above) and the "UI" view (CRT's
+        // ContributeProblems.SubmitBlocked) alike - ONE wording (code review, 2026-11-13: it was written twice).
+        public static string ErrorsToFix(int errorCount) =>
+            errorCount == 1
                 ? "This draft has 1 error to fix before it can be submitted."
-                : $"This draft has {errorCount.ToString(CultureInfo.InvariantCulture)} errors to fix before it can be submitted.") +
-            " Each error is listed above the table, and its cell has a red corner." +
-            (rowsFiltered ? " Only the rows with errors are shown until you click \"Errors\" again." : string.Empty);
+                : $"This draft has {errorCount.ToString(CultureInfo.InvariantCulture)} errors to fix before it can be submitted.";
 
         public static string LevelWord(BoardProblemLevel level) =>
             level == BoardProblemLevel.Error ? "Error" : "Warning";

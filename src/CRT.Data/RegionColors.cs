@@ -105,10 +105,16 @@ namespace Handlers.DataHandling
                 return RegionColors.Black;
             }
 
-            return RegionColors.ContrastRatio(color, RegionColors.White) > RegionColors.ContrastRatio(color, RegionColors.Black)
-                ? RegionColors.White
-                : RegionColors.Black;
+            return RegionColors.WhiteReadsBetter(RegionColors.Luminance(color)) ? RegionColors.White : RegionColors.Black;
         }
+
+        // ###########################################################################################
+        // Whether white words read better than black on a ground of this relative luminance - the higher contrast ratio,
+        // 1.05 / (L + 0.05) against (L + 0.05) / 0.05. The ONE rule of ContrastText and of CRT's ThemeResources.TextOn, which
+        // asks it from a color's channels with no string between (code review, 2026-11-13: it formatted and parsed one per
+        // badge, in a thumbnail's every frame).
+        // ###########################################################################################
+        public static bool WhiteReadsBetter(double luminance) => 1.05 / (luminance + 0.05) > (luminance + 0.05) / 0.05;
 
         // ###########################################################################################
         // WCAG 2's contrast ratio of two "#RRGGBB" colors, 1 to 21 - (lighter + 0.05) / (darker + 0.05) of their relative
@@ -129,14 +135,25 @@ namespace Handlers.DataHandling
 
         private static double Luminance(string color)
         {
-            static double Channel(string hex)
+            static byte Channel(string hex) => byte.Parse(hex, NumberStyles.HexNumber, CultureInfo.InvariantCulture);
+
+            return RegionColors.Luminance(Channel(color.Substring(1, 2)), Channel(color.Substring(3, 2)), Channel(color.Substring(5, 2)));
+        }
+
+        // ###########################################################################################
+        // WCAG 2's relative luminance of a color, 0 (black) to 1 (white) - the ONE copy of the formula every contrast rule
+        // of CRT's goes by (CRT's UserThemeShades too; code review, 2026-11-13: it was written twice).
+        // ###########################################################################################
+        public static double Luminance(byte red, byte green, byte blue)
+        {
+            static double Channel(byte channel)
             {
-                double value = int.Parse(hex, NumberStyles.HexNumber, CultureInfo.InvariantCulture) / 255.0;
+                double value = channel / 255.0;
 
                 return value <= 0.03928 ? value / 12.92 : Math.Pow((value + 0.055) / 1.055, 2.4);
             }
 
-            return (0.2126 * Channel(color.Substring(1, 2))) + (0.7152 * Channel(color.Substring(3, 2))) + (0.0722 * Channel(color.Substring(5, 2)));
+            return (0.2126 * Channel(red)) + (0.7152 * Channel(green)) + (0.0722 * Channel(blue));
         }
 
         // ###########################################################################################

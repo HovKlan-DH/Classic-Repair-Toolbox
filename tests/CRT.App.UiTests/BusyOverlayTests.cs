@@ -378,6 +378,18 @@ public sealed class BusyOverlayTests
             _ = new Window { Content = new StackPanel { Children = { lonely } } };
 
             Assert.Null(BusyOverlay.For(lonely));
+
+            // Found where it stands first - the last child of the window's root panel (2026-11-13) - and anywhere else
+            // in the window still, by the search: not the last child, or deeper down.
+            var inner = new Button();
+            var notLast = new BusyOverlay();
+            _ = new Window { Content = new Grid { Children = { notLast, inner } } };
+            Assert.Same(notLast, BusyOverlay.For(inner));
+
+            var deep = new Button();
+            var nested = new BusyOverlay();
+            _ = new Window { Content = new Border { Child = new Grid { Children = { deep, nested } } } };
+            Assert.Same(nested, BusyOverlay.For(deep));
         });
     }
 

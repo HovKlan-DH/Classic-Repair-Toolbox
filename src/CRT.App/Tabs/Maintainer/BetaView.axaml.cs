@@ -142,6 +142,13 @@ namespace CRT
         public void ShowMessage(string? message, bool isError) =>
             WindowMessage.Show(this.FindControl<TextBlock>("MessageText"), message, isError);
 
+        // A line in the theme's red (IndianRed in every theme until 2026-11-12) - the same block back, for an initializer.
+        private static TextBlock InRed(TextBlock line)
+        {
+            Handlers.Theming.ThemeResources.PaintFail(line);
+            return line;
+        }
+
         // ###########################################################################################
         // WHOSE WORK THIS CARRIES, at the top of the panel (owner request, 2026-09-27) - see the
         // markup for why this comes before the files rather than after them.
@@ -269,12 +276,11 @@ namespace CRT
 
                 foreach (ReviewFindingView problem in plan.Problems)
                 {
-                    attention.Children.Add(new TextBlock
+                    attention.Children.Add(BetaView.InRed(new TextBlock
                     {
                         Text = problem.Message,
-                        TextWrapping = TextWrapping.Wrap,
-                        Foreground = Brushes.IndianRed
-                    });
+                        TextWrapping = TextWrapping.Wrap
+                    }));
                 }
 
                 // What publishing REMOVES from production, FIRST and in red: the least visible change
@@ -298,20 +304,19 @@ namespace CRT
                     };
 
                     if (any)
-                        headline.Foreground = Brushes.IndianRed;
+                        BetaView.InRed(headline);
 
                     attention.Children.Add(headline);
 
                     // By the name the board knew each by - a CRT 4.0 tree's stored file is its checksum.
                     foreach (string name in unused)
                     {
-                        attention.Children.Add(new TextBlock
+                        attention.Children.Add(BetaView.InRed(new TextBlock
                         {
                             Text = FileRemovalWording.Line(name),
                             TextWrapping = TextWrapping.Wrap,
-                            Foreground = Brushes.IndianRed,
                             FontWeight = FontWeight.SemiBold
-                        });
+                        }));
                     }
                 }
 

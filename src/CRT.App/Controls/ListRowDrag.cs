@@ -262,7 +262,8 @@ namespace CRT
                 measured.Add((topLeft?.Y, height));
             }
 
-            this.thisMidpoints.AddRange(RowDragSlots.BuildMidpoints(measured));
+            // A virtualizing list built only the rows in view - the rest are estimated, not 0.
+            this.thisMidpoints.AddRange(RowDragSlots.BuildMidpoints(RowDragSlots.EstimateUnbuilt(measured)));
 
             this.thisStartIndex = index;
             this.thisOrderBeforeDrag = this.thisRows.ToList();

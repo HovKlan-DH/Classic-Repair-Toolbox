@@ -160,10 +160,21 @@ public class ConfigurationCatalogueTreeTests
         });
     }
 
-    // -------------------------------------------------------------- alert (IndianRed) state
+    // The tree in a shown window: a row's red is the theme's, bound as a resource, and resolves only once the row is in one.
+    private static void Show(ConfigurationCatalogueTree.BuildResult result) =>
+        new Avalonia.Controls.Window { Content = result.RootControl }.Show();
+
+    // Whether a row's label is in the theme's red (Text_Fail_Fg of the theme its window shows).
+    private static bool IsRed(ConfigurationCatalogueTree.Row row)
+    {
+        Assert.True(Avalonia.Application.Current!.TryGetResource("Text_Fail_Fg", row.LabelText.ActualThemeVariant, out object? red));
+        return row.LabelText.Foreground is ISolidColorBrush shown && shown.Color == ((ISolidColorBrush)red!).Color;
+    }
+
+    // -------------------------------------------------------------- alert (red) state - the theme's Text_Fail_Fg since 2026-11-12
 
     [Fact]
-    public void A_checked_row_is_not_IndianRed()
+    public void A_checked_row_is_not_red()
     {
         UiTest.Run(() =>
         {
@@ -171,16 +182,17 @@ public class ConfigurationCatalogueTreeTests
             var schematics = SchematicsFor(new TwoHardwareTwoBoardsSchematics());
 
             var result = BuildTree(hardwareBoards, schematics, new HashSet<string>(), (_, _) => { });
+            Show(result);
 
             var c64 = Assert.Single(result.HardwareRows, r => r.Key == "Commodore 64");
-            Assert.NotEqual(Brushes.IndianRed, c64.LabelText.Foreground);
+            Assert.False(IsRed(c64));
         });
     }
 
     // The core rule from the request: a row whose OWN checkbox is unchecked, while it is still
-    // ACTIVE (no ancestor already unchecked), shows IndianRed.
+    // ACTIVE (no ancestor already unchecked), shows the theme's red.
     [Fact]
-    public void An_unchecked_and_active_row_is_IndianRed()
+    public void An_unchecked_and_active_row_is_red()
     {
         UiTest.Run(() =>
         {
@@ -189,22 +201,23 @@ public class ConfigurationCatalogueTreeTests
             var unchecked_ = new HashSet<string> { "Commodore 64|250407" };
 
             var result = BuildTree(hardwareBoards, schematics, unchecked_, (_, _) => { });
+            Show(result);
 
             var c64 = Assert.Single(result.HardwareRows, r => r.Key == "Commodore 64");
             var board250407 = Assert.Single(c64.Children, b => b.Key == "Commodore 64|250407");
 
-            Assert.Equal(Brushes.IndianRed, board250407.LabelText.Foreground);
+            Assert.True(IsRed(board250407));
 
             // The hardware row above it is still checked and active - no colour.
-            Assert.NotEqual(Brushes.IndianRed, c64.LabelText.Foreground);
+            Assert.False(IsRed(c64));
 
             // A sibling board, also checked - no colour.
             var ku14194 = Assert.Single(c64.Children, b => b.Key == "Commodore 64|KU-14194HB");
-            Assert.NotEqual(Brushes.IndianRed, ku14194.LabelText.Foreground);
+            Assert.False(IsRed(ku14194));
         });
     }
 
-    // The "too much distraction" rule: once a parent is unchecked (and shows IndianRed itself),
+    // The "too much distraction" rule: once a parent is unchecked (and shows red itself),
     // its now-disabled children do NOT also turn red, even though they are still individually
     // "unchecked" by the ancestor-AND visibility rule - CatalogueVisibility.IsEffectivelyVisible
     // says they are hidden, but their OWN stored checked state, and this label colour, are
@@ -219,20 +232,21 @@ public class ConfigurationCatalogueTreeTests
             var unchecked_ = new HashSet<string> { "Commodore 64" };
 
             var result = BuildTree(hardwareBoards, schematics, unchecked_, (_, _) => { });
+            Show(result);
 
             var c64 = Assert.Single(result.HardwareRows, r => r.Key == "Commodore 64");
-            Assert.Equal(Brushes.IndianRed, c64.LabelText.Foreground);
+            Assert.True(IsRed(c64));
 
             // Boards and schematics underneath are disabled (not active) and stay checked in
             // storage, so none of them gets the alert colour despite the hardware above being red.
             foreach (var boardRow in c64.Children)
             {
                 Assert.False(boardRow.RowControl.IsEnabled);
-                Assert.NotEqual(Brushes.IndianRed, boardRow.LabelText.Foreground);
+                Assert.False(IsRed(boardRow));
 
                 foreach (var schematicRow in boardRow.Children)
                 {
-                    Assert.NotEqual(Brushes.IndianRed, schematicRow.LabelText.Foreground);
+                    Assert.False(IsRed(schematicRow));
                 }
             }
         });
@@ -251,20 +265,21 @@ public class ConfigurationCatalogueTreeTests
             var unchecked_ = new HashSet<string> { "Commodore 64", "Commodore 64|250407" };
 
             var result = BuildTree(hardwareBoards, schematics, unchecked_, (_, _) => { });
+            Show(result);
 
             var c64 = Assert.Single(result.HardwareRows, r => r.Key == "Commodore 64");
             var board250407 = Assert.Single(c64.Children, b => b.Key == "Commodore 64|250407");
 
             // Still disabled under its unchecked (red) hardware, so no red of its own yet.
-            Assert.NotEqual(Brushes.IndianRed, board250407.LabelText.Foreground);
+            Assert.False(IsRed(board250407));
 
             unchecked_.Remove("Commodore 64");
             ConfigurationCatalogueTree.ApplyEnabledState(result.HardwareRows, unchecked_);
             ConfigurationCatalogueTree.ApplyAlertState(result.HardwareRows, unchecked_);
 
-            Assert.NotEqual(Brushes.IndianRed, c64.LabelText.Foreground); // hardware itself is checked again
+            Assert.False(IsRed(c64)); // hardware itself is checked again
             Assert.True(board250407.RowControl.IsEnabled);
-            Assert.Equal(Brushes.IndianRed, board250407.LabelText.Foreground); // now active AND unchecked
+            Assert.True(IsRed(board250407)); // now active AND unchecked
         });
     }
 

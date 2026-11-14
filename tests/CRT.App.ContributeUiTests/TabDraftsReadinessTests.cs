@@ -493,7 +493,7 @@ public sealed class TabDraftsReadinessTests : IDisposable
 
     // The references the panel's report lists as not labelled on the board yet.
     private static List<string> KiCadUnlabelled(KiCadDataPanel panel) =>
-        (panel.GetControl<ItemsControl>("UnusedList").ItemsSource ?? Array.Empty<string>()).Cast<string>().ToList();
+        (panel.GetControl<BadgeCloud>("UnusedList").ItemsSource ?? Array.Empty<string>()).Cast<string>().ToList();
 
     // ###########################################################################################
     // "Add N components from KiCad" - the way a contributor adds them since 2026-11-01: on the KiCad

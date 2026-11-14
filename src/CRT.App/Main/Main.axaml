@@ -9,7 +9,8 @@
         x:Class="CRT.Main"
         Title="Classic Repair Toolbox"
         MinWidth="800"
-        MinHeight="500">
+        MinHeight="500"
+        Background="{DynamicResource Bg}">
 
 	<Window.Styles>
 

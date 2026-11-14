@@ -1153,10 +1153,12 @@ namespace CRT
                 CanResize = false,
                 CanMinimize = false,
                 ShowInTaskbar = false,
-                WindowStartupLocation = WindowStartupLocation.CenterOwner,
-                Background = ThemeResources.ResolveBrush("Bg", Brushes.White),
-                Foreground = ThemeResources.ResolveBrush("Fg", Brushes.Black)
+                WindowStartupLocation = WindowStartupLocation.CenterOwner
             };
+
+            // The theme's ground and words, following it as the other windows built in code do (code review, 2026-11-13).
+            ThemeResources.Paint(dialog, Window.BackgroundProperty, "Bg");
+            ThemeResources.Paint(dialog, Window.ForegroundProperty, "Fg");
 
             var body = new StackPanel { Margin = new Thickness(18), Spacing = 4 };
             body.Children.Add(new TextBlock { Text = message, TextWrapping = TextWrapping.Wrap });

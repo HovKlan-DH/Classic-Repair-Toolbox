@@ -11,11 +11,13 @@ namespace ClassicRepairToolbox.Tests;
 // *** A PINNED PACKAGE IS REMOVED ONCE IT IS NO LONGER NEEDED (owner request, 2026-10-14). ***
 //
 // A PackageReference marked `PinnedOver="<package>"` exists only to raise a package another one
-// brings in: CRT.Data pins System.Security.Cryptography.Pkcs and .Xml at 10.0.13 because EPPlus
-// 8.7.1 asks for 10.0.10, which known vulnerabilities cover. Left behind after EPPlus catches up,
-// such a line does nothing but hold the version where it was. This reads every marked line in the
-// src project files and fails, naming the line to remove, once the package it names requires that
-// version or later itself, no longer brings the pinned package in, or is no longer referenced.
+// brings in: CRT.Data pinned System.Security.Cryptography.Pkcs and .Xml at 10.0.13 because EPPlus
+// 8.7.1 asked for 10.0.10, which known vulnerabilities cover - until EPPlus 8.7.2 asked for 10.0.13
+// itself, and this test had the pins removed (2026-11-13). Left behind like that, such a line does
+// nothing but hold the version where it was. This reads every marked line in the src project files
+// and fails, naming the line to remove, once the package it names requires that version or later
+// itself, no longer brings the pinned package in, or is no longer referenced. No pin is left today;
+// the rule waits for the next one.
 //
 // What a package requires is read from the restore's own record (obj/project.assets.json) - the
 // minimums NuGet resolved against, so the test needs no network and no package cache.
@@ -30,7 +32,7 @@ public sealed class PinnedPackagesTests
     {
         var problems = new List<string>();
 
-        foreach (Pin pin in PinnedPackagesTests.Pins())
+        foreach (Pin pin in PinnedPackagesTests.Pins(PinnedPackagesTests.RepositoryPath("src")))
         {
             string assets = Path.Combine(
                 PinnedPackagesTests.RepositoryPath(Path.Combine("src", pin.Project)), "obj", "project.assets.json");
@@ -49,14 +51,26 @@ public sealed class PinnedPackagesTests
         Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
     }
 
-    // The pins this was written for are found - so the test above is not passing on nothing.
+    // A marked line IS found, and only a marked one - so the test above, with no pin in src today, is
+    // passing because there is none and not because the reader finds none.
     [Fact]
-    public void The_marked_lines_are_found_in_the_project_files()
+    public void A_marked_line_is_found_in_a_project_file_and_an_unmarked_one_is_not()
     {
-        List<Pin> pins = PinnedPackagesTests.Pins();
+        using var workspace = new TempWorkspace();
 
-        Assert.All(pins, pin => Assert.False(string.IsNullOrWhiteSpace(pin.Version), $"{pin.Package} has no Version"));
-        Assert.Contains(pins, pin => pin is { Project: "CRT.Data", Package: "System.Security.Cryptography.Pkcs", Over: "EPPlus" });
+        workspace.WriteFile(Path.Combine("CRT.Example", "CRT.Example.csproj"),
+            """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <ItemGroup>
+                <PackageReference Include="EPPlus" Version="8.7.2" />
+                <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.15" PinnedOver="EPPlus" />
+              </ItemGroup>
+            </Project>
+            """);
+
+        Pin pin = Assert.Single(PinnedPackagesTests.Pins(workspace.Root));
+
+        Assert.Equal(new Pin("CRT.Example", "System.Security.Cryptography.Pkcs", "10.0.15", "EPPlus"), pin);
     }
 
     // ###########################################################################################
@@ -150,12 +164,10 @@ public sealed class PinnedPackagesTests
         return aPre == bPre ? 0 : aPre ? -1 : 1;
     }
 
-    // Every PackageReference with a PinnedOver attribute, in every project file under src.
-    private static List<Pin> Pins()
+    // Every PackageReference with a PinnedOver attribute, in every project file under `folder`.
+    private static List<Pin> Pins(string folder)
     {
-        string src = PinnedPackagesTests.RepositoryPath("src");
-
-        return Directory.EnumerateFiles(src, "*.csproj", SearchOption.AllDirectories)
+        return Directory.EnumerateFiles(folder, "*.csproj", SearchOption.AllDirectories)
             .SelectMany(path => XDocument.Load(path).Descendants()
                 .Where(element => element.Name.LocalName == "PackageReference" && element.Attribute("PinnedOver") is not null)
                 .Select(element => new Pin(

@@ -99,7 +99,7 @@ namespace CRT
 
             if (ReviewContributorHistory.IsTurnedDown(submission))
             {
-                footer.Foreground = Brushes.IndianRed;
+                Handlers.Theming.ThemeResources.PaintFail(footer);
                 footer.FontWeight = FontWeight.SemiBold;
             }
             else

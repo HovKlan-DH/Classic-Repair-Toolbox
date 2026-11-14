@@ -709,17 +709,19 @@ public sealed class TabMaintainerQueueTests
             // key: a DynamicResource naming a key this application does not define draws an
             // unstyled button in silence, which is how a green Approve could quietly go grey.
             // ###########################################################################################
+            // The two red ones IndianRed, and the green #4F8A5B, until 2026-11-12 - each a shade deeper since, so the white
+            // words read at 4.5:1 (ThemeContrastTests).
             foreach (string name in new[] { "RequestChangesButton", "RejectButton" })
             {
                 Button button = main.FindControl<Button>(name)!;
 
-                Assert.Equal(Avalonia.Media.Colors.IndianRed, ((Avalonia.Media.ISolidColorBrush)button.Background!).Color);
+                Assert.Equal(Avalonia.Media.Color.Parse("#BC5454"), ((Avalonia.Media.ISolidColorBrush)button.Background!).Color);
                 Assert.Equal(Avalonia.Media.Colors.White, ((Avalonia.Media.ISolidColorBrush)button.Foreground!).Color);
             }
 
             Button approveButton = main.FindControl<Button>("ApproveButton")!;
             Assert.Equal(
-                Avalonia.Media.Color.Parse("#4F8A5B"),
+                Avalonia.Media.Color.Parse("#497F54"),
                 ((Avalonia.Media.ISolidColorBrush)approveButton.Background!).Color);
             Assert.Equal(Avalonia.Media.Colors.White, ((Avalonia.Media.ISolidColorBrush)approveButton.Foreground!).Color);
 

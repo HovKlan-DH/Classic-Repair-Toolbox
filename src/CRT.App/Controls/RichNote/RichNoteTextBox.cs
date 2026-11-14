@@ -179,6 +179,15 @@ namespace CRT
             {
                 this.ShowMarkup(change.GetNewValue<string>());
             }
+            else if (change.Property == DataContextProperty)
+            {
+                // Made again for another row (the pane's lists build only the rows in view): none of the last row's steps -
+                // with its note the same as the one written last, ShowMarkup shows nothing new and kept them (code review,
+                // 2026-11-13: Ctrl+Z brought another card's words into this one's note).
+                this.thisUndo.Clear();
+                this.thisRedo.Clear();
+                this.thisTypingStyle = null;
+            }
             else if (change.Property == SelectionStartProperty || change.Property == SelectionEndProperty || change.Property == CaretIndexProperty)
             {
                 this.ShowPressedButtons();

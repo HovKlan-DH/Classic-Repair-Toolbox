@@ -988,6 +988,9 @@ namespace CRT
                 WindowStartupLocation = WindowStartupLocation.CenterOwner
             };
 
+            // The theme's ground, as every window of CRT's has (2026-11-12): Fluent's was white in the "User preference" theme.
+            Handlers.Theming.ThemeResources.Paint(dialog, Window.BackgroundProperty, "Bg");
+
             closeButton.Click += (_, _) => dialog.Close();
 
             var body = new StackPanel { Spacing = 14 };

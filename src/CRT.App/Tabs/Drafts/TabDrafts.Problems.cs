@@ -310,6 +310,18 @@ namespace CRT
 
             this.ShowProblemsOfEntryOpen();
             this.ShowProblemsInComponentList();
+
+            // "This draft has 2 errors to fix" said by Submit goes with the last of them (TabDrafts.ShowErrorsBeforeSubmitAsync) -
+            // the last of ITS board's, which need not be the board shown (code review, 2026-11-13: a line about another
+            // draft went or stayed by the errors of the one on screen) - and with the draft itself, discarded or retired: no
+            // read of it is left (code review, 2026-11-13: the line went on about errors of a draft that was gone).
+            if (this.thisSubmitBlockedSaid &&
+                (this.thisSubmitBlockedOf is not { } blocked ||
+                 !this.thisProblemsRead.TryGetValue(blocked, out BoardProblemsRead? blockedRead) ||
+                 blockedRead.Counts.Errors == 0))
+            {
+                this.LetGoOfSubmitBlocked();
+            }
         }
 
         // ###########################################################################################

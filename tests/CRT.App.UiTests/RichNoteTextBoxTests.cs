@@ -358,6 +358,38 @@ public sealed class RichNoteTextBoxTests
     }
 
     // ###########################################################################################
+    // A box made again for another row keeps none of the last row's steps (code review, 2026-11-13): the pane's lists build
+    // only the rows in view, so a box scrolled away comes back for another row - and with that row's note equal to the last
+    // one it wrote (empty, mostly), nothing new was shown and its steps stayed: Ctrl+Z there brought card A's words into
+    // card B's note.
+    // ###########################################################################################
+    [Fact]
+    public void A_box_handed_another_row_keeps_none_of_the_last_rows_steps()
+    {
+        UiTest.Run(() =>
+        {
+            (Window window, RichNoteTextBox box) = Shown(string.Empty);
+
+            try
+            {
+                box.DataContext = "card A";
+                window.KeyTextInput("x");
+                Press(window, Key.Back);
+                Assert.Equal(string.Empty, box.Markup);
+
+                box.DataContext = "card B";
+                Press(window, Key.Z, RawInputModifiers.Control);
+
+                Assert.Equal(string.Empty, box.Markup);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    // ###########################################################################################
     // *** ENTER STARTS A LINE WITH "\n", ON WINDOWS TOO (code review, 2026-11-07). *** The TextBox inserts its NewLine,
     // Environment.NewLine by default - "\r\n" on Windows - and the note was then stored with a "\" before every literal
     // star of it, as its "\r" never read back as written.

@@ -36,6 +36,19 @@ namespace Tabs.TabSchematics
             }
         }
 
+        // The room round the image as the tab fits it (ImageFrameGeometry) - the image stands inside it.
+        public Thickness ContentFrame
+        {
+            get => this.thisContentFrame;
+            set
+            {
+                this.thisContentFrame = value;
+                this.InvalidateVisual();
+            }
+        }
+
+        private Thickness thisContentFrame;
+
         public IReadOnlyList<int> SelectedIndices
         {
             get => this.thisSelectedIndices;
@@ -175,7 +188,7 @@ namespace Tabs.TabSchematics
                 return;
             }
 
-            var contentRect = RectGeometry.GetImageContentRect(this.Bounds.Size, this.thisBitmapPixelSize);
+            var contentRect = RectGeometry.GetImageContentRect(this.Bounds.Size, this.thisBitmapPixelSize, this.ContentFrame);
             if (contentRect.Width <= 0 || contentRect.Height <= 0)
             {
                 return;

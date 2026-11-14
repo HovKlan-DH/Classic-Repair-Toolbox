@@ -464,8 +464,7 @@ public partial class TabSchematics
             var textBlock = new TextBlock
             {
                 FontSize = 11,
-                FontWeight = FontWeight.Bold,
-                Foreground = Brushes.White
+                FontWeight = FontWeight.Bold
             };
 
             this.thisWorklogEntryBadgeBorder = new Border
@@ -483,7 +482,12 @@ public partial class TabSchematics
             this.SchematicsWorklogEntryBadgeCanvas.Children.Add(this.thisWorklogEntryBadgeBorder);
         }
 
-        this.thisWorklogEntryBadgeBorder.Background = new SolidColorBrush(this.GetSelectedWorklogEntryCategoryColor());
+        Color badgeColor = this.GetSelectedWorklogEntryCategoryColor();
+        this.thisWorklogEntryBadgeBorder.Background = new SolidColorBrush(badgeColor);
+
+        // White or black, whichever reads on the category's color (always white until 2026-11-12 - the dark theme's lighter
+        // categories took it at 2:1 to 3:1).
+        ((TextBlock)this.thisWorklogEntryBadgeBorder.Child!).Foreground = ThemeResources.TextOn(badgeColor);
 
         var contentRect = this.GetImageContentRect();
         var localRect = RectGeometry.PixelToLocalRect(finalPixelRectangle.Value, contentRect, this.currentFullResBitmap.PixelSize);

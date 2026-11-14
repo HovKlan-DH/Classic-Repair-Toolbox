@@ -1,6 +1,9 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
+using System;
+using System.Collections.Generic;
+using System.Runtime.CompilerServices;
 
 namespace Handlers.Theming
 {
@@ -81,6 +84,72 @@ namespace Handlers.Theming
         // it (a badge fill plus a matching outline, say) rather than share one instance.
         public static Color ResolveColor(string resourceKey, Color fallback) =>
             Resolve<IBrush>(resourceKey, null!) is ISolidColorBrush solid ? solid.Color : fallback;
+
+        // ###########################################################################################
+        // `property` of `target` painted with the theme's `resourceKey` - now, and again whenever the theme changes, as
+        // {DynamicResource} is in markup. For a color set in CODE that the theme should decide (a message's red or green, a
+        // link's blue): a fixed brush there kept one color in every theme - IndianRed, SeaGreen and SteelBlue on the
+        // Maintainer tab, 4:1 or less on one ground or the other (2026-11-12, the theme color review).
+        // *** LET GO OF IT WITH Unpaint, NEVER ClearValue OR AN ASSIGNMENT *** (code review, 2026-11-13, measured): in Avalonia
+        // 12.1.4 neither ends a binding, so the next theme change painted it again - the Configuration tab's board ticked
+        // back on turned red at the next theme switch. Painting a property again ends its earlier paint.
+        // ###########################################################################################
+        public static void Paint(StyledElement target, AvaloniaProperty<IBrush?> property, string resourceKey)
+        {
+            ThemeResources.Keep(target, property, target.Bind(property, target.GetResourceObservable(resourceKey)));
+        }
+
+        // A text in the theme's red - a refusal, a failure, something taken away: the call made in a dozen places, ONE here
+        // (code review, 2026-11-13).
+        public static void PaintFail(TextBlock text) => ThemeResources.Paint(text, TextBlock.ForegroundProperty, "Text_Fail_Fg");
+
+        // The property painted by Paint or PaintWash let go of: the binding ended and the value cleared, so styles decide it.
+        public static void Unpaint(StyledElement target, AvaloniaProperty<IBrush?> property)
+        {
+            if (ThemeResources.Painted.TryGetValue(target, out Dictionary<AvaloniaProperty, IDisposable>? ofTarget) &&
+                ofTarget.Remove(property, out IDisposable? binding))
+            {
+                binding.Dispose();
+            }
+
+            target.ClearValue(property);
+        }
+
+        // The same, as a faint wash of the theme's color - `alpha` of it, for a ground under words in that color (the
+        // MiniPro test's PASS or FAIL over its own color: a wash worked out once kept the theme it was made in while the
+        // words followed - code review, 2026-11-13).
+        public static void PaintWash(StyledElement target, AvaloniaProperty<IBrush?> property, string resourceKey, byte alpha)
+        {
+            ThemeResources.Keep(target, property, target.Bind(property, target.GetResourceObservable(
+                resourceKey,
+                found => found is ISolidColorBrush solid ? new SolidColorBrush(Color.FromArgb(alpha, solid.Color.R, solid.Color.G, solid.Color.B)) : null)));
+        }
+
+        // Each painted property's binding, by the element it is on - kept no longer than the element is.
+        private static readonly ConditionalWeakTable<StyledElement, Dictionary<AvaloniaProperty, IDisposable>> Painted = new();
+
+        private static void Keep(StyledElement target, AvaloniaProperty property, IDisposable binding)
+        {
+            Dictionary<AvaloniaProperty, IDisposable> ofTarget = ThemeResources.Painted.GetOrCreateValue(target);
+
+            if (ofTarget.Remove(property, out IDisposable? earlier))
+            {
+                earlier.Dispose();
+            }
+
+            ofTarget[property] = binding;
+        }
+
+        // ###########################################################################################
+        // The text that reads on a fill of `background`: white or black, whichever has the higher contrast ratio with it -
+        // CRT.Data's RegionColors.ContrastText, the one rule. For words drawn on a color the theme or the user picks: a
+        // worklog's category on its "#N" badge, a submission's state on its "New" badge. White on the dark theme's lighter
+        // colors read at 2:1 to 3:1 (2026-11-12).
+        // ###########################################################################################
+        public static IBrush TextOn(Color background) =>
+            Handlers.DataHandling.RegionColors.WhiteReadsBetter(Handlers.DataHandling.RegionColors.Luminance(background.R, background.G, background.B))
+                ? Brushes.White
+                : Brushes.Black;
 
         // ###########################################################################################
         // The two Font Awesome families, resolved from the same app resources the markup uses so a

@@ -1220,7 +1220,12 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             });
 
             Assert.True(hadDraft);
-            Assert.False(DraftBoardSource.HasDraft(DraftManager.DraftsRoot, BoardA));
+
+            // Saying why when it stays (it did once in a full run, 2026-11-13, and never in 120 runs since): a discard refused -
+            // a file of the draft held for a moment, its words here - or no discard tried, the draft judged to hold something.
+            Assert.False(
+                DraftBoardSource.HasDraft(DraftManager.DraftsRoot, BoardA),
+                $"The draft stayed. Discard failure: [{tab.DiscardFailureTextForTests ?? "none - no discard was refused"}]; still the look: [{tab.IsDraftOnlyLookedAtForTests(BoardA)}]");
             Assert.False(tab.IsDraftOnlyLookedAtForTests(BoardA));
             Assert.Empty(tab.Drafts);
 

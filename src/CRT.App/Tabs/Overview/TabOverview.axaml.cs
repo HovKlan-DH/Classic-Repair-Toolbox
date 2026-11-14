@@ -34,16 +34,52 @@ namespace CRT
             this._mainWindow = mainWindow;
         }
 
-        // ###########################################################################################
-        // Populates the overview list based on the selected board data.
-        // ###########################################################################################
-        public void LoadData(BoardData boardData)
-        {
-            var rows = OverviewHtmlBuilder.BuildRows(boardData);
+        // The board shown, the region it is shown in and the words searched for - what a region switch builds the rows
+        // again from (ShowRegion).
+        private BoardData? _board;
+        private string? _region;
+        private string _searchTerm = string.Empty;
 
-            this._allRows = rows;
-            this._visibleRows = rows;
-            this.OverviewItemsControl.ItemsSource = this._visibleRows;
+        // ###########################################################################################
+        // Populates the overview list based on the selected board data - one row per component, as
+        // `region` has it (OverviewHtmlBuilder.BuildRows) - and shows the rows the filters keep, the words
+        // searched for `searchTerm` when given, else those searched for last.
+        //
+        // *** THE LIST IS HANDED ITS ROWS ONCE (code review, 2026-11-14). *** Every row, then the rows the
+        // filter keeps, reset the list twice and built the rows in view twice at every load and region switch.
+        // ###########################################################################################
+        public void LoadData(BoardData boardData, string? region = null, string? searchTerm = null)
+        {
+            this._board = boardData;
+            this._region = region;
+            this._allRows = OverviewHtmlBuilder.BuildRows(boardData, region);
+            this.ApplyFilter(searchTerm ?? this._searchTerm);
+        }
+
+        // ###########################################################################################
+        // Another region shown: each component as that region has it, the search kept, and a component
+        // unticked for printing stays unticked - it is the same component.
+        // ###########################################################################################
+        public void ShowRegion(string? region)
+        {
+            if (this._board is not { } board || string.Equals(region, this._region, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            var unticked = new HashSet<string>(
+                this._allRows.Where(row => !row.IsSelectedForPrint).Select(row => row.Component),
+                StringComparer.OrdinalIgnoreCase);
+
+            this._region = region;
+            this._allRows = OverviewHtmlBuilder.BuildRows(board, region);
+
+            foreach (OverviewRow row in this._allRows.Where(row => unticked.Contains(row.Component)))
+            {
+                row.IsSelectedForPrint = false;
+            }
+
+            this.ApplyFilter(this._searchTerm);
         }
 
         // ###########################################################################################
@@ -51,7 +87,8 @@ namespace CRT
         // ###########################################################################################
         public void ApplyFilter(string searchTerm)
         {
-            this._visibleRows = this.GetFilteredRows(searchTerm);
+            this._searchTerm = searchTerm ?? string.Empty;
+            this._visibleRows = this.GetFilteredRows(this._searchTerm);
             this.OverviewItemsControl.ItemsSource = this._visibleRows;
         }
 
@@ -240,11 +277,15 @@ namespace CRT
         // ###########################################################################################
         // Subscribes each row to pointer presses at the tunnel phase, so the click is seen before any
         // child control (button, checkbox, selectable text) has a chance to mark it as handled.
+        //
+        // Taken off first: the list is virtualized (2026-11-13), and a row scrolled away and back is
+        // the same Border loaded again - subscribed twice, a click toggled its print tick twice.
         // ###########################################################################################
         private void OnOverviewRowLoaded(object? sender, RoutedEventArgs e)
         {
             if (sender is Border border)
             {
+                border.RemoveHandler(InputElement.PointerPressedEvent, this.OnOverviewRowPointerPressed);
                 border.AddHandler(InputElement.PointerPressedEvent, this.OnOverviewRowPointerPressed, RoutingStrategies.Tunnel);
             }
         }

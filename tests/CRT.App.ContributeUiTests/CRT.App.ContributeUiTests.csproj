@@ -29,10 +29,10 @@ command-line (global) property - see the comment on SelfContained in CRT.App.Tes
 
   <ItemGroup>
     <!-- As CRT.App.UiTests: Avalonia.Headless without its xunit adapter, and xunit.v3.mtp-OFF. -->
-    <PackageReference Include="Avalonia.Headless" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Headless" Version="12.1.6" />
     <PackageReference Include="coverlet.collector" Version="10.1.0" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
-    <PackageReference Include="xunit.v3.mtp-off" Version="4.0.2" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.12.0" />
+    <PackageReference Include="xunit.v3.mtp-off" Version="4.0.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1" />
   </ItemGroup>
 

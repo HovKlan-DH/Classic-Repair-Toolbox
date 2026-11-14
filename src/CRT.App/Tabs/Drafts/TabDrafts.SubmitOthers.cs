@@ -80,7 +80,7 @@ namespace CRT
             {
                 BoardData offered = TabDrafts.WithNewBoardCreditsOffered(entry, board);
 
-                return (TabDrafts.CountErrors(entry, offered), !ReferenceEquals(offered, board));
+                return (TabDrafts.ProblemsToSend(entry, offered).Count(problem => problem.Level == BoardProblemLevel.Error), !ReferenceEquals(offered, board));
             });
 
             if (errors > 0)

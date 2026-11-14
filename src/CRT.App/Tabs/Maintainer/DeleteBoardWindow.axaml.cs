@@ -53,7 +53,7 @@ namespace CRT
             this.SetText("CannotBeUndoneText", BoardDeletionWording.CannotBeUndone);
 
             if (this.FindControl<TextBlock>("CannotBeUndoneText") is TextBlock undone)
-                undone.Foreground = Brushes.IndianRed;
+                Handlers.Theming.ThemeResources.PaintFail(undone);
 
             if (this.FindControl<StackPanel>("WhatGoesPanel") is StackPanel whatGoes)
             {

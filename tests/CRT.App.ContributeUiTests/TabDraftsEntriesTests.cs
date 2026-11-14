@@ -1414,21 +1414,26 @@ public sealed class TabDraftsEntriesTests : IDisposable
         });
     }
 
-    // Submit on a draft with errors shows every row with one, whichever component is picked (code review, 2026-11-09:
-    // narrowed to U8, which has none, the table opened on C1's link showing nothing under "Submit is blocked").
-    [Fact]
-    public async Task Submit_blocked_by_errors_shows_every_row_with_one_whichever_component_is_picked()
+    // ###########################################################################################
+    // *** SUBMIT ON A DRAFT WITH ERRORS GOES TO THE FIRST IN THE VIEW PICKED (owner request, 2026-11-13: "no matter the view
+    // I am in, then it will go to the "Table" view and show the error cells. Instead I think it should use the current view
+    // as-is, and then navigate to the problem"). *** With U8 picked and the error on C1's link: in "UI" C1 opens on its
+    // "Links" page, whose panel lists the error, and the tab's line says why nothing was sent - no table opened.
+    // ###########################################################################################
+    private static BoardData BoardWithAnErrorOnC1() => new()
     {
-        var board = new BoardData
-        {
-            Components =
-            [
-                new ComponentEntry { BoardLabel = "U8", Category = "IC", FriendlyName = "CPU" },
-                new ComponentEntry { BoardLabel = "C1", Category = "Capacitor", FriendlyName = "Filter" },
-            ],
-            ComponentLinks = [new ComponentLinkEntry { BoardLabel = "C1", Name = "Bad", Url = "ftp://example.com" }],
-        };
+        Components =
+        [
+            new ComponentEntry { BoardLabel = "U8", Category = "IC", FriendlyName = "CPU" },
+            new ComponentEntry { BoardLabel = "C1", Category = "Capacitor", FriendlyName = "Filter" },
+        ],
+        ComponentLinks = [new ComponentLinkEntry { BoardLabel = "C1", Name = "Bad", Url = "ftp://example.com" }],
+    };
 
+    [Fact]
+    public async Task Submit_blocked_by_errors_in_the_UI_view_opens_the_first_on_its_page()
+    {
+        BoardData board = BoardWithAnErrorOnC1();
         WriteDraft(board: board);
 
         await UiTest.RunAsync(async () =>
@@ -1439,16 +1444,49 @@ public sealed class TabDraftsEntriesTests : IDisposable
             await Until(() => tab.IsComponentOpen, "The component never opened.");
 
             Assert.True(await tab.StopForErrorsAsync(Entry(), board));
+            await Until(() => tab.EntryOpenForTests == ContributeEntry.ComponentLinks && tab.PickedComponentsForTests.SequenceEqual(["C1"]), "C1's links never opened.");
+
+            Assert.False(tab.IsTableOpen);
+            Assert.Equal("ComponentLinksNavButton", tab.SelectedNavEntryForTests);
+            Assert.Contains(tab.EntryProblemRowsForTests, row => row.IsError && row.Component == "C1");
+            Assert.True(tab.IsEntryProblemsPanelShownForTests);
+            Assert.StartsWith("This draft has 1 error to fix", tab.DraftProblemForTests, StringComparison.Ordinal);
+        });
+    }
+
+    // ###########################################################################################
+    // The same in "Table": the sheet of the first error, narrowed to its component as a pick narrows it, the cursor on its
+    // cell, and the table's line saying so. Nothing is narrowed to the errors any more - the "Errors" pill is the user's (it
+    // was picked by Submit until 2026-11-13, which is why a picked component had to be let go of: code review, 2026-11-09).
+    // ###########################################################################################
+    [Fact]
+    public async Task Submit_blocked_by_errors_in_the_Table_view_puts_the_cursor_on_the_first()
+    {
+        BoardData board = BoardWithAnErrorOnC1();
+        WriteDraft(board: board);
+
+        await UiTest.RunAsync(async () =>
+        {
+            (TabDrafts tab, _) = Tab();
+
+            await tab.ShowViewAsync(table: true);
+            tab.PickComponentForTests("U8");
+            await Until(() => Editor(tab).ComponentsShownForTests.Contains("U8"), "The table never narrowed to U8.");
+
+            Assert.True(await tab.StopForErrorsAsync(Entry(), board));
 
             BoardTableEditor editor = Editor(tab);
-            Assert.True(tab.IsTableOpen);
-            Assert.Equal(BoardTableRowKinds.Errors, editor.Filter);
-            Assert.Equal(BoardWorkbookSchema.SheetComponentLinks, editor.CurrentSheet!.Name);
-            Assert.Empty(tab.PickedComponentsForTests);
-            Assert.Empty(editor.ComponentsShownForTests);
+            await Until(() => editor.CurrentSheet?.Name == BoardWorkbookSchema.SheetComponentLinks && editor.ComponentsShownForTests.Contains("C1"), "The table never went to C1's links.");
 
-            int label = editor.CurrentSheet!.Columns.ToList().IndexOf(BoardWorkbookSchema.ColBoardLabel);
-            Assert.Equal(["C1"], editor.RowsShownForTests.Select(row => row.Cells[label].Text));
+            Assert.True(tab.IsTableOpen);
+            Assert.Equal(BoardTableRowKinds.None, editor.Filter);
+            Assert.Equal(["C1"], tab.PickedComponentsForTests);
+
+            BoardTableSheet sheet = editor.CurrentSheet!;
+            Assert.Equal(BoardWorkbookSchema.ColUrl, sheet.Columns[editor.CurrentCell!.ColumnIndex]);
+            Assert.Equal("C1", editor.CurrentRow!.Cells[sheet.Columns.ToList().IndexOf(BoardWorkbookSchema.ColBoardLabel)].Text);
+            Assert.StartsWith("This draft has 1 error to fix before it can be submitted. The cursor is on it.", editor.GetControl<TextBlock>("StatusText").Text, StringComparison.Ordinal);
+            Assert.Null(tab.DraftProblemForTests);
         });
     }
 }

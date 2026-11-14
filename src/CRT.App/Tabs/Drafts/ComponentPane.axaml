@@ -9,6 +9,43 @@
 	     in a maximized window"). On the right of the Contribute tab; every change goes into the draft
 	     as it is made (ComponentPane.axaml.cs). -->
 	<UserControl.Styles>
+		<!-- ###########################################################################################
+		     A LIST THAT CAN GROW LONG BUILDS ONLY THE ROWS IN VIEW (2026-11-13, measured on the owner's boards): its rows are
+		     editors - text boxes, drop-down lists, a note box, colors - and every one was built as the page opened. "Board:
+		     Schematic images" of the Open128-2 (25 cards, ~6,600 controls) took ~2 s, U19's "Oscilloscope baseline" (81 rows,
+		     ~10,000 controls) ~1.9 s, a 48-pin "Pinout" ~0.6 s. Avalonia's VirtualizingStackPanel builds what the page's scroll
+		     viewer shows and the rest as it scrolls into view - inside that outer scroll viewer too, as "Other nets" long did.
+		     Rows are views of their row objects (bindings only), so a row made again for another item shows that item. The
+		     panel is CRT's RowsInViewPanel: the row with the keyboard stays made, and Tab goes by row number, not by the order
+		     the rows were made in (code reviews, 2026-11-13 and 2026-11-14). ListRowDrag measures only the rows made, and estimates the rest from them
+		     (RowDragSlots.EstimateUnbuilt - at 0 they collapsed, and a row dragged past the last made went to the end).
+		     A column shared by the rows (SharedSizeGroup) that a row's words widen is sized by an invisible "ColumnSizer" in its
+		     heading, from every row - the rows not made count for nothing (code review, 2026-11-14).
+		     ########################################################################################### -->
+		<Style Selector="ItemsControl.RowsInView">
+			<Setter Property="ItemsPanel">
+				<ItemsPanelTemplate>
+					<local:RowsInViewPanel />
+				</ItemsPanelTemplate>
+			</Setter>
+		</Style>
+
+		<!-- A heading's ColumnSizer: what any row can show in that column, one under another, measured and never drawn -
+		     no height, nothing to see, click or reach with Tab. The column's shared width is then the widest of them. -->
+		<Style Selector="ItemsControl.ColumnSizer">
+			<Setter Property="Height" Value="0" />
+			<Setter Property="VerticalAlignment" Value="Top" />
+			<Setter Property="ClipToBounds" Value="True" />
+			<Setter Property="Opacity" Value="0" />
+			<Setter Property="IsHitTestVisible" Value="False" />
+			<Setter Property="Focusable" Value="False" />
+			<Setter Property="IsVisible" Value="False" />
+		</Style>
+		<Style Selector="ItemsControl.ColumnSizer ComboBox">
+			<Setter Property="Focusable" Value="False" />
+			<Setter Property="IsTabStop" Value="False" />
+		</Style>
+
 		<Style Selector="TextBlock.PaneHeading">
 			<Setter Property="FontSize" Value="14" />
 			<Setter Property="FontWeight" Value="Bold" />
@@ -231,6 +268,14 @@
 			<Setter Property="Margin" Value="2,2,0,0" />
 		</Style>
 	</UserControl.Styles>
+
+	<UserControl.Resources>
+		<!-- One of the choices of an "Applies to" box, as wide as a row's box showing it: the same box, the choice its
+		     placeholder - the words stand where the choice picked stands (a ColumnSizer's item). -->
+		<DataTemplate x:Key="AppliesToSizerItem">
+			<ComboBox MinWidth="130" PlaceholderText="{Binding}" />
+		</DataTemplate>
+	</UserControl.Resources>
 
 	<Grid RowDefinitions="Auto,*">
 
@@ -742,9 +787,17 @@
 										   Margin="0,0,8,0"
 										   Text="Net name"
 										   IsVisible="False" />
+								<!-- Every pin's net, as its row shows it - the column as wide for the pins not made (ShowKiCadPins). -->
+								<ItemsControl x:Name="PinNetSizer" Grid.Column="6" Classes="ColumnSizer">
+									<ItemsControl.ItemTemplate>
+										<DataTemplate>
+											<TextBlock Text="{Binding}" MaxWidth="180" Margin="0,0,8,0" FontSize="11" TextTrimming="CharacterEllipsis" />
+										</DataTemplate>
+									</ItemsControl.ItemTemplate>
+								</ItemsControl>
 							</Grid>
 
-							<ItemsControl x:Name="PinsItemsControl">
+							<ItemsControl x:Name="PinsItemsControl" Classes="RowsInView">
 								<ItemsControl.ItemTemplate>
 									<DataTemplate x:DataType="local:ComponentPanePinRow">
 										<Grid Margin="0,0,0,4" RowDefinitions="Auto,Auto">
@@ -832,7 +885,7 @@
 
 					<TextBlock x:Name="NoBaselinesText" Classes="EmptyLine" Text="No oscilloscope baselines yet." />
 
-					<ItemsControl x:Name="BaselinesItemsControl">
+					<ItemsControl x:Name="BaselinesItemsControl" Classes="RowsInView">
 						<ItemsControl.ItemTemplate>
 							<DataTemplate x:DataType="local:ComponentPaneBaselineRow">
 								<Border Classes="PaneEntry">
@@ -1034,7 +1087,7 @@
 
 					<TextBlock x:Name="NoPicturesText" Classes="EmptyLine" Text="No pictures yet." />
 
-					<ItemsControl x:Name="PicturesItemsControl">
+					<ItemsControl x:Name="PicturesItemsControl" Classes="RowsInView">
 						<ItemsControl.ItemTemplate>
 							<DataTemplate x:DataType="local:ComponentPanePictureRow">
 								<Border Classes="PaneEntry">
@@ -1108,7 +1161,7 @@
 
 					<TextBlock x:Name="NoReplacementsText" Classes="EmptyLine" Text="No replacement parts yet." />
 
-					<ItemsControl x:Name="ReplacementsItemsControl">
+					<ItemsControl x:Name="ReplacementsItemsControl" Classes="RowsInView">
 						<ItemsControl.ItemTemplate>
 							<DataTemplate x:DataType="local:ComponentPaneReplacementRow">
 								<Border Classes="PaneEntry">
@@ -1176,9 +1229,10 @@
 						</Grid.ColumnDefinitions>
 						<TextBlock Grid.Column="0" Classes="FieldLabel" Text="Name" />
 						<TextBlock x:Name="FilesAppliesToHeading" Grid.Column="2" Classes="FieldLabel" Text="Applies to" IsVisible="False" />
+						<ItemsControl x:Name="FilesAppliesToSizer" Grid.Column="2" Classes="ColumnSizer" ItemTemplate="{StaticResource AppliesToSizerItem}" />
 					</Grid>
 
-					<ItemsControl x:Name="FilesItemsControl">
+					<ItemsControl x:Name="FilesItemsControl" Classes="RowsInView">
 						<ItemsControl.ItemTemplate>
 							<DataTemplate x:DataType="local:ComponentPaneFileRow">
 								<Grid>
@@ -1276,9 +1330,10 @@
 						<TextBlock Grid.Column="0" Classes="FieldLabel" Text="Name" />
 						<TextBlock Grid.Column="2" Classes="FieldLabel" Text="Address" />
 						<TextBlock x:Name="LinksAppliesToHeading" Grid.Column="4" Classes="FieldLabel" Text="Applies to" IsVisible="False" />
+						<ItemsControl x:Name="LinksAppliesToSizer" Grid.Column="4" Classes="ColumnSizer" ItemTemplate="{StaticResource AppliesToSizerItem}" />
 					</Grid>
 
-					<ItemsControl x:Name="LinksItemsControl">
+					<ItemsControl x:Name="LinksItemsControl" Classes="RowsInView">
 						<ItemsControl.ItemTemplate>
 							<DataTemplate x:DataType="local:ComponentPaneLinkRow">
 								<Grid>
@@ -1643,7 +1698,7 @@
 
 					<TextBlock x:Name="NoBoardPicturesText" Classes="EmptyLine" Text="No schematic images yet." />
 
-					<ItemsControl x:Name="BoardPicturesItemsControl">
+					<ItemsControl x:Name="BoardPicturesItemsControl" Classes="RowsInView">
 						<ItemsControl.ItemTemplate>
 							<DataTemplate x:DataType="local:ComponentPaneBoardPictureRow">
 								<!-- Each image in a panel of its own (owner request, 2026-10-29: "bordered with a
@@ -1928,9 +1983,10 @@
 							<TextBlock Grid.Column="0" Classes="FieldLabel" Text="Category" />
 							<TextBlock Grid.Column="2" Classes="FieldLabel" Text="Name" />
 							<TextBlock x:Name="BoardFilesAppliesToHeading" Grid.Column="4" Classes="FieldLabel" Text="Applies to" IsVisible="False" />
+							<ItemsControl x:Name="BoardFilesAppliesToSizer" Grid.Column="4" Classes="ColumnSizer" ItemTemplate="{StaticResource AppliesToSizerItem}" />
 						</Grid>
 
-						<ItemsControl x:Name="BoardFilesItemsControl">
+						<ItemsControl x:Name="BoardFilesItemsControl" Classes="RowsInView">
 							<ItemsControl.ItemTemplate>
 								<DataTemplate x:DataType="local:ComponentPaneBoardFileRow">
 									<Grid>
@@ -2062,9 +2118,10 @@
 							<TextBlock Grid.Column="2" Classes="FieldLabel" Text="Name" />
 							<TextBlock Grid.Column="4" Classes="FieldLabel" Text="Address" />
 							<TextBlock x:Name="BoardLinksAppliesToHeading" Grid.Column="6" Classes="FieldLabel" Text="Applies to" IsVisible="False" />
+							<ItemsControl x:Name="BoardLinksAppliesToSizer" Grid.Column="6" Classes="ColumnSizer" ItemTemplate="{StaticResource AppliesToSizerItem}" />
 						</Grid>
 
-						<ItemsControl x:Name="BoardLinksItemsControl">
+						<ItemsControl x:Name="BoardLinksItemsControl" Classes="RowsInView">
 							<ItemsControl.ItemTemplate>
 								<DataTemplate x:DataType="local:ComponentPaneBoardLinkRow">
 									<Grid>
@@ -2188,7 +2245,7 @@
 						<TextBlock Grid.Column="6" Classes="FieldLabel" Text="Contact" />
 					</Grid>
 
-					<ItemsControl x:Name="CreditsItemsControl">
+					<ItemsControl x:Name="CreditsItemsControl" Classes="RowsInView">
 						<ItemsControl.ItemTemplate>
 							<DataTemplate x:DataType="local:ComponentPaneCreditRow">
 								<Grid>
@@ -2288,7 +2345,7 @@
 						<TextBlock Grid.Column="2" Classes="FieldLabel" Text="Important signal name" />
 					</Grid>
 
-					<ItemsControl x:Name="SignalsItemsControl">
+					<ItemsControl x:Name="SignalsItemsControl" Classes="RowsInView">
 						<ItemsControl.ItemTemplate>
 							<DataTemplate x:DataType="local:ComponentPaneSignalRow">
 								<Grid>
@@ -2386,7 +2443,7 @@
 						<TextBlock x:Name="SignalSuggestionsHeading" Classes="PaneHeading" />
 						<TextBlock x:Name="SignalSuggestionsIntroText" Classes="PaneIntro" />
 
-						<ItemsControl x:Name="SignalSuggestionsItemsControl">
+						<ItemsControl x:Name="SignalSuggestionsItemsControl" Classes="RowsInView">
 							<ItemsControl.ItemTemplate>
 								<DataTemplate x:DataType="local:ComponentPaneSignalSuggestion">
 									<Grid Margin="0,0,0,4">
@@ -2432,12 +2489,7 @@
 						<TextBlock x:Name="OtherNetsHeading" Classes="PaneHeading" />
 						<TextBlock x:Name="OtherNetsIntroText" Classes="PaneIntro" />
 
-						<ItemsControl x:Name="OtherNetsItemsControl">
-							<ItemsControl.ItemsPanel>
-								<ItemsPanelTemplate>
-									<VirtualizingStackPanel />
-								</ItemsPanelTemplate>
-							</ItemsControl.ItemsPanel>
+						<ItemsControl x:Name="OtherNetsItemsControl" Classes="RowsInView">
 							<ItemsControl.ItemTemplate>
 								<DataTemplate x:DataType="local:ComponentPaneOtherNet">
 									<Grid Margin="0,0,0,4">

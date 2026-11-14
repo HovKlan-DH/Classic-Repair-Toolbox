@@ -403,17 +403,22 @@ namespace CRT
                 : extension.Length == 0 ? "Open file"
                 : $"Open {extension} file";
 
+            var words = new TextBlock
+            {
+                Text = text,
+                TextDecorations = TextDecorations.Underline
+            };
+
+            // In the theme's link color, on the words themselves (2026-11-12): a SteelBlue on the button never reached them -
+            // App's style for every TextBlock outranks what a block takes from its button - so they read as plain text.
+            Handlers.Theming.ThemeResources.Paint(words, TextBlock.ForegroundProperty, "Link_Fg");
+
             var link = new Button
             {
-                Content = new TextBlock
-                {
-                    Text = text,
-                    TextDecorations = TextDecorations.Underline
-                },
+                Content = words,
                 Background = Brushes.Transparent,
                 BorderThickness = new Thickness(0),
                 Padding = new Thickness(0),
-                Foreground = Brushes.SteelBlue,
                 Cursor = new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Hand),
                 HorizontalAlignment = HorizontalAlignment.Left,
 

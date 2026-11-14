@@ -36,6 +36,37 @@ public sealed class RowDragSlotsTests
         Assert.Equal(190.0, midpoints[2]);
     }
 
+    // ###########################################################################################
+    // A VIRTUALIZING list builds only the rows in view (the Contribute tab's long lists, 2026-11-13):
+    // the rest have no container, so no top and - never dragged - no height. Left at 0 they all
+    // collapsed onto the last row built, and a row dragged past it went straight to the end of the
+    // list (code review, 2026-11-13). They take the rows built's average height, those above the
+    // first built stacked upwards from it, as the panel itself estimates them.
+    // ###########################################################################################
+    [Fact]
+    public void Rows_a_virtualizing_list_has_not_built_take_the_average_height_of_those_it_has()
+    {
+        // Rows 0-1 scrolled away above, 2-3 built at 100-140 and 140-200, 4-5 not built yet below.
+        List<(double? Top, double Height)> estimated = RowDragSlots.EstimateUnbuilt(
+            [(null, 0), (null, 0), (100, 40), (140, 60), (null, 0), (null, 0)]);
+
+        Assert.Equal(
+            new (double? Top, double Height)[] { (0, 50), (50, 50), (100, 40), (140, 60), (null, 50), (null, 50) },
+            estimated);
+
+        Assert.Equal([25.0, 75.0, 120.0, 170.0, 225.0, 275.0], RowDragSlots.BuildMidpoints(estimated));
+    }
+
+    // A row dragged before keeps the height it had then; a list nothing was built of is left as it is.
+    [Fact]
+    public void An_unbuilt_row_with_a_height_of_its_own_keeps_it_and_nothing_built_estimates_nothing()
+    {
+        List<(double? Top, double Height)> estimated = RowDragSlots.EstimateUnbuilt([(null, 30), (100, 40), (null, 0)]);
+
+        Assert.Equal(new (double? Top, double Height)[] { (70, 30), (100, 40), (null, 40) }, estimated);
+        Assert.Equal(new (double? Top, double Height)[] { (null, 0), (null, 0) }, RowDragSlots.EstimateUnbuilt([(null, 0), (null, 0)]));
+    }
+
     // Dragging the TOP row (index 0) down. Its own middle (30) is never counted.
     [Theory]
     [InlineData(-500, 0)]   // dragged above the list entirely

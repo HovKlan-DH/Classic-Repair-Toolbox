@@ -324,17 +324,25 @@ public class OverviewHtmlBuilderTests
         Assert.Equal(["Image note of U8", "First of U9", string.Empty], rows.Select(row => row.Notes));
     }
 
-    // A row of one region lists its region's files and links and those for every region; a row for
-    // every region lists them all (owner request, 2026-11-02).
+    // ###########################################################################################
+    // ONE ROW PER COMPONENT, AS THE REGION SHOWN HAS IT (owner report, 2026-11-13: "component "C116" has 4 regions applied,
+    // so I see the component on 4 rows, which is wrong, as it should show only once"). One row per component ROW until then.
+    // The row is the component's in the region shown, as its info window picks it - and its files and links are what that
+    // window lists there: those of every region and of that region (a link of one region; owner request, 2026-11-02).
+    // ###########################################################################################
     [Fact]
-    public void A_rows_links_are_those_of_its_region()
+    public void A_component_of_several_regions_is_one_row_as_the_region_shown_has_it()
     {
         var board = new BoardData
         {
             Components =
             [
-                new ComponentEntry { BoardLabel = "U1", Region = "PAL" },
-                new ComponentEntry { BoardLabel = "U1", Region = "NTSC" },
+                new ComponentEntry { BoardLabel = "C116", TechnicalNameOrValue = "10uF", Region = "Europe" },
+                new ComponentEntry { BoardLabel = "U1", FriendlyName = "VIC", TechnicalNameOrValue = "6569", Region = "PAL" },
+                new ComponentEntry { BoardLabel = "C116", TechnicalNameOrValue = "22uF", Region = "Japan" },
+                new ComponentEntry { BoardLabel = "U1", FriendlyName = "VIC", TechnicalNameOrValue = "6567", Region = "NTSC" },
+                new ComponentEntry { BoardLabel = "C116", TechnicalNameOrValue = "10uF", Region = "PAL" },
+                new ComponentEntry { BoardLabel = "C116", TechnicalNameOrValue = "47uF", Region = "NTSC" },
                 new ComponentEntry { BoardLabel = "U2" },
             ],
             ComponentLocalFiles =
@@ -347,12 +355,79 @@ public class OverviewHtmlBuilderTests
                 new ComponentLinkEntry { BoardLabel = "U1", Name = "PAL", Url = "https://example.org/pal", Region = "PAL" },
                 new ComponentLinkEntry { BoardLabel = "U2", Name = "One region", Url = "https://example.org/u2", Region = "NTSC" },
             ],
+            ComponentImages =
+            [
+                new ComponentImageEntry { BoardLabel = "U1", Note = "The PAL one", Region = "PAL" },
+                new ComponentImageEntry { BoardLabel = "U1", Note = "The NTSC one", Region = "NTSC" },
+            ],
+        };
+
+        List<OverviewRow> ntsc = OverviewHtmlBuilder.BuildRows(board, "NTSC");
+
+        // In the board's order, each once.
+        Assert.Equal(["C116", "U1", "U2"], ntsc.Select(row => row.Component));
+        Assert.Equal(["47uF", "6567", string.Empty], ntsc.Select(row => row.TechnicalName));
+        Assert.Equal(["All", "NTSC"], ntsc[1].Links.Select(link => link.Name));
+        Assert.Equal(["One region"], ntsc[2].Links.Select(link => link.Name));
+        Assert.Equal("The NTSC one", ntsc[1].Notes);
+
+        List<OverviewRow> pal = OverviewHtmlBuilder.BuildRows(board, "PAL");
+
+        Assert.Equal(["10uF", "6569", string.Empty], pal.Select(row => row.TechnicalName));
+        Assert.Equal(["All", "PAL"], pal[1].Links.Select(link => link.Name));
+        Assert.Empty(pal[2].Links);
+        Assert.Equal("The PAL one", pal[1].Notes);
+
+        // And so counted once in the bill of materials.
+        Assert.Equal(1, OverviewHtmlBuilder.BuildQuantityGroups(pal).Single(group => group.Components == "C116").Quantity);
+    }
+
+    // ###########################################################################################
+    // A row with no label is no component, and the Overview has no row for it (code review, 2026-11-14, checked): the tab never
+    // listed one either way - it shows the labels of CRT's component list, which leaves a blank one out - so it is never in a
+    // printed list or the bill of materials.
+    // ###########################################################################################
+    [Fact]
+    public void A_row_with_no_label_gives_no_overview_row()
+    {
+        var board = new BoardData
+        {
+            Components =
+            [
+                new ComponentEntry { BoardLabel = "U8", Category = "IC" },
+                new ComponentEntry { BoardLabel = "  ", Category = "IC", FriendlyName = "Label cleared in the table" },
+                new ComponentEntry { BoardLabel = string.Empty, Category = "IC" },
+                new ComponentEntry { BoardLabel = "C1", Category = "Capacitor" },
+            ],
         };
 
         List<OverviewRow> rows = OverviewHtmlBuilder.BuildRows(board);
 
-        Assert.Equal(["All", "PAL"], rows[0].Links.Select(link => link.Name));
-        Assert.Equal(["All", "NTSC"], rows[1].Links.Select(link => link.Name));
-        Assert.Equal(["One region"], rows[2].Links.Select(link => link.Name));
+        Assert.Equal(["U8", "C1"], rows.Select(row => row.Component));
+        Assert.Equal(2, OverviewHtmlBuilder.BuildQuantityGroups(rows).Sum(group => group.Quantity));
+    }
+
+    // With no region picked every row of the component counts - its files and links of any region - and it is still one row.
+    [Fact]
+    public void With_no_region_a_component_is_one_row_with_all_its_links()
+    {
+        var board = new BoardData
+        {
+            Components =
+            [
+                new ComponentEntry { BoardLabel = "U1", Region = "PAL" },
+                new ComponentEntry { BoardLabel = "u1", Region = "NTSC" },
+            ],
+            ComponentLinks =
+            [
+                new ComponentLinkEntry { BoardLabel = "U1", Name = "PAL", Url = "https://example.org/pal", Region = "PAL" },
+                new ComponentLinkEntry { BoardLabel = "U1", Name = "NTSC", Url = "https://example.org/ntsc", Region = "NTSC" },
+            ],
+        };
+
+        OverviewRow row = Assert.Single(OverviewHtmlBuilder.BuildRows(board));
+
+        Assert.Equal("U1", row.Component);
+        Assert.Equal(["PAL", "NTSC"], row.Links.Select(link => link.Name));
     }
 }

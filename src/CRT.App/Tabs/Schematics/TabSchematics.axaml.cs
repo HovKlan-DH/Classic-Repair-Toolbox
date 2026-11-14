@@ -430,7 +430,7 @@ public partial class TabSchematics : UserControl
             RoutingStrategies.Bubble,
             handledEventsToo: true);
 
-        this.SchematicsImage.RenderTransformOrigin = RelativePoint.TopLeft;
+        this.SchematicsImageHost.RenderTransformOrigin = RelativePoint.TopLeft;
         this.SchematicsHighlightsOverlay.RenderTransformOrigin = RelativePoint.TopLeft;
         this.SchematicsHoverHighlightsOverlay.RenderTransformOrigin = RelativePoint.TopLeft;
 
@@ -438,9 +438,38 @@ public partial class TabSchematics : UserControl
         {
             if (e.Property == Visual.BoundsProperty)
             {
+                // The room round the image follows the panel's size (ApplyImageFrame) - before the view is clamped to it.
+                this.ApplyImageFrame();
                 this.ClampSchematicsMatrix();
                 this.UpdateComponentLabels();
                 this.RefreshKiCadOverlay();
+            }
+        };
+
+        // The frame is rounded at the window's scaling, so it is worked out again as the tab comes into a window - an image
+        // read while another tab was shown was rounded at 1.0, and the panel's size, unchanged, asked nothing again - and as
+        // the window moves to a screen of another scaling (code review, 2026-11-13: the overlays then stood beside the image).
+        TopLevel? scaledBy = null;
+        void OnScalingChanged(object? sender, EventArgs e) => this.ApplyImageFrame();
+
+        this.AttachedToVisualTree += (_, _) =>
+        {
+            scaledBy = TopLevel.GetTopLevel(this);
+
+            if (scaledBy is not null)
+            {
+                scaledBy.ScalingChanged += OnScalingChanged;
+            }
+
+            this.ApplyImageFrame();
+        };
+
+        this.DetachedFromVisualTree += (_, _) =>
+        {
+            if (scaledBy is not null)
+            {
+                scaledBy.ScalingChanged -= OnScalingChanged;
+                scaledBy = null;
             }
         };
 
@@ -889,6 +918,8 @@ public partial class TabSchematics : UserControl
 
         this.currentFullResBitmap?.Dispose();
         this.currentFullResBitmap = null;
+        this.thisImageBlankBorder = default;
+        this.ApplyImageFrame();
 
         this.SchematicsNameBorder.IsVisible = false;
         this.SchematicsRegionBorder.IsVisible = false;
@@ -897,7 +928,7 @@ public partial class TabSchematics : UserControl
         this.SchematicsMissingImageText.IsVisible = false;
 
         this.schematicsMatrix = Matrix.Identity;
-        ((MatrixTransform)this.SchematicsImage.RenderTransform!).Matrix = this.schematicsMatrix;
+        ((MatrixTransform)this.SchematicsImageHost.RenderTransform!).Matrix = this.schematicsMatrix;
         ((MatrixTransform)this.SchematicsHighlightsOverlay.RenderTransform!).Matrix = this.schematicsMatrix;
         ((MatrixTransform)this.SchematicsHoverHighlightsOverlay.RenderTransform!).Matrix = this.schematicsMatrix;
         ((MatrixTransform)this.SchematicsLabelEditorOverlay.RenderTransform!).Matrix = this.schematicsMatrix;

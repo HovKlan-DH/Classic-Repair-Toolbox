@@ -341,10 +341,10 @@ namespace CRT
                 {
                     FontSize = 11,
                     FontWeight = FontWeight.SemiBold,
-                    Foreground = Brushes.IndianRed,
                     TextWrapping = TextWrapping.Wrap,
                     IsVisible = false
                 };
+                Handlers.Theming.ThemeResources.PaintFail(this.thisDiscarded);
                 this.thisContent.Children.Add(this.thisDiscarded);
 
                 this.Row = row;

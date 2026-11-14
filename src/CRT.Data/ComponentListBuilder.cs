@@ -88,6 +88,57 @@ namespace Handlers.DataHandling
     public static class ComponentListBuilder
     {
         // ###########################################################################################
+        // *** WHICH ROWS OF A LIST MADE AGAIN ARE THE COMPONENTS HELD SELECTED - every restore of Main's selection goes by it
+        // (Main.SelectInComponentList). *** A row whose key is held, and the rows of the LABEL of a key no row has any more:
+        // a key holds the component's names and its region, so its names changed on the Contribute tab since it was held
+        // (code review, 2026-11-09), or the list is of the other region (owner report, 2026-11-13: "when I ... have selected
+        // one component in the component list, and I then change region, then it deselects that component") - a component
+        // told apart per region has a row, and a key, in each. It is the same component either way. One with no row in the
+        // list now has nothing to select. In ONE place since code review, 2026-11-13: the region's fallback stood beside
+        // the region switch alone, and the selection held across a load (Main._selectionToKeep) lost the component.
+        // ###########################################################################################
+        public static List<int> RowsToSelect(IReadOnlyList<ComponentListItem> rows, IEnumerable<string> selectedKeys)
+        {
+            ArgumentNullException.ThrowIfNull(rows);
+            ArgumentNullException.ThrowIfNull(selectedKeys);
+
+            var held = new HashSet<string>(selectedKeys, StringComparer.OrdinalIgnoreCase);
+            var present = new HashSet<string>(rows.Select(row => row.SelectionKey), StringComparer.OrdinalIgnoreCase);
+            var labelsGone = new HashSet<string>(
+                held.Where(key => !present.Contains(key)).Select(ComponentListBuilder.LabelOf).Where(label => label.Length > 0),
+                StringComparer.OrdinalIgnoreCase);
+
+            var indexes = new List<int>();
+
+            for (int i = 0; i < rows.Count; i++)
+            {
+                if (held.Contains(rows[i].SelectionKey) || (labelsGone.Count > 0 && labelsGone.Contains(rows[i].BoardLabel)))
+                {
+                    indexes.Add(i);
+                }
+            }
+
+            return indexes;
+        }
+
+        // ###########################################################################################
+        // A ROW'S KEY (ComponentListItem.SelectionKey): its label, friendly name, technical name and region, joined by U+001F
+        // so a field holding a pipe or a space keeps it unique. Made by BuildComponentItems and read apart HERE alone (code
+        // review, 2026-11-13: three places split it, each with its own idea of the layout).
+        // ###########################################################################################
+        private const char KeySeparator = '\u001F';
+
+        public static string LabelOf(string? selectionKey) => (selectionKey ?? string.Empty).Split(ComponentListBuilder.KeySeparator)[0];
+
+        // Its friendly and technical names - empty for a key without them.
+        public static (string Friendly, string Technical) NamesOf(string? selectionKey)
+        {
+            string[] parts = (selectionKey ?? string.Empty).Split(ComponentListBuilder.KeySeparator);
+
+            return (parts.Length > 1 ? parts[1] : string.Empty, parts.Length > 2 ? parts[2] : string.Empty);
+        }
+
+        // ###########################################################################################
         // Returns the distinct component categories in first-seen order, ignoring blank ones.
         // ###########################################################################################
         public static List<string> BuildDistinctCategories(BoardData boardData)
@@ -155,7 +206,7 @@ namespace Handlers.DataHandling
                 {
                     BoardLabel = boardLabel,
                     DisplayText = displayString,
-                    SelectionKey = string.Join("\u001F",
+                    SelectionKey = string.Join(ComponentListBuilder.KeySeparator,
                         boardLabel,
                         component.FriendlyName?.Trim() ?? string.Empty,
                         component.TechnicalNameOrValue?.Trim() ?? string.Empty,

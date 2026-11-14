@@ -447,6 +447,28 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
   **Size an overlay by the window, never `OverlayLayer.Bounds`**: a layer nothing has used yet has no size until laid out.
   **A style for an icon goes by a class of the icon's own,
   never "this control's TextBlocks"**: a tooltip is a child of its control, and read as Font Awesome's symbols.
+  **The picker's list is built when it FIRST OPENS** (2026-11-13, measured): Avalonia's template built a whole copy of the
+  `ColorView` in every picker's flyout, opened or not, so App.axaml's `ColorPicker` style sets Avalonia's template less that
+  copy (12.1.4's, the same in 12.1.6 outside the flyout; compare it with Avalonia's ColorPicker.xaml when Avalonia is updated -
+  what changes INSIDE the flyout reaches CRT by itself, as the list is a real `ColorView`) and `ColorPickerDropper` fills the flyout as it opens -
+  a `ColorView` with the copy's resources, the dropper under it. `ColorPickerDropper.Of` builds it as opening does.
+- **A list in the component pane that can grow long builds only the rows in view** (2026-11-13, measured on the owner's boards:
+  "Board: Schematic images" of the Open128-2, 25 cards, 1.9 s -> 0.3 s; U19's "Oscilloscope baseline", 81 rows, 1.9 s -> 0.15 s):
+  `Classes="RowsInView"` (CRT's `RowsInViewPanel`, a `VirtualizingStackPanel`, inside the page's own scroll viewer; the "Overview"
+  tab's list too). **So a row out of view has no controls**:
+  code reaching into a row (`ContainerFromItem`) gets null for one, and a test reaching a row's controls brings it into view first.
+  Rows are views of their row objects - bindings only, never state wired up in code - as a row made again shows another item.
+  **`RowsInViewPanel` does what Avalonia 12.1.6's panel does not for rows typed in** (code reviews, 2026-11-13 and 2026-11-14,
+  read from Avalonia's source): the row with the keyboard stays made as it scrolls away, and is brought into view before the focus
+  moves inside it (Avalonia let go of it the moment its TabOnceActiveElement moved to the next box); **and Tab goes by ROW NUMBER**
+  (`ICustomKeyboardNavigation`): Avalonia tabs in the order of the panel's children, and a row made again is added at their end, so
+  scrolled down and back up Tab went from row 19 to row 18. A new list of editors that makes only the rows in view uses it - an
+  `ItemsControl` with the class, never a `VirtualizingStackPanel` of its own ("Other nets" was one, and lost the box typed in).
+  **A column the rows share (`SharedSizeGroup`) that a row's words widen is sized by a `ColumnSizer` in its heading** - an invisible
+  list of everything any row can show there ("Applies to"'s choices, the pins' nets), filled in code: a shared Auto column counts
+  only the rows made, and widened and narrowed as the page scrolled.
+  "KiCad: Files" draws each list's badges itself (`BadgeCloud`, `BadgeCloudGeometry` - one control for ~1,150 badges on the
+  Open128-2, 0.39 s -> 0.11 s), its tests reading `BadgesForTests`, never a Border per badge.
 - **A sentence says its own bold pieces as `<b>...</b>`** (2026-11-03; `BoldRuns.ShowMarked`, the one parser - `Marked`,
   `Plain` for a test) wherever a wording class holds no control: Board status's explanations, the picture tools' help (the keys in
   bold), the KiCad summary. A block showing one has `Text == null` - read it with `BoldRuns.TextOf`.
@@ -476,7 +498,26 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
   resets. Everything else is plain (Cancel, Close, Browse, Open, Clear a selection, Sign in/out). The
   colour is the CLASS, never brushes on the button. A card's or a floating button's "stays green under
   the pointer" style names `.Accept` in its selector. **Machine-checked:** `ButtonColourTests` (markup);
-  a button labelled in code carries the class and its own test checks it.
+  a button labelled in code carries the class and its own test checks it. (The red is a shade deeper than
+  IndianRed itself since 2026-11-12, `#BC5454`, and the green `#497F54` - below.)
+- **EVERY THEME COLOR READS ON ITS GROUND, IN ALL THREE THEMES** (owner request, 2026-11-12: "check all colors
+  and make sure they have a nice discrete complementary color in a nice visible contrast ratio"): text at WCAG's
+  4.5:1, an input's edge or a mark at 3:1, in "Light", "Dark" and "User preference" (the light theme with
+  `UserSettings.UserThemeDefaultColors` over it, its ground a tinted `#E0E4D9`). **`ThemeContrastTests` lists every
+  pair** - a new text color, or one drawn on a new ground, gets its pair there. **A color set in CODE that the theme
+  should decide is `ThemeResources.Paint`** (bound, so it follows a theme switch; **let go of with `ThemeResources.Unpaint`,
+  never `ClearValue` or an assignment** - in Avalonia 12.1.4 neither ends the binding, and the next theme switch painted it
+  again; code review, 2026-11-13) - never a fixed `Brushes.X`, which
+  kept IndianRed, SeaGreen and SteelBlue in every theme; **words on a color the theme or the user picks are
+  `ThemeResources.TextOn`** (white or black, `RegionColors.ContrastText`'s rule) - the dark theme's worklog colors are
+  light enough to read as a pill's text, so their badges write black. **A button keeps its color under the pointer and
+  pressed, a shade deeper** (`Button_Hover_Bg`, `Button_Ok_Hover_Bg`, `Button_Cancel_Hover_Bg` and their `_Pressed_`;
+  Fluent's look REPLACED the fill - a green button went grey with black words), a Transparent one keeps Fluent's faint
+  wash, a toggle and a drop-down button look as a button does (`ButtonStatesTests`). Every input - TextBox, the filter
+  and number boxes, `RichNoteTextBox` - has `Form_Bg`, `Form_Fg` and `Form_Border`; every window the `Bg` ground. The
+  light theme's accent is CRT's `#2A78D6`, never the one Windows is set to. **A "User preference" default that moves
+  goes in `UserSettings.UserThemeEarlierDefaults`**, so a stored color still at the old default follows it and one the
+  user picked stays.
 - **Everything only the administrator can use carries Font Awesome's padlock** (owner rule,
   2026-10-04): `<TextBlock Classes="AdminLock" Text="&#xf023;" />` right after its name, NO tooltip,
   and the entry hidden from everybody else. Today that is the Maintainer tab's "Management" screen, whose
@@ -832,8 +873,10 @@ sheet (CRT.Data's `BoardTableSheetParts`, below). A component picked with "Table
 on (`GoToRowsOfComponent`). **A pill or a search moving the table moves the entry** (`SheetShown`), and turns off the entries it shows nothing of,
 as such a sheet's tab went (`ShowTableEntriesEnabled`) - **the five that are no sheet too, which neither looks in** (owner request, 2026-11-07;
 `BoardTableEditor.IsFilteredByPillsOrSearch`); turned off, an entry is faded with no grey behind it. **What opens a page with a table of its own is the "UI" view, however it was asked for**
-("Edit component", `OpenPaneOnDraftAsync`), **and a table opened from elsewhere the "Table" view** ("Show in the table", Submit on a draft
-with errors, `OpenTableOnDraftAsync`). The tab's lists
+("Edit component", `OpenPaneOnDraftAsync`), **and a table opened from elsewhere the "Table" view** ("Show in the table",
+`OpenTableOnDraftAsync`). **Submit on a draft with errors stays in the view picked and goes to the FIRST error** (owner request,
+2026-11-13: "use the current view as-is, and then navigate to the problem"; `ShowErrorsBeforeSubmitAsync`, the first by
+`ContributeProblems.FirstError`, opened as its "Open [U7]" opens it - in "Table" the cursor on its cell). The tab's lists
 are ONE collection each, changed in place (`InPlaceList.Sync`, never inside itself: a category that goes is a selection changed while it
 is changing, which nobody chose - `IsReadingComponentLists`) - replaced, the list scrolled to its top and let go
 of its selection after every save, **and with the list's own scrolling off while they change** (`ReadComponentLists`, owner report, 2026-11-04: every row put in above the selection moved its index and asked to be scrolled to it, 392 scrolls for 399 rows, seen as the list scrolling down slowly; it comes back to the selection once, only when that moved); a selection set from code to follow the pane opens nothing
@@ -2158,8 +2201,8 @@ value in its tooltip), red + strike-through deleted, shown where the row used to
   no row is a line above the table. Duplicates are WARNINGS (owner decision 2026-10-03), marked on every
   row of the set; a save drops no row since 2026-11-01 (an important signal missing a half was the one,
   a warning; `BoardTableRowState.Incomplete` went with it, `BoardWorkbookSchemaTests` holding that no
-  mapper drops a row with any text in it) - a field a row needs is an error (`BoardRowRequired`). Submit on a draft with errors sends nothing and opens
-  its table on them. One warning is the table's alone (the Everything scope, never the server's;
+  mapper drops a row with any text in it) - a field a row needs is an error (`BoardRowRequired`). Submit on a draft with errors sends nothing and goes to
+  the first of them in the view picked (above). One warning is the table's alone (the Everything scope, never the server's;
   2026-10-25, since unfinished work is saved): `image.not_displayable`.
 - **The search box** (`BoardTableSearch`, the Workbooks tab's `WorklogSearchQuery` grammar, every
   cell): decided ONCE when typed; a search finding nothing anywhere keeps only the current sheet with
@@ -2558,6 +2601,17 @@ interactive KiCad overlay, user-drawn traces), the label editor, and the MiniPro
 "Add worklog" starts area-marking mode; the drag opens the full editor on the drawn area (there is no
 quick card). **Find the right partial here before grepping** (the map is repeated in
 `TabSchematics.axaml.cs`):
+
+**ROOM ROUND THE IMAGE, SO ITS BADGES COVER NONE OF IT** (owner request, 2026-11-13: "fully visible and not so close to the top
+that its info badges blocks something ... the cropped one ... with some padding to its borders ... the "original" one is displayed
+as-is today"; every rule `ImageFrameGeometry`): the first view, and the furthest it zooms out, leave 44 above and 16 at the other
+sides - above topped up to that, at a side only where the image has no empty border of its own (`BlankBorder`, its rows and columns
+of one color from edge to edge, read off its pixels as it is decoded - `BlankBorderOf`; the owner's own padded images draw as they
+always did). **The image stands inside that frame in a layer as large as the overlays** (`SchematicsImageHost` carries the view's
+matrix, the image its Margin), **and EVERY content rect takes the same frame**: the tab's `GetImageContentRect`, and each overlay's
+`RectGeometry.GetImageContentRect(size, pixels, ContentFrame)` - a new overlay drawing on the image takes `ContentFrame` too, set in
+`ApplyImageFrame`, or it draws beside the image. The frame is rounded to the screen's pixels as layout rounds a Margin. The headless
+platform keeps no pixels, so a test hands the border over (`ShowImageForTests`).
 
 | File | Owns |
 | --- | --- |
@@ -3538,9 +3592,11 @@ Versioning lives in [CRT.App.csproj](../src/CRT.App/CRT.App.csproj) (`AssemblyVe
 MAJOR.MINOR, stops the turn: run `dotnet list Classic-Repair-Toolbox.slnx package --outdated`, advise
 the project owner package by package, and update nothing until they say which.
 **A package reference that only raises what another package brings in carries `PinnedOver="<that
-package>"`** (2026-10-14: EPPlus 8.7.1 asks for System.Security.Cryptography.Pkcs/.Xml 10.0.10, which
-known vulnerabilities cover, and a known vulnerability stops a Release restore - so CRT.Data pins both
-at 10.0.13). `PinnedPackagesTests` fails once that package requires the pinned version itself, no
+package>"`** (2026-10-14: EPPlus 8.7.1 asked for System.Security.Cryptography.Pkcs/.Xml 10.0.10, which
+known vulnerabilities cover, and a known vulnerability stops a Release restore - so CRT.Data pinned both
+at 10.0.13, until EPPlus 8.7.2 asked for 10.0.13 itself and the pins went, 2026-11-13; none is left).
+**EPPlus stays though no board is Excel in 4.0**: a 3.x user's Excel drafts and own scope models are converted
+at launch, and `convert-data-tree` reads the Excel trees. `PinnedPackagesTests` fails once that package requires the pinned version itself, no
 longer brings it in, or is no longer referenced - then delete the line. A pin LOWER than something
 else needs is NuGet's NU1605, a build error, so a stale pin can never hold a version down quietly.
 Releases are made by hand from the GitHub Actions tab - run

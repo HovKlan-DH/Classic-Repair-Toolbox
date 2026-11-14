@@ -45,7 +45,7 @@
         <TextBlock DockPanel.Dock="Top"
                    x:Name="SwitchedOffText"
                    TextWrapping="Wrap"
-                   Foreground="IndianRed"
+                   Foreground="{DynamicResource Text_Fail_Fg}"
                    IsVisible="False"
                    Margin="0,0,0,12" />
 

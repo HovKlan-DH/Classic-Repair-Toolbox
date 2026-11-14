@@ -442,6 +442,12 @@ namespace CRT
         // rather than as a stripe next to some text.
         public IBrush StatusTextBrush => this.StatusAccentBrush;
 
+        // The words of a "New" badge filled with the status colour: white or black, whichever reads on it (always white until
+        // 2026-11-12 - the dark theme's green and amber took it at 2:1).
+        public IBrush StatusAccentTextBrush => this.StatusAccentBrush is ISolidColorBrush accent
+            ? Handlers.Theming.ThemeResources.TextOn(accent.Color)
+            : Brushes.White;
+
         // ###########################################################################################
         // A faint fill so each card reads as a panel against the window (owner request).
         //

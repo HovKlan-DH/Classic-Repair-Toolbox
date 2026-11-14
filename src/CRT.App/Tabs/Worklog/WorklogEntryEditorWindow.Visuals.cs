@@ -103,7 +103,11 @@ namespace CRT
             this.ApplyCategoryChipVisualState(this.EditorCategoryCosmeticChip, this.EditorCategoryCosmeticText, this.EditorCategoryCosmeticIcon, "Cosmetic");
             this.ApplyCategoryChipVisualState(this.EditorCategoryIssueChip, this.EditorCategoryIssueText, this.EditorCategoryIssueIcon, "Issue");
 
-            this.EditorIdBadge.Background = new SolidColorBrush(this.ResolveCategoryColor(this.thisSelectedCategory));
+            Color badgeColor = this.ResolveCategoryColor(this.thisSelectedCategory);
+            this.EditorIdBadge.Background = new SolidColorBrush(badgeColor);
+
+            // White or black, whichever reads on the category's color (White in the markup until 2026-11-12).
+            this.EditorIdText.Foreground = ThemeResources.TextOn(badgeColor);
         }
 
         // The icon takes the label's colour rather than a colour of its own - white on the selected
@@ -119,7 +123,8 @@ namespace CRT
                 chip.BorderBrush = categoryBrush;
                 chip.BorderThickness = new Thickness(2);
                 chip.Opacity = 0.9;
-                label.Foreground = Brushes.White;
+                // White or black, whichever reads on the category's color (always white until 2026-11-12).
+                label.Foreground = categoryBrush is ISolidColorBrush categoryFill ? ThemeResources.TextOn(categoryFill.Color) : Brushes.White;
                 label.FontWeight = FontWeight.SemiBold;
                 icon.Foreground = label.Foreground;
             }
@@ -188,8 +193,9 @@ namespace CRT
                 pill.BorderBrush = stateBrush;
                 pill.BorderThickness = new Thickness(2);
                 pill.Opacity = 0.9;
-                icon.Foreground = Brushes.White;
-                label.Foreground = Brushes.White;
+                // White or black, whichever reads on the state's color (always white until 2026-11-12).
+                label.Foreground = stateBrush is ISolidColorBrush stateFill ? ThemeResources.TextOn(stateFill.Color) : Brushes.White;
+                icon.Foreground = label.Foreground;
                 label.FontWeight = FontWeight.SemiBold;
             }
             else

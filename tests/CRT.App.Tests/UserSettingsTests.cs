@@ -1163,6 +1163,109 @@ public sealed class UserSettingsTests : IDisposable
         Assert.True(colors.ContainsKey("Thumbnail_Border"));
     }
 
+    // A color still at an EARLIER default was never picked by anybody, so it follows the default as it is now (2026-11-12,
+    // the theme color review: white on LightBlue was 1.5:1, white on IndianRed 4:1) - in any capitals, as typed by hand.
+    [Fact]
+    public void A_theme_colour_still_at_an_earlier_default_follows_the_default_now()
+    {
+        this.LoadSettings("""{"userThemeColors": {"Form_Selected_Fg": "White", "Button_Cancel_Bg": "indianred", "Button_Ok_Bg": " #4F8A5B "}}""");
+
+        var colors = UserSettings.GetUserThemeColors();
+
+        Assert.Equal("Black", colors["Form_Selected_Fg"]);
+        Assert.Equal("#BC5454", colors["Button_Cancel_Bg"]);
+        Assert.Equal("#497F54", colors["Button_Ok_Bg"]);
+    }
+
+    // ###########################################################################################
+    // The defaults are followed ONCE (code review, 2026-11-13): the colors are typed into the file by hand, so somebody who
+    // wants the old look writes the old default back - and at every launch and every "Reload" it was taken from them again.
+    // The file says how far it has followed (userThemeDefaultsRevision), and a file that has followed keeps what is typed.
+    // ###########################################################################################
+    [Fact]
+    public void A_theme_colour_typed_back_to_an_earlier_default_after_following_it_stays()
+    {
+        string path = this.LoadSettings("""{"userThemeColors": {"Button_Cancel_Bg": "IndianRed"}}""");
+        Assert.Equal("#BC5454", UserSettings.GetUserThemeColors()["Button_Cancel_Bg"]);
+
+        // The file as saved, the old default typed back in by hand - then launched again, and "Reload" pressed.
+        string saved = File.ReadAllText(path);
+        Assert.Contains("\"userThemeDefaultsRevision\"", saved);
+        File.WriteAllText(path, saved.Replace("\"#BC5454\"", "\"IndianRed\"", StringComparison.Ordinal));
+
+        UserSettings.LoadFrom(path);
+        Assert.Equal("IndianRed", UserSettings.GetUserThemeColors()["Button_Cancel_Bg"]);
+
+        UserSettings.ReloadUserThemeColors();
+        Assert.Equal("IndianRed", UserSettings.GetUserThemeColors()["Button_Cancel_Bg"]);
+    }
+
+    // ###########################################################################################
+    // "Reload" reads the colors AND how far they followed from the same file (code review, 2026-11-14): it read the colors
+    // and kept the revision in memory. A launch that followed but could not save - the file held by a sync tool - left the
+    // file at the earlier default with no revision; reloaded, white on LightBlue came back and was never followed that run.
+    // Here the file is put back as it was before the launch's save, as a save that never landed leaves it.
+    // ###########################################################################################
+    [Fact]
+    public void Reloading_the_theme_colours_follows_a_default_the_file_has_not_followed_yet()
+    {
+        const string Before = """{"userThemeColors": {"Form_Selected_Fg": "White"}}""";
+
+        string path = this.LoadSettings(Before);
+        Assert.Equal("Black", UserSettings.GetUserThemeColors()["Form_Selected_Fg"]);
+
+        File.WriteAllText(path, Before);
+
+        UserSettings.ReloadUserThemeColors();
+
+        Assert.Equal("Black", UserSettings.GetUserThemeColors()["Form_Selected_Fg"]);
+    }
+
+    // ###########################################################################################
+    // A color is followed only while what it reads against is still the theme's (code review, 2026-11-13): white words on a
+    // navy selection the user picked were never "the default as it stood", and moved to black they read 1.6:1. So a text
+    // keeps its old default on a ground the user changed - and a ground keeps it under words the user changed.
+    // ###########################################################################################
+    [Fact]
+    public void A_theme_colour_at_an_earlier_default_stays_where_what_it_reads_against_was_picked()
+    {
+        this.LoadSettings("""{"userThemeColors": {"Form_Selected_Fg": "White", "Form_Selected_Bg": "#003366", "Button_Cancel_Bg": "IndianRed", "Button_Cancel_Fg": "Black", "Text_Fail_Fg": "IndianRed"}}""");
+
+        var colors = UserSettings.GetUserThemeColors();
+
+        Assert.Equal("White", colors["Form_Selected_Fg"]);
+        Assert.Equal("IndianRed", colors["Button_Cancel_Bg"]);
+
+        // Its ground still the theme's, the red text follows as before.
+        Assert.Equal("#B53535", colors["Text_Fail_Fg"]);
+    }
+
+    // Any other color is the user's own - an earlier default of ANOTHER key included - and stays.
+    [Fact]
+    public void A_theme_colour_the_user_picked_stays_though_a_default_moved()
+    {
+        this.LoadSettings("""{"userThemeColors": {"Form_Selected_Fg": "#202020", "Button_Cancel_Bg": "#4F8A5B", "Bg": "IndianRed"}}""");
+
+        var colors = UserSettings.GetUserThemeColors();
+
+        Assert.Equal("#202020", colors["Form_Selected_Fg"]);
+        Assert.Equal("#4F8A5B", colors["Button_Cancel_Bg"]);
+        Assert.Equal("IndianRed", colors["Bg"]);
+    }
+
+    // The colors a fresh "User preference" theme starts from: what the light theme draws now, never the old defaults.
+    [Fact]
+    public void A_new_user_preference_theme_starts_from_the_colours_held_to_contrast()
+    {
+        this.LoadSettings("{}");
+
+        var colors = UserSettings.GetUserThemeColors();
+
+        Assert.Equal("Black", colors["Form_Selected_Fg"]);
+        Assert.Equal("#B53535", colors["Text_Fail_Fg"]);
+        Assert.False(colors.ContainsKey("ComponentPopup_BulletList_Fg"));
+    }
+
     [Fact]
     public void IsUserThemeColorResourceKey_only_matches_the_four_trace_palette_colours()
     {

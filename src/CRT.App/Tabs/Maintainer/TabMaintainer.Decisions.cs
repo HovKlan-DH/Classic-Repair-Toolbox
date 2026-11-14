@@ -287,14 +287,7 @@ namespace CRT
 
         private void ShowDecisionMessage(string? message, bool isError)
         {
-            var text = this.FindControl<TextBlock>("DecisionMessageText");
-
-            if (text is null)
-                return;
-
-            text.Text = message ?? string.Empty;
-            text.IsVisible = !string.IsNullOrWhiteSpace(message);
-            text.Foreground = isError ? Brushes.IndianRed : Brushes.SeaGreen;
+            WindowMessage.ShowOutcome(this.FindControl<TextBlock>("DecisionMessageText"), message, isError);
         }
 
         // ###########################################################################################

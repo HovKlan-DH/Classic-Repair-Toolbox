@@ -40,6 +40,11 @@ namespace Handlers.Theming
         // filled with the entry's category colour, and a state-coloured disc on that would put two
         // saturated colours against each other with the glyph lost between them. White separates the
         // two and lets the padlock itself carry the state.
+        //
+        // WHITE, OR BLACK where white would not read (2026-11-12, the theme color review): the "#N" is
+        // ThemeResources.TextOn the category's color, and the disc TextOn the state's - the dark theme's
+        // categories are light enough to read as a pill's text there, and took white at 2:1 to 3:1. The
+        // light theme's are dark, so they keep white.
         // ###########################################################################################
         public static Border Build(WorklogEntryRecord entry, Color categoryColor, Color stateColor)
         {
@@ -48,7 +53,7 @@ namespace Handlers.Theming
                 Text = $"#{entry.Id}",
                 FontSize = 11,
                 FontWeight = FontWeight.Bold,
-                Foreground = Brushes.White,
+                Foreground = ThemeResources.TextOn(categoryColor),
                 VerticalAlignment = VerticalAlignment.Center
             };
 
@@ -77,7 +82,7 @@ namespace Handlers.Theming
                 Width = 16,
                 Height = 16,
                 CornerRadius = new CornerRadius(8),
-                Background = Brushes.White,
+                Background = ThemeResources.TextOn(stateColor),
                 VerticalAlignment = VerticalAlignment.Center,
                 Child = stateIcon
             };

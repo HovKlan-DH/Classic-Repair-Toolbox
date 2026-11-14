@@ -181,7 +181,7 @@ namespace Tabs.TabSchematics
                     contentRect.X + (pill.PixelCenter.X * sx),
                     contentRect.Y + (pill.PixelCenter.Y * sy));
 
-                placed.Add((pill, center, this.BuildPillText(pill.EntryId)));
+                placed.Add((pill, center, this.BuildPillText(pill)));
             }
 
             if (parked != null)
@@ -218,7 +218,7 @@ namespace Tabs.TabSchematics
 
             foreach (var pill in parked)
             {
-                var text = this.BuildPillText(pill.EntryId);
+                var text = this.BuildPillText(pill);
                 texts.Add(text);
                 sizes.Add(MeasurePill(text));
             }
@@ -285,14 +285,16 @@ namespace Tabs.TabSchematics
             context.DrawText(formattedText, textOrigin);
         }
 
-        private FormattedText BuildPillText(int entryId) =>
+        // The "#N" in white or black, whichever reads on the pill's color (always white until 2026-11-12 - the dark theme's
+        // lighter categories took it at 2:1 to 3:1).
+        private FormattedText BuildPillText(Pill pill) =>
             new(
-                $"#{entryId.ToString(CultureInfo.InvariantCulture)}",
+                $"#{pill.EntryId.ToString(CultureInfo.InvariantCulture)}",
                 CultureInfo.InvariantCulture,
                 FlowDirection.LeftToRight,
                 new Typeface(FontFamily.Default, FontStyle.Normal, FontWeight.Bold),
                 this.FontSize,
-                Brushes.White);
+                Handlers.Theming.ThemeResources.TextOn(pill.Color));
 
         private static Size MeasurePill(FormattedText text) =>
             new(text.Width + (PillPaddingX * 2), text.Height + (PillPaddingY * 2));

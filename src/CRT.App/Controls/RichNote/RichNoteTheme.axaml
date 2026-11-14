@@ -4,7 +4,8 @@
 
 	<!-- ###########################################################################################
 	     THE LOOK OF A RichNoteTextBox (owner request, 2026-11-07: "a very simple WYSIWYG ... see it directly in the
-	     text"): Avalonia 12.1.4's own Fluent TextBox theme (Avalonia.Themes.Fluent/Controls/TextBox.xaml, copied whole,
+	     text"): Avalonia 12.1.4's own Fluent TextBox theme - the same in 12.1.6, compared 2026-11-13 -
+	     (Avalonia.Themes.Fluent/Controls/TextBox.xaml, copied whole,
 	     its states included, so the box looks and behaves as every other box of CRT) with two differences:
 	       - its presenter is RichNoteTextPresenter, which draws each character in its style;
 	       - a row of five small buttons over the text - bold, italic, underline, struck through, bullets - Font Awesome's
@@ -12,6 +13,10 @@
 	     A theme of its own, not BasedOn Fluent's: a StaticResource to a theme in FluentTheme is not found from a
 	     dictionary merged into App's resources while it loads. When Avalonia is updated, compare this with its
 	     TextBox.xaml again.
+	     ITS GROUND, TEXT AND EDGE ARE CRT'S, AS EVERY OTHER BOX'S ARE (App.axaml's "TextBox" style; 2026-11-12, the theme
+	     color review): Form_Bg, Form_Fg and Form_Border, the ground the same under the pointer and while typed in - with
+	     Fluent's, a note was half-transparent beside a plain box in the dark and "User preference" themes. The edge under
+	     the pointer, focused and in error stays Fluent's, as a plain box's does.
 	     ########################################################################################### -->
 
 	<ControlTheme x:Key="RichNoteFormatButton" TargetType="Button">
@@ -21,7 +26,7 @@
 		<Setter Property="Padding" Value="4,1" />
 		<Setter Property="MinWidth" Value="22" />
 		<Setter Property="Cursor" Value="Hand" />
-		<Setter Property="Foreground" Value="{DynamicResource TextControlForeground}" />
+		<Setter Property="Foreground" Value="{DynamicResource Form_Fg}" />
 		<Setter Property="FontFamily" Value="{DynamicResource FontAwesomeSolid}" />
 		<Setter Property="FontSize" Value="11" />
 		<Setter Property="Template">
@@ -54,10 +59,10 @@
 	</ControlTheme>
 
 	<ControlTheme x:Key="{x:Type local:RichNoteTextBox}" TargetType="local:RichNoteTextBox">
-		<Setter Property="Foreground" Value="{DynamicResource TextControlForeground}" />
-		<Setter Property="Background" Value="{DynamicResource TextControlBackground}" />
-		<Setter Property="CaretBrush" Value="{DynamicResource TextControlForeground}" />
-		<Setter Property="BorderBrush" Value="{DynamicResource TextControlBorderBrush}" />
+		<Setter Property="Foreground" Value="{DynamicResource Form_Fg}" />
+		<Setter Property="Background" Value="{DynamicResource Form_Bg}" />
+		<Setter Property="CaretBrush" Value="{DynamicResource Form_Fg}" />
+		<Setter Property="BorderBrush" Value="{DynamicResource Form_Border}" />
 		<Setter Property="SelectionBrush" Value="{DynamicResource TextControlSelectionHighlightColor}" />
 		<Setter Property="PlaceholderForeground" Value="{DynamicResource TextControlPlaceholderForeground}" />
 		<Setter Property="BorderThickness" Value="{DynamicResource TextControlBorderThemeThickness}" />
@@ -176,18 +181,18 @@
 
 		<!-- PointerOver State -->
 		<Style Selector="^:pointerover">
-			<Setter Property="Foreground" Value="{DynamicResource TextControlForegroundPointerOver}" />
+			<Setter Property="Foreground" Value="{DynamicResource Form_Fg}" />
 			<Style Selector="^ /template/ Border#PART_BorderElement">
 				<Setter Property="BorderBrush" Value="{DynamicResource TextControlBorderBrushPointerOver}" />
-				<Setter Property="Background" Value="{DynamicResource TextControlBackgroundPointerOver}" />
+				<Setter Property="Background" Value="{DynamicResource Form_Bg}" />
 			</Style>
 		</Style>
 
 		<!-- Focused State -->
 		<Style Selector="^:focus">
-			<Setter Property="Foreground" Value="{DynamicResource TextControlForegroundFocused}" />
+			<Setter Property="Foreground" Value="{DynamicResource Form_Fg}" />
 			<Style Selector="^ /template/ Border#PART_BorderElement">
-				<Setter Property="Background" Value="{DynamicResource TextControlBackgroundFocused}" />
+				<Setter Property="Background" Value="{DynamicResource Form_Bg}" />
 				<Setter Property="BorderBrush" Value="{DynamicResource TextControlBorderBrushFocused}" />
 				<Setter Property="BorderThickness" Value="{DynamicResource TextControlBorderThemeThicknessFocused}" />
 			</Style>

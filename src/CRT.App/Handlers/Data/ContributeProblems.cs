@@ -208,6 +208,22 @@ namespace Handlers.DataHandling
                 : $"Row {(problem.Index + 1).ToString(CultureInfo.InvariantCulture)}: {problem.Message}";
         }
 
+        // ###########################################################################################
+        // THE ERROR SUBMIT GOES TO (owner request, 2026-11-13: "use the current view as-is, and then navigate to the problem.
+        // If it has multiple problems, then just go to the first problem"): the first in the left column's order - the
+        // ContributeEntry enum's, top to bottom - and on one entry the first as the checks found it. Null with no error;
+        // a warning never stops a submit, so it is never where Submit goes.
+        // ###########################################################################################
+        public static EntryProblem? FirstError(IEnumerable<EntryProblem> placed)
+        {
+            ArgumentNullException.ThrowIfNull(placed);
+
+            return placed
+                .Where(item => item.Problem.Level == BoardProblemLevel.Error)
+                .OrderBy(item => (int)item.Entry)
+                .FirstOrDefault();
+        }
+
         // What a page shows of what is on it: on a component's page with components selected, theirs alone - one, or the
         // several edited as one (owner request, 2026-11-08).
         public static List<EntryProblem> OnEntry(IEnumerable<EntryProblem> placed, ContributeEntry entry, IReadOnlyCollection<string> selected)
@@ -319,6 +335,25 @@ namespace Handlers.DataHandling
         // Past what the panel lists.
         public static string More(int notListed) =>
             $"And {notListed.ToString(CultureInfo.InvariantCulture)} more - \"Table\" marks every one on its cell.";
+
+        // ###########################################################################################
+        // Said on the tab's line when Submit stopped on errors with the "UI" view on (FirstError): nothing was sent, the first
+        // is open below, and the badges say where the rest are. The "Table" view says it over the table
+        // (BoardTableProblemWording.SubmitBlocked).
+        // ###########################################################################################
+        public static string SubmitBlocked(int errors, bool firstShown = true) =>
+            BoardTableProblemWording.ErrorsToFix(errors) + " " +
+            (!firstShown
+                ? "The red badges on the left say where they are."
+                : errors == 1
+                    ? "It is shown below."
+                    : "The first is shown below, and the red badges on the left say where the others are.");
+
+        // The same, for a draft whose board is not the one shown - nothing was opened, so nothing is "shown below" (code
+        // review, 2026-11-13): it names the board, and where to see them.
+        public static string SubmitBlockedOf(string hardware, string board, int errors) =>
+            $"Nothing was sent: the draft of {hardware} / {board} has {ContributeProblems.Counted(errors, "error", "errors")} to fix " +
+            "before it can be submitted. Choose that board to see where they are.";
 
         // What a badge in the left column says under the pointer.
         public static string ErrorsTip(int errors) => $"{ContributeProblems.Counted(errors, "error", "errors")} here - to fix before the draft can be submitted";

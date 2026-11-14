@@ -55,7 +55,7 @@ public sealed class KiCadDataPanelTests : IDisposable
 
     // The references one of the report's badge lists is showing.
     private static List<string> ItemsOf(KiCadDataPanel panel, string name) =>
-        (panel.GetControl<ItemsControl>(name).ItemsSource ?? Array.Empty<string>())
+        (panel.GetControl<BadgeCloud>(name).ItemsSource ?? Array.Empty<string>())
             .Cast<string>()
             .ToList();
 
@@ -202,9 +202,10 @@ public sealed class KiCadDataPanelTests : IDisposable
     // ###########################################################################################
     // *** EACH COMPONENT IS ITS OWN BADGE (owner request, 2026-09-24). ***
     //
-    // Rendered for real (Show, so the WrapPanel realises its containers) and read back off the
-    // visual tree: one ReferenceBadge per reference in EVERY component list, each holding exactly
-    // its own reference. A comma-joined TextBlock - what this replaced - produces no badges at all.
+    // Rendered for real (Show, so each list is laid out) and read back off what each list draws: one
+    // badge per reference in EVERY component list, each holding exactly its own reference, each with a
+    // place of its own. A comma-joined TextBlock - what badges replaced - produces no badges at all. Each
+    // list draws its badges itself since 2026-11-13 (BadgeCloud), not a Border apiece.
     // ###########################################################################################
     [Fact]
     public void Every_component_in_every_list_is_drawn_as_its_own_badge()
@@ -224,15 +225,12 @@ public sealed class KiCadDataPanelTests : IDisposable
             {
                 foreach ((string list, int expected) in new[] { ("MatchedList", 2), ("UnmatchedList", 1), ("UnusedList", 60) })
                 {
-                    List<string> badgeTexts = panel.GetControl<ItemsControl>(list)
-                        .GetVisualDescendants()
-                        .OfType<Border>()
-                        .Where(border => border.Classes.Contains("ReferenceBadge"))
-                        .Select(border => Assert.IsType<TextBlock>(border.Child).Text ?? string.Empty)
-                        .ToList();
+                    var badges = panel.GetControl<BadgeCloud>(list).BadgesForTests;
 
-                    Assert.Equal(expected, badgeTexts.Count);
-                    Assert.Equal(ItemsOf(panel, list), badgeTexts);
+                    Assert.Equal(expected, badges.Count);
+                    Assert.Equal(ItemsOf(panel, list), badges.Select(badge => badge.Text));
+                    Assert.All(badges, badge => Assert.True(badge.Place.Width > 0 && badge.Place.Height > 0));
+                    Assert.Equal(badges.Count, badges.Select(badge => badge.Place).Distinct().Count());
                 }
             }
             finally
@@ -1133,13 +1131,14 @@ public sealed class KiCadDataPanelTests : IDisposable
     }
 
     // ###########################################################################################
-    // *** THE COMPONENTS LEFT TO LABEL ARE INDIANRED (owner request, 2026-10-10: "3 components are
+    // *** THE COMPONENTS LEFT TO LABEL ARE CRT'S RED (owner request, 2026-10-10: "3 components are
     // not labelled yet - please have them highlighted with the (standard?) IndianRed color"). ***
     // The to-do list's badges carry the Todo class, the other lists' do not, and the class's
-    // colours are CRT's IndianRed in both themes.
+    // colours are the Danger button's red in both themes - IndianRed until 2026-11-12, a shade
+    // deeper since, so the white reference on it reads at 4.5:1 (ThemeContrastTests).
     // ###########################################################################################
     [Fact]
-    public void Only_the_components_left_to_label_are_drawn_in_IndianRed()
+    public void Only_the_components_left_to_label_are_drawn_in_the_danger_red()
     {
         UiTest.Run(() =>
         {
@@ -1154,19 +1153,18 @@ public sealed class KiCadDataPanelTests : IDisposable
 
             try
             {
-                List<Border> BadgesOf(string list) => panel.GetControl<ItemsControl>(list)
-                    .GetVisualDescendants().OfType<Border>()
-                    .Where(border => border.Classes.Contains("ReferenceBadge"))
-                    .ToList();
+                List<BadgeCloudKind> BadgesOf(string list) =>
+                    panel.GetControl<BadgeCloud>(list).BadgesForTests.Select(badge => badge.Kind).ToList();
 
                 Assert.Equal(3, BadgesOf("UnusedList").Count);
-                Assert.All(BadgesOf("UnusedList"), badge => Assert.Contains("Todo", badge.Classes));
-                Assert.All(BadgesOf("MatchedList").Concat(BadgesOf("UnmatchedList")), badge => Assert.DoesNotContain("Todo", badge.Classes));
+                Assert.All(BadgesOf("UnusedList"), kind => Assert.Equal(BadgeCloudKind.Todo, kind));
+                Assert.All(BadgesOf("MatchedList").Concat(BadgesOf("UnmatchedList")), kind => Assert.Equal(BadgeCloudKind.Plain, kind));
 
                 foreach (Avalonia.Styling.ThemeVariant theme in new[] { Avalonia.Styling.ThemeVariant.Light, Avalonia.Styling.ThemeVariant.Dark })
                 {
                     Assert.True(Application.Current!.TryGetResource("Draft_ReferenceBadge_Todo_Bg", theme, out object? brush));
-                    Assert.Equal(Avalonia.Media.Colors.IndianRed, ((Avalonia.Media.ISolidColorBrush)brush!).Color);
+                    Assert.True(Application.Current!.TryGetResource("Button_Cancel_Bg", theme, out object? danger));
+                    Assert.Equal(((Avalonia.Media.ISolidColorBrush)danger!).Color, ((Avalonia.Media.ISolidColorBrush)brush!).Color);
                 }
             }
             finally
@@ -1210,7 +1208,7 @@ public sealed class KiCadDataPanelTests : IDisposable
         new() { DisplayName = displayName, KiCadNetName = netName };
 
     private static List<KiCadNetNameBadge> NetBadgesOf(KiCadDataPanel panel) =>
-        (panel.GetControl<ItemsControl>("NetNamesList").ItemsSource ?? Array.Empty<KiCadNetNameBadge>())
+        (panel.GetControl<BadgeCloud>("NetNamesList").ItemsSource ?? Array.Empty<KiCadNetNameBadge>())
             .Cast<KiCadNetNameBadge>()
             .ToList();
 

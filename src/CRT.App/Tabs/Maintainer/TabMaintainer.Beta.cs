@@ -253,14 +253,15 @@ namespace CRT
             // 2026-09-28) - said on the list, before the board is even opened.
             if (row.CarriesDiscardedDraft == true)
             {
-                content.Children.Add(new TextBlock
+                var mark = new TextBlock
                 {
                     Text = DraftDiscardWording.ListMark,
                     FontSize = 11,
                     FontWeight = FontWeight.SemiBold,
-                    Foreground = Brushes.IndianRed,
                     TextWrapping = TextWrapping.Wrap
-                });
+                };
+                Handlers.Theming.ThemeResources.PaintFail(mark);
+                content.Children.Add(mark);
             }
 
             return content;

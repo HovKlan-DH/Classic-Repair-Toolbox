@@ -215,11 +215,30 @@
 					</Grid>
 				</Border>
 
-				<ScrollViewer Grid.Row="1"
-				              VerticalScrollBarVisibility="Visible"
-				              HorizontalScrollBarVisibility="Disabled">
-					<ItemsControl x:Name="OverviewItemsControl"
-					              Background="{DynamicResource Table_Bg}">
+				<!-- ONE VIRTUALIZED LIST (owner report, 2026-11-13: "Changing to the "Overview" tab takes a little time on
+				     large boards"): a row is a dozen controls, and in a ScrollViewer of its own the list built every one of them
+				     as the tab was shown - 400 rows measured at 2.8 s in a headless test, on the UI thread, so no "please wait"
+				     could even be drawn. With the ScrollViewer IN its template and a VirtualizingStackPanel, it builds what is in
+				     view and the rest as it is scrolled to, as the "About" tab's list does (SmallTabsTests). CRT's RowsInViewPanel,
+				     so Tab goes from row to row by number, not by the order the rows were made in (code review, 2026-11-14). -->
+				<ItemsControl x:Name="OverviewItemsControl"
+				              Grid.Row="1"
+				              Background="{DynamicResource Table_Bg}">
+					<ItemsControl.Template>
+						<ControlTemplate>
+							<ScrollViewer Background="{TemplateBinding Background}"
+							              VerticalScrollBarVisibility="Visible"
+							              HorizontalScrollBarVisibility="Disabled">
+								<ItemsPresenter Name="PART_ItemsPresenter"
+								                ItemsPanel="{TemplateBinding ItemsPanel}" />
+							</ScrollViewer>
+						</ControlTemplate>
+					</ItemsControl.Template>
+					<ItemsControl.ItemsPanel>
+						<ItemsPanelTemplate>
+							<local:RowsInViewPanel />
+						</ItemsPanelTemplate>
+					</ItemsControl.ItemsPanel>
 						<ItemsControl.ItemTemplate>
 							<DataTemplate x:DataType="data:OverviewRow">
 								<Border Classes="OverviewRow"
@@ -336,8 +355,7 @@
 								</Border>
 							</DataTemplate>
 						</ItemsControl.ItemTemplate>
-					</ItemsControl>
-				</ScrollViewer>
+				</ItemsControl>
 			</Grid>
 		</Border>
 

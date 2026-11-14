@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Handlers.Geometry
 {
@@ -50,6 +51,50 @@ namespace Handlers.Geometry
             }
 
             return midpoints;
+        }
+
+        // ###########################################################################################
+        // ROWS A VIRTUALIZING LIST HAS NOT BUILT (the Contribute tab's long lists, 2026-11-13) have
+        // no container: no top, and - never dragged - no height. Left at 0 they collapsed onto the
+        // last row built, so a row dragged past it went straight to the end of the list (code
+        // review, 2026-11-13). Each such row takes the height it has of its own (a row dragged
+        // before keeps its PlaceholderHeight), else the average of the rows built - as the panel
+        // estimates them itself; those ABOVE the first row built are stacked upwards from it, as
+        // the panel places that row below its estimate of them, and those below keep no top, for
+        // BuildMidpoints to stack after the row before. Nothing built: nothing to estimate from.
+        // ###########################################################################################
+        public static List<(double? Top, double Height)> EstimateUnbuilt(IReadOnlyList<(double? Top, double Height)> rows)
+        {
+            var result = new List<(double? Top, double Height)>(rows ?? []);
+
+            double[] builtHeights = result
+                .Where(row => row.Top is not null && row.Height > 0)
+                .Select(row => row.Height)
+                .ToArray();
+
+            if (builtHeights.Length == 0)
+            {
+                return result;
+            }
+
+            double estimate = builtHeights.Average();
+
+            for (int i = 0; i < result.Count; i++)
+            {
+                if (result[i].Top is null && result[i].Height <= 0)
+                {
+                    result[i] = (null, estimate);
+                }
+            }
+
+            int firstBuilt = result.FindIndex(row => row.Top is not null);
+
+            for (int i = firstBuilt - 1; i >= 0; i--)
+            {
+                result[i] = (result[i + 1].Top - result[i].Height, result[i].Height);
+            }
+
+            return result;
         }
 
         // ###########################################################################################

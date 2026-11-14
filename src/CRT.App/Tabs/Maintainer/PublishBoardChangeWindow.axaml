@@ -4,7 +4,8 @@
         Width="600" SizeToContent="Height"
         CanResize="False"
         CanMinimize="False"
-        WindowStartupLocation="CenterOwner">
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource Bg}">
 
     <!--
     THE REASON FOR A CHANGE MADE ON THE BOARDS SCREEN (owner request, 2026-10-03: "do ask for a

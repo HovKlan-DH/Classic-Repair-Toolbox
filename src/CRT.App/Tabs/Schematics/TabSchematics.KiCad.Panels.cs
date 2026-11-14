@@ -40,6 +40,13 @@ public partial class TabSchematics
 
     private string thisLastKiCadNetConnectionsSignature = string.Empty;
 
+    // The board those lines were made from - compared by reference, never by a hash code two boards can share (code review,
+    // 2026-11-13: a board read again under the old one's identity hash kept the old names).
+    private BoardData? thisLastKiCadNetConnectionsBoard;
+
+    // Whether those lines showed the panel - none for a net with no pads on the board.
+    private bool thisLastKiCadNetConnectionsShown;
+
     // ###########################################################################################
     // Rebuilds the grouped "Important signals" panel from the current board data and available KiCad
     // net names. Only display groups that can resolve to at least one real KiCad normalized net name.
@@ -303,77 +310,43 @@ public partial class TabSchematics
             .OrderBy(netName => netName, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-        string signature = string.Join("\u001F", sortedNetNames);
+        // The nets, and what the lines name each component by: the board's rows in the region shown (KiCadNetConnections) -
+        // another region, or the board read again after an edit, makes them again.
+        var boardShown = this.MainWindow?.CurrentBoardData;
+        string region = this.MainWindow?.LocalRegion?.Trim() ?? string.Empty;
+        string signature = string.Join("\u001F", sortedNetNames) + "\u001E" + region;
 
-        if (string.Equals(this.thisLastKiCadNetConnectionsSignature, signature, StringComparison.Ordinal))
+        if (string.Equals(this.thisLastKiCadNetConnectionsSignature, signature, StringComparison.Ordinal) &&
+            ReferenceEquals(this.thisLastKiCadNetConnectionsBoard, boardShown))
         {
+            // As the lines were made: a net with no pads on the board shows no panel, at the next refresh too (code review,
+            // 2026-11-13: it came back empty under "KiCad nets (1)", "Clear" on).
             this.KiCadNetConnectionsHeaderTextBlock.Text = sortedNetNames.Count > 0
                 ? $"KiCad nets ({sortedNetNames.Count})"
                 : "KiCad nets";
-            this.KiCadNetConnectionsPanel.IsVisible = true;
-            this.UpdateKiCadNetConnectionsClearButtonState(true);
+            this.KiCadNetConnectionsPanel.IsVisible = this.thisLastKiCadNetConnectionsShown;
+            this.UpdateKiCadNetConnectionsClearButtonState(this.thisLastKiCadNetConnectionsShown);
             return;
         }
 
-        var boardComponents = this.MainWindow?.CurrentBoardData?.Components;
-        var orderLookup = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        // "[U5 | CIA 1 | 6581] pin 13", the label and the pin bold - each component named as its component info window's
+        // title names it (owner requests, 2026-11-13; KiCadNetConnections).
+        List<KiCadNetConnectionLine> sortedConnections = KiCadNetConnections.Lines(
+            this.thisKiCadProject.Root.Pcb
+                .SelectMany(pcb => pcb.Footprints)
+                .SelectMany(footprint => footprint.Pads.Select(pad => new KiCadPadOnNet(
+                    footprint.Reference ?? string.Empty,
+                    pad.Number ?? string.Empty,
+                    pad.Net?.NormalizedName ?? string.Empty))),
+            activeNetLookup,
+            boardShown?.Components,
+            region);
 
-        if (boardComponents != null)
-        {
-            for (int i = 0; i < boardComponents.Count; i++)
-            {
-                string boardLabel = boardComponents[i].BoardLabel?.Trim() ?? string.Empty;
-                if (!string.IsNullOrEmpty(boardLabel) && !orderLookup.ContainsKey(boardLabel))
-                {
-                    orderLookup[boardLabel] = i;
-                }
-            }
-        }
-
-        var connections = new List<(string ConnStr, int OrderIndex, int PadIndex)>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        foreach (var pcb in this.thisKiCadProject.Root.Pcb)
-        {
-            foreach (var footprint in pcb.Footprints)
-            {
-                string refName = footprint.Reference?.Trim() ?? string.Empty;
-                if (string.IsNullOrWhiteSpace(refName))
-                {
-                    continue;
-                }
-
-                foreach (var pad in footprint.Pads)
-                {
-                    string netName = pad.Net?.NormalizedName?.Trim() ?? string.Empty;
-
-                    if (!activeNetLookup.Contains(netName))
-                    {
-                        continue;
-                    }
-
-                    string padNum = pad.Number?.Trim() ?? "?";
-
-                    string connStr = activeNetLookup.Count > 1
-                        ? $"{refName} pin {padNum} [{netName}]"
-                        : $"{refName} pin {padNum}";
-
-                    if (!seen.Add(connStr))
-                    {
-                        continue;
-                    }
-
-                    int orderIndex = orderLookup.TryGetValue(refName, out int idx) ? idx : int.MaxValue;
-                    int padIndex = int.TryParse(padNum, out int parsedPad) ? parsedPad : int.MaxValue;
-
-                    connections.Add((connStr, orderIndex, padIndex));
-                }
-            }
-        }
-
-        if (connections.Count == 0)
+        if (sortedConnections.Count == 0)
         {
             this.thisLastKiCadNetConnectionsSignature = signature;
+            this.thisLastKiCadNetConnectionsBoard = boardShown;
+            this.thisLastKiCadNetConnectionsShown = false;
             this.KiCadNetConnectionsHeaderTextBlock.Text = sortedNetNames.Count > 0
                 ? $"KiCad nets ({sortedNetNames.Count})"
                 : "KiCad nets";
@@ -384,14 +357,9 @@ public partial class TabSchematics
             return;
         }
 
-        var sortedConnections = connections
-            .OrderBy(connection => connection.OrderIndex)
-            .ThenBy(connection => connection.PadIndex)
-            .ThenBy(connection => connection.ConnStr, StringComparer.OrdinalIgnoreCase)
-            .Select(connection => connection.ConnStr)
-            .ToList();
-
         this.thisLastKiCadNetConnectionsSignature = signature;
+        this.thisLastKiCadNetConnectionsBoard = boardShown;
+        this.thisLastKiCadNetConnectionsShown = true;
         this.KiCadNetConnectionsHeaderTextBlock.Text = sortedNetNames.Count > 0
             ? $"KiCad nets ({sortedNetNames.Count})"
             : "KiCad nets";

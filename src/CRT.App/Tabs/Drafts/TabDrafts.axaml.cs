@@ -617,7 +617,7 @@ namespace CRT
             // should be fixed before submission can be done"). *** The table's own checks, over the
             // board a submit would send, with its files looked for where a submit looks
             // (BoardDataChecks; every error there is one the server would refuse). With any, nothing
-            // is sent: the table opens on exactly those rows, saying why.
+            // is sent: the view picked goes to the first, saying why (ShowErrorsBeforeSubmitAsync).
             // ###########################################################################################
             if (await this.StopForErrorsAsync(entry, mergedData))
             {
@@ -827,8 +827,8 @@ namespace CRT
 
         // ###########################################################################################
         // True when `board` - what a submit of this draft would send - has errors, which are then
-        // shown in the table instead of anything being sent. Apart from SubmitAsync so a test can
-        // drive it without the dialog's window.
+        // shown instead of anything being sent. Apart from SubmitAsync so a test can drive it without
+        // the dialog's window.
         //
         // Off the UI thread, under the overlay (code review, 2026-11-02): the checks look up every file
         // the board cites, and Submit was pressed for it.
@@ -836,22 +836,23 @@ namespace CRT
         internal async Task<bool> StopForErrorsAsync(HardwareBoardEntry entry, BoardData board)
         {
             Task? hold = this.HoldErrorCheckForTests;
-            int errors = await BusyOverlay.RunLocalAsync(this, CrtWaitWording.CheckingBoard, () => Task.Run(async () =>
+            IReadOnlyList<BoardDataProblem> problems = await BusyOverlay.RunLocalAsync(this, CrtWaitWording.CheckingBoard, () => Task.Run(async () =>
             {
                 if (hold != null)
                 {
                     await hold;
                 }
 
-                return TabDrafts.CountErrors(entry, board);
+                return TabDrafts.ProblemsToSend(entry, board);
             }));
 
-            if (errors == 0)
+            if (!problems.Any(problem => problem.Level == BoardProblemLevel.Error))
             {
+                this.LetGoOfSubmitBlocked();
                 return false;
             }
 
-            await this.ShowErrorsBeforeSubmitAsync(entry, errors);
+            await this.ShowErrorsBeforeSubmitAsync(entry, new BoardProblemsRead(BoardProblemCounts.Of(problems), problems, board));
             return true;
         }
 
@@ -859,48 +860,104 @@ namespace CRT
         // (a check of a small board on a free pool thread could end before the test looked; CI, 2026-11-09).
         internal Task? HoldErrorCheckForTests { get; set; }
 
-        // The errors in the board a submit of this draft would send - the table's own checks.
-        private static int CountErrors(HardwareBoardEntry entry, BoardData board) =>
+        // The problems of the board a submit of this draft would send - the table's own checks.
+        private static IReadOnlyList<BoardDataProblem> ProblemsToSend(HardwareBoardEntry entry, BoardData board) =>
             BoardDataChecks.Check(
-                    BoardCheckRows.From(board),
-                    new DiskFileLookup(DataManager.DataRoot, DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, entry.ExcelDataFile), entry.ExcelDataFile),
-                    BoardCheckScope.Everything)
-                .Count(problem => problem.Level == BoardProblemLevel.Error);
+                BoardCheckRows.From(board),
+                new DiskFileLookup(DataManager.DataRoot, DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, entry.ExcelDataFile), entry.ExcelDataFile),
+                BoardCheckScope.Everything);
 
         // ###########################################################################################
-        // Submit pressed on a draft with errors: its table, showing only the rows with errors (the
-        // colour key's "Errors" picked, which takes the table to the first sheet with any), and a
-        // sentence saying what to do. Already open, the table is kept as it is, unsaved edits and all.
+        // *** SUBMIT PRESSED ON A DRAFT WITH ERRORS GOES TO THE FIRST, IN THE VIEW PICKED (owner request, 2026-11-13: "no
+        // matter the view I am in, then it will go to the "Table" view and show the error cells. Instead I think it should
+        // use the current view as-is, and then navigate to the problem. If it has multiple problems, then just go to the
+        // first problem"). *** The first in the left column's order (ContributeProblems.FirstError), opened as that
+        // problem's "Open [U7]" opens it - its component picked, on its page, in its region - or its entry when it is of no
+        // component. In "UI" the page's own panel lists it, and the tab's line says why nothing was sent; in "Table" the
+        // sheet goes to its rows and the cursor to the first cell with an error, the table's line saying it. Nothing is
+        // narrowed to the errors any more: the "Errors" pill does that when wanted.
+        //
+        // The check just made is what the page's panel and the badges show (thisProblemsRead): the tab's own read follows a
+        // save a second later, and the page opened must list the very error that stopped the send.
         // ###########################################################################################
-        private async Task ShowErrorsBeforeSubmitAsync(HardwareBoardEntry entry, int errors)
+        private async Task ShowErrorsBeforeSubmitAsync(HardwareBoardEntry entry, BoardProblemsRead read)
         {
-            if (!this.IsTableOpenFor(entry))
+            int errors = read.Counts.Errors;
+            bool shown = this.thisCurrentEntry is { } current && TabDrafts.SameBoard(current, entry);
+
+            // Whether the first is on screen below - not when a page held the tab where it was (a picture's name refused
+            // keeps its part open), which "It is shown below" claimed anyway (code review, 2026-11-13).
+            bool firstShown = false;
+
+            if (shown)
             {
-                await this.OpenTableAsync(entry);
+                this.thisProblemsRead[entry.ExcelDataFile] = read;
+                this.ShowProblems();
+
+                if (ContributeProblems.FirstError(ContributeProblems.Placed(read)) is { } first)
+                {
+                    await this.GoToProblemAsync(first);
+                    firstShown = this.EntryOpen() == first.Entry;
+                }
             }
 
-            if (!this.IsTableOpenFor(entry))
+            if (shown && this.IsTableOpenFor(entry))
             {
+                bool onFirst = this.TableEditor.GoToFirstError();
+
+                this.LetGoOfSubmitBlocked();
+                // Hidden by a pill or the search only when some error IS in a row - one on a schematic image is in none, and
+                // "Errors" would show nothing of it (code review, 2026-11-13).
+                bool hiddenByFilter = this.TableEditor.IsFilteredByPillsOrSearch &&
+                                      this.TableEditor.CommitAndGetDocument()?.HasRowsShownBy(BoardTableRowKinds.Errors) == true;
+
+                this.TableEditor.ShowMessage(BoardTableProblemWording.SubmitBlocked(errors, onFirst, hiddenByFilter));
+                this.FocusTableIfOpen();
                 return;
             }
 
-            // Not when every error is on a schematic, in no row: the filter would empty the table.
-            bool rowsWithErrors = this.TableEditor.CommitAndGetDocument()?.HasRowsShownBy(BoardTableRowKinds.Errors) == true;
+            this.ShowDraftProblem(shown
+                ? ContributeProblems.SubmitBlocked(errors, firstShown)
+                : ContributeProblems.SubmitBlockedOf(entry.HardwareName, entry.BoardName, errors));
+            this.thisSubmitBlockedSaid = true;
+            this.thisSubmitBlockedOf = entry.ExcelDataFile;
+        }
 
-            if (rowsWithErrors)
+        // ###########################################################################################
+        // A problem opened where it is: its component on its page - as its "Open [U7]" opens it - or, of no component, its
+        // entry. A component's page with others picked would list theirs alone (ContributeProblems.OnEntry), so a problem
+        // of no component there is shown with none picked.
+        // ###########################################################################################
+        private Task GoToProblemAsync(EntryProblem item)
+        {
+            if (item.ComponentLabel.Length > 0)
             {
-                // Every row with an error, whichever components are picked (code review, 2026-11-09): the table narrowed
-                // to a component with none opened on the errors' sheet showing nothing under "Submit is blocked".
-                if (this.PickedLabels.Count > 0)
-                {
-                    this.LetGoOfPickedComponent();
-                }
-
-                this.TableEditor.Filter = BoardTableRowKinds.Errors;
+                return this.OpenComponentOfProblemAsync(item);
             }
 
-            this.TableEditor.ShowMessage(BoardTableProblemWording.SubmitBlocked(errors, rowsWithErrors));
-            this.FocusTableIfOpen();
+            if (ContributeEntries.PageOf(item.Entry) is not null && this.PickedLabels.Count > 0)
+            {
+                this.LetGoOfPickedComponent();
+            }
+
+            return this.ShowEntryAsync(item.Entry);
+        }
+
+        // ###########################################################################################
+        // The tab's line saying Submit stopped on errors - gone once the board has none (ShowProblems), Submit finds none,
+        // the table says it instead, or the line says something else (ShowDraftProblem).
+        // ###########################################################################################
+        private bool thisSubmitBlockedSaid;
+
+        // The draft that line is about, by its board file - the board shown, or another (code review, 2026-11-13).
+        private string? thisSubmitBlockedOf;
+
+        private void LetGoOfSubmitBlocked()
+        {
+            if (this.thisSubmitBlockedSaid)
+            {
+                this.ShowDraftProblem(null);
+            }
         }
 
         // ###########################################################################################

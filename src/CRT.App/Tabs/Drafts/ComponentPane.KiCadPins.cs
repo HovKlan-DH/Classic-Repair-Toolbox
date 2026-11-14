@@ -66,6 +66,8 @@ namespace CRT
             this.thisKiCadPins = [];
             this.FillFromKiCadButton.IsVisible = false;
             this.PinNetHeading.IsVisible = false;
+            this.PinNetSizer.ItemsSource = null;
+            this.PinNetSizer.IsVisible = false;
         }
 
         // The draft's KiCad files as they were when the component's pins were last asked for.
@@ -159,6 +161,17 @@ namespace CRT
             }
 
             this.PinNetHeading.IsVisible = this.thisPins.Any(row => row.HasNet);
+
+            // The "Net name" column as wide as the widest net of ALL the pins, made or not (code review, 2026-11-14): only the
+            // pins in view are made, and the column the rows share widened and narrowed as the page scrolled.
+            List<string> shownNets = this.thisPins.Where(row => row.HasNet).Select(row => row.Net).Distinct(StringComparer.Ordinal).ToList();
+
+            if (this.PinNetSizer.ItemsSource is not IEnumerable<string> held || !held.SequenceEqual(shownNets, StringComparer.Ordinal))
+            {
+                this.PinNetSizer.ItemsSource = shownNets;
+            }
+
+            this.PinNetSizer.IsVisible = shownNets.Count > 0;
         }
 
         private void OnFillFromKiCadClick(object? sender, RoutedEventArgs e) => this.FillFromKiCad();

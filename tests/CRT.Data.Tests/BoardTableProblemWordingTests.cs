@@ -35,14 +35,24 @@ public sealed class BoardTableProblemWordingTests
         Assert.Equal("... and 2 more.", lines[4]);
     }
 
+    // The table is not narrowed any more (owner request, 2026-11-13): the cursor is put on the first error, and the words
+    // say so only when it is - the first error can be on a schematic, in no row.
     [Fact]
-    public void The_blocked_submit_counts_its_errors_and_says_whether_the_table_is_filtered()
+    public void The_blocked_submit_counts_its_errors_and_says_whether_the_cursor_is_on_the_first()
     {
-        Assert.StartsWith("This draft has 1 error to fix", BoardTableProblemWording.SubmitBlocked(1, rowsFiltered: true), StringComparison.Ordinal);
-        Assert.StartsWith("This draft has 3 errors to fix", BoardTableProblemWording.SubmitBlocked(3, rowsFiltered: false), StringComparison.Ordinal);
+        Assert.StartsWith("This draft has 1 error to fix", BoardTableProblemWording.SubmitBlocked(1, onFirst: true), StringComparison.Ordinal);
+        Assert.StartsWith("This draft has 3 errors to fix", BoardTableProblemWording.SubmitBlocked(3, onFirst: false), StringComparison.Ordinal);
 
-        Assert.Contains("Only the rows with errors are shown", BoardTableProblemWording.SubmitBlocked(2, rowsFiltered: true), StringComparison.Ordinal);
-        Assert.DoesNotContain("Only the rows", BoardTableProblemWording.SubmitBlocked(2, rowsFiltered: false), StringComparison.Ordinal);
+        Assert.Contains("The cursor is on it.", BoardTableProblemWording.SubmitBlocked(1, onFirst: true), StringComparison.Ordinal);
+        Assert.Contains("The cursor is on the first.", BoardTableProblemWording.SubmitBlocked(2, onFirst: true), StringComparison.Ordinal);
+        Assert.DoesNotContain("cursor", BoardTableProblemWording.SubmitBlocked(2, onFirst: false), StringComparison.Ordinal);
+        Assert.DoesNotContain("Only the rows", BoardTableProblemWording.SubmitBlocked(2, onFirst: true), StringComparison.Ordinal);
+
+        // A pill or the search hiding every error (code review, 2026-11-13): no "red corner" nobody can see - where they are.
+        string hidden = BoardTableProblemWording.SubmitBlocked(2, onFirst: false, hiddenByFilter: true);
+        Assert.Contains("pick \"Errors\" to see them", hidden, StringComparison.Ordinal);
+        Assert.DoesNotContain("red corner", hidden, StringComparison.Ordinal);
+        Assert.Contains("red corner", BoardTableProblemWording.SubmitBlocked(2, onFirst: true, hiddenByFilter: true), StringComparison.Ordinal);
     }
 
     // Hobbyist users: no pronoun for a contributor, and plain ASCII punctuation in what they read.

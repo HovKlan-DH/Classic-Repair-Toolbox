@@ -157,6 +157,11 @@ namespace CRT
         // ###########################################################################################
         // The overlay of the window `element` is in - found by walking up to the window and down to
         // its one BusyOverlay, so a tab needs no reference to it. Null when the window has none.
+        //
+        // *** WHERE IT STANDS IS LOOKED AT FIRST (2026-11-13, measured): *** the last child of the window's
+        // root panel, as every host keeps it (BusyOverlayHostsTests). Walking every control of the window
+        // came first, at every wait: on the "Contribute" tab, with a board's pages built, it was a third
+        // of what opening a page cost. A host of another shape is still searched.
         // ###########################################################################################
         public static BusyOverlay? For(StyledElement? element)
         {
@@ -167,6 +172,9 @@ namespace CRT
 
             if (root is null)
                 return null;
+
+            if (root is ContentControl { Content: Panel { Children: { Count: > 0 } children } } && children[^1] is BusyOverlay last)
+                return last;
 
             return root as BusyOverlay ?? root.GetLogicalDescendants().OfType<BusyOverlay>().FirstOrDefault();
         }

@@ -241,14 +241,7 @@ namespace CRT
         // ###########################################################################################
         private void ShowSignInMessage(string? message, bool isError = true)
         {
-            var text = this.FindControl<TextBlock>("SignInMessageText");
-
-            if (text is null)
-                return;
-
-            text.Text = message ?? string.Empty;
-            text.IsVisible = !string.IsNullOrWhiteSpace(message);
-            text.Foreground = isError ? Brushes.IndianRed : Brushes.SeaGreen;
+            WindowMessage.ShowOutcome(this.FindControl<TextBlock>("SignInMessageText"), message, isError);
         }
 
         // ###########################################################################################
@@ -774,17 +767,8 @@ namespace CRT
             return kept;
         }
 
-        private void ShowQueueMessage(string? message, bool isError)
-        {
-            var text = this.FindControl<TextBlock>("QueueMessageText");
-
-            if (text is null)
-                return;
-
-            text.Text = message ?? string.Empty;
-            text.IsVisible = !string.IsNullOrWhiteSpace(message);
-            text.Foreground = isError ? Brushes.IndianRed : Brushes.Gray;
-        }
+        private void ShowQueueMessage(string? message, bool isError) =>
+            WindowMessage.Show(this.FindControl<TextBlock>("QueueMessageText"), message, isError);
 
         private async void OnQueueSelectionChanged(object? sender, SelectionChangedEventArgs e) =>
             await HandlerGuard.RunAsync(this.QueueSelectionChangedAsync, this.ShowHandlerFailure);
@@ -1141,14 +1125,17 @@ namespace CRT
                     TextWrapping = TextWrapping.Wrap,
                     // A change under its section's heading ("Component highlights have [2] changes:").
                     Margin = new Avalonia.Thickness(16 * line.Indent, 0, 0, 0),
-                    FontWeight = line.Kind == ReviewNoteKind.Change ? FontWeight.Normal : FontWeight.SemiBold,
-                    Foreground = line.Kind switch
-                    {
-                        ReviewNoteKind.Error => Brushes.IndianRed,
-                        ReviewNoteKind.Warning => Brushes.DarkOrange,
-                        _ => Brushes.SteelBlue
-                    }
+                    FontWeight = line.Kind == ReviewNoteKind.Change ? FontWeight.Normal : FontWeight.SemiBold
                 };
+
+                // The theme's colors (IndianRed, DarkOrange and SteelBlue in every theme until 2026-11-12 - the orange 2.6:1
+                // on white, the blue 4:1 on the dark ground).
+                Handlers.Theming.ThemeResources.Paint(block, TextBlock.ForegroundProperty, line.Kind switch
+                {
+                    ReviewNoteKind.Error => "Text_Fail_Fg",
+                    ReviewNoteKind.Warning => "Text_Warning_Fg",
+                    _ => "Text_Info_Fg"
+                });
 
                 TabMaintainer.ShowLine(block, line);
                 panel.Children.Add(block);

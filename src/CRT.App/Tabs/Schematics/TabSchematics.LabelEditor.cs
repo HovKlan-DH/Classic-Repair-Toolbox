@@ -760,6 +760,9 @@ public partial class TabSchematics
             WindowStartupLocation = WindowStartupLocation.CenterOwner
         };
 
+        // The theme's ground, as every window of CRT's has (2026-11-12; this one was missed until code review, 2026-11-13).
+        Handlers.Theming.ThemeResources.Paint(dialog, Window.BackgroundProperty, "Bg");
+
         closeButton.Click += (_, _) => dialog.Close();
 
         var errorAccentBrush = new SolidColorBrush(Color.Parse("#C62828"));

@@ -120,7 +120,7 @@
 												Padding="5,1"
 												VerticalAlignment="Center">
 											<TextBlock Text="New"
-													   Foreground="White"
+													   Foreground="{Binding StatusAccentTextBrush}"
 													   FontSize="10"
 													   FontWeight="SemiBold" />
 										</Border>
@@ -207,7 +207,7 @@
 														Padding="5,1"
 														VerticalAlignment="Center">
 													<TextBlock Text="New"
-															   Foreground="White"
+															   Foreground="{Binding StatusAccentTextBrush}"
 															   FontSize="10"
 															   FontWeight="SemiBold" />
 												</Border>

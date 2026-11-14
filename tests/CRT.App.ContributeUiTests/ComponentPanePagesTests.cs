@@ -2449,10 +2449,12 @@ public sealed class ComponentPanePagesTests : IDisposable
     }
 
     // ###########################################################################################
-    // A package picked with the mouse leaves the list shut, though the list opens on every GotFocus (code
-    // review, 2026-11-04, feared otherwise; measured on Avalonia 12.1.4): the press takes the focus to the
-    // list's row, and AutoCompleteBox closes its list on any LostFocus, so nothing hands the focus back to
-    // the box's text. An Avalonia update changing that would open the list over the page again.
+    // A package picked with the mouse is picked, and leaves the list shut, though the list opens as the box is
+    // entered (code review, 2026-11-04, feared otherwise; measured on Avalonia 12.1.4): the press takes the
+    // focus to the list's row. In 12.1.4 the list closed on that LostFocus; 12.1.6 keeps it open, and the
+    // box then takes the focus back to its text while the press is still picking - opened again on THAT
+    // focus, the list was made anew and the pick lost (2026-11-13), so the list opens only for focus coming
+    // from outside the box and its list (ComponentPane.OnPackageBoxFocused).
     // ###########################################################################################
     [Fact]
     public void A_package_picked_with_the_mouse_leaves_the_list_shut_until_the_box_is_entered_again()
@@ -2951,6 +2953,151 @@ public sealed class ComponentPanePagesTests : IDisposable
             Assert.True(box.IsDropDownOpen);
 
             box.IsDropDownOpen = false;
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // The lists build only the rows in view (2026-11-13). A row typed in stays built as the page scrolls on (RowsInViewPanel),
+    // and Alt+Down taking the last row built to a place no row is built at keeps the keyboard in its box - the posted refocus
+    // found no container there, the focus was lost and the next Alt+Down did nothing (code review, 2026-11-13; fails with
+    // the keeping taken out of the pane, measured).
+    // ###########################################################################################
+    [Fact]
+    public void A_row_typed_in_stays_built_and_Alt_down_out_of_view_keeps_the_keyboard_in_its_box()
+    {
+        BoardData board = Board();
+
+        for (int i = 0; i < 60; i++)
+        {
+            board.BoardLocalFiles.Add(new BoardLocalFileEntry { Category = "Resources", Name = $"File {i:D2}", File = $"f{i:D2}.pdf" });
+        }
+
+        DraftSession session = this.OpenDraft(board);
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Files);
+            ItemsControl list = Get<ItemsControl>(pane, "BoardFilesItemsControl");
+            ScrollViewer page = Get<ScrollViewer>(pane, "SectionsScrollViewer");
+
+            TextBox name = list.ContainerFromIndex(1)!.GetVisualDescendants().OfType<TextBox>().First(box => box.Text == "File 01");
+            name.Focus();
+            Dispatcher.UIThread.RunJobs();
+
+            // Scrolled on until the row is far out of view: it stays built, the keyboard in its box.
+            page.Offset = new Vector(0, page.Extent.Height);
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(name.IsFocused);
+
+            // Back to the top, the keyboard in the LAST row built: Alt+Down takes it to a place no row is built at.
+            page.Offset = default;
+            Dispatcher.UIThread.RunJobs();
+
+            int last = list.GetRealizedContainers().Max(container => list.IndexFromContainer(container));
+            string lastName = $"File {last:D2}";
+            list.ContainerFromIndex(last)!.GetVisualDescendants().OfType<TextBox>().First(box => box.Text == lastName).Focus();
+            Dispatcher.UIThread.RunJobs();
+
+            window.KeyPress(Key.Down, RawInputModifiers.Alt, PhysicalKey.ArrowDown, keySymbol: null);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(lastName, session.Content.Board.BoardLocalFiles[last + 1].Name);
+
+            var focused = Assert.IsAssignableFrom<TextBox>(TopLevel.GetTopLevel(window)!.FocusManager!.GetFocusedElement());
+            Assert.Equal(lastName, focused.Text);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // A column the rows share is as wide for the rows not made as for those made (code review, 2026-11-14): only the rows in
+    // view are made, and a shared Auto column counted only them - the "Applies to" column widened as a row showing a long
+    // region scrolled into view and narrowed as it left, every row's columns moving with it. Its heading's ColumnSizer holds
+    // every choice; held the same with it taken out, measured.
+    // ###########################################################################################
+    [Fact]
+    public void The_applies_to_column_is_as_wide_whether_the_row_with_the_long_region_is_made_or_not()
+    {
+        const string Long = "Japan and Asia NTSC";
+
+        var board = new BoardData { Regions = ["PAL", "NTSC", Long] };
+
+        for (int i = 0; i < 60; i++)
+        {
+            board.BoardLocalFiles.Add(new BoardLocalFileEntry { Category = "Resources", Name = $"File {i:D2}", File = $"f{i:D2}.pdf", Region = i == 59 ? Long : string.Empty });
+        }
+
+        DraftSession session = this.OpenDraft(board);
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Files);
+            ItemsControl list = Get<ItemsControl>(pane, "BoardFilesItemsControl");
+
+            static double ColumnOf(Control row) => row.GetVisualDescendants().OfType<Grid>()
+                .SelectMany(grid => grid.ColumnDefinitions)
+                .First(column => column.SharedSizeGroup == "BoardFileRegion")
+                .ActualWidth;
+
+            Assert.Null(list.ContainerFromIndex(59));
+            double before = ColumnOf(list.ContainerFromIndex(0)!);
+
+            list.ScrollIntoView(59);
+            Dispatcher.UIThread.RunJobs();
+
+            Control last = list.ContainerFromIndex(59)!;
+            ComboBox longBox = last.GetVisualDescendants().OfType<ComboBox>().Single();
+
+            Assert.Equal(Long, longBox.SelectedItem);
+            Assert.Equal(before, ColumnOf(last));
+            Assert.True(before >= longBox.DesiredSize.Width, $"The column is {before} wide, the box showing \"{Long}\" {longBox.DesiredSize.Width}");
+
+            window.Close();
+        });
+    }
+
+    // The pins' "Net name" column the same: as wide for the pins not made (code review, 2026-11-14).
+    [Fact]
+    public void The_net_column_is_as_wide_whether_the_pin_with_the_long_net_is_made_or_not()
+    {
+        const string LongNet = "/CPU_ADDRESS_BUS_A15";
+
+        var board = new BoardData
+        {
+            Components = [new ComponentEntry { BoardLabel = "U8", FriendlyName = "CPU", Category = "IC" }],
+            ComponentPins = Enumerable.Range(1, 120).Select(pin => new ComponentPinEntry { BoardLabel = "U8", Pin = $"{pin}", Name = $"P{pin}" }).ToList(),
+        };
+
+        DraftSession session = this.OpenDraft(board);
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+            pane.ShowPage(ComponentPage.Pinout);
+            pane.UseKiCadPins(session, "U8", Enumerable.Range(1, 120).Select(pin => new KiCadPin($"{pin}", $"P{pin}", "Input", pin == 120 ? LongNet : "/A")).ToList());
+            Dispatcher.UIThread.RunJobs();
+
+            ItemsControl list = Get<ItemsControl>(pane, "PinsItemsControl");
+
+            static double ColumnOf(Control row) => row.GetVisualDescendants().OfType<Grid>()
+                .SelectMany(grid => grid.ColumnDefinitions)
+                .First(column => column.SharedSizeGroup == "PinNets")
+                .ActualWidth;
+
+            Assert.Null(list.ContainerFromIndex(119));
+            double before = ColumnOf(list.ContainerFromIndex(0)!);
+
+            list.ScrollIntoView(119);
+            Dispatcher.UIThread.RunJobs();
+
+            Control last = list.ContainerFromIndex(119)!;
+            TextBlock net = last.GetVisualDescendants().OfType<TextBlock>().Single(block => block.Text == LongNet);
+
+            Assert.Equal(before, ColumnOf(last));
+            Assert.True(before >= net.DesiredSize.Width, $"The column is {before} wide, the net \"{LongNet}\" {net.DesiredSize.Width}");
+
             window.Close();
         });
     }

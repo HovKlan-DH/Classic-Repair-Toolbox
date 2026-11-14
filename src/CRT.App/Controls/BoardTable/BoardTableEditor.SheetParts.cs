@@ -144,6 +144,31 @@ namespace CRT
             return true;
         }
 
+        // ###########################################################################################
+        // The cursor on the first cell with an error among the rows SHOWN on the sheet shown - of the
+        // part shown, and of the components picked when the table is narrowed to them. Where Submit on a
+        // draft with errors goes in the "Table" view (owner request, 2026-11-13). False when no row
+        // shown has one: an error on a schematic is in no row.
+        // ###########################################################################################
+        internal bool GoToFirstError()
+        {
+            if (this.thisCurrentSheet is null)
+            {
+                return false;
+            }
+
+            foreach (BoardTableRow row in this.ShownRows().Where(row => !row.IsDeleted))
+            {
+                if (BoardTableRowFilter.FirstProblemCell(BoardTableRowKinds.Errors, row, this.thisPart) is { } cell)
+                {
+                    this.SelectCell(row, cell.ColumnIndex);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         // The columns of the sheet the grid shows, by their index in the sheet.
         private List<int> ColumnsShownNow() =>
             this.thisCurrentSheet is { } sheet ? BoardTableSheetParts.ColumnsShown(this.thisPart, sheet) : [];

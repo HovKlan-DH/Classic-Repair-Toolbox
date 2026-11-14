@@ -112,7 +112,7 @@ namespace CRT
 
                 // The same red every refusal in this tab uses (WindowMessage).
                 if (!tree.Skipped && tree.Entries < 0)
-                    line.Foreground = Brushes.IndianRed;
+                    Handlers.Theming.ThemeResources.PaintFail(line);
 
                 panel?.Children.Add(line);
             }

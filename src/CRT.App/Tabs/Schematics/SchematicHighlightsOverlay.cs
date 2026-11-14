@@ -29,6 +29,9 @@ namespace Tabs.TabSchematics
 
         public PixelSize BitmapPixelSize { get; set; } = new(0, 0);
 
+        // The room round the image as the tab fits it (ImageFrameGeometry) - the image stands inside it.
+        public Thickness ContentFrame { get; set; }
+
         public Matrix ViewMatrix { get; set; } = Matrix.Identity;
 
         public Color HighlightColor { get; set; } = Colors.IndianRed;
@@ -67,7 +70,7 @@ namespace Tabs.TabSchematics
             if (this.BitmapPixelSize.Width <= 0 || this.BitmapPixelSize.Height <= 0)
                 return;
 
-            var contentRect = RectGeometry.GetImageContentRect(this.Bounds.Size, this.BitmapPixelSize);
+            var contentRect = RectGeometry.GetImageContentRect(this.Bounds.Size, this.BitmapPixelSize, this.ContentFrame);
 
             var viewportRect = new Rect(0, 0, this.Bounds.Width, this.Bounds.Height);
             var visibleLocalRect = viewportRect;

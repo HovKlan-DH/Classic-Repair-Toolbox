@@ -152,6 +152,27 @@ public sealed class PicturePreviewTests
         });
     }
 
+    // A preview made again for another row (the cards are built only in view since 2026-11-13) shows that image whole, not
+    // as far in as the card's last one was zoomed - two images of one size set no new ImageSize to reset it (code review,
+    // 2026-11-13: the fix came without its test).
+    [Fact]
+    public void A_preview_handed_another_row_shows_its_image_whole()
+    {
+        UiTest.Run(() =>
+        {
+            (Window window, PicturePreview preview, _) = Shown(zoomable: true);
+
+            preview.ZoomAt(new Point(100, 50), 4);
+            Assert.True(preview.ZoomForTests > 1);
+
+            preview.DataContext = "another schematic image";
+
+            Assert.Equal(1, preview.ZoomForTests);
+
+            window.Close();
+        });
+    }
+
     [Fact]
     public void A_preview_that_is_not_zoomable_never_zooms()
     {

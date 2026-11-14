@@ -1009,8 +1009,13 @@ public sealed class TabDraftsTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // In the "UI" view the table is NOT opened any more (owner request, 2026-11-13: "use the current view as-is, and then
+    // navigate to the problem"): the error's component opens on its page, and the tab's line says why nothing was sent.
+    // TabDraftsEntriesTests holds where it goes in both views.
+    // ###########################################################################################
     [Fact]
-    public async Task Submit_with_an_error_opens_the_table_on_it_and_sends_nothing()
+    public async Task Submit_with_an_error_sends_nothing_and_stays_in_the_UI_view()
     {
         await UiTest.RunAsync(async () =>
         {
@@ -1023,14 +1028,20 @@ public sealed class TabDraftsTests : IDisposable
             };
 
             CachedWorkbooks.Write(DraftFolderLayout.GetWorkbookPath(DraftManager.DraftsRoot, TabDraftsTests.TableBoardA), board);
+            tab.ShowBoard(EntryA(tab), board, "PAL", null);
 
             Assert.True(await tab.StopForErrorsAsync(EntryA(tab), board));
 
-            BoardTableEditor editor = tab.GetControl<BoardTableEditor>("TableEditor");
-            Assert.True(tab.IsTableOpen);
-            Assert.Equal(BoardTableRowKinds.Errors, editor.Filter);
-            Assert.Equal(BoardWorkbookSchema.SheetComponentLinks, editor.CurrentSheet!.Name);
-            Assert.StartsWith("This draft has 1 error to fix", editor.GetControl<TextBlock>("StatusText").Text, StringComparison.Ordinal);
+            // The component opens off the UI thread: waited for, so nothing of it runs into the next test.
+            for (int attempt = 0; attempt < 300 && !tab.IsComponentOpen; attempt++)
+            {
+                Dispatcher.UIThread.RunJobs();
+                await Task.Delay(10);
+            }
+
+            Assert.True(tab.IsComponentOpen);
+            Assert.False(tab.IsTableOpen);
+            Assert.StartsWith("This draft has 1 error to fix", tab.DraftProblemForTests, StringComparison.Ordinal);
         });
     }
 

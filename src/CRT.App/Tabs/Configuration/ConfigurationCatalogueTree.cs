@@ -230,11 +230,13 @@ namespace CRT
 
             if (isUnchecked && isActive)
             {
-                row.LabelText.Foreground = Brushes.IndianRed;
+                // The theme's red - IndianRed in every theme until 2026-11-12, 4.0:1 on the light ground.
+                ThemeResources.PaintFail(row.LabelText);
             }
             else
             {
-                row.LabelText.ClearValue(TextBlock.ForegroundProperty);
+                // Unpaint, never ClearValue: that leaves the paint's binding on, and the next theme change made it red again.
+                ThemeResources.Unpaint(row.LabelText, TextBlock.ForegroundProperty);
             }
 
             foreach (var child in row.Children)

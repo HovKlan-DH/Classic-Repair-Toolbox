@@ -122,14 +122,15 @@ namespace CRT
             // colour, as on the queue row.
             if (card.DraftDiscarded is string discarded)
             {
-                panel.Children.Add(new TextBlock
+                var line = new TextBlock
                 {
                     Text = discarded,
                     FontSize = 11,
                     FontWeight = FontWeight.SemiBold,
-                    Foreground = Brushes.IndianRed,
                     TextWrapping = TextWrapping.Wrap
-                });
+                };
+                Handlers.Theming.ThemeResources.PaintFail(line);
+                panel.Children.Add(line);
             }
 
             if (card.Changes.Count > 0)

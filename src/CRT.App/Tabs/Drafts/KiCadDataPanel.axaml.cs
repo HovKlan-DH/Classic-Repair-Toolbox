@@ -203,14 +203,18 @@ namespace CRT
 
     // ###########################################################################################
     // One KiCad net in the report (KiCadDataPanel.NetNames.cs), marked when an important KiCad signal
-    // already uses it.
+    // already uses it - a badge of the net list's BadgeCloud.
     // ###########################################################################################
-    public sealed class KiCadNetNameBadge
+    public sealed class KiCadNetNameBadge : IBadgeCloudItem
     {
         public string Name { get; init; } = string.Empty;
 
         public bool IsUsed { get; init; }
 
         public string? ToolTipText => this.IsUsed ? "Already used in \"KiCad: Important signals\"" : null;
+
+        string IBadgeCloudItem.Text => this.Name;
+
+        string? IBadgeCloudItem.Tip => this.ToolTipText;
     }
 }

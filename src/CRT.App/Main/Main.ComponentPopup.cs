@@ -149,7 +149,8 @@ namespace CRT
             return true;
         }
 
-        // The region CRT shows, everywhere - the buttons, the pictures, the Contribute tab and the "Resources" tab.
+        // The region CRT shows, everywhere - the buttons, the pictures, the Contribute tab, the "Overview" tab (each component
+        // as that region has it - OverviewHtmlBuilder.BuildRows) and the "Resources" tab.
         private void ShowRegion(string region)
         {
             this._localRegion = region;
@@ -158,6 +159,7 @@ namespace CRT
             this.RefreshImages();
             this.TabSchematicsControl.UpdateOverlayLabels();
             this.TabDrafts.UseRegion(region);
+            this.TabOverview.ShowRegion(region);
 
             if (this._currentBoardData is { } board && this.GetCurrentBoardEntry() is { } entry)
             {
@@ -871,6 +873,8 @@ namespace CRT
             }
             else
             {
+                // A component told apart per region is selected again by its row of this region (owner report, 2026-11-13:
+                // it was let go of, its key holding the region switched from - ComponentListBuilder.RowsToSelect).
                 this.SelectInComponentList(componentItems, previouslySelectedKeys);
             }
             this._suppressComponentHighlightUpdate = false;

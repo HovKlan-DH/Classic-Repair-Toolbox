@@ -222,7 +222,7 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                         Padding="0"
                         Background="Transparent"
                         BorderThickness="0"
-                        Foreground="SteelBlue"
+                        Foreground="{DynamicResource Link_Fg}"
                         Click="OnForgotPasswordClick" />
 
                 <!--
@@ -237,7 +237,7 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                         Padding="0"
                         Background="Transparent"
                         BorderThickness="0"
-                        Foreground="SteelBlue"
+                        Foreground="{DynamicResource Link_Fg}"
                         Click="OnHaveInvitationClick" />
 
                 <!--
@@ -248,7 +248,7 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                 would read as a failure to somebody who has just asked for help.
                 -->
                 <TextBlock x:Name="SignInMessageText"
-                           Foreground="IndianRed"
+                           Foreground="{DynamicResource Text_Fail_Fg}"
                            TextWrapping="Wrap"
                            IsVisible="False" />
 
@@ -374,7 +374,7 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                 </StackPanel>
 
                 <TextBlock x:Name="InvitationMessageText"
-                           Foreground="IndianRed"
+                           Foreground="{DynamicResource Text_Fail_Fg}"
                            TextWrapping="Wrap"
                            Margin="0,4,0,0"
                            IsVisible="False" />
@@ -736,7 +736,7 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
                         <TextBlock x:Name="RemovalStatusText"
                                    TextWrapping="Wrap"
                                    FontWeight="SemiBold"
-                                   Foreground="IndianRed"
+                                   Foreground="{DynamicResource Text_Fail_Fg}"
                                    IsVisible="False" />
 
                         <!--

@@ -342,6 +342,8 @@ namespace CRT
 
             this.BoardFilesAppliesToHeading.IsVisible = this.thisBoardHasRegions;
             this.BoardLinksAppliesToHeading.IsVisible = this.thisBoardHasRegions;
+            ComponentPane.SizeAppliesToColumn(this.BoardFilesAppliesToSizer, this.thisBoardHasRegions, this.thisBoardFiles);
+            ComponentPane.SizeAppliesToColumn(this.BoardLinksAppliesToSizer, this.thisBoardHasRegions, this.thisBoardLinks);
 
             this.ShowNetsLine();
             this.ShowNewSignalPicker();
@@ -805,6 +807,14 @@ namespace CRT
             Avalonia.Threading.Dispatcher.UIThread.Post(
                 () =>
                 {
+                    // A row moved past the edge of the view has no container in a list that builds only the rows in view
+                    // (2026-11-13), and the focus was lost and Alt+Up/Down went dead (code review). RowsInViewPanel keeps the
+                    // row with the keyboard built through the move, as measured; brought into view here should it not be.
+                    if (focusAt >= 0 && list.ContainerFromItem(row) is null)
+                    {
+                        list.ScrollIntoView(row);
+                    }
+
                     if (focusAt >= 0 &&
                         list.ContainerFromItem(row) is Control container &&
                         ComponentPane.FocusablesIn(container).ElementAtOrDefault(focusAt) is { } box)

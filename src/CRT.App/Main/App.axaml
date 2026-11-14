@@ -37,18 +37,33 @@
 					<SolidColorBrush x:Key="Form_Fg">Black</SolidColorBrush>
 					<SolidColorBrush x:Key="Form_Border">Gray</SolidColorBrush>
 					<SolidColorBrush x:Key="Form_Selected_Bg">LightBlue</SolidColorBrush>
-					<SolidColorBrush x:Key="Form_Selected_Fg">White</SolidColorBrush>
+					<!-- Black, not the White it was until 2026-11-12: white on LightBlue is 1.5:1, unreadable wherever a
+					     selected row's text follows its row (a button's own words do). -->
+					<SolidColorBrush x:Key="Form_Selected_Fg">Black</SolidColorBrush>
 					<SolidColorBrush x:Key="Form_Selected_Hover_Bg">SkyBlue</SolidColorBrush>
 					<SolidColorBrush x:Key="Splitter">Gray</SolidColorBrush>
 					<SolidColorBrush x:Key="Button_Bg">LightGray</SolidColorBrush>
 					<SolidColorBrush x:Key="Button_Fg">Black</SolidColorBrush>
 					<SolidColorBrush x:Key="Button_Border">DarkGray</SolidColorBrush>
-					<SolidColorBrush x:Key="Button_Ok_Bg">#4F8A5B</SolidColorBrush>
+					<!-- THE COLORS OF A BUTTON WITH TEXT ON IT ARE HELD TO WCAG's 4.5:1 (2026-11-12, the theme color review): the
+					     green was #4F8A5B (4.1:1 with its white text) and the red IndianRed itself (4.0:1) - each the same hue,
+					     a shade deeper. -->
+					<SolidColorBrush x:Key="Button_Ok_Bg">#497F54</SolidColorBrush>
 					<SolidColorBrush x:Key="Button_Ok_Fg">White</SolidColorBrush>
 					<SolidColorBrush x:Key="Button_Ok_Border">#3E6E48</SolidColorBrush>
-					<SolidColorBrush x:Key="Button_Cancel_Bg">IndianRed</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Cancel_Bg">#BC5454</SolidColorBrush>
 					<SolidColorBrush x:Key="Button_Cancel_Fg">White</SolidColorBrush>
-					<SolidColorBrush x:Key="Button_Cancel_Border">#B85C5C</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Cancel_Border">#A34747</SolidColorBrush>
+					<!-- A button under the pointer and pressed (2026-11-12): a shade deeper than its own color, never Fluent's
+					     look - which turned a plain button LIGHTER under the pointer here, and a green or red one grey with
+					     black text. See the "Button:pointerover" styles below. -->
+					<SolidColorBrush x:Key="Button_Hover_Bg">#C4C4C4</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Pressed_Bg">#B3B3B3</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Hover_Border">#8A8A8A</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Ok_Hover_Bg">#3F7049</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Ok_Pressed_Bg">#355F3D</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Cancel_Hover_Bg">#A84848</SolidColorBrush>
+					<SolidColorBrush x:Key="Button_Cancel_Pressed_Bg">#943E3E</SolidColorBrush>
 					<SolidColorBrush x:Key="Panel_Border">Gray</SolidColorBrush>
 					<SolidColorBrush x:Key="Link_Fg">Blue</SolidColorBrush>
 					<SolidColorBrush x:Key="LinkHover_Fg">Black</SolidColorBrush>
@@ -58,8 +73,16 @@
 					<SolidColorBrush x:Key="Table_Fg">Black</SolidColorBrush>
 					<SolidColorBrush x:Key="Table_BorderRowLine">#EEEEEE</SolidColorBrush>
 					<SolidColorBrush x:Key="Table_RowHover_Bg">#E1F0FA</SolidColorBrush>
-					<SolidColorBrush x:Key="Text_Success_Fg">#547131</SolidColorBrush>
-					<SolidColorBrush x:Key="Text_Fail_Fg">IndianRed</SolidColorBrush>
+					<!-- THE TEXT COLORS BELOW READ AT 4.5:1 OR MORE ON THIS THEME'S GROUNDS AND ON THE "User preference" THEME'S
+					     TINTED ONE (#E0E4D9), which takes them from here (2026-11-12; ThemeContrastTests). The success green was
+					     #547131 (4.3:1 there), the failure red IndianRed (4.0:1 on white, 3.1:1 there). -->
+					<SolidColorBrush x:Key="Text_Success_Fg">#516C2F</SolidColorBrush>
+					<SolidColorBrush x:Key="Text_Fail_Fg">#B53535</SolidColorBrush>
+					<!-- A line that is neither good nor bad news, and one that only informs (2026-11-12): the Maintainer tab's
+					     messages and review notes, the IC test's "NOT TESTED" - until then a fixed Gray and SteelBlue, the same
+					     in both themes. -->
+					<SolidColorBrush x:Key="Text_Muted_Fg">#5A5A5A</SolidColorBrush>
+					<SolidColorBrush x:Key="Text_Info_Fg">#2F6497</SolidColorBrush>
 
 					<!-- A surface ONE STEP off the window background, for cards that must read as
 					     their own panel. Table_Bg is plain White here, so a card using it is
@@ -71,8 +94,10 @@
 					     so a pending row still reads as a STATUS rather than as disabled text. -->
 					<!-- #B07A1E until 2026-10-13: 3.4:1 on Card_Bg, too faint for the 10-11px state
 					     text it colours (WCAG wants 4.5:1). The same colour scaled darker, so its
-					     green-to-red ratio (0.69 - see Text_Warning_Fg below) is unchanged: 5.0:1. -->
-					<SolidColorBrush x:Key="Text_Waiting_Fg">#8D6218</SolidColorBrush>
+					     green-to-red ratio (0.69 - see Text_Warning_Fg below) is unchanged: 5.0:1.
+					     #8D6218 until 2026-11-12: 4.2:1 on the "User preference" theme's ground - scaled darker again, the
+					     ratio kept. -->
+					<SolidColorBrush x:Key="Text_Waiting_Fg">#845C17</SolidColorBrush>
 
 					<!-- "THIS ONE IS WAITING ON YOU" - a warning, not a failure (owner
 					     request, 2026-09-23). "Changes requested" used to share Text_Fail_Fg with
@@ -101,14 +126,16 @@
 					     3.1:1 on Card_Bg - "Changes requested", the one state a contributor must act
 					     on, was the faintest text on the card. Every channel is scaled by 0.75, so
 					     the 0.60 ratio above - the thing that keeps it apart from IndianRed and the
-					     waiting amber - is exactly what it was: 150,90,0, 5.2:1. -->
-					<SolidColorBrush x:Key="Text_Warning_Fg">#965A00</SolidColorBrush>
+					     waiting amber - is exactly what it was: 150,90,0, 5.2:1.
+					     #965A00 until 2026-11-12 (4.3:1 on the "User preference" theme's ground) - scaled once more. -->
+					<SolidColorBrush x:Key="Text_Warning_Fg">#905600</SolidColorBrush>
 
 					<!-- Light, Main -->
 					<!-- The Contribute tab's title: a draft is temporary, so its tab stands out in the
-					     same IndianRed the selected-tab underline uses (owner request, 2026-09-25). -->
-					<SolidColorBrush x:Key="Main_TabHeader_Drafts_Fg">IndianRed</SolidColorBrush>
-					<SolidColorBrush x:Key="Main_TabUnderline_Selected">IndianRed</SolidColorBrush>
+					     same red the selected-tab underline uses (owner request, 2026-09-25). IndianRed until 2026-11-12, 4.0:1
+					     for 12px text; the failure text's red since, the underline with it. -->
+					<SolidColorBrush x:Key="Main_TabHeader_Drafts_Fg">#B53535</SolidColorBrush>
+					<SolidColorBrush x:Key="Main_TabUnderline_Selected">#B53535</SolidColorBrush>
 					<SolidColorBrush x:Key="Main_TabUnderline_Hover">#ecc3c3</SolidColorBrush>
 					<SolidColorBrush x:Key="Main_Banner_Bg">#4C1515</SolidColorBrush>
 					<SolidColorBrush x:Key="Main_Banner_Fg">White</SolidColorBrush>
@@ -119,7 +146,8 @@
 					<SolidColorBrush x:Key="Schematics_Name_Bg">Khaki</SolidColorBrush>
 					<SolidColorBrush x:Key="Schematics_Name_Fg">Black</SolidColorBrush>
 					<SolidColorBrush x:Key="Schematics_Name_Border">Black</SolidColorBrush>
-					<SolidColorBrush x:Key="Schematics_Region_PAL_Bg">IndianRed</SolidColorBrush>
+					<!-- The Danger button's red (IndianRed until 2026-11-12 - see Button_Cancel_Bg). -->
+					<SolidColorBrush x:Key="Schematics_Region_PAL_Bg">#BC5454</SolidColorBrush>
 					<SolidColorBrush x:Key="Schematics_Region_PAL_Fg">White</SolidColorBrush>
 					<SolidColorBrush x:Key="Schematics_Region_PAL_Border">Black</SolidColorBrush>
 					<SolidColorBrush x:Key="Schematics_Region_NTSC_Bg">#CBD6E5</SolidColorBrush>
@@ -146,12 +174,15 @@
 					<Color x:Key="Schematics_TracePalette_Color3">#0BC419</Color>
 					<Color x:Key="Schematics_TracePalette_Color4">#E6E600</Color>
 
-					<!-- Light, Worklog -->
+					<!-- Light, Worklog. Each is the text of a pill on Form_Bg and a card AND the fill under a badge's "#N", so each
+					     reads at 4.5:1 with white both ways (2026-11-12: the amber was #C8880E, 3.0:1; the red IndianRed; the green
+					     #4C8C31, 4.1:1). The text on a fill is white or black by ThemeResources.TextOn, so the dark theme's lighter
+					     colors take black. -->
 					<SolidColorBrush x:Key="Worklog_Category_Note">#2F6FB5</SolidColorBrush>
-					<SolidColorBrush x:Key="Worklog_Category_Cosmetic">#C8880E</SolidColorBrush>
-					<SolidColorBrush x:Key="Worklog_Category_Issue">IndianRed</SolidColorBrush>
-					<SolidColorBrush x:Key="Worklog_Status_Open">IndianRed</SolidColorBrush>
-					<SolidColorBrush x:Key="Worklog_Status_Closed">#4C8C31</SolidColorBrush>
+					<SolidColorBrush x:Key="Worklog_Category_Cosmetic">#97670B</SolidColorBrush>
+					<SolidColorBrush x:Key="Worklog_Category_Issue">#B53535</SolidColorBrush>
+					<SolidColorBrush x:Key="Worklog_Status_Open">#B53535</SolidColorBrush>
+					<SolidColorBrush x:Key="Worklog_Status_Closed">#447D2C</SolidColorBrush>
 
 					<!-- Light, Drafts (NewContributeStrategy.md Phase 2) - a local, unpublished edit.
 					     Deliberately its own amber, not Worklog_Category_Cosmetic (that key names a
@@ -169,9 +200,9 @@
 					<SolidColorBrush x:Key="Draft_ReferenceBadge_Border">#C8C8C8</SolidColorBrush>
 					<!-- A component the KiCad data has and the board has no label for yet - the to-do
 					     list, highlighted in the IndianRed CRT's own Remove buttons use (owner request,
-					     2026-10-10). -->
-					<SolidColorBrush x:Key="Draft_ReferenceBadge_Todo_Bg">IndianRed</SolidColorBrush>
-					<SolidColorBrush x:Key="Draft_ReferenceBadge_Todo_Border">#B85C5C</SolidColorBrush>
+					     2026-10-10) - the Danger button's red since 2026-11-12 (white on IndianRed was 4.0:1). -->
+					<SolidColorBrush x:Key="Draft_ReferenceBadge_Todo_Bg">#BC5454</SolidColorBrush>
+					<SolidColorBrush x:Key="Draft_ReferenceBadge_Todo_Border">#A34747</SolidColorBrush>
 					<SolidColorBrush x:Key="Draft_ReferenceBadge_Todo_Fg">White</SolidColorBrush>
 					<!-- A KiCad net name an important signal already uses - FILLED green with white text, as
 					     the to-do badges are filled red (owner report, 2026-10-29: green text on the grey
@@ -202,7 +233,8 @@
 					<SolidColorBrush x:Key="Workbooks_Separator">#C8C8C8</SolidColorBrush>
 					<SolidColorBrush x:Key="Workbooks_RowSeparator">#E6E6E6</SolidColorBrush>
 					<SolidColorBrush x:Key="Workbooks_Muted_Fg">#5A5A5A</SolidColorBrush>
-					<SolidColorBrush x:Key="Workbooks_Faint_Fg">#7A7A7A</SolidColorBrush>
+					<!-- #7A7A7A until 2026-11-12: 3.8:1 on the selected card, 3.3:1 on the "User preference" theme's ground. -->
+					<SolidColorBrush x:Key="Workbooks_Faint_Fg">#636363</SolidColorBrush>
 
 					<!-- A device's condition in stars (ConditionStars; owner request, 2026-11-06: "more 'depth' and
 					     coloring"): a lit star gold, light at its top and deeper at its foot, its edge a darker
@@ -236,7 +268,8 @@
 					<SolidColorBrush x:Key="Chart_BarHover">#17549F</SolidColorBrush>
 					<SolidColorBrush x:Key="Chart_Grid">#E1E0D9</SolidColorBrush>
 					<SolidColorBrush x:Key="Chart_Baseline">#C3C2B7</SolidColorBrush>
-					<SolidColorBrush x:Key="Chart_Label">#6F6D67</SolidColorBrush>
+					<!-- #6F6D67 until 2026-11-12 (4.0:1 on the "User preference" theme's ground). -->
+					<SolidColorBrush x:Key="Chart_Label">#65635E</SolidColorBrush>
 
 					<!-- Light, the Boards screen (2026-10-09): the panel saying why a board's BETA table cannot
 					     be changed - amber, the colour of waiting. -->
@@ -246,24 +279,26 @@
 
 					<!-- Light, the changelog on the "About" tab (MarkdownRenderer, 2026-11-06): GitHub's own
 					     light colors - its inline code ground, the bar of a thematic break, the line under
-					     a heading, a quote's bar and muted text, and the five alerts' colors. -->
+					     a heading, a quote's bar and muted text, and the five alerts' colors - each alert's a shade deeper
+					     since 2026-11-12, so it reads at 4.5:1 on the "User preference" theme's tinted ground too. -->
 					<SolidColorBrush x:Key="Changelog_Code_Bg">#EFF1F3</SolidColorBrush>
 					<SolidColorBrush x:Key="Changelog_Rule">#D1D9E0</SolidColorBrush>
 					<SolidColorBrush x:Key="Changelog_HeadingLine">#DDE3E9</SolidColorBrush>
 					<SolidColorBrush x:Key="Changelog_Quote_Bar">#D1D9E0</SolidColorBrush>
 					<SolidColorBrush x:Key="Changelog_Quote_Fg">#59636E</SolidColorBrush>
-					<SolidColorBrush x:Key="Changelog_Alert_Note">#0969DA</SolidColorBrush>
-					<SolidColorBrush x:Key="Changelog_Alert_Tip">#1A7F37</SolidColorBrush>
-					<SolidColorBrush x:Key="Changelog_Alert_Important">#8250DF</SolidColorBrush>
-					<SolidColorBrush x:Key="Changelog_Alert_Warning">#9A6700</SolidColorBrush>
-					<SolidColorBrush x:Key="Changelog_Alert_Caution">#D1242F</SolidColorBrush>
+					<SolidColorBrush x:Key="Changelog_Alert_Note">#0860C8</SolidColorBrush>
+					<SolidColorBrush x:Key="Changelog_Alert_Tip">#177332</SolidColorBrush>
+					<SolidColorBrush x:Key="Changelog_Alert_Important">#7548C9</SolidColorBrush>
+					<SolidColorBrush x:Key="Changelog_Alert_Warning">#875B00</SolidColorBrush>
+					<SolidColorBrush x:Key="Changelog_Alert_Caution">#C1212B</SolidColorBrush>
 
 					<!-- Light, Thumbnail -->
 					<SolidColorBrush x:Key="Thumbnail_Border">Black</SolidColorBrush>
 					<SolidColorBrush x:Key="Thumbnail_BorderSelected">IndianRed</SolidColorBrush>
 					<SolidColorBrush x:Key="Thumbnail_Bg">Khaki</SolidColorBrush>
 					<SolidColorBrush x:Key="Thumbnail_Fg">Black</SolidColorBrush>
-					<SolidColorBrush x:Key="Thumbnail_Selection_Bg">#4682B4</SolidColorBrush>
+					<!-- SteelBlue (#4682B4) until 2026-11-12, 4.1:1 with its white text. -->
+					<SolidColorBrush x:Key="Thumbnail_Selection_Bg">#4076A4</SolidColorBrush>
 					<SolidColorBrush x:Key="Thumbnail_Selection_Fg">White</SolidColorBrush>
 
 					<!-- Light, Component info popup -->
@@ -282,14 +317,14 @@
 					<SolidColorBrush x:Key="ComponentPopup_ImageXofY_Bg">#BB000000</SolidColorBrush>
 					<SolidColorBrush x:Key="ComponentPopup_ImageXofY_Border">Black</SolidColorBrush>
 					<SolidColorBrush x:Key="ComponentPopup_ImageXofY_Fg">White</SolidColorBrush>
-					<SolidColorBrush x:Key="ComponentPopup_KeyboardTyping_Bg">#778461</SolidColorBrush>
+					<!-- #778461 until 2026-11-12, 4.0:1 with its white text. -->
+					<SolidColorBrush x:Key="ComponentPopup_KeyboardTyping_Bg">#6B7657</SolidColorBrush>
 					<SolidColorBrush x:Key="ComponentPopup_KeyboardTyping_Fg">White</SolidColorBrush>
 					<SolidColorBrush x:Key="ComponentPopup_KeyboardTyping_Border">Black</SolidColorBrush>
 					<SolidColorBrush x:Key="ComponentPopup_ImageTransparent_Bg">White</SolidColorBrush>
-					<SolidColorBrush x:Key="ComponentPopup_BulletList_Fg">Red</SolidColorBrush>
 
 					<!-- Light, Feedback tab -->
-					<SolidColorBrush x:Key="Feedback_TrashIcon_Fg">IndianRed</SolidColorBrush>
+					<SolidColorBrush x:Key="Feedback_TrashIcon_Fg">#B53535</SolidColorBrush>
 
 					<!-- Light, Maintainer tab (2026-09-29; the values CRT Maintainer's own theme carried): the
 					     queue's "New board" badge and the line between its boards, and the four screen
@@ -325,7 +360,9 @@
 				<SolidColorBrush x:Key="Border">LightGray</SolidColorBrush>
 				<SolidColorBrush x:Key="Form_Bg">#2A2421</SolidColorBrush>
 				<SolidColorBrush x:Key="Form_Fg">#E8DDCF</SolidColorBrush>
-				<SolidColorBrush x:Key="Form_Border">#524842</SolidColorBrush>
+				<!-- The edge of a text box, drop-down list or list: 3:1 on Form_Bg, as WCAG asks of an input's edge
+				     (2026-11-12 - #524842 until then, 1.7:1, while a text box took Fluent's far brighter #A3938A). -->
+				<SolidColorBrush x:Key="Form_Border">#776F6A</SolidColorBrush>
 				<SolidColorBrush x:Key="Form_Selected_Bg">#735443</SolidColorBrush>
 				<SolidColorBrush x:Key="Form_Selected_Fg">White</SolidColorBrush>
 				<SolidColorBrush x:Key="Form_Selected_Hover_Bg">#5E4334</SolidColorBrush>
@@ -333,14 +370,27 @@
 				<SolidColorBrush x:Key="Button_Bg">#3E342F</SolidColorBrush>
 				<SolidColorBrush x:Key="Button_Fg">#E8E0D4</SolidColorBrush>
 				<SolidColorBrush x:Key="Button_Border">#524842</SolidColorBrush>
-				<SolidColorBrush x:Key="Button_Ok_Bg">#4F8A5B</SolidColorBrush>
+				<!-- The light theme's green and red (2026-11-12 - see there). -->
+				<SolidColorBrush x:Key="Button_Ok_Bg">#497F54</SolidColorBrush>
 				<SolidColorBrush x:Key="Button_Ok_Fg">White</SolidColorBrush>
 				<SolidColorBrush x:Key="Button_Ok_Border">#3E6E48</SolidColorBrush>
-				<SolidColorBrush x:Key="Button_Cancel_Bg">IndianRed</SolidColorBrush>
+				<SolidColorBrush x:Key="Button_Cancel_Bg">#BC5454</SolidColorBrush>
 				<SolidColorBrush x:Key="Button_Cancel_Fg">White</SolidColorBrush>
-				<SolidColorBrush x:Key="Button_Cancel_Border">#B85C5C</SolidColorBrush>
+				<SolidColorBrush x:Key="Button_Cancel_Border">#A34747</SolidColorBrush>
+				<!-- Under the pointer and pressed (see the light twin): a plain button a step LIGHTER, as this theme's surfaces
+				     step lighter - Fluent's made it darker than at rest; a green or red one a shade deeper, its white text
+				     kept at 4.5:1. -->
+				<SolidColorBrush x:Key="Button_Hover_Bg">#4C413B</SolidColorBrush>
+				<SolidColorBrush x:Key="Button_Pressed_Bg">#5A4D46</SolidColorBrush>
+				<SolidColorBrush x:Key="Button_Hover_Border">#776F6A</SolidColorBrush>
+				<SolidColorBrush x:Key="Button_Ok_Hover_Bg">#3F7049</SolidColorBrush>
+				<SolidColorBrush x:Key="Button_Ok_Pressed_Bg">#355F3D</SolidColorBrush>
+				<SolidColorBrush x:Key="Button_Cancel_Hover_Bg">#A84848</SolidColorBrush>
+				<SolidColorBrush x:Key="Button_Cancel_Pressed_Bg">#943E3E</SolidColorBrush>
 				<SolidColorBrush x:Key="Panel_Border">#524842</SolidColorBrush>
-				<SolidColorBrush x:Key="Link_Fg">White</SolidColorBrush>
+				<!-- A link in a soft blue, the complement of this theme's browns (2026-11-12): White until then, which a link
+				     could not be told from the text beside it by. -->
+				<SolidColorBrush x:Key="Link_Fg">#8AB4F8</SolidColorBrush>
 				<SolidColorBrush x:Key="LinkHover_Fg">#E8DDCF</SolidColorBrush>
 				<SolidColorBrush x:Key="Table_Header_Bg">#3E342F</SolidColorBrush>
 				<SolidColorBrush x:Key="Table_Header_Fg">#E8DDCF</SolidColorBrush>
@@ -349,7 +399,10 @@
 				<SolidColorBrush x:Key="Table_BorderRowLine">#3E342F</SolidColorBrush>
 				<SolidColorBrush x:Key="Table_RowHover_Bg">#3C2F28</SolidColorBrush>
 				<SolidColorBrush x:Key="Text_Success_Fg">#4ADE80</SolidColorBrush>
-				<SolidColorBrush x:Key="Text_Fail_Fg">#EF4444</SolidColorBrush>
+				<!-- #EF4444 until 2026-11-12: 3.7:1 on Card_Bg. -->
+				<SolidColorBrush x:Key="Text_Fail_Fg">#F26C6C</SolidColorBrush>
+				<SolidColorBrush x:Key="Text_Muted_Fg">#B5A896</SolidColorBrush>
+				<SolidColorBrush x:Key="Text_Info_Fg">#8FB4DA</SolidColorBrush>
 
 				<!-- The dark theme's twin of Card_Bg: one step LIGHTER than this theme's
 				     background, where the light theme steps darker. Same intent, opposite
@@ -364,10 +417,12 @@
 				     together or the two themes stop agreeing about what "warning" looks like. -->
 				<SolidColorBrush x:Key="Text_Warning_Fg">#FFAA40</SolidColorBrush>
 
-				<!-- Dark, Main, banners -->
-				<SolidColorBrush x:Key="Main_TabHeader_Drafts_Fg">IndianRed</SolidColorBrush>
-				<SolidColorBrush x:Key="Main_TabUnderline_Selected">IndianRed</SolidColorBrush>
-				<SolidColorBrush x:Key="Main_TabUnderline_Hover">#ecc3c3</SolidColorBrush>
+				<!-- Dark, Main, banners. The Contribute tab's title and the underline in this theme's failure red (IndianRed
+				     until 2026-11-12, 4.2:1 for 12px text); under the pointer a faint red, as the light theme's is - it was
+				     #ECC3C3 here, brighter than the underline of the tab chosen. -->
+				<SolidColorBrush x:Key="Main_TabHeader_Drafts_Fg">#F26C6C</SolidColorBrush>
+				<SolidColorBrush x:Key="Main_TabUnderline_Selected">#F26C6C</SolidColorBrush>
+				<SolidColorBrush x:Key="Main_TabUnderline_Hover">#5D3231</SolidColorBrush>
 				<SolidColorBrush x:Key="Main_Banner_Bg">#38241A</SolidColorBrush>
 				<SolidColorBrush x:Key="Main_Banner_Fg">#E8E0DA</SolidColorBrush>
 				<SolidColorBrush x:Key="Main_BannerButtonsHover_Bg">#4F3528</SolidColorBrush>
@@ -377,7 +432,7 @@
 				<SolidColorBrush x:Key="Schematics_Name_Bg">Khaki</SolidColorBrush>
 				<SolidColorBrush x:Key="Schematics_Name_Fg">Black</SolidColorBrush>
 				<SolidColorBrush x:Key="Schematics_Name_Border">Black</SolidColorBrush>
-				<SolidColorBrush x:Key="Schematics_Region_PAL_Bg">IndianRed</SolidColorBrush>
+				<SolidColorBrush x:Key="Schematics_Region_PAL_Bg">#BC5454</SolidColorBrush>
 				<SolidColorBrush x:Key="Schematics_Region_PAL_Fg">White</SolidColorBrush>
 				<SolidColorBrush x:Key="Schematics_Region_PAL_Border">Black</SolidColorBrush>
 				<SolidColorBrush x:Key="Schematics_Region_NTSC_Bg">#CBD6E5</SolidColorBrush>
@@ -402,12 +457,13 @@
 				<Color x:Key="Schematics_TracePalette_Color3">#0BC419</Color>
 				<Color x:Key="Schematics_TracePalette_Color4">#E6E600</Color>
 
-				<!-- Dark, Worklog -->
-				<SolidColorBrush x:Key="Worklog_Category_Note">#2F6FB5</SolidColorBrush>
+				<!-- Dark, Worklog: the light theme's hues, light enough to read at 4.5:1 as a pill's text on Card_Bg
+				     (2026-11-12 - they were the light theme's own: the blue 2.7:1 there). A badge on one writes black. -->
+				<SolidColorBrush x:Key="Worklog_Category_Note">#6F9CCC</SolidColorBrush>
 				<SolidColorBrush x:Key="Worklog_Category_Cosmetic">#C8880E</SolidColorBrush>
-				<SolidColorBrush x:Key="Worklog_Category_Issue">IndianRed</SolidColorBrush>
-				<SolidColorBrush x:Key="Worklog_Status_Open">IndianRed</SolidColorBrush>
-				<SolidColorBrush x:Key="Worklog_Status_Closed">#4C8C31</SolidColorBrush>
+				<SolidColorBrush x:Key="Worklog_Category_Issue">#F26C6C</SolidColorBrush>
+				<SolidColorBrush x:Key="Worklog_Status_Open">#F26C6C</SolidColorBrush>
+				<SolidColorBrush x:Key="Worklog_Status_Closed">#74A55F</SolidColorBrush>
 
 				<!-- Dark, Drafts - see the Light block above for why this is its own key set. -->
 				<SolidColorBrush x:Key="Draft_Chip_Bg">#4A3B12</SolidColorBrush>
@@ -419,8 +475,8 @@
 				     Form_Bg the report sits on, where the light one steps darker. -->
 				<SolidColorBrush x:Key="Draft_ReferenceBadge_Bg">#3E342F</SolidColorBrush>
 				<SolidColorBrush x:Key="Draft_ReferenceBadge_Border">#524842</SolidColorBrush>
-				<SolidColorBrush x:Key="Draft_ReferenceBadge_Todo_Bg">IndianRed</SolidColorBrush>
-				<SolidColorBrush x:Key="Draft_ReferenceBadge_Todo_Border">#B85C5C</SolidColorBrush>
+				<SolidColorBrush x:Key="Draft_ReferenceBadge_Todo_Bg">#BC5454</SolidColorBrush>
+				<SolidColorBrush x:Key="Draft_ReferenceBadge_Todo_Border">#A34747</SolidColorBrush>
 				<SolidColorBrush x:Key="Draft_ReferenceBadge_Todo_Fg">White</SolidColorBrush>
 				<SolidColorBrush x:Key="Draft_ReferenceBadge_Used_Bg">#3F7A4B</SolidColorBrush>
 				<SolidColorBrush x:Key="Draft_ReferenceBadge_Used_Border">#4F8A5B</SolidColorBrush>
@@ -431,12 +487,14 @@
 				<!-- Dark, Workbooks tab. Surfaces only - see the light block above for why the
 				     category and state colours are not here. -->
 
-				<SolidColorBrush x:Key="Workbooks_SelectedCard_Bg">#33403F</SolidColorBrush>
+				<!-- The selected card a step darker, and the faint text a step lighter (2026-11-12 - #33403F and #8F8578, 3.0:1
+				     on it): the faint text reads at 4.5:1 on every card, still dimmer than the muted. -->
+				<SolidColorBrush x:Key="Workbooks_SelectedCard_Bg">#2C3837</SolidColorBrush>
 				<SolidColorBrush x:Key="Workbooks_Panel_Bg">#241F1C</SolidColorBrush>
 				<SolidColorBrush x:Key="Workbooks_Separator">#524842</SolidColorBrush>
 				<SolidColorBrush x:Key="Workbooks_RowSeparator">#3E342F</SolidColorBrush>
 				<SolidColorBrush x:Key="Workbooks_Muted_Fg">#B5A896</SolidColorBrush>
-				<SolidColorBrush x:Key="Workbooks_Faint_Fg">#8F8578</SolidColorBrush>
+				<SolidColorBrush x:Key="Workbooks_Faint_Fg">#A89E8F</SolidColorBrush>
 
 				<!-- See the light block's stars: the same gold, the unlit ones a little lighter than the ground. -->
 				<SolidColorBrush x:Key="Workbooks_Star_Lit_Top">#FFE48A</SolidColorBrush>
@@ -490,7 +548,7 @@
 				<SolidColorBrush x:Key="Thumbnail_BorderSelected">IndianRed</SolidColorBrush>
 				<SolidColorBrush x:Key="Thumbnail_Bg">#3D302A</SolidColorBrush>
 				<SolidColorBrush x:Key="Thumbnail_Fg">LightGray</SolidColorBrush>
-				<SolidColorBrush x:Key="Thumbnail_Selection_Bg">#4682B4</SolidColorBrush>
+				<SolidColorBrush x:Key="Thumbnail_Selection_Bg">#4076A4</SolidColorBrush>
 				<SolidColorBrush x:Key="Thumbnail_Selection_Fg">White</SolidColorBrush>
 
 				<!-- Dark, Component info popup -->
@@ -513,10 +571,9 @@
 				<SolidColorBrush x:Key="ComponentPopup_KeyboardTyping_Fg">DarkOliveGreen</SolidColorBrush>
 				<SolidColorBrush x:Key="ComponentPopup_KeyboardTyping_Border">Black</SolidColorBrush>
 				<SolidColorBrush x:Key="ComponentPopup_ImageTransparent_Bg">#A99F99</SolidColorBrush>
-				<SolidColorBrush x:Key="ComponentPopup_BulletList_Fg">Blue</SolidColorBrush>
 
 				<!-- Dark, Feedback tab -->
-				<SolidColorBrush x:Key="Feedback_TrashIcon_Fg">IndianRed</SolidColorBrush>
+				<SolidColorBrush x:Key="Feedback_TrashIcon_Fg">#F26C6C</SolidColorBrush>
 
 				<!-- Dark, Maintainer tab (see the Light twin) -->
 				<SolidColorBrush x:Key="Badge_NewBoard_Bg">#3D2E10</SolidColorBrush>
@@ -525,7 +582,8 @@
 				<SolidColorBrush x:Key="Queue_Divider">#4A4A4A</SolidColorBrush>
 				<SolidColorBrush x:Key="Mode_Selected_Bg">#27384D</SolidColorBrush>
 				<SolidColorBrush x:Key="Mode_Selected_Border">#6F9FD8</SolidColorBrush>
-				<SolidColorBrush x:Key="Badge_Attention_Bg">#D9534F</SolidColorBrush>
+				<!-- #D9534F until 2026-11-12, 4.0:1 with its white count. -->
+				<SolidColorBrush x:Key="Badge_Attention_Bg">#C74C49</SolidColorBrush>
 				<SolidColorBrush x:Key="Badge_Attention_Fg">White</SolidColorBrush>
 				<SolidColorBrush x:Key="Badge_Count_Bg">#3A3A3A</SolidColorBrush>
 				<SolidColorBrush x:Key="Badge_Count_Fg">#C8C8C8</SolidColorBrush>
@@ -540,7 +598,8 @@
 		</ResourceDictionary.ThemeDictionaries>
 		<!-- A board's own regions (2026-11-09; RegionChoice): four colors they take turns with - the same in both themes, so
 		     ONCE, outside the theme dictionaries (code review, 2026-11-09: word for word in each, to drift apart). -->
-		<SolidColorBrush x:Key="Schematics_Region_Own1_Bg">#2E8B57</SolidColorBrush>
+		<!-- SeaGreen (#2E8B57) until 2026-11-12, 4.2:1 with its white name; a shade deeper since. -->
+		<SolidColorBrush x:Key="Schematics_Region_Own1_Bg">#2C8453</SolidColorBrush>
 		<SolidColorBrush x:Key="Schematics_Region_Own1_Fg">White</SolidColorBrush>
 		<SolidColorBrush x:Key="Schematics_Region_Own1_Border">Black</SolidColorBrush>
 		<SolidColorBrush x:Key="Schematics_Region_Own2_Bg">#7E57C2</SolidColorBrush>
@@ -568,6 +627,11 @@
 	<Application.Styles>
         <FluentTheme>
             <FluentTheme.Palettes>
+                <!-- The light theme's accent - a ticked box, a picked radio button, a slider, a focused text box - CRT's own
+                     blue (the chart's, near Windows' default), never whatever accent Windows is set to: until 2026-11-12 it
+                     was, and only this theme's controls changed with it. The "User preference" theme shares it. -->
+                <ColorPaletteResources x:Key="Light"
+                                       Accent="#2A78D6" />
                 <!-- Native Avalonia controls themed towards brown/copper -->
                 <ColorPaletteResources x:Key="Dark"
                                        RegionColor="#201C1A"
@@ -647,6 +711,48 @@
 			<Setter Property="TextWrapping" Value="Wrap" />
 		</Style>
 
+		<!--
+		EVERY BUTTON KEEPS ITS COLOR UNDER THE POINTER AND WHILE PRESSED, A SHADE DEEPER (2026-11-12, the theme color review).
+		Fluent's own looks REPLACED the fill: a plain button turned lighter under the pointer in the light theme and darker
+		than at rest in the dark one, and a green or red button went grey, its words black. A button whose background is
+		Transparent - an icon, a link - keeps Fluent's faint wash: a fill of its own would be a box it never had. Here, BEFORE
+		every button style below that sets its own look under the pointer (a notice card's, a tab strip's, a joined switch's
+		chosen one), so those still win - Avalonia applies the later of two matching styles.
+		NOT a note box's format buttons (RichNoteTheme.axaml): their theme has a look of its own under the pointer, and one
+		that is "On" keeps it there - an App style outranks a control theme's, so this took it away (code review, 2026-11-13;
+		ButtonStatesTests).
+		-->
+		<Style Selector="Button:not(Button[Background=Transparent]):not(Button.FormatTool):pointerover /template/ ContentPresenter#PART_ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Button_Hover_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Button_Hover_Border}" />
+			<Setter Property="Foreground" Value="{DynamicResource Button_Fg}" />
+		</Style>
+		<Style Selector="Button:not(Button[Background=Transparent]):not(Button.FormatTool):pressed /template/ ContentPresenter#PART_ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Button_Pressed_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Button_Hover_Border}" />
+			<Setter Property="Foreground" Value="{DynamicResource Button_Fg}" />
+		</Style>
+		<Style Selector="Button.Accept:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Button_Ok_Hover_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Button_Ok_Border}" />
+			<Setter Property="Foreground" Value="{DynamicResource Button_Ok_Fg}" />
+		</Style>
+		<Style Selector="Button.Accept:pressed /template/ ContentPresenter#PART_ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Button_Ok_Pressed_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Button_Ok_Border}" />
+			<Setter Property="Foreground" Value="{DynamicResource Button_Ok_Fg}" />
+		</Style>
+		<Style Selector="Button.Danger:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Button_Cancel_Hover_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Button_Cancel_Border}" />
+			<Setter Property="Foreground" Value="{DynamicResource Button_Cancel_Fg}" />
+		</Style>
+		<Style Selector="Button.Danger:pressed /template/ ContentPresenter#PART_ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Button_Cancel_Pressed_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Button_Cancel_Border}" />
+			<Setter Property="Foreground" Value="{DynamicResource Button_Cancel_Fg}" />
+		</Style>
+
 		<!-- A notice card's action button (Install, Refresh Board, ...): green like every Accept
 		     button, and staying green under the pointer and while pressed. -->
 		<Style Selector="Button.Accept.BannerInstallButton:pointerover /template/ ContentPresenter#PART_ContentPresenter">
@@ -711,10 +817,13 @@
 			<Setter Property="Foreground" Value="{DynamicResource Form_Selected_Fg}" />
 		</Style>
 
-		<!-- This is INPUT field -->
-		<Style Selector="TextBox">
+		<!-- This is INPUT field. Its edge is Form_Border, as a drop-down list's is (2026-11-12 - Fluent's own until then:
+		     another grey in the light theme, a far brighter one in the dark). The same three for the boxes that hold a
+		     TextBox of their own, whose rest look was Fluent's half-transparent ground: a filter box and a number box. -->
+		<Style Selector="TextBox, AutoCompleteBox, NumericUpDown">
 			<Setter Property="Background" Value="{DynamicResource Form_Bg}" />
 			<Setter Property="Foreground" Value="{DynamicResource Form_Fg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Form_Border}" />
 		</Style>
 
 		<!-- Prevent Background and Border changes on Hover -->
@@ -781,6 +890,32 @@
 			<Setter Property="BorderBrush" Value="{DynamicResource Button_Border}" />
 		</Style>
 
+		<!-- A toggle button (the label editor's components not marked yet) and a drop-down button (the table's "Columns",
+		     a color picker's swatch) look as a button does, at rest and under the pointer (2026-11-12): a style names an
+		     exact type, so "Button" never reached them, and they kept Fluent's half-transparent grey - in the "User
+		     preference" theme a darker grey than every button beside them. A toggle turned on keeps Fluent's accent. -->
+		<Style Selector="ToggleButton, DropDownButton">
+			<Setter Property="Background" Value="{DynamicResource Button_Bg}" />
+			<Setter Property="Foreground" Value="{DynamicResource Button_Fg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Button_Border}" />
+		</Style>
+		<Style Selector="ToggleButton:not(:checked):pointerover /template/ ContentPresenter#PART_ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Button_Hover_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Button_Hover_Border}" />
+		</Style>
+		<Style Selector="ToggleButton:not(:checked):pressed /template/ ContentPresenter#PART_ContentPresenter">
+			<Setter Property="Background" Value="{DynamicResource Button_Pressed_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Button_Hover_Border}" />
+		</Style>
+		<Style Selector="DropDownButton:pointerover /template/ Border#RootBorder">
+			<Setter Property="Background" Value="{DynamicResource Button_Hover_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Button_Hover_Border}" />
+		</Style>
+		<Style Selector="DropDownButton:pressed /template/ Border#RootBorder">
+			<Setter Property="Background" Value="{DynamicResource Button_Pressed_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Button_Hover_Border}" />
+		</Style>
+
 		<!-- *** A BUTTON'S COLOUR SAYS WHAT IT DOES, AND ONLY TWO DO (owner decision, 2026-10-13:
 		     "Throw-away and danger equals this IndianRed, while Accept/save/update is a green'ish
 		     button"). ***
@@ -809,19 +944,14 @@
 		     all" read black on green - "make sure to have same text colors (everywhere) for buttons (matching its background
 		     color)"). The TextBlock style above gives every TextBlock the page's color, which outranks what it would take
 		     from its button, so a TextBlock in a button's content - alone, or in a panel there - is given the color a label
-		     of plain text has: its class's, and the theme's under the pointer, pressed and greyed out, as the theme colors
-		     the button's presenter then. Only the content: a tooltip's text is no child of these panels. -->
+		     of plain text has: its class's, under the pointer and pressed too (the button keeps its color then, a shade
+		     deeper - 2026-11-12), and the theme's greyed out, as the theme colors the button's presenter then. Only the
+		     content: a tooltip's text is no child of these panels. -->
 		<Style Selector="Button.Accept > TextBlock, Button.Accept > :is(Panel) > TextBlock">
 			<Setter Property="Foreground" Value="{DynamicResource Button_Ok_Fg}" />
 		</Style>
 		<Style Selector="Button.Danger > TextBlock, Button.Danger > :is(Panel) > TextBlock">
 			<Setter Property="Foreground" Value="{DynamicResource Button_Cancel_Fg}" />
-		</Style>
-		<Style Selector="Button.Accept:pointerover > TextBlock, Button.Accept:pointerover > :is(Panel) > TextBlock, Button.Danger:pointerover > TextBlock, Button.Danger:pointerover > :is(Panel) > TextBlock">
-			<Setter Property="Foreground" Value="{DynamicResource ButtonForegroundPointerOver}" />
-		</Style>
-		<Style Selector="Button.Accept:pressed > TextBlock, Button.Accept:pressed > :is(Panel) > TextBlock, Button.Danger:pressed > TextBlock, Button.Danger:pressed > :is(Panel) > TextBlock">
-			<Setter Property="Foreground" Value="{DynamicResource ButtonForegroundPressed}" />
 		</Style>
 		<Style Selector="Button.Accept:disabled > TextBlock, Button.Accept:disabled > :is(Panel) > TextBlock, Button.Danger:disabled > TextBlock, Button.Danger:disabled > :is(Panel) > TextBlock">
 			<Setter Property="Foreground" Value="{DynamicResource ButtonForegroundDisabled}" />
@@ -1004,6 +1134,45 @@
 		<!-- Give the ColorPicker in "Schematics" tab its visual layout -->
         <StyleInclude Source="avares://Avalonia.Controls.ColorPicker/Themes/Fluent/Fluent.xaml" />
 
+		<!-- ###########################################################################################
+		     A COLOR PICKER'S LIST IS BUILT WHEN IT FIRST OPENS (2026-11-13, measured): Avalonia 12.1.4's own ColorPicker
+		     template (Avalonia.Controls.ColorPicker's Themes/Fluent/ColorPicker.xaml; 12.1.6 changed only the copy in its
+		     flyout, which CRT does not use - compared 2026-11-13) - its theme's swatch, sizes and palette
+		     kept, as only the template is set here - less the copy of the ColorView it holds inline in its flyout, which was
+		     built with every picker, opened or not: on "Board: Schematic images", four per picture card, it was the largest
+		     single cost of showing the page. The flyout is empty here, and ColorPickerDropper fills it as it opens - a ColorView
+		     drawn as that copy was, and the dropper under it. When Avalonia is updated, compare this with its ColorPicker.xaml.
+		     ########################################################################################### -->
+		<Style Selector="ColorPicker">
+			<Setter Property="Template">
+				<ControlTemplate>
+					<DropDownButton CornerRadius="{TemplateBinding CornerRadius}"
+									MinHeight="{TemplateBinding MinHeight}"
+									MinWidth="{TemplateBinding MinWidth}"
+									Height="{TemplateBinding Height}"
+									Width="{TemplateBinding Width}"
+									Content="{TemplateBinding Content}"
+									HorizontalAlignment="{TemplateBinding HorizontalAlignment}"
+									VerticalAlignment="{TemplateBinding VerticalAlignment}"
+									HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+									VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+									ContentTemplate="{TemplateBinding ContentTemplate}"
+									Padding="0,0,10,0"
+									UseLayoutRounding="False">
+						<DropDownButton.Styles>
+							<Style Selector="FlyoutPresenter.nopadding">
+								<Setter Property="Padding" Value="0" />
+							</Style>
+						</DropDownButton.Styles>
+						<DropDownButton.Flyout>
+							<Flyout FlyoutPresenterClasses="nopadding"
+									Placement="{DynamicResource ColorPickerFlyoutPlacement}" />
+						</DropDownButton.Flyout>
+					</DropDownButton>
+				</ControlTemplate>
+			</Setter>
+		</Style>
+
 		<!-- Give the Contribute tab's table editor (ProDataGrid, an MIT fork of Avalonia's own
 		     DataGrid, whose assembly keeps the original name) its visual layout. -->
 		<StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.v2.xaml" />
@@ -1037,7 +1206,8 @@
 		<!-- THE REGION BUTTONS - under Main's component list and on the component popup, ONE copy for both (code review,
 		     2026-11-09: word for word in each window, to drift apart). The one picked is lit in its region's colors:
 		     PAL's and NTSC's buttons by name, a board's own regions in one of four (2026-11-09; RegionChoice.ColorsOf,
-		     RegionButtonGrid.UseOwnColors). -->
+		     RegionButtonGrid.UseOwnColors). The words' color is set on the presenter too: the plain button's hover style sets
+		     it there, and the lit button's own was lost under the pointer (code review, 2026-11-13; ButtonStatesTests). -->
 		<Style Selector="Button.RegionToggle.active">
 			<Setter Property="BorderThickness" Value="2" />
 		</Style>
@@ -1047,6 +1217,7 @@
 		</Style>
 		<Style Selector="Button#PalRegionButton.RegionToggle.active /template/ ContentPresenter">
 			<Setter Property="Background" Value="{DynamicResource Schematics_Region_PAL_Bg}" />
+			<Setter Property="Foreground" Value="{DynamicResource Schematics_Region_PAL_Fg}" />
 			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_PAL_Bg}" />
 		</Style>
 		<Style Selector="Button#NtscRegionButton.RegionToggle.active">
@@ -1055,6 +1226,7 @@
 		</Style>
 		<Style Selector="Button#NtscRegionButton.RegionToggle.active /template/ ContentPresenter">
 			<Setter Property="Background" Value="{DynamicResource Schematics_Region_NTSC_Bg}" />
+			<Setter Property="Foreground" Value="{DynamicResource Schematics_Region_NTSC_Fg}" />
 			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_NTSC_Bg}" />
 		</Style>
 		<Style Selector="Button.RegionToggle.active.Own1">
@@ -1063,6 +1235,7 @@
 		</Style>
 		<Style Selector="Button.RegionToggle.active.Own1 /template/ ContentPresenter">
 			<Setter Property="Background" Value="{DynamicResource Schematics_Region_Own1_Bg}" />
+			<Setter Property="Foreground" Value="{DynamicResource Schematics_Region_Own1_Fg}" />
 			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_Own1_Bg}" />
 		</Style>
 		<Style Selector="Button.RegionToggle.active.Own2">
@@ -1071,6 +1244,7 @@
 		</Style>
 		<Style Selector="Button.RegionToggle.active.Own2 /template/ ContentPresenter">
 			<Setter Property="Background" Value="{DynamicResource Schematics_Region_Own2_Bg}" />
+			<Setter Property="Foreground" Value="{DynamicResource Schematics_Region_Own2_Fg}" />
 			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_Own2_Bg}" />
 		</Style>
 		<Style Selector="Button.RegionToggle.active.Own3">
@@ -1079,6 +1253,7 @@
 		</Style>
 		<Style Selector="Button.RegionToggle.active.Own3 /template/ ContentPresenter">
 			<Setter Property="Background" Value="{DynamicResource Schematics_Region_Own3_Bg}" />
+			<Setter Property="Foreground" Value="{DynamicResource Schematics_Region_Own3_Fg}" />
 			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_Own3_Bg}" />
 		</Style>
 		<Style Selector="Button.RegionToggle.active.Own4">
@@ -1087,6 +1262,7 @@
 		</Style>
 		<Style Selector="Button.RegionToggle.active.Own4 /template/ ContentPresenter">
 			<Setter Property="Background" Value="{DynamicResource Schematics_Region_Own4_Bg}" />
+			<Setter Property="Foreground" Value="{DynamicResource Schematics_Region_Own4_Fg}" />
 			<Setter Property="BorderBrush" Value="{DynamicResource Schematics_Region_Own4_Bg}" />
 		</Style>
 		<!-- A region the board gives colors of its own (owner request, 2026-11-11; RegionColors, RegionPaint.UseBoardColors): read
@@ -1097,6 +1273,7 @@
 		</Style>
 		<Style Selector="Button.RegionToggle.active.BoardColors /template/ ContentPresenter">
 			<Setter Property="Background" Value="{DynamicResource Region_Board_Bg}" />
+			<Setter Property="Foreground" Value="{DynamicResource Region_Board_Fg}" />
 			<Setter Property="BorderBrush" Value="{DynamicResource Region_Board_Bg}" />
 		</Style>
 

@@ -1344,6 +1344,8 @@ namespace CRT
         // ###########################################################################################
         internal void ShowDraftProblem(string? problem)
         {
+            this.thisSubmitBlockedSaid = false;
+            this.thisSubmitBlockedOf = null;
             this.DraftProblemText.Text = problem ?? string.Empty;
             this.DraftProblemText.IsVisible = !string.IsNullOrWhiteSpace(problem);
         }

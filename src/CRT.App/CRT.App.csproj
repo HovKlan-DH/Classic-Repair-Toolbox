@@ -11,7 +11,7 @@
 		<!--
 		<InformationalVersion>$(AssemblyVersion)</InformationalVersion>
 		-->
-		<InformationalVersion>4.0.0-alpha.7</InformationalVersion>
+		<InformationalVersion>4.0.0-alpha.8</InformationalVersion>
 		
 		<OutputType>WinExe</OutputType>
 		<TargetFrameworks>net10.0</TargetFrameworks>
@@ -49,9 +49,10 @@
         list has never seen. A few IDs from the 9.32 list (S1121, S2583, S2589, S6602, S6603) no
         longer fire under 10.33 - left in place rather than pruned, since an unused ID here is
         harmless and re-deriving the list from scratch on every bump is more error-prone than
-        appending to it.
+        appending to it. 10.35 to 10.36 (2026-11-13) added S9415 (a local function that could be
+        static, 6 hits) and S9422 (a lock field that could be System.Threading.Lock, 12 hits).
         -->
-        <WarningsNotAsErrors>$(WarningsNotAsErrors);S108;S125;S1066;S1075;S1118;S1121;S1125;S1144;S1172;S1244;S1313;S1450;S1481;S1854;S1871;S1905;S1940;S2292;S2325;S2365;S2486;S2583;S2589;S2737;S2953;S2971;S3168;S3267;S3358;S3604;S3963;S4036;S4136;S4158;S4487;S6444;S6602;S6603;S6605;S6608;S6966;S8949;S8969</WarningsNotAsErrors>
+        <WarningsNotAsErrors>$(WarningsNotAsErrors);S108;S125;S1066;S1075;S1118;S1121;S1125;S1144;S1172;S1244;S1313;S1450;S1481;S1854;S1871;S1905;S1940;S2292;S2325;S2365;S2486;S2583;S2589;S2737;S2953;S2971;S3168;S3267;S3358;S3604;S3963;S4036;S4136;S4158;S4487;S6444;S6602;S6603;S6605;S6608;S6966;S8949;S8969;S9415;S9422</WarningsNotAsErrors>
         <ApplicationManifest>Main\app.manifest</ApplicationManifest>
         <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
         <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
@@ -78,15 +79,14 @@
 </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.1.4" />
-    <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.4" />
-    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.4" />
-	<PackageReference Include="Avalonia.Controls.ColorPicker" Version="12.1.4" />
+    <PackageReference Include="Avalonia" Version="12.1.6" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.6" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.6" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.6" />
+	<PackageReference Include="Avalonia.Controls.ColorPicker" Version="12.1.6" />
     <PackageReference Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3" />
-    <PackageReference Include="EPPlus" Version="8.7.1" />
-    <PackageReference Include="ProDataGrid" Version="12.1.0.6" />
-    <PackageReference Include="QuestPDF" Version="2026.9.1" />
+    <PackageReference Include="ProDataGrid" Version="12.1.5" />
+    <PackageReference Include="QuestPDF" Version="2026.9.2" />
     <!--
     DPAPI, for the Maintainer tab's remembered sign-in (Handlers/Maintainer/ReviewSessionProtection,
     moved here with the maintainer application on 2026-09-29). Windows-only by nature: the package
@@ -94,9 +94,9 @@
     which is why every call is guarded by OperatingSystem.IsWindows() and CRT simply declines to
     remember a maintainer session on other platforms rather than storing one in the clear.
     -->
-    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.13" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.15" />
     <PackageReference Include="Velopack" Version="1.2.161" />
-    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.35.0.4138" PrivateAssets="all" />
+    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.36.0.15337" PrivateAssets="all" />
   </ItemGroup>
 
   <!--

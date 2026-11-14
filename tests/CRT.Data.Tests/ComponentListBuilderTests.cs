@@ -10,6 +10,59 @@ namespace ClassicRepairToolbox.Tests;
 // display string, and a component with no usable text is dropped entirely.
 public class ComponentListBuilderTests
 {
+    // ###########################################################################################
+    // What stays selected as the region is switched (owner report, 2026-11-13: a component selected was let go of). A key
+    // holds its row's region, so a component told apart per region is found again by its label - its row of the region now
+    // shown; one of every region keeps its key; one with no row in the region now shown has nothing to select.
+    // ###########################################################################################
+    [Fact]
+    public void A_selected_component_is_found_again_by_its_label_in_the_other_regions_list()
+    {
+        var board = new BoardData
+        {
+            Components =
+            [
+                new ComponentEntry { BoardLabel = "C116", TechnicalNameOrValue = "10uF", Region = "PAL" },
+                new ComponentEntry { BoardLabel = "C116", TechnicalNameOrValue = "47uF", Region = "NTSC" },
+                new ComponentEntry { BoardLabel = "C1", TechnicalNameOrValue = "100nF" },
+                new ComponentEntry { BoardLabel = "U30", TechnicalNameOrValue = "PAL only", Region = "PAL" },
+                new ComponentEntry { BoardLabel = "C2", TechnicalNameOrValue = "1nF" },
+            ],
+        };
+
+        List<ComponentListItem> pal = ComponentListBuilder.BuildComponentItems(board, "PAL");
+        List<ComponentListItem> ntsc = ComponentListBuilder.BuildComponentItems(board, "NTSC");
+
+        string KeyOf(List<ComponentListItem> rows, string label) => rows.Single(row => row.BoardLabel == label).SelectionKey;
+
+        HashSet<string> selected = [KeyOf(pal, "C116"), KeyOf(pal, "C1"), KeyOf(pal, "U30")];
+
+        List<int> rows = ComponentListBuilder.RowsToSelect(ntsc, selected);
+
+        Assert.Equal(
+            new[] { "C1", "C116" },
+            rows.Select(index => ntsc[index].BoardLabel).OrderBy(label => label, StringComparer.Ordinal));
+        Assert.Contains(ntsc.FindIndex(row => row.SelectionKey == KeyOf(ntsc, "C116")), rows);
+    }
+
+    // ###########################################################################################
+    // The same rule finds a component whose NAMES changed since it was held (code review, 2026-11-09) - its key holds them -
+    // and it is the one rule every restore goes by (code review, 2026-11-13: the region's stood beside the region switch
+    // alone, and the selection held across a load lost a component told apart per region).
+    // ###########################################################################################
+    [Fact]
+    public void A_selected_component_whose_names_changed_is_found_again_by_its_label()
+    {
+        var before = new BoardData { Components = [new ComponentEntry { BoardLabel = "U8", FriendlyName = "CPU" }, new ComponentEntry { BoardLabel = "U9" }] };
+        var after = new BoardData { Components = [new ComponentEntry { BoardLabel = "U8", FriendlyName = "Processor" }, new ComponentEntry { BoardLabel = "U9" }] };
+
+        string held = ComponentListBuilder.BuildComponentItems(before, string.Empty)[0].SelectionKey;
+        List<ComponentListItem> rows = ComponentListBuilder.BuildComponentItems(after, string.Empty);
+
+        Assert.Equal([0], ComponentListBuilder.RowsToSelect(rows, [held]));
+        Assert.Empty(ComponentListBuilder.RowsToSelect(rows, []));
+    }
+
     // A row says what the draft's checks found on it (the Contribute tab's list), changing as it stands: a
     // row made again lets go of the selection.
     [Fact]
@@ -306,6 +359,18 @@ public class ComponentListBuilderTests
         Assert.Equal(
             string.Join(separator, "U1", "PLA", "906114-01", "PAL"),
             item.SelectionKey);
+    }
+
+    // The key is read apart where it is made (code review, 2026-11-13): a key built here gives back its label and names.
+    [Fact]
+    public void A_key_built_here_reads_back_as_its_label_and_names()
+    {
+        var item = ComponentListBuilder.BuildComponentItems(
+            Board(Component(boardLabel: "U1", friendly: "PLA", technical: "906114-01", region: "PAL")), "PAL").Single();
+
+        Assert.Equal("U1", ComponentListBuilder.LabelOf(item.SelectionKey));
+        Assert.Equal(("PLA", "906114-01"), ComponentListBuilder.NamesOf(item.SelectionKey));
+        Assert.Equal((string.Empty, string.Empty), ComponentListBuilder.NamesOf(null));
     }
 
     // The key includes the region, so the PAL and NTSC variants of one label stay distinguishable.

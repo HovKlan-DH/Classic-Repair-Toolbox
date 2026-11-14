@@ -5,6 +5,7 @@
         CanResize="False"
         CanMinimize="False"
         WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource Bg}"
         Title="Delete a board">
 
     <!--

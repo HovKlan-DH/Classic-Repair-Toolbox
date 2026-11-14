@@ -12,8 +12,8 @@ namespace ClassicRepairToolbox.Tests.Ui;
 // Only keys something actually renders are covered: Draft_Chip_Bg/Fg/Border by
 // ComponentFilterListBox's ItemTemplate in Main.axaml, Draft_Highlight_Tint by
 // TabSchematics.Highlights.cs's ApplyHighlightVisuals (NewContributeStrategy.md Phase 2,
-// session 2b), and Draft_ReferenceBadge_Bg/Border by KiCadDataPanel's Border.ReferenceBadge
-// style (one badge per component in the KiCad match report).
+// session 2b), and Draft_ReferenceBadge_Bg/Border by KiCadDataPanel's BadgeCloud lists (one
+// badge per component in the KiCad match report, drawn by the list itself since 2026-11-13).
 [Collection("HeadlessUi")]
 public class DraftPaletteTests
 {

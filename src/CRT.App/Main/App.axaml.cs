@@ -516,7 +516,7 @@ namespace CRT
         // ###########################################################################################
         private void ClearUserPreferenceThemeResources()
         {
-            foreach (var resourceKey in UserSettings.GetUserThemeColors().Keys)
+            foreach (var resourceKey in UserSettings.GetUserThemeColors().Keys.Concat(Handlers.Theming.UserThemeShades.Keys))
             {
                 this.Resources.Remove(resourceKey);
             }
@@ -543,6 +543,13 @@ namespace CRT
                 {
                     this.Resources[entry.Key] = new SolidColorBrush(color);
                 }
+            }
+
+            // A button color changed from its default gets its shades under the pointer and pressed worked out from it -
+            // the light theme's own are made for its own colors (UserThemeShades).
+            foreach ((string key, Color shade) in Handlers.Theming.UserThemeShades.Of(UserSettings.GetUserThemeColors(), UserSettings.UserThemeDefaultColors))
+            {
+                this.Resources[key] = new SolidColorBrush(shade);
             }
 
             Logger.Info($"Applied user preference theme colors: [{UserSettings.GetUserThemeColors().Count} entries]");

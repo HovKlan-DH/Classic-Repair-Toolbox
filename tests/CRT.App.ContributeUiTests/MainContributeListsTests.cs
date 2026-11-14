@@ -672,16 +672,6 @@ public sealed class MainContributeListsTests : IDisposable
         });
     }
 
-    // A row's key as its label and region alone - what stays as its names change.
-    [Theory]
-    [InlineData("U1\u001FCPU\u001F6510\u001FPAL", "U1\u001FPAL")]
-    [InlineData("U8\u001FCPU\u001F6510\u001F", "U8\u001F")]
-    [InlineData("U8", "U8")]
-    public void A_rows_key_without_its_names_is_its_label_and_region(string key, string expected)
-    {
-        Assert.Equal(expected, CRT.Main.LabelAndRegionOf(key));
-    }
-
     // ###########################################################################################
     // THE REGION SWITCHED ON THE TAB LEAVES WHAT IS HELD, as a load does: under a word the other tabs' list
     // selected all it found, a component unticked among them too, with nobody having chosen anything.
@@ -750,6 +740,51 @@ public sealed class MainContributeListsTests : IDisposable
     }
 
     // The region picked, and the other tabs' list having followed it - which takes a read of the rectangles first.
+    // ###########################################################################################
+    // *** A COMPONENT SELECTED STAYS SELECTED AS THE REGION IS SWITCHED (owner report, 2026-11-13: "when I (in "Schematics"
+    // or "Overview" tab... and others?) have selected one component in the component list, and I then change region, then
+    // it deselects that component and show all components"). *** A component told apart per region has a row - and a key -
+    // of its own in each region, and the list made again for the other region found no row with the key selected. It is
+    // the same component: its row there is selected. One of every region keeps its key, and stayed selected all along.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_component_of_each_region_stays_selected_as_the_region_is_switched()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var window = new CRT.Main { BoardKeyOverrideForTests = MainContributeListsTests.BoardKey };
+
+            window.PickRegion(BoardRegions.Pal);
+
+            window.UseBoardForTests(
+                new HardwareBoardEntry { HardwareName = "Commodore 64", BoardName = "250407", ExcelDataFile = "Commodore/C64/250407/board.json" },
+                new BoardData
+                {
+                    Components =
+                    [
+                        new ComponentEntry { BoardLabel = "C116", FriendlyName = "Filter", TechnicalNameOrValue = "10uF", Category = "Capacitor", Region = "PAL" },
+                        new ComponentEntry { BoardLabel = "C116", FriendlyName = "Filter", TechnicalNameOrValue = "47uF", Category = "Capacitor", Region = "NTSC" },
+                        new ComponentEntry { BoardLabel = "C1", FriendlyName = "Filter", Category = "Capacitor" },
+                    ],
+                });
+
+            ShowSchematics(window);
+
+            ListShown(window).Selection.Select(0);
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(["C116"], Selected(window));
+
+            await SwitchRegionAsync(window, BoardRegions.Ntsc);
+
+            Assert.Equal(["C116"], Selected(window));
+            Assert.Equal("NTSC", Assert.Single(ListShown(window).SelectedItems!.Cast<ComponentListItem>()).SelectionKey.Split('\u001F')[^1]);
+
+            await SwitchRegionAsync(window, BoardRegions.Pal);
+
+            Assert.Equal(["C116"], Selected(window));
+        });
+    }
+
     private static async Task SwitchRegionAsync(CRT.Main window, string region)
     {
         object? rows = window.ComponentFilterListBox.ItemsSource;
