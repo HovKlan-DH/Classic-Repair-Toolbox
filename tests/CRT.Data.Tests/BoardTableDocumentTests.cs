@@ -1282,6 +1282,36 @@ public sealed class BoardTableDocumentTests
         Assert.False(sheet.MoveRowDown(Row(sheet, "U1", deleted: true)));
     }
 
+    // ###########################################################################################
+    // *** The credits' rows cannot be moved (code review, 2026-11-16). *** The server keeps them in date order at every publish
+    // (CreditOrder.Sorted): moved in the table, the order was a change of the draft the publish undid, and the draft never
+    // retired. "Board: Credits" has no drag handle for the same reason; another sheet's rows still move.
+    // ###########################################################################################
+    [Fact]
+    public void The_credits_rows_cannot_be_moved()
+    {
+        var board = new BoardData
+        {
+            Credits =
+            [
+                new CreditEntry { Category = "Board data", NameOrHandle = "Anna" },
+                new CreditEntry { Category = "Board data", NameOrHandle = "Bo" },
+            ],
+        };
+
+        BoardTableDocument document = BoardTableDocument.Create(null, board);
+        BoardTableSheet credits = document.Sheets.Single(sheet => sheet.Name == BoardWorkbookSchema.SheetCredits);
+        BoardTableRow second = credits.Rows[1];
+
+        Assert.False(credits.RowsCanBeMoved);
+        Assert.False(credits.CanMoveRowUp(second));
+        Assert.False(credits.MoveRowUp(second));
+        Assert.False(credits.MoveRow(second, 0));
+        Assert.Same(second, credits.Rows[1]);
+
+        Assert.True(Components(document).RowsCanBeMoved);
+    }
+
     [Fact]
     public void Moving_to_a_drop_position_uses_the_position_as_it_was_before_the_move()
     {

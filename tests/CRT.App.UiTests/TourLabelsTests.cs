@@ -24,7 +24,7 @@ public sealed class TourLabelsTests
     // Keys, and examples of what to type - no control's text, on purpose.
     private static readonly HashSet<string> NoControls = new(StringComparer.Ordinal)
     {
-        "Shift", "Ctrl", "Cmd", "F11",
+        "Shift", "Ctrl", "Cmd", "F11", "Enter",
         "U1", "CIA", "6526",
     };
 

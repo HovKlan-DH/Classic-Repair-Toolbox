@@ -251,7 +251,7 @@ public sealed class BoardTableProblemsTests
 
             content = HandOver(document, content);
 
-            List<string> onBoard = BoardDataChecks.Check(BoardCheckRows.From(content.Board), null, BoardCheckScope.Everything)
+            List<string> onBoard = BoardDataChecks.Check(BoardCheckRows.From(content.Board, published: null), null, BoardCheckScope.Everything)
                 .Where(problem => problem.Code is "highlight.unknown_schematic" or "highlight.orphan" or "component.no_highlight")
                 .Select(problem => $"{problem.Code} {problem.Subject}")
                 .Order()

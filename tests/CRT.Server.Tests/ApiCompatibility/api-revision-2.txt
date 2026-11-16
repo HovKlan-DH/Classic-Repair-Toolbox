@@ -357,6 +357,8 @@ answer BoardTableAnswer | .rows.components[].technicalNameOrValue string
 answer BoardTableAnswer | .rows.credits array of object
 answer BoardTableAnswer | .rows.credits[].category string
 answer BoardTableAnswer | .rows.credits[].contact string
+answer BoardTableAnswer | .rows.credits[].date string
+answer BoardTableAnswer | .rows.credits[].mainContribution string
 answer BoardTableAnswer | .rows.credits[].nameOrHandle string
 answer BoardTableAnswer | .rows.credits[].subCategory string
 answer BoardTableAnswer | .rows.kiCadCalibrations array of object
@@ -656,6 +658,8 @@ answer ReviewTableData | .published.components[].technicalNameOrValue string
 answer ReviewTableData | .published.credits array of object
 answer ReviewTableData | .published.credits[].category string
 answer ReviewTableData | .published.credits[].contact string
+answer ReviewTableData | .published.credits[].date string
+answer ReviewTableData | .published.credits[].mainContribution string
 answer ReviewTableData | .published.credits[].nameOrHandle string
 answer ReviewTableData | .published.credits[].subCategory string
 answer ReviewTableData | .published.kiCadCalibrations array of object
@@ -755,6 +759,8 @@ answer ReviewTableData | .submitted.components[].technicalNameOrValue string
 answer ReviewTableData | .submitted.credits array of object
 answer ReviewTableData | .submitted.credits[].category string
 answer ReviewTableData | .submitted.credits[].contact string
+answer ReviewTableData | .submitted.credits[].date string
+answer ReviewTableData | .submitted.credits[].mainContribution string
 answer ReviewTableData | .submitted.credits[].nameOrHandle string
 answer ReviewTableData | .submitted.credits[].subCategory string
 answer ReviewTableData | .submitted.kiCadCalibrations array of object
@@ -1013,6 +1019,8 @@ answer SubmissionDetailAnswer | .manifest.rows.components[].technicalNameOrValue
 answer SubmissionDetailAnswer | .manifest.rows.credits array of object
 answer SubmissionDetailAnswer | .manifest.rows.credits[].category string
 answer SubmissionDetailAnswer | .manifest.rows.credits[].contact string
+answer SubmissionDetailAnswer | .manifest.rows.credits[].date string
+answer SubmissionDetailAnswer | .manifest.rows.credits[].mainContribution string
 answer SubmissionDetailAnswer | .manifest.rows.credits[].nameOrHandle string
 answer SubmissionDetailAnswer | .manifest.rows.credits[].subCategory string
 answer SubmissionDetailAnswer | .manifest.rows.kiCadCalibrations array of object
@@ -1259,6 +1267,8 @@ body POST /api/review/boards/edit | .rows.components[].technicalNameOrValue stri
 body POST /api/review/boards/edit | .rows.credits array of object
 body POST /api/review/boards/edit | .rows.credits[].category string
 body POST /api/review/boards/edit | .rows.credits[].contact string
+body POST /api/review/boards/edit | .rows.credits[].date string
+body POST /api/review/boards/edit | .rows.credits[].mainContribution string
 body POST /api/review/boards/edit | .rows.credits[].nameOrHandle string
 body POST /api/review/boards/edit | .rows.credits[].subCategory string
 body POST /api/review/boards/edit | .rows.kiCadCalibrations array of object
@@ -1363,6 +1373,8 @@ body POST /api/review/boards/edit/check | .rows.components[].technicalNameOrValu
 body POST /api/review/boards/edit/check | .rows.credits array of object
 body POST /api/review/boards/edit/check | .rows.credits[].category string
 body POST /api/review/boards/edit/check | .rows.credits[].contact string
+body POST /api/review/boards/edit/check | .rows.credits[].date string
+body POST /api/review/boards/edit/check | .rows.credits[].mainContribution string
 body POST /api/review/boards/edit/check | .rows.credits[].nameOrHandle string
 body POST /api/review/boards/edit/check | .rows.credits[].subCategory string
 body POST /api/review/boards/edit/check | .rows.kiCadCalibrations array of object
@@ -1490,6 +1502,8 @@ body POST /api/review/submissions/{submissionId:long}/amend | .rows.components[]
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.credits array of object
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.credits[].category string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.credits[].contact string
+body POST /api/review/submissions/{submissionId:long}/amend | .rows.credits[].date string
+body POST /api/review/submissions/{submissionId:long}/amend | .rows.credits[].mainContribution string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.credits[].nameOrHandle string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.credits[].subCategory string
 body POST /api/review/submissions/{submissionId:long}/amend | .rows.kiCadCalibrations array of object
@@ -1620,6 +1634,8 @@ body POST /api/submissions | .rows.components[].technicalNameOrValue string
 body POST /api/submissions | .rows.credits array of object
 body POST /api/submissions | .rows.credits[].category string
 body POST /api/submissions | .rows.credits[].contact string
+body POST /api/submissions | .rows.credits[].date string
+body POST /api/submissions | .rows.credits[].mainContribution string
 body POST /api/submissions | .rows.credits[].nameOrHandle string
 body POST /api/submissions | .rows.credits[].subCategory string
 body POST /api/submissions | .rows.kiCadCalibrations array of object

@@ -508,7 +508,7 @@ namespace CRT
                     BorderThickness = new Thickness(1),
                     CornerRadius = new CornerRadius(3),
                     Padding = new Thickness(8, 6),
-                    Cursor = new Cursor(StandardCursorType.Hand),
+                    Cursor = TabWorkbooks.HandCursor,
                     Child = new TextBlock
                     {
                         Text = headline,
@@ -676,7 +676,9 @@ namespace CRT
 
             foreach (WorklogAttachmentRecord photo in device.Photos.OrderBy(photo => photo.DisplayOrder).ThenBy(photo => photo.Id))
             {
-                var image = new Image { Width = 160, Height = 120, Stretch = Stretch.Uniform, Cursor = new Cursor(StandardCursorType.Hand) };
+                // The one Hand cursor of the tab (BoardPreviews' HandCursor): a Cursor holds an HCURSOR on Windows, and one
+                // per row per refresh was never let go of (2026-11-16).
+                var image = new Image { Width = 160, Height = 120, Stretch = Stretch.Uniform, Cursor = TabWorkbooks.HandCursor };
                 ToolTip.SetTip(image, "Click to view");
                 string? path = OwnedDeviceStore.PhotoPath(device.Id, photo.FileName);
                 ShowDevicePhoto(image, path);

@@ -75,7 +75,7 @@ public class ThemeContrastTests
                      "Thumbnail_Selection", "ComponentPopup_Name", "ComponentPopup_Pin", "ComponentPopup_OscilloscopeExpected",
                      "ComponentPopup_OscilloscopeSyncData", "ComponentPopup_KeyboardTyping", "Draft_Chip", "Draft_ReferenceBadge_Todo",
                      "Draft_ReferenceBadge_Used", "Workbooks_SearchHit", "Notice", "Badge_NewBoard", "Badge_Attention", "Badge_Count",
-                     "Tour_Card", "BoardTable_Header", "BoardTable_ReplacePreview", "ReturnBar",
+                     "Tour_Card", "BoardTable_Header", "BoardTable_ReplacePreview", "ReturnBar", "SubmittedCredit",
                      "Schematics_Region_Own1", "Schematics_Region_Own2", "Schematics_Region_Own3", "Schematics_Region_Own4"
                  })
         {
@@ -92,6 +92,7 @@ public class ThemeContrastTests
         foreach (var pair in On("Badge_Attention_Bg", Edge, "Bg")) yield return pair;
         foreach (var pair in On("Mode_Selected_Border", Edge, "Bg")) yield return pair;
         foreach (var pair in On("BoardTable_CurrentCell_Border", Edge, "Table_Bg")) yield return pair;
+        foreach (var pair in On("SubmittedCredit_Border", Edge, "Bg")) yield return pair;
     }
 
     // The fills a word is written on in white or black, whichever reads better (ThemeResources.TextOn).

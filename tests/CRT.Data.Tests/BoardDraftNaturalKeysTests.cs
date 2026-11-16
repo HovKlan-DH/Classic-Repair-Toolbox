@@ -62,6 +62,57 @@ public sealed class BoardDraftNaturalKeysTests
         Assert.NotEqual(alex, sam);
     }
 
+    // ###########################################################################################
+    // A credit's main contribution is part of its identity (2026-11-15) - the same person credited twice for the same work
+    // is two rows - and a credit without one keys exactly as it always did. The key also NAMES the row (Describe), so the
+    // contribution stands in it as one line of its words, its formatting gone and a long one cut short.
+    // ###########################################################################################
+    [Fact]
+    public void ForCredit_holds_the_main_contribution_as_one_short_line()
+    {
+        Assert.Equal(BoardDraftNaturalKeys.ForCredit("Board data", "", "Bo"), BoardDraftNaturalKeys.ForCredit("Board data", "", "Bo", "  "));
+        Assert.NotEqual(BoardDraftNaturalKeys.ForCredit("Board data", "", "Bo", "Fixed U8"), BoardDraftNaturalKeys.ForCredit("Board data", "", "Bo", "Added the pinouts"));
+
+        Assert.Equal(
+            "Board data / Bo / Added the pinouts of every chip • U1 to U8",
+            BoardDraftNaturalKeys.Describe(BoardDraftNaturalKeys.ForCredit("Board data", "", "Bo", "Added the **pinouts** of every chip\n- U1 to U8")));
+
+        string described = BoardDraftNaturalKeys.Describe(BoardDraftNaturalKeys.ForCredit("Board data", "", "Bo", new string('x', 200)));
+        Assert.Matches(@"x\.\.\. #[0-9a-f]{6}$", described);
+        Assert.Equal("Board data / Bo / ".Length + BoardDraftNaturalKeys.ContributionInKey, described.Length);
+    }
+
+    // ###########################################################################################
+    // *** Two long contributions that begin alike are two keys (code review, 2026-11-16). *** Cut short alone, the same person
+    // credited twice for the same kind of work - "... for these components on PAL: U1, U2" and "...: U7, U8" - was one key,
+    // and every comparison left the second out. In other capitals they are still the one key, as keys are compared.
+    // ###########################################################################################
+    [Fact]
+    public void ForCredit_tells_apart_long_contributions_that_begin_alike()
+    {
+        const string Start = "Measured the oscilloscope baselines for these components on PAL: ";
+
+        string first = BoardDraftNaturalKeys.ForCredit("Board data", "", "Unknown", Start + "U1, U2");
+        string second = BoardDraftNaturalKeys.ForCredit("Board data", "", "Unknown", Start + "U7, U8");
+
+        Assert.NotEqual(first, second, StringComparer.OrdinalIgnoreCase);
+        Assert.Equal(first, BoardDraftNaturalKeys.ForCredit("Board data", "", "Unknown", (Start + "U1, U2").ToUpperInvariant()), StringComparer.OrdinalIgnoreCase);
+    }
+
+    // A long contribution is never cut between the two halves of one character (code review, 2026-11-16): an emoji standing
+    // where it is cut goes whole, rather than leaving half of it in the name of the row.
+    [Fact]
+    public void ForCredit_cuts_a_long_contribution_between_characters_never_inside_one()
+    {
+        int cut = BoardDraftNaturalKeys.ContributionInKey - 3 - " #123456".Length;
+        string contribution = new string('x', cut - 1) + "\U0001F527" + new string('y', 50);
+
+        string key = BoardDraftNaturalKeys.ForCredit("Board data", "", "Bo", contribution);
+
+        Assert.DoesNotContain(key, char.IsHighSurrogate);
+        Assert.Matches(new string('x', cut - 1) + @"\.\.\. #[0-9a-f]{6}$", key);
+    }
+
     // ------------------------------------------------------------------ Component region (2026-09-24)
 
     [Fact]

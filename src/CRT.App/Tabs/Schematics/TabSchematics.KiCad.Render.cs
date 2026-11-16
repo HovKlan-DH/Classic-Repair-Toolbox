@@ -571,7 +571,6 @@ public partial class TabSchematics
             ShowOppositeSideTraces = showOppositeSideTraces,
             ShowZones = showZones,
             IsCalibrationMode = this.thisIsKiCadTraceCalibrationMode,
-            ActiveReferences = activeReferences.ToList(),
             SelectedReferences = this.thisSelectedKiCadReferences.ToList()
         });
 
@@ -735,6 +734,9 @@ public partial class TabSchematics
             }
         }
 
+        // The active references made ready once for every net (KiCadOverlayCacheKeys.ActiveReferencesOnNet).
+        IReadOnlySet<string>? activeSet = KiCadOverlayCacheKeys.ActiveSetOf(activeReferences);
+
         foreach (var netInfo in matchingNetIds)
         {
             if (!pcb.HighlightIndex.TryGetValue(netInfo.Id, out var bucket))
@@ -763,12 +765,18 @@ public partial class TabSchematics
                 this.thisHoveredComponentBoardLabel,
                 bucket.Pads.Select(padRef => padRef.Reference));
 
+            // And what of the active references this net is drawn from (2026-11-16): the hovered component sits in the
+            // active set while "show traces on the selected component" is on, and as a shared key it rebuilt every net.
             var appearance = new KiCadNetAppearance(
                 isExplicitHighlight,
                 isHoveredNet,
                 shouldBlinkThisNet,
                 effectiveOpacity,
-                hoveredComponentOnThisNet);
+                hoveredComponentOnThisNet,
+                KiCadOverlayCacheKeys.ActiveReferencesOnNet(
+                    isExplicitHighlight,
+                    activeSet,
+                    bucket.Pads.Select(padRef => padRef.Reference)));
 
             if (this.thisKiCadNetPrimitiveCache.TryGet(netInfo.Id, appearance, out var cachedNetPrimitives))
             {

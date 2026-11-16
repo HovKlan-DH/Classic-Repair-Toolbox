@@ -35,10 +35,11 @@ namespace CRT
     // dispatcher.
     //
     // FILE MAP:
-    //   SubmitDraftWindow.axaml.cs   - the board the dialog was opened on: what it sends, the credit
-    //                                  offer, the send itself (SubmitAsync) and what came of it
-    //   SubmitDraftWindow.OtherDrafts.cs - the contributor's other drafts, sent after it with the same
-    //                                  message (slice 5), and what came of each
+    //   SubmitDraftWindow.axaml.cs   - the board the dialog was opened on: what it sends and the send
+    //                                  itself (SubmitAsync). Its credit is a row of "Board: Credits"
+    //                                  since 2026-11-15 (SubmissionCredit), asked for here until then
+    //   SubmitDraftWindow.Sending.cs - sending that one board and what came of it (ONE board per submit,
+    //                                  owner request 2026-11-15)
     // ###########################################################################################
     public partial class SubmitDraftWindow : Window
     {
@@ -94,21 +95,15 @@ namespace CRT
             this.thisDraftFingerprint);
 
         // ###########################################################################################
-        // What a send says when it never got there, for one board alone (ShowFailure). A credit is put
-        // into the draft BEFORE sending, so then the draft is not unchanged - said so (code review,
-        // 2026-10-26: "your draft is unchanged" over a draft that now held the credit).
+        // What a send says when it never got there (ShowFailure). The dialog changes nothing in the draft since its credit
+        // went to "Board: Credits" (2026-11-15), so the draft is always as it was.
         // ###########################################################################################
-        internal static string NoConnectionMessage(bool credited) =>
-            "The submission could not be sent. Check your internet connection and try again - nothing has been lost" +
-            (credited ? ". Your credit is in your draft now, so it goes with the next try." : ", and your draft is unchanged.");
+        internal const string NoConnectionMessage =
+            "The submission could not be sent. Check your internet connection and try again - nothing has been lost, and your draft is unchanged.";
 
-        internal static string UnexpectedMessage(bool credited) =>
-            "Something unexpected stopped the submission. Nothing has been lost" +
-            (credited ? " - your credit is in your draft now, so it goes with the next try. Try again" : ", and your draft is unchanged - try again") +
-            ", and if it keeps happening, tell us through the \"Feedback\" tab.";
-
-        // A credit went into the draft before sending (AddCreditsFirstAsync).
-        private bool thisCreditAdded;
+        internal const string UnexpectedMessage =
+            "Something unexpected stopped the submission. Nothing has been lost, and your draft is unchanged - try again, " +
+            "and if it keeps happening, tell us through the \"Feedback\" tab.";
 
         // Set once the submission has been sent, so the caller can tell whether the draft should
         // be left alone (always, for now - see the Drafts tab) and what to show afterwards.
@@ -132,7 +127,7 @@ namespace CRT
         // *** NO TALLER THAN ITS SCREEN, AND CENTRED OVER CRT AS ITS PANELS CHANGE (owner report,
         // 2026-11-01: "it seems to take full height ... I cannot see the submit button", and the
         // progress panel stood at the top). *** The dialog sizes itself to its content, which the
-        // changes, the other drafts and the credits make long: capped at the screen's working area its
+        // changes and the credit make long: capped at the screen's working area its
         // content scrolls, the buttons below it (DialogPlacement). A window sized to its content keeps
         // its top edge as it shrinks, so every change of size centres it over CRT again.
         // ###########################################################################################
@@ -217,11 +212,10 @@ namespace CRT
             // shows, shown here too (CRT 4.0 step 1's last slice). Null shows none.
             DraftChangeSummary? changes = null,
 
-            // The credits the draft's work deserves (CreditSuggestions), and how ticked ones go into
-            // the draft before anything is sent - the board and fingerprint as they then are, or
-            // null when the draft could not take them (2026-10-26). Without both, no offer is shown.
-            IReadOnlyList<CreditSuggestion>? creditSuggestions = null,
-            Func<IReadOnlyList<CreditEntry>, Task<(BoardData Board, string Fingerprint)?>>? addCredits = null)
+            // What the submission says it changed - the maintainers' queue, their mail, the board's
+            // history and "My submissions" show it (2026-11-15): the main contribution of the credit
+            // sent with the work, else the changes in words (SubmissionSummaryText). Nobody types it.
+            string summary = "")
         {
             ArgumentNullException.ThrowIfNull(mergedData);
             ArgumentNullException.ThrowIfNull(identity);
@@ -272,103 +266,14 @@ namespace CRT
                 this.EmailTextBox.Text = address.Email;
             }
 
+            this.thisGivenSummary = summary ?? string.Empty;
             this.ShowChanges(changes);
-            this.thisAddCredits = addCredits;
-            this.ShowCreditOffer(addCredits is null ? [] : creditSuggestions ?? []);
             this.BuildSummary();
             this.UpdateSubmitEnabled();
         }
 
-        // ###########################################################################################
-        // CREDIT FOR THE WORK SENT (CRT 4.0 step 2, 2026-10-26 - the plan: "After a submission, CRT
-        // suggests a credit for what you sent"; owner decision: "Do it now").
-        //
-        // Offered BEFORE sending, so the credit travels with the work it credits - a credit added after
-        // would need a submission of its own. Each category the draft's work deserves is a tick box,
-        // ticked; the name and contact are the ones CRT remembers from the last credit (never the
-        // email above - credits are shown to everybody). A blank name credits nobody.
-        // ###########################################################################################
-        private Func<IReadOnlyList<CreditEntry>, Task<(BoardData Board, string Fingerprint)?>>? thisAddCredits;
-
-        internal const string CreditsNotAdded =
-            "Your credit could not be put into your draft, so nothing was sent. Your draft's header says why - " +
-            "try again, or leave the name empty to send without a credit.";
-
-        private void ShowCreditOffer(IReadOnlyList<CreditSuggestion> suggestions)
-        {
-            this.CreditChoicesPanel.Children.Clear();
-
-            foreach (CreditSuggestion suggestion in suggestions)
-            {
-                var box = new CheckBox
-                {
-                    Content = suggestion.SubCategory.Length == 0 ? suggestion.Category : $"{suggestion.Category} - {suggestion.SubCategory}",
-                    IsChecked = true,
-                    Tag = suggestion,
-                };
-
-                box.IsCheckedChanged += (_, _) => this.OnOwnCreditTicked();
-                this.CreditChoicesPanel.Children.Add(box);
-            }
-
-            this.thisOwnCreditSuggestions = suggestions.Count;
-            this.ShowCreditOfferFor();
-
-            if (string.IsNullOrWhiteSpace(this.CreditNameTextBox.Text))
-            {
-                this.CreditNameTextBox.Text = UserSettings.CreditName;
-                this.CreditContactTextBox.Text = UserSettings.CreditContact;
-            }
-        }
-
-        internal IReadOnlyList<string> CreditChoicesForTests =>
-            this.CreditOfferPanel.IsVisible
-                ? this.CreditChoicesPanel.Children.OfType<CheckBox>().Select(box => box.Content as string ?? string.Empty).ToList()
-                : [];
-
-        // ###########################################################################################
-        // The ticked credits into the draft, as the first thing Submit does - what is then sent is the
-        // board with them, and the receipt remembers the draft as it then is. False, with the reason
-        // said, when the draft could not take them: nothing is sent.
-        // ###########################################################################################
-        internal async Task<bool> AddCreditsFirstAsync()
-        {
-            if (!this.CreditOfferPanel.IsVisible || this.thisAddCredits is not { } add || this.thisMergedData is null)
-            {
-                return true;
-            }
-
-            List<CreditSuggestion> picked = this.CreditChoicesPanel.Children
-                .OfType<CheckBox>()
-                .Where(box => box.IsChecked == true)
-                .Select(box => box.Tag)
-                .OfType<CreditSuggestion>()
-                .ToList();
-
-            string name = this.CreditNameTextBox.Text ?? string.Empty;
-            string contact = this.CreditContactTextBox.Text ?? string.Empty;
-
-            List<CreditEntry> credits = CreditSuggestions.ToAdd(this.thisMergedData, picked, name, contact);
-
-            if (credits.Count == 0)
-            {
-                return true;
-            }
-
-            if (await add(credits) is not { } added)
-            {
-                return false;
-            }
-
-            this.thisMergedData = added.Board;
-            this.thisDraftFingerprint = added.Fingerprint;
-            this.thisCreditAdded = true;
-            UserSettings.RememberCreditIdentity(name, contact);
-
-            // In: a Submit tried again after a failure does not add them twice.
-            this.CreditOfferPanel.IsVisible = false;
-            return true;
-        }
+        // What the submission says it changed, as Initialize was handed it.
+        private string thisGivenSummary = string.Empty;
 
         // ###########################################################################################
         // "Your changes": each group's title, then its lines - what the contributor reads before
@@ -469,11 +374,13 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Submit stays disabled until there is a contact address and a summary.
+        // Submit stays disabled until there is a contact address.
         //
-        // Both are required by the server, so enabling the button without them would produce a
-        // round trip that can only fail - and a refusal from the server reads as something being
-        // wrong, rather than as a field not yet filled in.
+        // The server needs one, so enabling the button without it would produce a round trip that
+        // can only fail - and a refusal from the server reads as something being wrong, rather than as
+        // a field not yet filled in. Nothing else is asked here any more (owner requests, 2026-11-15):
+        // the credit is a row of "Board: Credits", which Submit's checks hold to its fields before this
+        // dialog opens, and the summary is made of it.
         // ###########################################################################################
         private void OnFormChanged(object? sender, TextChangedEventArgs e)
         {
@@ -482,15 +389,11 @@ namespace CRT
 
         private void UpdateSubmitEnabled()
         {
-            bool hasEmail = EmailAddressRules.IsPlausible(this.EmailTextBox.Text);
-            bool hasSummary = !string.IsNullOrWhiteSpace(this.SummaryTextBox.Text);
-
-            this.SubmitButton.IsEnabled = hasEmail && hasSummary;
+            this.SubmitButton.IsEnabled = EmailAddressRules.IsPlausible(this.EmailTextBox.Text);
         }
 
         // ###########################################################################################
-        // Does the whole submission, off the UI thread - this board's, then each other draft ticked
-        // (SubmitDraftWindow.OtherDrafts.cs).
+        // Does the whole submission, off the UI thread - the one board (SubmitDraftWindow.Sending.cs).
         // ###########################################################################################
         private async void OnSubmitClick(object? sender, RoutedEventArgs e)
         {
@@ -512,22 +415,11 @@ namespace CRT
             if (this.thisMergedData is null || this.thisIdentity is null)
                 return;
 
-            // Read before the panels switch: what is ticked, and the credit those go under - none when
-            // crediting the other drafts is unticked (code review, 2026-10-26).
-            List<OtherDraftOffer> others = this.TickedOtherDrafts();
-            bool creditOthers = this.CreditOthersCheckBox.IsChecked == true;
-            string creditName = creditOthers ? this.CreditNameTextBox.Text ?? string.Empty : string.Empty;
-            string creditContact = creditOthers ? this.CreditContactTextBox.Text ?? string.Empty : string.Empty;
-
             this.ShowProgressPanel();
 
             // Disposed in the finally below rather than held for the window's life: a
             // CancellationTokenSource owns a wait handle, and this dialog can be opened repeatedly.
-            //
-            // *** MADE BEFORE THE CREDITS GO IN (code review, 2026-11-02). *** Cancel is live on the
-            // panel just shown, and that step is a save and a read of the board. With no token yet,
-            // Cancel, Escape or the title bar only closed the window, and the send went on with no
-            // dialog: uploaded, queued, the maintainers mailed.
+            // Made as the progress panel shows, so its Cancel is live from the start.
             this.thisCancellation?.Dispose();
             this.thisCancellation = new CancellationTokenSource();
 
@@ -537,51 +429,13 @@ namespace CRT
 
             try
             {
-                // The credits ticked go into the draft first, so they are sent with the work (2026-10-26).
-                try
-                {
-                    if (!await this.AddCreditsFirstAsync())
-                    {
-                        this.ShowFailure(SubmitDraftWindow.CreditsNotAdded, []);
-                        return;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    // Nothing may leave this async void handler (see the catch below).
-                    Logger.Critical($"Putting the credits into the draft before submitting failed - [{ex}]");
-                    this.ShowFailure(SubmitDraftWindow.CreditsNotAdded, []);
-                    return;
-                }
+                BoardOutcome outcome = await this.SendOneAsync(this.ThisTarget, progress, token);
+                this.Result = outcome.Result;
 
-                // Cancelled meanwhile: nothing is sent. A credit already in stays in the draft, one step
-                // of its history - the dialog has closed, so it says nothing about the draft being as it was.
-                token.ThrowIfCancellationRequested();
-
-                this.thisSendingName = others.Count > 0 ? this.thisBoardDisplayName : string.Empty;
-
-                var outcomes = new List<BoardOutcome> { await this.SendOneAsync(this.ThisTarget, progress, token) };
-                this.Result = outcomes[0].Result;
-
-                if (others.Count == 0)
-                {
-                    if (outcomes[0].Result is { } result)
-                        this.ShowOutcome(result);
-                    else
-                        this.ShowFailure(outcomes[0].FailureMessage, outcomes[0].Findings);
-
-                    return;
-                }
-
-                // Every other draft ticked, after this one - each credited under the name typed here.
-                bool creditedOthers = await this.SendOtherDraftsAsync(others, creditName, creditContact, outcomes, progress, token);
-
-                if (creditedOthers)
-                {
-                    UserSettings.RememberCreditIdentity(creditName, creditContact);
-                }
-
-                this.ShowOutcomes(outcomes, credited: creditedOthers || this.thisCreditAdded);
+                if (outcome.Result is { } result)
+                    this.ShowOutcome(result);
+                else
+                    this.ShowFailure(outcome.FailureMessage, outcome.Findings);
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
@@ -620,7 +474,7 @@ namespace CRT
                 // logged in full.
                 Logger.Critical($"Submitting a draft failed unexpectedly - [{ex}]", alreadyShown: true);
 
-                this.ShowFailure(SubmitDraftWindow.UnexpectedMessage(this.thisCreditAdded), []);
+                this.ShowFailure(SubmitDraftWindow.UnexpectedMessage, []);
             }
             finally
             {
@@ -655,8 +509,8 @@ namespace CRT
             FileHashResult hashed = await SubmissionClient.HashFilesAsync(
                 this.thisDataRoot, target.BoardFolder, paths, progress, token, boardIdentity);
 
-            // The summary and contact address were typed after Initialize ran, so they are read
-            // from the fields captured on the UI thread rather than from the identity.
+            // The summary and contact address came after Initialize ran, so they are read from the
+            // fields captured on the UI thread rather than from the identity.
             var manifest = SubmissionManifestBuilder.Build(
                 target.Board,
                 SubmitDraftWindow.IdentityToSend(target.Identity, this.SummaryText, DateTimeOffset.UtcNow),
@@ -768,7 +622,7 @@ namespace CRT
         internal SubmissionReceipt NewReceipt(long submissionId, string uploadToken, DateTimeOffset sentUtc) =>
             this.NewReceipt(this.thisIdentity?.BoardId ?? string.Empty, this.thisDraftFingerprint, submissionId, uploadToken, sentUtc);
 
-        // The same for any board sent from this dialog - this one, or another draft sent with it.
+        // The same for the board the dialog sends.
         private SubmissionReceipt NewReceipt(string boardId, string draftFingerprint, long submissionId, string uploadToken, DateTimeOffset sentUtc) => new()
         {
             SubmissionId = submissionId,
@@ -812,7 +666,10 @@ namespace CRT
 
         private void CaptureEntries()
         {
-            this.thisSummaryText = this.SummaryTextBox.Text?.Trim() ?? string.Empty;
+            // What the submission says it changed - the maintainers' queue, their mail, the board's history and "My
+            // submissions" show it. Nobody types it (owner request, 2026-11-15: "we do have the "Main contribution""): handed
+            // in to Initialize, made of the credit sent with the work (SubmissionSummaryText).
+            this.thisSummaryText = this.thisGivenSummary;
             this.thisEmailText = this.EmailTextBox.Text?.Trim() ?? string.Empty;
 
             // *** REMEMBERED APP-WIDE, so this is asked for once and never again. *** The same
@@ -838,10 +695,7 @@ namespace CRT
         {
             Dispatcher.UIThread.Post(() =>
             {
-                // Which board, when several go (SubmitDraftWindow.OtherDrafts.cs).
-                this.ProgressText.Text = this.thisSendingName.Length == 0
-                    ? progress.Describe()
-                    : SubmitDraftsWording.Sending(this.thisSendingName, progress.Describe());
+                this.ProgressText.Text = progress.Describe();
 
                 // Only while the progress panel is up: a report still queued when the outcome
                 // arrives must not turn "Contribution sent" back into "Sending contribution".
@@ -892,16 +746,14 @@ namespace CRT
                     "Your contribution is queued for review. You will get an email when a maintainer has " +
                     "looked at it.\n\nIf it is accepted, it goes into the BETA source first, for a final check, " +
                     "and then into the stable source that everyone downloads - you get an email at each step." +
-                    (this.thisCreditAdded ? "\n\nYour draft is untouched but for your credit, sent with it - keep " : "\n\nYour draft is untouched - keep ") +
-                    "using it as normal. It tidies itself away once your work is in the stable source.";
+                    "\n\nYour draft is untouched - keep using it as normal. It tidies itself away once your work is in the stable source.";
             }
             else
             {
                 this.HeaderText.Text = "Contribution not accepted";
 
                 this.OutcomeText.Text =
-                    "The server found problems that have to be fixed before this can be reviewed. " +
-                    (this.thisCreditAdded ? "Your draft is untouched but for your credit, which is in it now." : "Your draft is untouched.");
+                    "The server found problems that have to be fixed before this can be reviewed. Your draft is untouched.";
             }
 
             this.ShowFindings(result.Findings, isRefusal: !result.IsAccepted);
@@ -1017,7 +869,7 @@ namespace CRT
 
         // ###########################################################################################
         // The identity the manifest is built from: the one Initialize was given, with the summary
-        // typed since and the moment of sending. Everything else is COPIED - a field left out here
+        // made as it is sent (CaptureEntries) and the moment of sending. Everything else is COPIED - a field left out here
         // never leaves this computer, however the caller filled it in (a new board's notes nearly
         // did, 2026-10-05), so SubmitDraftWindowIdentityTests checks every property by reflection.
         // ###########################################################################################
@@ -1066,10 +918,9 @@ namespace CRT
             this.Close();
         }
 
-        // Escape cancels. Enter is not handled here: in "What did you change?" it starts a new line
-        // (the box accepts returns and handles it), so a reflexive Enter while writing the summary
-        // sends nothing; anywhere else it presses Submit, the default button, once the form is
-        // filled in (code review, 2026-10-13). SubmitDraftWindowKeyboardTests holds both.
+        // Escape cancels. Enter is not handled here: it presses Submit, the default button, once the
+        // form is filled in (code review, 2026-10-13) - the dialog has no box of several lines since
+        // its credit and "What did you change?" went (2026-11-15). SubmitDraftWindowKeyboardTests.
         private void OnWindowPreviewKeyDown(object? sender, KeyEventArgs e)
         {
             if (e.Key == Key.Escape)

@@ -1065,7 +1065,9 @@ public sealed class TabDraftsReadinessTests : IDisposable
         var board = new BoardData
         {
             Schematics = [new BoardSchematicEntry { SchematicName = "Top", SchematicImageFile = "Images/top.png" }],
-            Credits = [new CreditEntry { Category = "Schematic image" }],
+
+            // What it did is said (2026-11-14), so the name alone is missing.
+            Credits = [new CreditEntry { Category = "Schematic image", MainContribution = "Drew the top side" }],
         };
 
         WriteDraft(OldBoard, board, "Images/top.png");

@@ -18,14 +18,18 @@ namespace Handlers.DataHandling
     //
     // The lists a person orders: every sheet of the board (ReviewSummary.AllSections) but the
     // components' highlights, whose order nobody sees - a rectangle drawn again in another place of
-    // the list is no work. Rows are told apart by BoardDraftNaturalKeys.ForRow, the pairing rule every
+    // the list is no work - and the CREDITS, whose order is the server's: every publish keeps them in
+    // date order (CreditOrder.Sorted; code review, 2026-11-16 - a credit inserted mid-list, or one
+    // the publish dated and moved last, read as an order the draft changed, and the draft never
+    // retired). Rows are told apart by BoardDraftNaturalKeys.ForRow, the pairing rule every
     // comparison uses; only the rows BOTH boards have are compared - an added or removed row is the
     // differ's to count, and moves nothing else.
     // ###########################################################################################
     public static class BoardRowOrder
     {
         private static readonly IReadOnlyList<ReviewSection> Sheets = ReviewSummary.AllSections
-            .Where(section => !string.Equals(section.Name, ReviewSummary.SectionComponentHighlights, StringComparison.Ordinal))
+            .Where(section => !string.Equals(section.Name, ReviewSummary.SectionComponentHighlights, StringComparison.Ordinal) &&
+                              !string.Equals(section.Name, BoardWorkbookSchema.SheetCredits, StringComparison.Ordinal))
             .ToList();
 
         public static bool DiffersFrom(BoardData published, BoardData draft) =>

@@ -52,8 +52,11 @@ namespace CRT
         {
             this._board = boardData;
             this._region = region;
-            this._allRows = OverviewHtmlBuilder.BuildRows(boardData, region);
-            this.ApplyFilter(searchTerm ?? this._searchTerm);
+            this._searchTerm = searchTerm ?? this._searchTerm;
+
+            // Another board: nothing unticked for printing comes with it.
+            this.thisUntickedForPrint = null;
+            this.BuildRowsWhenShown();
         }
 
         // ###########################################################################################
@@ -62,32 +65,94 @@ namespace CRT
         // ###########################################################################################
         public void ShowRegion(string? region)
         {
-            if (this._board is not { } board || string.Equals(region, this._region, StringComparison.OrdinalIgnoreCase))
+            if (this._board is null || string.Equals(region, this._region, StringComparison.OrdinalIgnoreCase))
             {
                 return;
             }
 
-            var unticked = new HashSet<string>(
-                this._allRows.Where(row => !row.IsSelectedForPrint).Select(row => row.Component),
-                StringComparer.OrdinalIgnoreCase);
-
-            this._region = region;
-            this._allRows = OverviewHtmlBuilder.BuildRows(board, region);
-
-            foreach (OverviewRow row in this._allRows.Where(row => unticked.Contains(row.Component)))
+            // The ticks of the rows built - or, while the rows wait for the tab to be shown, those carried already.
+            if (!this.thisRowsWanted)
             {
-                row.IsSelectedForPrint = false;
+                this.thisUntickedForPrint = new HashSet<string>(
+                    this._allRows.Where(row => !row.IsSelectedForPrint).Select(row => row.Component),
+                    StringComparer.OrdinalIgnoreCase);
             }
 
-            this.ApplyFilter(this._searchTerm);
+            this._region = region;
+            this.BuildRowsWhenShown();
         }
 
         // ###########################################################################################
-        // Filters the overview list based on the active component/category filters and search term.
+        // *** A TAB NOT SHOWN BUILDS NO ROWS (2026-11-16, performance walkthrough). *** Every board load and
+        // region switch built the rows (OverviewHtmlBuilder.BuildRows - 140 ms over a run of 16 board switches,
+        // measured) and every selection in the component list filtered them, the tab shown or not. What it
+        // was asked to show is kept, and built as the tab is shown (OnAttachedToVisualTree). A tab with no
+        // window - a test's - builds at once, as it always did.
+        // ###########################################################################################
+        private bool thisRowsWanted;
+
+        private bool thisFilterWanted;
+
+        // The components unticked for printing, carried across a region switch to the rows built next.
+        private HashSet<string>? thisUntickedForPrint;
+
+        private bool IsShown => this.VisualRoot is not null || this._mainWindow is null;
+
+        // Whether the rows wait for the tab to be shown - for the tests.
+        internal bool RowsWaitForTabForTests => this.thisRowsWanted;
+
+        private void BuildRowsWhenShown()
+        {
+            if (!this.IsShown)
+            {
+                this.thisRowsWanted = true;
+                return;
+            }
+
+            this.thisRowsWanted = false;
+            this._allRows = this._board is { } board ? OverviewHtmlBuilder.BuildRows(board, this._region) : new List<OverviewRow>();
+
+            if (this.thisUntickedForPrint is { } unticked)
+            {
+                foreach (OverviewRow row in this._allRows.Where(row => unticked.Contains(row.Component)))
+                {
+                    row.IsSelectedForPrint = false;
+                }
+            }
+
+            this.thisUntickedForPrint = null;
+            this.ApplyFilter(this._searchTerm);
+        }
+
+        protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+        {
+            base.OnAttachedToVisualTree(e);
+
+            if (this.thisRowsWanted)
+            {
+                this.BuildRowsWhenShown();
+            }
+            else if (this.thisFilterWanted)
+            {
+                this.ApplyFilter(this._searchTerm);
+            }
+        }
+
+        // ###########################################################################################
+        // Filters the overview list based on the active component/category filters and search term -
+        // while the tab is shown; hidden, it is done as the tab is shown.
         // ###########################################################################################
         public void ApplyFilter(string searchTerm)
         {
             this._searchTerm = searchTerm ?? string.Empty;
+
+            if (!this.IsShown)
+            {
+                this.thisFilterWanted = true;
+                return;
+            }
+
+            this.thisFilterWanted = false;
             this._visibleRows = this.GetFilteredRows(this._searchTerm);
             this.OverviewItemsControl.ItemsSource = this._visibleRows;
         }

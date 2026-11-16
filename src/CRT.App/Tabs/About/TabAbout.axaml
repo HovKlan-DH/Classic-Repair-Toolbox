@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="clr-namespace:CRT"
+             xmlns:theme="clr-namespace:Handlers.Theming;assembly=Classic-Repair-Toolbox"
              x:Class="CRT.TabAbout">
 
 	<UserControl.Styles>
@@ -162,12 +163,15 @@
 						   FontWeight="Bold" />
 			</StackPanel>
 
-			<!-- Credits section â€” shown only when the loaded board contains credits -->
+			<!-- Credits section - shown only when the loaded board contains credits. ALSO THE BOARD'S CHANGES IN THE ORDER
+			     THEY CAME (owner request, 2026-11-14: "this is both a list to honor the authors of data, but also a cronological
+			     list of changes done"): oldest first by the date each was published (CreditOrder), its main contribution, a
+			     note with formatting, under each row. -->
 			<Border x:Name="CreditsSectionBorder"
 					IsVisible="False"
 					Margin="0,16,0,0">
 				<StackPanel Spacing="8">
-					<TextBlock Text="Credits specifically for this board:"
+					<TextBlock Text="Credits and history for this board:"
 							   FontSize="14"
 							   Margin="0,0,0,12" />
 
@@ -181,15 +185,17 @@
 							<!-- Header -->
 							<Grid Grid.Row="0" Background="{DynamicResource Table_Header_Bg}">
 								<Grid.ColumnDefinitions>
+									<ColumnDefinition Width="150" />
+									<ColumnDefinition Width="190" />
+									<ColumnDefinition Width="190" />
 									<ColumnDefinition Width="220" />
-									<ColumnDefinition Width="220" />
-									<ColumnDefinition Width="250" />
 									<ColumnDefinition Width="*" />
 								</Grid.ColumnDefinitions>
-								<TextBlock Grid.Column="0" Text="Category" FontWeight="Bold" Padding="8,4" Foreground="{DynamicResource Table_Header_Fg}" />
-								<TextBlock Grid.Column="1" Text="Sub-category" FontWeight="Bold" Padding="8,4" Foreground="{DynamicResource Table_Header_Fg}" />
-								<TextBlock Grid.Column="2" Text="Author / contributor" FontWeight="Bold" Padding="8,4" Foreground="{DynamicResource Table_Header_Fg}" />
-								<TextBlock Grid.Column="3" Text="Contact for author / contributor" FontWeight="Bold" Padding="8,4" Foreground="{DynamicResource Table_Header_Fg}" />
+								<TextBlock Grid.Column="0" Text="Date" FontWeight="Bold" Padding="8,4" Foreground="{DynamicResource Table_Header_Fg}" />
+								<TextBlock Grid.Column="1" Text="Category" FontWeight="Bold" Padding="8,4" Foreground="{DynamicResource Table_Header_Fg}" />
+								<TextBlock Grid.Column="2" Text="Sub-category" FontWeight="Bold" Padding="8,4" Foreground="{DynamicResource Table_Header_Fg}" />
+								<TextBlock Grid.Column="3" Text="Author / contributor" FontWeight="Bold" Padding="8,4" Foreground="{DynamicResource Table_Header_Fg}" />
+								<TextBlock Grid.Column="4" Text="Contact for author / contributor" FontWeight="Bold" Padding="8,4" Foreground="{DynamicResource Table_Header_Fg}" />
 							</Grid>
 
 							<!-- Items -->
@@ -199,32 +205,48 @@
 								<ItemsControl.ItemTemplate>
 									<DataTemplate DataType="local:CreditDisplayItem">
 										<Border Classes="ResourceRow" BorderBrush="{DynamicResource Table_BorderRowLine}" BorderThickness="0,0,0,1">
-											<Grid>
+											<Grid RowDefinitions="Auto,Auto">
 												<Grid.ColumnDefinitions>
+													<ColumnDefinition Width="150" />
+													<ColumnDefinition Width="190" />
+													<ColumnDefinition Width="190" />
 													<ColumnDefinition Width="220" />
-													<ColumnDefinition Width="220" />
-													<ColumnDefinition Width="250" />
 													<ColumnDefinition Width="*" />
 												</Grid.ColumnDefinitions>
 												<TextBlock Grid.Column="0"
+														   Text="{Binding Date}"
+														   Foreground="{DynamicResource Table_Fg}"
+														   Padding="8,4"
+														   VerticalAlignment="Center"
+														   TextTrimming="CharacterEllipsis" />
+												<!-- What the contribution was, under its row - its formatting and links drawn (TextLinkRenderer). -->
+												<TextBlock Grid.Row="1"
+														   Grid.Column="1"
+														   Grid.ColumnSpan="4"
+														   theme:TextLinkRenderer.LinkText="{Binding MainContribution}"
+														   IsVisible="{Binding HasMainContribution}"
+														   Foreground="{DynamicResource Table_Fg}"
+														   Padding="8,0,8,6"
+														   TextWrapping="Wrap" />
+												<TextBlock Grid.Column="1"
 														   Text="{Binding Category}"
 														   Foreground="{DynamicResource Table_Fg}"
 														   Padding="8,4"
 														   VerticalAlignment="Center"
 														   TextTrimming="CharacterEllipsis" />
-												<TextBlock Grid.Column="1"
+												<TextBlock Grid.Column="2"
 														   Text="{Binding SubCategory}"
 														   Foreground="{DynamicResource Table_Fg}"
 														   Padding="8,4"
 														   VerticalAlignment="Center"
 														   TextTrimming="CharacterEllipsis" />
-												<TextBlock Grid.Column="2"
+												<TextBlock Grid.Column="3"
 														   Text="{Binding Name}"
 														   Foreground="{DynamicResource Table_Fg}"
 														   Padding="8,4"
 														   VerticalAlignment="Center"
 														   TextTrimming="CharacterEllipsis" />
-												<Panel Grid.Column="3" VerticalAlignment="Center" Margin="0,0,8,0">
+												<Panel Grid.Column="4" VerticalAlignment="Center" Margin="0,0,8,0">
 													<TextBlock Text="{Binding Contact}"
 															   Foreground="{DynamicResource Table_Fg}"
 															   Padding="8,4"
@@ -247,9 +269,11 @@
 				</StackPanel>
 			</Border>
 
+			<!-- What the list is (owner request, 2026-11-14: "mention this is both a list to honor the authors of data, but also a
+			     cronological list of changes done (rephrase this to sound more professional)"). -->
 			<TextBlock Margin="0,16,0,0"
 					   TextWrapping="Wrap"
-                       Text="Credits will in many cases not be fully represented, but the idea is that at least the main author or contributor should be listed. If more than one person, then the one with the most contribution is placed on top, though this also probably sometimes can be quite hard figuring out exactly. Small contributions are not listed, and the amount contributed for a place here should be &quot;substantial&quot;."
+                       Text="This list serves two purposes: it acknowledges the people who created and improved this board's data, and it records the board's history - each contribution listed in the order it was published, oldest first, with a short description of its main changes. The descriptions cover the most important updates rather than every detail. Contributions from before the history was recorded have no date and may have no description. Not every small contribution is listed; a place here is for a substantial part of the data."
 					   Foreground="{DynamicResource Fg}"
 					   />
 

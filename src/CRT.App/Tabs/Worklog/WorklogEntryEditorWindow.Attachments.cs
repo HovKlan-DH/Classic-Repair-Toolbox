@@ -160,41 +160,37 @@ namespace CRT
         // ###########################################################################################
         // Rebuilds one attachment list's rows from its records.
         //
-        // The thumbnail disposal is the photo-only half, and it matters: each thumbnail is a decoded
-        // Bitmap holding an unmanaged surface, and this runs on every add/edit/delete/reorder.
-        // Without disposing the old ones each refresh orphaned a full set until a finalizer
-        // eventually ran. They are collected BEFORE Clear() but disposed AFTER it - an Image is
-        // still bound to the bitmap until the row leaves the collection, and disposing one out from
-        // under a live binding risks a render against a freed surface.
-        //
-        // Files never load a thumbnail, so for them the collected list is empty and this costs a
-        // no-op LINQ pass.
+        // *** A PHOTO'S THUMBNAIL IS DevicePhotoThumbnails' (2026-11-16, performance walkthrough). ***
+        // Read once off the UI thread and kept - the device's page and form read photos the same way -
+        // and set on its row once in (ShowThumbnail). Every photo was decoded on the UI thread as the
+        // editor opened, and all of them again after every add, edit, delete or reorder, each one
+        // disposed by hand. The cache's are never disposed by hand: one still drawn takes the render
+        // thread down, and one let go of is freed once nothing shows it.
         // ###########################################################################################
         private void RefreshAttachmentRows(AttachmentSection section)
         {
             var rows = section.Rows();
 
-            var discardedThumbnails = rows.Select(row => row.Thumbnail).Where(bitmap => bitmap != null).ToList();
-
             rows.Clear();
-
-            foreach (var bitmap in discardedThumbnails)
-            {
-                bitmap!.Dispose();
-            }
 
             bool wantsThumbnail = section.Kind == WorklogAttachmentStorage.AttachmentKind.Photo;
 
             foreach (var record in section.Records().OrderBy(r => r.DisplayOrder))
             {
-                rows.Add(new WorklogAttachmentRow
+                var row = new WorklogAttachmentRow
                 {
                     Id = record.Id,
                     FileName = record.FileName,
                     DisplayFileName = WorklogAttachmentStorage.GetDisplayFileName(record.FileName, section.OwnerPrefix, record.Id),
-                    Comment = record.Comment,
-                    Thumbnail = wantsThumbnail ? this.TryLoadPhotoThumbnail(record.FileName) : null
-                });
+                    Comment = record.Comment
+                };
+
+                if (wantsThumbnail)
+                {
+                    this.ShowThumbnail(row, this.ResolveAttachmentPath(record.FileName));
+                }
+
+                rows.Add(row);
             }
 
             section.EmptyText().IsVisible = rows.Count == 0 && this.IsListSectionExpanded(section.HeaderKey);
@@ -228,29 +224,30 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Decodes a row thumbnail, scaled down on load rather than at full resolution - a phone
-        // photo is several thousand pixels wide and the row shows it at 64, so decoding the full
-        // image would spend memory the list never uses. Failure is not fatal: the row renders with
-        // a "missing" marker instead, since a photo file can be deleted or corrupted outside the app.
+        // A row's thumbnail, decoded small off the UI thread (DevicePhotoThumbnails): at once when read before,
+        // else set once in, the row saying meanwhile that it is being read (IsThumbnailPending). A file gone or
+        // not readable leaves it null - the row shows its "missing" mark, as a photo file can be deleted or
+        // corrupted outside the app. As the device form does (OwnedDeviceWindow.ShowThumbnail).
         // ###########################################################################################
-        private Bitmap? TryLoadPhotoThumbnail(string fileName)
+        private void ShowThumbnail(WorklogAttachmentRow row, string? path)
         {
-            string? path = this.ResolveAttachmentPath(fileName);
-            if (path == null)
+            Task<Bitmap?> reading = DevicePhotoThumbnails.Read(path);
+
+            if (reading.IsCompleted)
             {
-                return null;
+                row.Thumbnail = reading.IsCompletedSuccessfully ? reading.Result : null;
+                return;
             }
 
-            try
-            {
-                using var stream = File.OpenRead(path);
-                return Bitmap.DecodeToWidth(stream, 256);
-            }
-            catch (Exception ex)
-            {
-                Logger.Warning($"Failed to load worklog photo thumbnail [{fileName}]: {ex.Message}");
-                return null;
-            }
+            row.IsThumbnailPending = true;
+
+            _ = reading.ContinueWith(
+                read => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    row.Thumbnail = read.IsCompletedSuccessfully ? read.Result : null;
+                    row.IsThumbnailPending = false;
+                }),
+                TaskScheduler.Default);
         }
 
         // ###########################################################################################

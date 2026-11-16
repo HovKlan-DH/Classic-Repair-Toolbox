@@ -90,6 +90,9 @@ namespace Handlers.DataHandling
         // The rows a new board's credits start with (NewBoardCredits, 2026-11-02).
         public const string CreditsOfNewBoard = "Credits to fill in for the new board";
 
+        // The credit for the draft's work, put back before Submit when it was taken away (SubmissionCredit.Ensure, 2026-11-15).
+        public const string CreditForYourChanges = "Credit for your changes";
+
         // "Important KiCad signals" wherever the part is named since 2026-11-01 (owner request) - the
         // sheet keeps its stored name, "Important signals".
         public const string ImportantSignals = "Important KiCad signals";

@@ -44,7 +44,6 @@ public sealed class KiCadOverlayCacheKeysTests
         ShowOppositeSideTraces = true,
         ShowZones = true,
         IsCalibrationMode = false,
-        ActiveReferences = new[] { "U1", "U2" },
         SelectedReferences = new[] { "U1", "U2" },
     };
 
@@ -96,7 +95,6 @@ public sealed class KiCadOverlayCacheKeysTests
             { "ShowOppositeSideTraces", b with { ShowOppositeSideTraces = false } },
             { "ShowZones", b with { ShowZones = false } },
             { "IsCalibrationMode", b with { IsCalibrationMode = true } },
-            { "ActiveReferences", b with { ActiveReferences = new[] { "U1" } } },
             { "SelectedReferences", b with { SelectedReferences = new[] { "U1" } } },
         };
     }
@@ -119,8 +117,8 @@ public sealed class KiCadOverlayCacheKeysTests
     {
         // The same selection reached in a different order is the same selection. Without sorting,
         // re-selecting the same components would needlessly drop the entire cache.
-        var forwards = Baseline() with { ActiveReferences = new[] { "U1", "U2", "U3" } };
-        var backwards = Baseline() with { ActiveReferences = new[] { "U3", "U2", "U1" } };
+        var forwards = Baseline() with { SelectedReferences = new[] { "U1", "U2", "U3" } };
+        var backwards = Baseline() with { SelectedReferences = new[] { "U3", "U2", "U1" } };
 
         Assert.Equal(Key(forwards), Key(backwards));
     }
@@ -128,8 +126,8 @@ public sealed class KiCadOverlayCacheKeysTests
     [Fact]
     public void Blank_references_are_ignored()
     {
-        var withBlanks = Baseline() with { ActiveReferences = new[] { "U1", "  ", "U2", "" } };
-        var without = Baseline() with { ActiveReferences = new[] { "U1", "U2" } };
+        var withBlanks = Baseline() with { SelectedReferences = new[] { "U1", "  ", "U2", "" } };
+        var without = Baseline() with { SelectedReferences = new[] { "U1", "U2" } };
 
         Assert.Equal(Key(without), Key(withBlanks));
     }
@@ -138,9 +136,124 @@ public sealed class KiCadOverlayCacheKeysTests
     public void An_empty_reference_set_is_not_the_same_as_one_with_a_reference()
     {
         // Nothing selected draws every net; one component selected does not. They must not share a key.
-        var none = Baseline() with { ActiveReferences = Array.Empty<string>() };
+        var none = Baseline() with { SelectedReferences = Array.Empty<string>() };
 
         Assert.NotEqual(Key(Baseline()), Key(none));
+    }
+
+    // ------------------------------------------------- the active references, per net (2026-11-16)
+
+    // The key of a net, its active references made ready as a rebuild makes them - once for every net (ActiveSetOf).
+    private static string ActiveOnNet(bool explicitHighlight, IReadOnlyCollection<string> active, IEnumerable<string?> pads) =>
+        KiCadOverlayCacheKeys.ActiveReferencesOnNet(explicitHighlight, KiCadOverlayCacheKeys.ActiveSetOf(active), pads);
+
+    // The active references used to be part of the generation key, so every component the pointer entered or left over
+    // a PCB picture - while one was selected - rebuilt every net drawn. A net's drawing depends only on whether any
+    // reference is active, and on the active references with a pad on it.
+    [Fact]
+    public void A_reference_with_no_pad_on_the_net_does_not_change_its_key()
+    {
+        string[] pads = ["U1", "U2"];
+
+        Assert.Equal(
+            ActiveOnNet(false, ["U1"], pads),
+            ActiveOnNet(false, ["U1", "U9"], pads));
+    }
+
+    [Fact]
+    public void A_reference_with_a_pad_on_the_net_changes_its_key()
+    {
+        string[] pads = ["U1", "U2"];
+
+        Assert.NotEqual(
+            ActiveOnNet(false, ["U1"], pads),
+            ActiveOnNet(false, ["U1", "U2"], pads));
+    }
+
+    // With nothing active every pad is a target; with only references elsewhere none is - two different drawings.
+    [Fact]
+    public void Nothing_active_is_not_the_same_as_only_references_off_the_net()
+    {
+        Assert.NotEqual(
+            ActiveOnNet(false, [], ["U1"]),
+            ActiveOnNet(false, ["U9"], ["U1"]));
+    }
+
+    [Fact]
+    public void A_net_drawn_whole_has_the_same_key_whatever_is_active()
+    {
+        Assert.Equal(
+            ActiveOnNet(true, [], ["U1"]),
+            ActiveOnNet(true, ["U1", "U2"], ["U1"]));
+    }
+
+    [Fact]
+    public void The_active_references_on_a_net_ignore_order_case_and_padding()
+    {
+        string[] pads = ["U1", " u2 "];
+
+        Assert.Equal(
+            ActiveOnNet(false, ["u1", "U2 "], pads),
+            ActiveOnNet(false, ["U2", "U1"], pads));
+    }
+
+    // The key against the drawing itself: a net of three pads in a row (U1 - U2 - U3), every set of active references from
+    // U1, U2, U3 and U9 (no pad on it). Wherever two sets give the net the same key, the walk draws the same copper.
+    [Fact]
+    public void Two_active_sets_with_the_same_key_on_a_net_draw_the_same_copper_there()
+    {
+        var cache = new KiCadPcbNetRenderCache();
+        string[] padReferences = ["U1", "U2", "U3"];
+
+        foreach (string reference in padReferences)
+        {
+            string id = "pad:" + reference;
+            cache.PadNodes.Add(new KiCadPcbPadRenderNode
+            {
+                Info = new KiCadGraphNode { Id = id },
+                Footprint = new Handlers.DataHandling.KiCadPcbFootprint { Reference = reference }
+            });
+            cache.PadReferenceByNodeId[id] = reference;
+            cache.AllNodeIds.Add(id);
+        }
+
+        void Link(string a, string b)
+        {
+            cache.AllNodeIds.Add(a);
+            cache.AllNodeIds.Add(b);
+            (cache.AdjacencyByNodeId.TryGetValue(a, out var fromA) ? fromA : cache.AdjacencyByNodeId[a] = new(StringComparer.OrdinalIgnoreCase)).Add(b);
+            (cache.AdjacencyByNodeId.TryGetValue(b, out var fromB) ? fromB : cache.AdjacencyByNodeId[b] = new(StringComparer.OrdinalIgnoreCase)).Add(a);
+        }
+
+        Link("pad:U1", "seg:1");
+        Link("seg:1", "pad:U2");
+        Link("pad:U2", "seg:2");
+        Link("seg:2", "pad:U3");
+
+        string[] candidates = ["U1", "U2", "U3", "U9"];
+        var sets = Enumerable.Range(0, 1 << candidates.Length)
+            .Select(mask => candidates.Where((_, bit) => (mask & (1 << bit)) != 0).ToArray())
+            .ToList();
+
+        foreach (bool explicitHighlight in new[] { false, true })
+        {
+            foreach (string[] first in sets)
+            {
+                foreach (string[] second in sets)
+                {
+                    if (ActiveOnNet(explicitHighlight, first, padReferences) !=
+                        ActiveOnNet(explicitHighlight, second, padReferences))
+                    {
+                        continue;
+                    }
+
+                    var drawnFirst = KiCadNetGraphBuilder.BuildKiCadPcbActiveDrawIds(cache, explicitHighlight, new HashSet<string>(first, StringComparer.OrdinalIgnoreCase));
+                    var drawnSecond = KiCadNetGraphBuilder.BuildKiCadPcbActiveDrawIds(cache, explicitHighlight, new HashSet<string>(second, StringComparer.OrdinalIgnoreCase));
+
+                    Assert.True(drawnFirst.SetEquals(drawnSecond), $"[{string.Join(",", first)}] and [{string.Join(",", second)}] share a key but draw differently");
+                }
+            }
+        }
     }
 
     [Fact]

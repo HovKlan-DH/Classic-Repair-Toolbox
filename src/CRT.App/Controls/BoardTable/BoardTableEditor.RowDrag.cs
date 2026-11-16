@@ -101,15 +101,19 @@ namespace CRT
 
         // Rows can be moved - and show their grips - except while a picked pill in the colour key
         // or the search box hides some (BoardTableRowFilter, BoardTableSearch): a place among rows
-        // that cannot be seen means nothing. Never in a read-only table (IsReadOnly).
+        // that cannot be seen means nothing. Never in a read-only table (IsReadOnly), nor on a sheet
+        // whose order the server keeps (the credits - BoardTableSheet.RowsCanBeMoved).
         private void UpdateRowsDraggable() =>
-            this.TableGrid.Classes.Set(BoardTableEditor.RowsDraggableClass, !this.IsNarrowed && !this.thisIsReadOnly);
+            this.TableGrid.Classes.Set(
+                BoardTableEditor.RowsDraggableClass,
+                !this.IsNarrowed && !this.thisIsReadOnly && this.thisCurrentSheet?.RowsCanBeMoved != false);
 
         private void OnRowDragPointerPressed(object? sender, PointerPressedEventArgs e)
         {
             if (this.IsNarrowed ||
                 this.thisIsReadOnly ||
                 this.thisCurrentSheet is null ||
+                !this.thisCurrentSheet.RowsCanBeMoved ||
                 !e.GetCurrentPoint(this.TableGrid).Properties.IsLeftButtonPressed ||
                 e.Source is not Visual source)
             {

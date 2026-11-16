@@ -167,6 +167,8 @@ namespace CRT
                 return;
             }
 
+            // In the board's order - oldest first, as every publish keeps it (CreditOrder - 2026-11-14): the board's history as well
+            // as its credits. Not sorted here: in a draft a new credit has no date yet, as one from before the history has none.
             foreach (var entry in credits)
             {
                 bool isClickable = !string.IsNullOrWhiteSpace(entry.Contact)
@@ -186,7 +188,11 @@ namespace CRT
                     entry.Contact ?? string.Empty,
                     isClickable,
                     openAction
-                ));
+                )
+                {
+                    Date = entry.Date?.Trim() ?? string.Empty,
+                    MainContribution = RichNote.NormalisedMarkup(entry.MainContribution),
+                });
             }
 
             this.CreditsSectionBorder.IsVisible = true;
@@ -201,6 +207,11 @@ namespace CRT
         public string Contact { get; }
         public bool IsLink { get; }
         public ICommand? OpenContactCommand { get; }
+
+        // When it was published, and what it was - a note with formatting (2026-11-14).
+        public string Date { get; init; } = string.Empty;
+        public string MainContribution { get; init; } = string.Empty;
+        public bool HasMainContribution => this.MainContribution.Length > 0;
 
         public CreditDisplayItem(string category, string subCategory, string name, string contact, bool isLink, Action? openAction)
         {

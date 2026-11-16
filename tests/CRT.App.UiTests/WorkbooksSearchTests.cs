@@ -72,6 +72,80 @@ public sealed class WorkbooksSearchTests : IDisposable
     private static StackPanel ListPanel(TabWorkbooks tab) =>
         tab.GetControl<StackPanel>("WorkbookListPanel");
 
+    // ###########################################################################################
+    // A PAUSE IN TYPING READS NO WORKLOG AGAIN (2026-11-16, performance walkthrough): only the words changed, so
+    // the worklogs the last pause read are searched again - every pause read every listed workbook's worklogs, one
+    // index.json each, on the UI thread. Any other refresh (a save goes through RefreshWorklogBar) reads them afresh.
+    // ###########################################################################################
+    [Fact]
+    public void A_pause_in_typing_a_search_reads_no_worklog_again_and_any_other_refresh_does()
+    {
+        this.LoadWorklog();
+        var workbook = WorklogManager.CreateWorkbook(this.thisBoardKey, "Black screen", "")!;
+        WorklogManager.AddEntry(workbook.Id, "Top", new Avalonia.Rect(0, 0, 10, 10), "Dead CIA", "", "Issue", "Open", Array.Empty<string>());
+        WorklogManager.AddEntry(workbook.Id, "Top", new Avalonia.Rect(0, 0, 10, 10), "Bad SID", "", "Issue", "Open", Array.Empty<string>());
+
+        UiTest.Run(() =>
+        {
+            var tab = BuildTab(this.thisBoardKey);
+            tab.GetControl<TextBox>("FindRepairTextBox").Text = "CIA";
+            tab.EndSearchPauseForTests();
+
+            int readsBefore = WorklogManager.EntryReadsMadeForTests;
+
+            tab.GetControl<TextBox>("FindRepairTextBox").Text = "SID";
+            tab.EndSearchPauseForTests();
+
+            Assert.Equal(readsBefore, WorklogManager.EntryReadsMadeForTests);
+            Assert.Single(ListPanel(tab).Children);
+
+            tab.RefreshWorkbooks();
+
+            Assert.True(WorklogManager.EntryReadsMadeForTests > readsBefore, "A refresh other than a typing pause must read the worklogs afresh");
+        });
+    }
+
+    // ###########################################################################################
+    // MAIN REACHES THE TAB ONLY WHILE IT IS SHOWN (2026-11-16, performance walkthrough): hidden, every board switch
+    // rebuilt it three or four times - its board pane decoding schematic images on the UI thread - for nobody to see.
+    // Shown, it is built afresh from disk.
+    // ###########################################################################################
+    [Fact]
+    public void Mains_refresh_passes_by_a_tab_not_shown_which_is_built_afresh_as_it_is_shown()
+    {
+        this.LoadWorklog();
+
+        UiTest.Run(() =>
+        {
+            var tab = BuildTab(this.thisBoardKey);
+            Assert.Empty(ListPanel(tab).Children);
+
+            WorklogManager.CreateWorkbook(this.thisBoardKey, "Black screen", "");
+            tab.RefreshWorkbooksIfShown(null, null, null);
+            tab.RefreshBoardPreviewsIfShown();
+
+            Assert.Empty(ListPanel(tab).Children);
+
+            var window = new Avalonia.Controls.Window { Width = 900, Height = 600, Content = tab };
+            window.Show();
+
+            try
+            {
+                Dispatcher.UIThread.RunJobs();
+                Assert.Single(ListPanel(tab).Children);
+
+                WorklogManager.CreateWorkbook(this.thisBoardKey, "Dead PLA", "");
+                tab.RefreshWorkbooksIfShown(null, null, null);
+
+                Assert.Equal(2, ListPanel(tab).Children.Count);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
     private static StackPanel EntriesPanel(TabWorkbooks tab) =>
         tab.GetControl<StackPanel>("SelectedSchematicEntriesPanel");
 

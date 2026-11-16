@@ -13,7 +13,7 @@ public sealed class ContributeProblemsTests
 
     private static BoardProblemsRead ChecksOf(BoardData board)
     {
-        IReadOnlyList<BoardDataProblem> problems = BoardDataChecks.Check(BoardCheckRows.From(board), null, BoardCheckScope.Everything);
+        IReadOnlyList<BoardDataProblem> problems = BoardDataChecks.Check(BoardCheckRows.From(board, published: null), null, BoardCheckScope.Everything);
 
         return new BoardProblemsRead(BoardProblemCounts.Of(problems), problems, board);
     }

@@ -29,8 +29,9 @@ namespace CRT
     //   - ONCE ENDED - "Done", "Skip tour" or Escape - it is remembered (UserSettings.IntroductionToursSeen, the version
     //     TourPlan says), and not offered again until CRT brings something new to the tab: then "Tour of what's new",
     //     with what EVERY version since brought (TourCatalogue's header). Closing CRT in the middle remembers nothing.
-    //   - "Take the introduction tours again" on the "Configuration" tab forgets them all and shows the "Schematics" tab,
-    //     whose tour starts as it is shown.
+    //     SKIPPED (the button or Escape), every other tab's tour is remembered as seen too (SkipEveryOtherTour).
+    //   - "Take the introduction tours again" on the "Configuration" tab forgets them all and leaves the tab shown as it is;
+    //     the next tab picked starts its tour.
     //   - Another tab shown under a tour - by code, as the tour takes every click - puts it away, remembering nothing.
     //   - "--show-tours" shows each tab's tour the first time the tab is shown in the run, whatever was seen, and
     //     remembers nothing; "--show-tours=3.1.1" shows the tour of what came since that version (owner request: "I need
@@ -448,27 +449,82 @@ namespace CRT
                 return;
 
             this.thisTourShowing = null;
-            Logger.Info($"Introduction tour [{showing.Tab}] {(completed ? "taken to its end" : "skipped")}");
+            Logger.Info($"Introduction tour [{showing.Tab}] {(completed ? "taken to its end" : "skipped - and every other tab's with it")}");
 
             if (!showing.Forced)
             {
                 UserSettings.SetIntroductionTourSeen(TourCatalogue.Of(showing.Tab).TabName, showing.Plan.VersionToRemember, completed ? showing.LeftOut : []);
             }
+
+            if (!completed)
+            {
+                this.SkipEveryOtherTour(showing.Tab, showing.Forced);
+            }
         }
 
         // ###########################################################################################
-        // "Take the introduction tours again" (the "Configuration" tab): every tour as never seen, and the "Schematics" tab
-        // shown - its tour comes as it is shown, the others as their tabs are. Pressed on the "Configuration" tab, the
-        // only place it is, so showing the "Schematics" tab always changes the tab (code review, 2026-11-12: a branch for
-        // the "Schematics" tab already shown could never run).
+        // *** "Skip tour" SKIPS THE TOURS, NOT ONE TAB'S (owner request, 2026-11-14: "if the user clicks "Skip tour", then it
+        // should skip the tour entirely, and not continue for other tabs"). *** Every other tab's tour that would be offered
+        // is remembered as seen at the version it would show - an introduction, a tour of what's new, or what an earlier one
+        // left out - so none comes up as its tab is shown. Escape skips as the button does. "Take the introduction tours
+        // again" brings them all back. Under "--show-tours" nothing is remembered: the other tabs count as shown in this run.
+        // ###########################################################################################
+        private void SkipEveryOtherTour(TourTab skipped, bool forced)
+        {
+            foreach (TourOfTab tour in TourCatalogue.All.Where(tour => tour.Tab != skipped))
+            {
+                if (forced)
+                {
+                    this.thisToursShownThisRun.Add(tour.Tab);
+                    continue;
+                }
+
+                TourPlan plan = TourPlan.For(tour, UserSettings.IntroductionTourSeen(tour.TabName), UserSettings.IntroductionTourStepsLeftOut(tour.TabName));
+
+                if (plan.Kind != TourKind.None)
+                {
+                    UserSettings.SetIntroductionTourSeen(tour.TabName, plan.VersionToRemember, []);
+                }
+            }
+        }
+
+        // ###########################################################################################
+        // "Take the introduction tours again" (the "Configuration" tab): every tour as never seen - and the tab stays where it
+        // is (owner request, 2026-11-14: "it should not redirect to the "Schematics" tab. Instead it should stay as-is, and then
+        // it will start on the introduction for the next tab the user navigates to"). No tour is offered as it is pressed: the
+        // next tab picked offers its tour as it is shown (OfferTourSoon from the tab's selection), and so does the
+        // "Configuration" tab itself the next time it is shown. A window says so (owner request, 2026-11-15:
+        // ToursAgainWindow, "OK" its one button).
         // ###########################################################################################
         private void TakeToursAgain()
         {
             UserSettings.ForgetIntroductionToursSeen();
             this.thisToursShownThisRun.Clear();
-            Logger.Info("Introduction tours to be taken again");
+            Logger.Info("Introduction tours to be taken again - from the next tab shown");
 
-            this.MainTabControl.SelectedItem = this.SchematicsTabItem;
+            this.SayToursAreBack();
+        }
+
+        // Stands in for opening ToursAgainWindow - a headless test cannot wait out a dialog (ShowDialog). null is the shipped path.
+        internal Action? ToursAgainWindowOverrideForTests { get; set; }
+
+        private async void SayToursAreBack()
+        {
+            if (this.ToursAgainWindowOverrideForTests is { } said)
+            {
+                said();
+                return;
+            }
+
+            try
+            {
+                await new ToursAgainWindow().ShowDialog(this);
+            }
+            catch (Exception ex)
+            {
+                // Nothing may leave an async void handler; the tours are back whether or not it was said.
+                Logger.Warning($"Could not say the introduction tours are back - [{ex.Message}]");
+            }
         }
 
         // ###########################################################################################

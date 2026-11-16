@@ -24,6 +24,10 @@ internal static class StoredFiles
         return new BoardDocument.StoredFileRow { Name = name, Sha256 = sha, Size = bytes.Length };
     }
 
+    // Where `file`'s bytes are stored under `root`.
+    public static string PathOf(string root, BoardDocument.StoredFileRow file) =>
+        Path.Combine(root, DataTreeLayout.StoredFilePath(file.Sha256, file.Name).Replace('/', Path.DirectorySeparatorChar));
+
     // An entry for `content` without storing it anywhere.
     public static BoardDocument.StoredFileRow EntryFor(string name, string content)
     {

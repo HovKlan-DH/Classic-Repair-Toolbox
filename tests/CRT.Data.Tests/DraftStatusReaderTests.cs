@@ -254,6 +254,86 @@ public sealed class DraftStatusReaderTests : IDisposable
         Assert.False(DraftStatusReader.HoldsProblemsForTests(status.WorkbookPath));
     }
 
+    // ###########################################################################################
+    // *** A DRAFT'S FILES ARE NOT ASKED FOR AGAIN AFTER A SAVE THAT LISTS THEM AS THEY WERE (2026-11-16,
+    // performance walkthrough). *** The row is checked again after every save, and asking the disk for every
+    // cited file - thousands on a large board - each time was most of the drafts' list's cost on the UI thread.
+    // The draft's lookup is kept; only a name listed with other bytes is looked for again. A file taken away
+    // by hand is seen by a new lookup - the table opening, Submit - as an open table's lookup always was.
+    // ###########################################################################################
+    [Fact]
+    public void A_drafts_files_are_asked_for_again_only_when_a_save_lists_them_with_other_bytes()
+    {
+        this.WritePublished(DraftStatusReaderTests.BoardWith(1));
+        string draftFolder = DraftFolderLayout.GetBoardFolder(this.DraftsRoot, DraftStatusReaderTests.BoardKey);
+        BoardDocument.StoredFileRow picture = StoredFiles.Put(draftFolder, "Images/U0 pinout.png", "picture bytes");
+
+        this.WriteDraftListing(DraftStatusReaderTests.BoardCiting(1, picture.Name), picture);
+        DraftStatus status = this.Status()!;
+        int errors = DraftStatusReader.CountProblemsCached(status, this.DataRoot, draftFolder).Errors;
+
+        File.Delete(StoredFiles.PathOf(draftFolder, picture));
+
+        // A save changing something else: the picture listed as it was - not asked for.
+        this.WriteDraftListing(DraftStatusReaderTests.BoardCiting(2, picture.Name), picture);
+        File.SetLastWriteTimeUtc(status.WorkbookPath, DateTime.UtcNow.AddMinutes(1));
+
+        Assert.Equal(errors, DraftStatusReader.CountProblemsCached(status, this.DataRoot, draftFolder).Errors);
+        Assert.True(DraftStatusReader.HoldsLookupForTests(status.WorkbookPath));
+
+        // A save listing it with other bytes, stored nowhere: looked for, and missing.
+        this.WriteDraftListing(DraftStatusReaderTests.BoardCiting(2, picture.Name), StoredFiles.EntryFor(picture.Name, "other bytes"));
+        File.SetLastWriteTimeUtc(status.WorkbookPath, DateTime.UtcNow.AddMinutes(2));
+
+        Assert.Equal(errors + 1, DraftStatusReader.CountProblemsCached(status, this.DataRoot, draftFolder).Errors);
+
+        // The draft gone, its lookup goes with what the checks found.
+        File.Delete(status.WorkbookPath);
+        DraftStatusReader.ForgetProblemsOfVanishedDrafts();
+        Assert.False(DraftStatusReader.HoldsLookupForTests(status.WorkbookPath));
+    }
+
+    // ###########################################################################################
+    // *** ONE PASS READS A BOARD ONCE (2026-11-16, performance walkthrough). *** Right after a save a stamp is not
+    // trusted yet, and the drafts' list's change count, problem count and other changes each parsed the draft just
+    // written - and its published board - again. Within a pass each is parsed once; outside one, as before.
+    // ###########################################################################################
+    [Fact]
+    public void One_pass_reads_a_just_written_draft_and_its_published_board_once_each()
+    {
+        this.WritePublished(DraftStatusReaderTests.BoardWith(1));
+        this.WriteDraft(DraftStatusReaderTests.BoardWith(3));
+        DraftStatus status = this.Status()!;
+        string draftFolder = DraftFolderLayout.GetBoardFolder(this.DraftsRoot, DraftStatusReaderTests.BoardKey);
+
+        // Written "just now": a write time not settled yet, however slowly this runs.
+        File.SetLastWriteTimeUtc(status.WorkbookPath, DateTime.UtcNow.AddMinutes(1));
+        File.SetLastWriteTimeUtc(status.PublishedWorkbookPath, DateTime.UtcNow.AddMinutes(1));
+
+        int before = BoardReadsByStamp.ReadsMadeForTests;
+
+        using (DraftStatusReader.OnePass())
+        {
+            Assert.Equal(2, DraftStatusReader.CountChangesCached(status));
+            DraftStatusReader.ProblemsCached(status, this.DataRoot, draftFolder);
+            DraftStatusReader.CountOtherChangesCached(status, this.DraftsRoot);
+
+            // A pass inside the pass is the same pass.
+            using (DraftStatusReader.OnePass())
+            {
+                Assert.Equal(2, DraftStatusReader.CountChanges(status));
+            }
+
+            Assert.Equal(2, DraftStatusReader.CountChanges(status));
+        }
+
+        Assert.Equal(before + 2, BoardReadsByStamp.ReadsMadeForTests);
+
+        // Outside a pass, a stamp not settled is read again.
+        Assert.Equal(2, DraftStatusReader.CountChanges(status));
+        Assert.Equal(before + 4, BoardReadsByStamp.ReadsMadeForTests);
+    }
+
     [Fact]
     public void No_draft_has_no_problems()
     {
@@ -417,6 +497,21 @@ public sealed class DraftStatusReaderTests : IDisposable
         }
 
         return board;
+    }
+
+    // `components` components, U0's picture citing the file named `file`.
+    private static BoardData BoardCiting(int components, string file)
+    {
+        BoardData board = DraftStatusReaderTests.BoardWith(components);
+        board.ComponentImages.Add(new ComponentImageEntry { BoardLabel = "U0", Name = "Pinout", File = file });
+        return board;
+    }
+
+    // The draft written, its board file listing `files`.
+    private void WriteDraftListing(BoardData board, params BoardDocument.StoredFileRow[] files)
+    {
+        this.WriteDraft(board);
+        BoardFiles.Change(DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, DraftStatusReaderTests.BoardKey), document => document.Files = files.ToList());
     }
 
     private void WritePublished(BoardData board)

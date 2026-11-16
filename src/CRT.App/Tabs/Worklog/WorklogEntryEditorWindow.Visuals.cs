@@ -53,9 +53,9 @@ namespace CRT
             // alignment set, so Avalonia centres the content in the fixed-height preview box. Using
             // the origin-anchored GetImageContentRect drew the marker off by half the letterbox -
             // pointing at the wrong part of the board, and clipped away entirely on tall schematics.
-            var contentRect = RectGeometry.GetCenteredImageContentRect(controlSize, this.thisSchematicBitmap.PixelSize);
+            var contentRect = RectGeometry.GetCenteredImageContentRect(controlSize, this.SchematicPixelSize);
             var pixelRect = new Rect(this.thisEntry.AreaX, this.thisEntry.AreaY, this.thisEntry.AreaWidth, this.thisEntry.AreaHeight);
-            var localRect = RectGeometry.PixelToLocalRect(pixelRect, contentRect, this.thisSchematicBitmap.PixelSize);
+            var localRect = RectGeometry.PixelToLocalRect(pixelRect, contentRect, this.SchematicPixelSize);
 
             var color = this.ResolveCategoryColor(this.thisSelectedCategory);
 

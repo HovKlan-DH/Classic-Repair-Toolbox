@@ -502,8 +502,8 @@ public sealed class BoardRegionsTests
     [Fact]
     public void The_checks_take_any_name_of_the_rule_and_refuse_the_rest()
     {
-        BoardCheckRows good = BoardCheckRows.From(new SubmissionRows { Regions = ["EU", "US"] });
-        BoardCheckRows bad = BoardCheckRows.From(new SubmissionRows { Regions = ["EU", "eu", "EU|US"] });
+        BoardCheckRows good = BoardCheckRows.From(new SubmissionRows { Regions = ["EU", "US"] }, published: null);
+        BoardCheckRows bad = BoardCheckRows.From(new SubmissionRows { Regions = ["EU", "eu", "EU|US"] }, published: null);
 
         Assert.DoesNotContain(BoardDataChecks.Check(good, files: null, BoardCheckScope.Submission), problem => problem.Code == "regions.unknown");
         Assert.Equal(2, BoardDataChecks.Check(bad, files: null, BoardCheckScope.Submission).Count(problem => problem.Code == "regions.unknown"));
@@ -519,7 +519,7 @@ public sealed class BoardRegionsTests
         };
 
         BoardDataProblem warned = Assert.Single(
-            BoardDataChecks.Check(BoardCheckRows.From(rows), files: null, BoardCheckScope.Everything),
+            BoardDataChecks.Check(BoardCheckRows.From(rows, published: null), files: null, BoardCheckScope.Everything),
             problem => problem.Code == "row.region");
         Assert.Contains("Write EU or US", warned.Message, StringComparison.Ordinal);
     }

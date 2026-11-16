@@ -160,7 +160,7 @@ namespace CRT.Data.Tests
 
                 string[] supplied = [.. converted.Document.Files.Select(file => file.Name)];
 
-                refusals.AddRange(SubmissionValidator.Validate(last, supplied)
+                refusals.AddRange(SubmissionValidator.Validate(last, supplied, publishedCredits: null)
                     .Where(finding => finding.Severity == ValidationSeverity.Error)
                     .Select(finding => $"{converted.BoardId}: {finding.Code} {finding.Subject} - {finding.Message}"));
             }
@@ -176,7 +176,7 @@ namespace CRT.Data.Tests
                 X = "not a number", Y = "1", Width = "1", Height = "1"
             };
 
-            Assert.Contains(SubmissionValidator.Validate(last, []), finding => finding.Code == "highlight.unparseable");
+            Assert.Contains(SubmissionValidator.Validate(last, [], publishedCredits: null), finding => finding.Code == "highlight.unparseable");
         }
 
         // ###########################################################################################
@@ -207,7 +207,7 @@ namespace CRT.Data.Tests
                     Board = parts[2]
                 };
 
-                refusals.AddRange(SubmissionValidator.Validate(manifest, [])
+                refusals.AddRange(SubmissionValidator.Validate(manifest, [], publishedCredits: null)
                     .Where(finding => finding.Code.StartsWith("identity.", StringComparison.Ordinal))
                     .Select(finding => $"{folder}: {finding.Code}"));
             }

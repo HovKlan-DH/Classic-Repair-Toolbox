@@ -26,6 +26,10 @@ namespace Handlers.DataHandling
     //     says what it was (UndoDescription). MaxSteps bounds it.
     //   - WHAT FOLLOWS AN EDIT, FOLLOWS IT HERE TOO: highlights and calibrations go with a renamed
     //     schematic or a relabelled component - DraftEditRules, the rules every file write applies.
+    //     And the credit for the work (SubmissionCredit.Follow, 2026-11-15) when the sessions were
+    //     told whom to credit (DraftSessions.CreditIdentity): IN THE SAME STEP, so one undo takes the
+    //     change and its credit back together; a change that did more than its editor asked says so
+    //     (DraftSessionChange.FollowedUp), so an editor showing the credits reads them again.
     //   - SAVED MEANS THE FILE HOLDS WHAT IS SHOWN: compared by the content itself, so undoing back
     //     to the content last written is Saved again, with nothing to write.
     //   - A FILE CHANGED OUTSIDE IS NEVER WRITTEN OVER WITHOUT BEING ASKED. The session keeps the
@@ -137,6 +141,55 @@ namespace Handlers.DataHandling
 
         public string ExcelDataFile { get; }
 
+        // ###########################################################################################
+        // What follows every edit besides DraftEditRules: the board as the edit left it from the board before it, and the board
+        // it should be - the same object for nothing more. Set by the sessions that opened this one (DraftSessions); null, nothing.
+        // ###########################################################################################
+        public Func<BoardData, BoardData, BoardData>? FollowUp { get; set; }
+
+        // ###########################################################################################
+        // The board this draft was started from or last brought up to date with (DraftBase) - what its work and its credits are
+        // judged against (SubmissionCredit). Read once, and again when its file changes; null for a new board, or a draft with
+        // no base. Any thread.
+        // ###########################################################################################
+        public BoardData? BaseBoard()
+        {
+            string path = DraftFolderLayout.GetBasePath(this.DraftsRoot, this.ExcelDataFile);
+            string stamp = BoardDataReader.FileStamp(path);
+
+            lock (this.thisBaseGate)
+            {
+                if (string.Equals(stamp, this.thisBaseStamp, StringComparison.Ordinal))
+                {
+                    return this.thisBase;
+                }
+            }
+
+            BoardData? board = stamp == BoardDataReader.NoFileStamp ? null : DraftBaseStore.LoadFile(path)?.Board;
+
+            lock (this.thisBaseGate)
+            {
+                this.thisBaseStamp = stamp;
+                this.thisBase = board;
+            }
+
+            return board;
+        }
+
+        private readonly object thisBaseGate = new();
+        private string? thisBaseStamp;
+        private BoardData? thisBase;
+
+        // The base read again at the next ask, whatever its stamp says.
+        private void ForgetBase()
+        {
+            lock (this.thisBaseGate)
+            {
+                this.thisBaseStamp = null;
+                this.thisBase = null;
+            }
+        }
+
         // The draft as every editor should show it now. Never mutate it - edit through Apply.
         public BoardContent Content
         {
@@ -216,9 +269,15 @@ namespace Handlers.DataHandling
 
             this.ChangeComing?.Invoke(this, new DraftSessionChange(DraftSessionChangeKind.Edit, description ?? string.Empty, origin));
 
-            return DraftSession.Prepare(this.Content, edit) is DraftPreparedEdit prepared &&
+            return this.PrepareEdit(this.Content, edit) is DraftPreparedEdit prepared &&
                    this.Commit(description, prepared, origin);
         }
+
+        // Prepare with what follows an edit of this draft (FollowUp) - for an edit worked out off the UI thread.
+        public DraftPreparedEdit? PrepareEdit(
+            BoardContent before,
+            Func<BoardContent, (BoardContent? Content, IReadOnlyDictionary<string, string?>? Follow)> edit) =>
+            DraftSession.Prepare(before, edit, this.FollowUp);
 
         // ###########################################################################################
         // AN EDIT WORKED OUT OFF THE UI THREAD (code review, 2026-10-25: a large board's edit, and what
@@ -228,7 +287,8 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         public static DraftPreparedEdit? Prepare(
             BoardContent before,
-            Func<BoardContent, (BoardContent? Content, IReadOnlyDictionary<string, string?>? Follow)> edit)
+            Func<BoardContent, (BoardContent? Content, IReadOnlyDictionary<string, string?>? Follow)> edit,
+            Func<BoardData, BoardData, BoardData>? followUp = null)
         {
             ArgumentNullException.ThrowIfNull(before);
             ArgumentNullException.ThrowIfNull(edit);
@@ -243,7 +303,14 @@ namespace Handlers.DataHandling
             (BoardData board, List<KiCadCalibrationEntry> calibrations) =
                 DraftEditRules.Follow(before.Board, edited.Board, edited.Calibrations, follow);
 
-            return new DraftPreparedEdit(before, edited with { Board = board, Calibrations = calibrations });
+            // What else follows the edit (FollowUp - the credit for the work): in the same step, and said, so an editor that
+            // takes its own edits as already shown reads the draft again.
+            BoardData followed = followUp?.Invoke(before.Board, board) ?? board;
+
+            return new DraftPreparedEdit(
+                before,
+                edited with { Board = followed, Calibrations = calibrations },
+                FollowedUp: !ReferenceEquals(followed, board));
         }
 
         // ###########################################################################################
@@ -281,7 +348,7 @@ namespace Handlers.DataHandling
                 this.thisLastChange = this.thisClock();
             }
 
-            this.Raise(new DraftSessionChange(DraftSessionChangeKind.Edit, description ?? string.Empty, origin));
+            this.Raise(new DraftSessionChange(DraftSessionChangeKind.Edit, description ?? string.Empty, origin) { FollowedUp = prepared.FollowedUp });
 
             return true;
         }
@@ -878,6 +945,10 @@ namespace Handlers.DataHandling
 
                 T result = write();
 
+                // A write that is more than the content may rewrite the base ("Bring my draft up to date"): never taken as
+                // unchanged by its stamp, which two writes in one clock tick can share (StampSettling; code review, 2026-11-16).
+                this.ForgetBase();
+
                 if (!succeeded(result))
                 {
                     return result;
@@ -960,11 +1031,17 @@ namespace Handlers.DataHandling
 
     // An edit worked out off the UI thread (DraftSession.Prepare): the content it was worked out on,
     // and the content it makes of it, what follows the edit followed.
-    public sealed record DraftPreparedEdit(BoardContent Before, BoardContent After);
+    // An edit worked out: the content before and after it - `FollowedUp` when more followed it than its editor asked for (the
+    // credit for the work, DraftSession.FollowUp).
+    public sealed record DraftPreparedEdit(BoardContent Before, BoardContent After, bool FollowedUp = false);
 
     // What changed a draft session: the kind, the step's description, and the editor that made the
     // edit (null for undo and redo of nobody's, and for the file read again).
-    public sealed record DraftSessionChange(DraftSessionChangeKind Kind, string Description, object? Origin);
+    public sealed record DraftSessionChange(DraftSessionChangeKind Kind, string Description, object? Origin)
+    {
+        // An edit that did more than its editor asked for (DraftPreparedEdit.FollowedUp): the editor reads the draft again too.
+        public bool FollowedUp { get; init; }
+    }
 
     // Where a draft stands against its file: Saved (the file holds what is shown), Pending (a change
     // waits for its save), Saving, or Failed (the last save could not be made - DraftSession.SaveFailure

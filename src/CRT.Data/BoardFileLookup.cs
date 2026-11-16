@@ -111,13 +111,26 @@ namespace Handlers.DataHandling
     // folder has been written since. Usually there are none, so it costs nothing. A file that
     // VANISHES is still only seen by a new lookup - the cached count's rule too: re-asking every
     // found file (thousands on a large board) after every edit is the cost this cache avoids.
+    //
+    // *** A LOOKUP KEPT FROM ONE CHECK TO THE NEXT ASKS ITS BOARD FILE FIRST (2026-11-16, performance
+    // walkthrough). *** The draft's row is checked again after every save (DraftStatusReader), and a
+    // new lookup each time asked every cited file six or seven times of the disk - some 3,000 files on
+    // a large board, on the UI thread. A kept lookup remembers which stored bytes each name was found
+    // as, and ForgetWhatTheListMoved lets go of only the names its board file now lists with other
+    // bytes, or no more: one read of the board file instead of thousands of stat calls.
     // ###########################################################################################
     public sealed class DiskFileLookup : IBoardFileLookup
     {
         private readonly string thisDataRoot;
         private readonly string thisDraftBoardFolder;
         private readonly string? thisBoardIdentity;
-        private readonly HashSet<string> thisFound = new(StringComparer.Ordinal);
+
+        // Each name found, and the checksum of the stored bytes it was found as - "" when found
+        // otherwise (a new file lying in the draft folder, an Excel-era path).
+        private readonly Dictionary<string, string> thisFound = new(StringComparer.Ordinal);
+
+        // The board file's list ForgetWhatTheListMoved last compared the found names with.
+        private IReadOnlyDictionary<string, BoardDocument.StoredFileRow>? thisListCompared;
         private readonly HashSet<string> thisAskedAndMissed = new(StringComparer.Ordinal);
         private readonly Dictionary<string, (DateTime Written, DateTime ReadAt, string[] Names)> thisListings = new(StringComparer.Ordinal);
 
@@ -152,15 +165,15 @@ namespace Handlers.DataHandling
 
         public BoardFileLookupResult Check(string path)
         {
-            if (this.thisFound.Contains(path))
+            if (this.thisFound.ContainsKey(path))
                 return BoardFileLookupResult.Found;
 
             // Asked before and not found: the folders it looks in may have been written since.
-            BoardFileLookupResult answer = this.Resolve(path, again: this.thisAskedAndMissed.Contains(path));
+            BoardFileLookupResult answer = this.Resolve(path, again: this.thisAskedAndMissed.Contains(path), out string foundAt);
 
             if (answer.State == BoardFileState.Found)
             {
-                this.thisFound.Add(path);
+                this.thisFound[path] = DiskFileLookup.StoredChecksumOf(foundAt);
                 this.thisAskedAndMissed.Remove(path);
             }
             else
@@ -171,10 +184,67 @@ namespace Handlers.DataHandling
             return answer;
         }
 
-        private BoardFileLookupResult Resolve(string path, bool again)
+        // ###########################################################################################
+        // Before a lookup kept from an earlier check is asked again: every name found is let go of
+        // whose board file - the draft's, else the published board's - now lists it with other bytes,
+        // or not at all, and every name found otherwise than as stored bytes, so each is looked for
+        // afresh. Nothing is let go of while the board file's list is the one compared last time: a
+        // file that VANISHES from where it was found is still only seen by a new lookup, as above.
+        // ###########################################################################################
+        public void ForgetWhatTheListMoved()
+        {
+            string boardFile = this.BoardFileListing();
+            IReadOnlyDictionary<string, BoardDocument.StoredFileRow>? listed =
+                boardFile.Length == 0 ? null : this.thisBoardFiles.ListedIn(boardFile);
+
+            if (ReferenceEquals(listed, this.thisListCompared))
+                return;
+
+            this.thisListCompared = listed;
+
+            foreach ((string name, string checksum) in this.thisFound.ToList())
+            {
+                bool listedAsFound = checksum.Length > 0 &&
+                    listed is not null &&
+                    listed.TryGetValue(BoardFileNames.Normalise(name), out BoardDocument.StoredFileRow? row) &&
+                    string.Equals(row.Sha256, checksum, StringComparison.OrdinalIgnoreCase);
+
+                if (!listedAsFound)
+                    this.thisFound.Remove(name);
+            }
+        }
+
+        // The board file whose list names this lookup's files: the draft's when it has one, else the
+        // published board's - "" for neither (an Excel-era draft, the downloaded data alone).
+        private string BoardFileListing()
+        {
+            if (this.thisDraftBoardFolder.Length > 0)
+            {
+                string draft = Path.Combine(this.thisDraftBoardFolder, DataTreeLayout.BoardFileName);
+
+                if (File.Exists(draft))
+                    return draft;
+            }
+
+            return string.IsNullOrWhiteSpace(this.thisBoardIdentity)
+                ? string.Empty
+                : DraftBoardSource.PublishedPathOf(this.thisDataRoot, this.thisBoardIdentity);
+        }
+
+        // The checksum a stored file is named by ("Files/ab/<sha256>.png"), "" for any other file.
+        private static string StoredChecksumOf(string path)
+        {
+            string name = Path.GetFileNameWithoutExtension(path);
+
+            return DataTreeLayout.IsSha256(name) ? name.ToLowerInvariant() : string.Empty;
+        }
+
+        private BoardFileLookupResult Resolve(string path, bool again, out string foundAt)
         {
             bool located = SubmissionFileLocator.TryLocate(
                 this.thisDataRoot, this.thisDraftBoardFolder, path, out string absolute, out _, this.thisBoardIdentity, this.thisBoardFiles);
+
+            foundAt = located ? absolute : string.Empty;
 
             if (located && !this.IsUnderDataRoot(absolute))
                 return DiskFileLookup.AnswerFor(absolute);

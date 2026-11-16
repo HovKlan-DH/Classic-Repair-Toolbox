@@ -104,6 +104,10 @@ namespace Handlers.DataHandling
         public const string ColNameOrHandle = "Name or handle";
         public const string ColContact = "Contact (email or web page)";
 
+        // What the contribution was, a note with formatting, and when it was published (2026-11-14; CreditEntry).
+        public const string ColMainContribution = "Main contribution";
+        public const string ColDate = "Date";
+
         // ---- Important signals columns -----------------------------------------------------
         public const string ColDisplayName = "Display name";
         public const string ColKiCadNetName = "KiCad net name";
@@ -160,7 +164,8 @@ namespace Handlers.DataHandling
             string SheetName,
             IReadOnlyList<string> ColumnOrder,
             IReadOnlyList<string> RequiredHeaders,
-            IReadOnlyList<string>? NoteColumns = null)
+            IReadOnlyList<string>? NoteColumns = null,
+            IReadOnlyList<string>? SetWhenPublishedColumns = null)
         {
             // ###########################################################################################
             // Whether `column` holds a note with formatting - its row's property is [RichNoteMarkup] (owner decision,
@@ -168,6 +173,10 @@ namespace Handlers.DataHandling
             // (BoardDataDiffer.ComparableText). BoardWorkbookSchemaTests holds the two together.
             // ###########################################################################################
             public bool IsNoteColumn(string column) => this.NoteColumns?.Contains(column) == true;
+
+            // Whether `column` is set by the server as the row is published - its row's property is [SetWhenPublished]
+            // (2026-11-14, a credit's date) - so an empty cell is no change in the table, as in BoardDataDiffer.
+            public bool IsSetWhenPublished(string column) => this.SetWhenPublishedColumns?.Contains(column) == true;
         }
 
         public static readonly SheetDefinition BoardSchematics = new(
@@ -308,15 +317,20 @@ namespace Handlers.DataHandling
             ],
             [BoardWorkbookSchema.ColCategory, BoardWorkbookSchema.ColName, BoardWorkbookSchema.ColUrl]);
 
+        // A credit ends in what the contribution was and when it was published (2026-11-14) - the date the server's.
         public static readonly SheetDefinition Credits = new(
             BoardWorkbookSchema.SheetCredits,
             [
                 BoardWorkbookSchema.ColCategory,
                 BoardWorkbookSchema.ColSubCategory,
                 BoardWorkbookSchema.ColNameOrHandle,
-                BoardWorkbookSchema.ColContact
+                BoardWorkbookSchema.ColContact,
+                BoardWorkbookSchema.ColMainContribution,
+                BoardWorkbookSchema.ColDate
             ],
-            [BoardWorkbookSchema.ColCategory, BoardWorkbookSchema.ColNameOrHandle]);
+            [BoardWorkbookSchema.ColCategory, BoardWorkbookSchema.ColNameOrHandle],
+            [BoardWorkbookSchema.ColMainContribution],
+            [BoardWorkbookSchema.ColDate]);
 
         public static readonly SheetDefinition KiCadImportantSignals = new(
             BoardWorkbookSchema.SheetKiCadImportantSignals,
@@ -474,7 +488,9 @@ namespace Handlers.DataHandling
                     (BoardWorkbookSchema.ColCategory, entry.Category),
                     (BoardWorkbookSchema.ColSubCategory, entry.SubCategory),
                     (BoardWorkbookSchema.ColNameOrHandle, entry.NameOrHandle),
-                    (BoardWorkbookSchema.ColContact, entry.Contact)))];
+                    (BoardWorkbookSchema.ColContact, entry.Contact),
+                    (BoardWorkbookSchema.ColMainContribution, entry.MainContribution),
+                    (BoardWorkbookSchema.ColDate, entry.Date)))];
             }
 
             if (sheet.SheetName == BoardWorkbookSchema.SheetKiCadImportantSignals)
@@ -637,7 +653,9 @@ namespace Handlers.DataHandling
                 Category = Val(r, BoardWorkbookSchema.ColCategory),
                 SubCategory = Val(r, BoardWorkbookSchema.ColSubCategory),
                 NameOrHandle = Val(r, BoardWorkbookSchema.ColNameOrHandle),
-                Contact = Val(r, BoardWorkbookSchema.ColContact)
+                Contact = Val(r, BoardWorkbookSchema.ColContact),
+                MainContribution = Val(r, BoardWorkbookSchema.ColMainContribution),
+                Date = Val(r, BoardWorkbookSchema.ColDate)
             }).ToList();
 
         // ###########################################################################################

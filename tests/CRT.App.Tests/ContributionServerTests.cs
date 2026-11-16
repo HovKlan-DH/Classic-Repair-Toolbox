@@ -113,23 +113,13 @@ public sealed class ContributionServerTests
             ContributionServer.FileNameFor("submissions.json"));
     }
 
-    // ###########################################################################################
-    // *** A DRAFT IS NOT RETIRED AGAINST THE TEST INSTANCE'S DATA (code review, 2026-10-25). ***
-    // A draft whose work reached the test instance's stable data was deleted - and that data never
-    // reaches the live data, so the work was gone everywhere.
-    // ###########################################################################################
+    // A pre-release retires a draft once its work is in the test server's stable data (owner decision,
+    // 2026-11-14), so the Submit dialog no longer promises the draft stays.
     [Fact]
-    public void Published_drafts_are_retired_only_against_the_live_service()
+    public void The_submit_note_does_not_promise_the_draft_stays()
     {
-        Assert.True(ContributionServer.RetiresPublishedDrafts(testServer: false));
-        Assert.False(ContributionServer.RetiresPublishedDrafts(testServer: true));
-    }
-
-    // The Submit dialog says the draft stays, so a tester does not expect it to vanish.
-    [Fact]
-    public void The_submit_note_says_the_draft_is_kept()
-    {
-        Assert.Contains("Your draft is kept", ContributionServer.SubmitNote, StringComparison.Ordinal);
+        Assert.DoesNotContain("draft is kept", ContributionServer.SubmitNote, StringComparison.Ordinal);
+        Assert.Contains("test server", ContributionServer.SubmitNote, StringComparison.Ordinal);
     }
 
     // Every pre-release talks to the test instance now, not CRT 4.0's alone: no note names one version.

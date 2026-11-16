@@ -52,6 +52,8 @@ namespace CRT
         //   Main.DraftBadges.cs       - the "Draft" chip on Hardware and Board drop-down entries
         //   Main.SourceSwitchNotice.cs - the banner about the source: "now in BETA - tick BETA to try
         //                                it" or "now in the stable source - switch back from BETA"
+        //   Main.DataNeededNotice.cs  - a board checked again on the "Configuration" tab whose data a check left
+        //                               out while it was unchecked (DataSyncScope): "Check for new data"
         //   Main.BoardViews.cs        - counting a board as viewed after ten seconds, sending views home
         //   Main.Maintainer.cs        - the Maintainer tab: shown or not, its badge, and the layout while selected
         //   Main.SubmissionChecks.cs  - the Contribute tab's badge, and asking about sent submissions while CRT runs
@@ -126,7 +128,6 @@ namespace CRT
         // Font Awesome spinner
         private DispatcherTimer? _dataSyncStatusIconSpinTimer;
         private int _dataSyncStatusIconSpinRequestCount;
-        private double _dataSyncStatusIconSpinAngle;
         private bool _isHoveringDataSyncStatusIcon;
 
         // ###########################################################################################
@@ -260,6 +261,9 @@ namespace CRT
             this.WirePictureTools();
             this.TabOverview.Initialize(this);
             this.TabWorkbooks.Initialize(this);
+
+            // The "Resources" tab is filled as it is shown (Main.BoardSelection.cs, ShowResources).
+            this.TabResources.AttachedToVisualTree += (_, _) => this.ShowResourcesWanted();
 
             // The tab's "My devices" stands in the left panel while it is shown (Main.DeviceList.cs).
             this.PlaceDeviceList();
@@ -686,6 +690,7 @@ namespace CRT
 
             this.thisWindowOpenedCompletionSource.TrySetResult(true);
             this.ScheduleOrphanAndUnusedFileCleanupIfEnabled();
+            this.SweepKiCadCopiesSoon();
 
             Dispatcher.UIThread.Post(() => this._windowPlacementReady = true, DispatcherPriority.Background);
 
@@ -905,11 +910,10 @@ namespace CRT
         // check passes whether a receipt moved; retirement itself still runs every time - it
         // depends on a state, not a change (Main.SubmissionChecks.cs).
         //
-        // `testServer`: for tests, in place of AppConfig.UsesTestServer - with the gate shut no pre-release
-        // and no test ever reached the wiring below, whose first real run would be on users' drafts after
-        // the release (code review, 2026-11-02).
+        // A pre-release retires against the test server's stable data too (owner decision, 2026-11-14; the header of
+        // ContributionServer says why it once did not).
         // ###########################################################################################
-        internal async Task RetirePublishedDraftsAsync(bool refreshDraftsTab = true, bool? testServer = null)
+        internal async Task RetirePublishedDraftsAsync(bool refreshDraftsTab = true)
         {
             // The receipts have just been brought up to date (this runs after every status check),
             // so this is where a submission reaching production is first seen. Before the retiring
@@ -938,11 +942,7 @@ namespace CRT
                     DataManager.HardwareBoards.Where(entry => entry.IsDraftOnly).Select(entry => entry.ExcelDataFile),
                     StringComparer.OrdinalIgnoreCase);
 
-                // None while CRT talks to the test instance, whose stable data does not last
-                // (ContributionServer.RetiresPublishedDrafts).
-                IReadOnlyList<RetirableDraft> candidates = ContributionServer.RetiresPublishedDrafts(testServer ?? AppConfig.UsesTestServer)
-                    ? await PublishedDraftRetirer.FindAsync(receipts, dataRoot, draftsRoot, excelDataFiles)
-                    : [];
+                IReadOnlyList<RetirableDraft> candidates = await PublishedDraftRetirer.FindAsync(receipts, dataRoot, draftsRoot, excelDataFiles);
 
                 if (candidates.Count > 0)
                 {

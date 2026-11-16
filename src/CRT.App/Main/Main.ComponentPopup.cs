@@ -701,6 +701,14 @@ namespace CRT
                 return;
             }
 
+            // Enter turns "Blink selected" on and off on the "Schematics" tab (owner request, 2026-11-14) - see KeyIsForBlink.
+            if (e.Key == Key.Enter && e.KeyModifiers == KeyModifiers.None && this.KeyIsForBlink())
+            {
+                this.BlinkSelectedCheckBox.IsChecked = this.BlinkSelectedCheckBox.IsChecked != true;
+                e.Handled = true;
+                return;
+            }
+
             // Not over the Maintainer tab (2026-09-29): F11 opens the SCHEMATICS fullscreen, which has
             // nothing to do with reviewing, over a window whose sidebar that tab has collapsed.
             if (e.Key == Key.F11 && !ReferenceEquals(this.MainTabControl?.SelectedItem, this.MaintainerTabItem))
@@ -773,6 +781,37 @@ namespace CRT
             ReferenceEquals(this.MainTabControl?.SelectedItem, this.SchematicsTabItem) &&
             !this.TabSchematicsControl.IsKeyboardFocusWithin &&
             TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is not (TextBox or ComboBox { IsDropDownOpen: true } or ComboBoxItem);
+
+        // ###########################################################################################
+        // *** ENTER TURNS "Blink selected" ON AND OFF ON THE "Schematics" TAB (owner request, 2026-11-14: "if I have
+        // selected one or more components, and I hit "ENTER" - should it then not toggle the blink? ... the idea would
+        // be to be able to (via keyboard) easily be able to better highlight the selected components"). *** CRT 2.x did
+        // so ("ENTER will toggle blinking for selected components", its Main.cs ProcessCmdKey, on every tab but
+        // Feedback); the Avalonia rewrite never carried it over. The key is the checkbox's - so the setting is kept as a
+        // click keeps it - wherever the keyboard is on that tab, unless Enter means something there already:
+        //   - a box being typed in other than the component filter (the label editor's new label, which Enter confirms);
+        //   - a button, a check box or a drop-down, which Enter presses or picks from;
+        //   - a picture tool or a worklog's area being marked, whose keys are their own.
+        // The component filter, the lists on the left and the schematic image itself take nothing from Enter.
+        // ###########################################################################################
+        private bool KeyIsForBlink()
+        {
+            if (!ReferenceEquals(this.MainTabControl?.SelectedItem, this.SchematicsTabItem) ||
+                !this.BlinkSelectedCheckBox.IsEffectivelyEnabled ||
+                this.IsPictureToolOn ||
+                this.TabSchematicsControl.IsAligningKiCad ||
+                this.TabSchematicsControl.IsWorklogEntryModeActive)
+            {
+                return false;
+            }
+
+            return TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() switch
+            {
+                TextBox box => ReferenceEquals(box, this.ComponentSearchTextBox),
+                Button or ComboBox or ComboBoxItem => false,
+                _ => true,
+            };
+        }
 
         // ###########################################################################################
         // *** HOME, END, PAGE UP AND PAGE DOWN ARE THE "ABOUT" PAGE'S WHILE IT IS SHOWN (owner request,

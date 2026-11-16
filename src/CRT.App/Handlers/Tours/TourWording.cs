@@ -19,6 +19,18 @@ namespace Handlers.Tours
         // Where the tours are taken again - the "Configuration" tab's button.
         public const string TakeAgainButton = "Take the introduction tours again";
 
+        // ###########################################################################################
+        // What that button says once pressed (owner request, 2026-11-15: "a modal that the use now should navigate to any tab
+        // to get started on the intro ... Write a better text for the modal"; ToursAgainWindow). Not a tour's card, so the
+        // tab and the button are named in quotes, as everywhere else in CRT.
+        // ###########################################################################################
+        public const string ToursAgainTitle = "The introduction tours are back";
+
+        public const string ToursAgainBody =
+            "Every tab's introduction will show again. Go to any tab to start its tour - it begins a moment after the tab " +
+            "opens. The \"Configuration\" tab's own tour comes the next time you open it.\n\n" +
+            "Changed your mind? Press \"Skip tour\" on the first one, and none of them will show again.";
+
         // A tab, a button or a panel a tour names is BOLD, never in quotes (owner request, 2026-11-11: "in all
         // introductions, then try and use bold instead of encapsulating in """) - the cards show "<b>...</b>" bold.
         public const string TakeAgainFoot = "You can take the tours again from the <b>Configuration</b> tab.";

@@ -1087,27 +1087,127 @@ public sealed class MainToursTests : IDisposable
     }
 
     // ###########################################################################################
-    // "Take the introduction tours again" on the "Configuration" tab: every tour as never seen, and the "Schematics" tab
-    // shown, where its tour comes again.
+    // "Take the introduction tours again" on the "Configuration" tab: every tour as never seen - and the tab STAYS (owner
+    // request, 2026-11-14: "it should not redirect to the "Schematics" tab ... it will start on the introduction for the next
+    // tab the user navigates to"; the "Schematics" tab was shown until then). No tour comes up as it is pressed - a window
+    // says to go to any tab (owner request, 2026-11-15) - and the next tab picked offers its tour.
     // ###########################################################################################
     [Fact]
-    public async Task Take_the_introduction_tours_again_forgets_them_and_shows_the_schematics_tab()
+    public async Task Take_the_introduction_tours_again_forgets_them_and_the_next_tab_shown_starts()
     {
-        UserSettings.SetIntroductionTourSeen("Schematics", "4.0.0");
-        UserSettings.SetIntroductionTourSeen("Contribute", "4.0.0");
+        foreach (TourOfTab tour in TourCatalogue.All)
+        {
+            UserSettings.SetIntroductionTourSeen(tour.TabName, "4.0.0");
+        }
 
         await this.WithMainAsync(main =>
         {
+            var said = 0;
+            main.ToursAgainWindowOverrideForTests = () => said++;
+
             OnTab(main, "ConfigurationTabItem");
+            Assert.False(main.OfferTourNow());
 
             Button again = main.TabConfiguration.GetControl<Button>("TakeToursAgainButton");
             Assert.Equal(TourWording.TakeAgainButton, again.Content);
             again.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             MainToursTests.Settle(main);
 
+            Assert.Equal(1, said);
             Assert.Null(UserSettings.IntroductionTourSeen("Schematics"));
             Assert.Null(UserSettings.IntroductionTourSeen("Contribute"));
-            Assert.Same(main.GetControl<TabItem>("SchematicsTabItem"), main.GetControl<TabControl>("MainTabControl").SelectedItem);
+            Assert.Same(main.GetControl<TabItem>("ConfigurationTabItem"), main.GetControl<TabControl>("MainTabControl").SelectedItem);
+            Assert.False(Overlay(main).IsShowing);
+
+            OnTab(main, "FeedbackTabItem");
+            Assert.True(Offered(main), main.TourWaitReasonForTests());
+            Assert.Equal("The Feedback tab", Overlay(main).GetControl<TextBlock>("HeadlineText").Text);
+            return Task.CompletedTask;
+        });
+    }
+
+    // ###########################################################################################
+    // The window "Take the introduction tours again" opens (owner request, 2026-11-15: "a modal that the use now should
+    // navigate to any tab to get started on the intro. Only button is "OK""): its words, one button, and OK, Enter or
+    // Escape close it.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("OK")]
+    [InlineData("Enter")]
+    [InlineData("Escape")]
+    public void The_tours_are_back_window_says_where_to_go_and_closes_on_OK(string how)
+    {
+        UiTest.Run(() =>
+        {
+            var window = new ToursAgainWindow();
+
+            Assert.Equal(TourWording.ToursAgainTitle, window.Title);
+            Assert.Equal(TourWording.ToursAgainTitle, window.GetControl<TextBlock>("HeadingText").Text);
+            Assert.Equal(TourWording.ToursAgainBody, window.GetControl<TextBlock>("BodyText").Text);
+            Assert.Contains("Go to any tab", TourWording.ToursAgainBody, StringComparison.Ordinal);
+
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(window.IsVisible);
+            Assert.Equal("OK", Assert.Single(Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window).OfType<Button>()).Content);
+
+            switch (how)
+            {
+                case "OK":
+                    window.GetControl<Button>("OkButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                    break;
+                case "Enter":
+                    window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, keySymbol: null);
+                    break;
+                default:
+                    window.KeyPress(Key.Escape, RawInputModifiers.None, PhysicalKey.Escape, keySymbol: null);
+                    break;
+            }
+
+            Assert.False(window.IsVisible);
+        });
+    }
+
+    // ###########################################################################################
+    // "Skip tour" SKIPS THE TOURS, NOT ONE TAB'S (owner request, 2026-11-14: "it should skip the tour entirely, and not
+    // continue for other tabs"): every other tab's is remembered as seen, so none comes up as its tab is shown - until "Take
+    // the introduction tours again" brings them back. Taken to its end, a tour leaves the others as they were.
+    // ###########################################################################################
+    [Fact]
+    public async Task Skipping_a_tour_skips_every_tabs_tour()
+    {
+        await this.WithMainAsync(main =>
+        {
+            Assert.True(Offered(main), main.TourWaitReasonForTests());
+            Overlay(main).Skip();
+
+            Assert.All(TourCatalogue.All, tour => Assert.NotNull(UserSettings.IntroductionTourSeen(tour.TabName)));
+
+            OnTab(main, "ContributeTabItem");
+            Assert.False(Offered(main));
+
+            OnTab(main, "FeedbackTabItem");
+            Assert.False(Offered(main));
+            return Task.CompletedTask;
+        });
+    }
+
+    [Fact]
+    public async Task A_tour_taken_to_its_end_leaves_the_other_tabs_tours_to_come()
+    {
+        await this.WithMainAsync(main =>
+        {
+            Assert.True(Offered(main), main.TourWaitReasonForTests());
+            TourOverlay overlay = Overlay(main);
+
+            while (overlay.IsShowing)
+            {
+                overlay.Next();
+            }
+
+            Assert.Null(UserSettings.IntroductionTourSeen("Feedback"));
+
+            OnTab(main, "FeedbackTabItem");
             Assert.True(Offered(main), main.TourWaitReasonForTests());
             return Task.CompletedTask;
         });

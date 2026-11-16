@@ -629,36 +629,26 @@
 						PointerEntered="OnDataSyncStatusIconPointerEntered"
 						PointerExited="OnDataSyncStatusIconPointerExited"
 						PointerPressed="OnDataSyncStatusIconPointerPressed">
+					<!-- THE ICON ITSELF TURNS WHILE A CHECK RUNS (owner request, 2026-11-14: "If you have found a solid method
+					     for rotating the non-spinning icon, then I would prefer that"). A dashed circle stood in for it until
+					     then, centred 2px right of and 4px below the icon. The TextBlock takes its own size, so the glyph's ink
+					     box IS its box - Font Awesome's arrows-rotate (U+F021) fills the em square exactly, x 0..512 and y from
+					     the descent to the ascent - and it turns about its centre (Main.DataSyncStatus.cs, SpinAngle). -->
 					<Grid Width="22"
 						  Height="22"
 						  ClipToBounds="True">
 
 						<TextBlock x:Name="DataSyncStatusIconTextBlock"
-								   Width="22"
-								   Height="22"
 								   FontFamily="{StaticResource FontAwesomeSolid}"
 								   FontWeight="Black"
 								   FontSize="18"
-								   TextAlignment="Center"
 								   HorizontalAlignment="Center"
-								   VerticalAlignment="Center" />
-
-						<Canvas x:Name="DataSyncStatusSpinnerCanvas"
-								Width="22"
-								Height="22"
-								IsVisible="False"
-								HorizontalAlignment="Center"
-								VerticalAlignment="Center"
-								ClipToBounds="True">
-							<shapes:Ellipse x:Name="DataSyncStatusSpinnerEllipse"
-											Width="20"
-											Height="20"
-											Canvas.Left="3"
-											Canvas.Top="3"
-											StrokeThickness="3"
-											StrokeLineCap="Round"
-											StrokeDashArray="12,40" />
-						</Canvas>
+								   VerticalAlignment="Center"
+								   RenderTransformOrigin="50%,50%">
+							<TextBlock.RenderTransform>
+								<RotateTransform Angle="0" />
+							</TextBlock.RenderTransform>
+						</TextBlock>
 
 					</Grid>
 				</Border>
@@ -1006,6 +996,44 @@
 										FontSize="11"
 										Padding="10,3"
 										Click="OnSourceSwitchBannerConfigurationClick" />
+							</StackPanel>
+						</Grid>
+					</Border>
+
+					<!-- A board ticked under "Visible hardware and boards" whose data a check left out while it was
+					     unticked (owner request, 2026-11-14; DataSyncScope). See Main.DataNeededNotice.cs. Stays until
+					     closed, its boards unticked again, or a data check runs - which its button starts. -->
+					<Border x:Name="DataNeededBanner"
+							Classes="NoticeCard"
+							IsVisible="False">
+						<Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto">
+							<TextBlock x:Name="DataNeededBannerText"
+									   VerticalAlignment="Center"
+									   Foreground="{DynamicResource Main_Banner_Fg}"
+									   FontSize="12"
+									   TextWrapping="Wrap" />
+
+							<Button x:Name="DataNeededBannerDismissButton"
+									Grid.Column="1"
+									Classes="BannerDismissButton"
+									Content="✕"
+									VerticalAlignment="Top"
+									Margin="8,0,0,0"
+									FontSize="11"
+									Padding="6,3"
+									Click="OnDataNeededBannerDismiss" />
+
+							<StackPanel Grid.Row="1"
+										Grid.ColumnSpan="2"
+										Orientation="Horizontal"
+										HorizontalAlignment="Right">
+								<Button x:Name="DataNeededBannerCheckButton"
+										Classes="Accept BannerInstallButton"
+										Content="Check for new data"
+										Margin="0,8,0,0"
+										FontSize="11"
+										Padding="10,3"
+										Click="OnDataNeededBannerCheckClick" />
 							</StackPanel>
 						</Grid>
 					</Border>

@@ -635,7 +635,8 @@ namespace CRT.Server.Handlers.Submissions
                 blobs,
                 publishLock,
                 DateTimeOffset.UtcNow,
-                cancellationToken);
+                cancellationToken,
+                options.StableSourceRoot);
 
             if (outcome.IsAmended)
                 return Results.Ok(new AmendAnswer(outcome.Version, outcome.Findings));

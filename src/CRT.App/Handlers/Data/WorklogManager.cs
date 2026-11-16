@@ -1372,6 +1372,11 @@ namespace Handlers.DataHandling
             return entries;
         }
 
+        // How many worklog index.json files have been read - for the tests.
+        private static int EntryReadsMade;
+
+        internal static int EntryReadsMadeForTests => System.Threading.Volatile.Read(ref WorklogManager.EntryReadsMade);
+
         // ###########################################################################################
         // One worklog's own index.json, or null when it is missing or unreadable.
         // ###########################################################################################
@@ -1382,6 +1387,8 @@ namespace Handlers.DataHandling
             {
                 return null;
             }
+
+            System.Threading.Interlocked.Increment(ref WorklogManager.EntryReadsMade);
 
             try
             {

@@ -479,6 +479,45 @@ namespace CRT.Server.Tests
             Assert.False(outcome.CreatedBoard);
         }
 
+        // ###########################################################################################
+        // *** A BOARD BETA LACKS HAS ITS CREDITS DATED AGAINST STABLE'S (code review, 2026-11-16). *** Dated against nothing,
+        // every credit sent undated was new: a board in stable that BETA lacks had its credits from before the history dated
+        // the day of the publish, against the owner's decision that those keep no date. A credit new in the submission still
+        // gets the day.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_board_BETA_lacks_keeps_stables_undated_credits_undated()
+        {
+            string stable = Path.Combine(this.thisRoot, "app-data", "Data");
+            Directory.CreateDirectory(stable);
+            var old = new CreditEntry { Category = "Board data", NameOrHandle = "Ray" };
+            DataTreeBuilder.Board(stable, ApprovePublishFlowTests.BoardId, new BoardData { Credits = [old] }, []);
+
+            SubmissionManifest manifest = ApprovePublishFlowTests.Manifest();
+            manifest.Rows.Credits.Add(new CreditEntry { Category = "Board data", NameOrHandle = "Ray" });
+            manifest.Rows.Credits.Add(new CreditEntry { Category = "Board data", NameOrHandle = "Anna", MainContribution = "Renamed U8" });
+
+            (FakeSubmissionStore store, long id) = await ApprovePublishFlowTests.PendingAsync(manifest);
+
+            var flow = new ApprovePublishFlow(
+                new PublishExecutor(this.Blobs(), store, NullLogger<PublishExecutor>.Instance),
+                new PublishedBoardReader(NullLogger<PublishedBoardReader>.Instance),
+                store,
+                new FakeAccountStore(),
+                NullLogger<ApprovePublishFlow>.Instance,
+                options: new ServerOptions { ProductionDataTreeRoot = stable });
+
+            ApproveOutcome outcome = await flow.ApproveAsync(
+                id, ApprovePublishFlowTests.Account(), this.thisDataTree, ApprovePublishFlowTests.Now, CancellationToken.None);
+
+            Assert.True(outcome.IsPublished, outcome.Error);
+
+            BoardData written = BoardFiles.ReadContent(Path.Combine(this.thisDataTree, DataTreeLayout.BoardFilePath(ApprovePublishFlowTests.BoardId)))!.Board;
+            Assert.Equal(
+                [("Ray", string.Empty), ("Anna", BoardWorkbookStyle.FormatRevisionDate(ApprovePublishFlowTests.Now))],
+                written.Credits.Select(credit => (credit.NameOrHandle, credit.Date)));
+        }
+
         // The stable tree named only by the setting that keeps BETA away from it (ProductionTreeRoot)
         // is read the same way.
         [Fact]

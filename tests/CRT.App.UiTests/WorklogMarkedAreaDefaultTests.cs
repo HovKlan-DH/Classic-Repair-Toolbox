@@ -92,6 +92,45 @@ public sealed class WorklogMarkedAreaDefaultTests
         });
     }
 
+    // ###########################################################################################
+    // A PICTURE DECODED SMALL MAPS BY ITS OWN SIZE (2026-11-16, performance walkthrough): the "Workbooks" tab's pane
+    // hands the editor a bitmap at most 1600 wide (SchematicPreviewPicture) with the picture's own size beside it. An
+    // area is kept in the picture's own pixels, so one placed by the small bitmap's size would land in the wrong place
+    // on the real picture - and be saved there.
+    // ###########################################################################################
+    [Fact]
+    public void A_picture_decoded_small_places_the_new_area_in_the_pictures_own_pixels()
+    {
+        UiTest.Run(() =>
+        {
+            using var placementScope = WorklogEntryEditorWindow.SuppressWindowPlacementPersistence();
+
+            var window = new WorklogEntryEditorWindow { Width = 1000, Height = 700 };
+            using var small = new WriteableBitmap(new PixelSize(BitmapWidth / 4, BitmapHeight / 4), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Premul);
+            window.Initialize(1, AreaLessEntry(), small, new PixelSize(BitmapWidth, BitmapHeight));
+
+            try
+            {
+                window.Show();
+                Dispatcher.UIThread.RunJobs();
+
+                ShowMarkedAreaBox(window).IsChecked = true;
+                Dispatcher.UIThread.RunJobs();
+
+                var area = window.WorkingEntryAreaForTests;
+
+                // Bottom-right of the picture ITSELF - past the small bitmap's whole width and height.
+                Assert.True(area.X > BitmapWidth / 2.0, $"The area lies at {area.X} - mapped by the small decode's {BitmapWidth / 4} wide");
+                Assert.True(area.Y > BitmapHeight / 2.0);
+                Assert.True(area.Right <= BitmapWidth && area.Bottom <= BitmapHeight);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
     // Bottom-right, the opposite corner from the parked pills, so a freshly placed area can never be
     // mistaken for one of them while the user is moving it into position.
     [Fact]

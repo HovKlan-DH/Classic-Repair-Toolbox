@@ -2029,6 +2029,11 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         internal static void LoadFrom(string settingsFilePath)
         {
+            // What waits for the file loaded before is written to it first - never after, nor into this one.
+            // And the file read is what the next save compares with, never what was written before it.
+            UserSettings.Flush();
+            UserSettings.Writer.ForgetWhatWasWritten();
+
             try
             {
                 _settingsFilePath = settingsFilePath;
@@ -2272,13 +2277,56 @@ namespace Handlers.DataHandling
         // power loss or full disk mid-write would wipe every preference at once and the next
         // launch would silently fall back to defaults. With the swap, a failed save loses only
         // that one save - the previous file stays intact and parseable.
+        //
+        // *** WRITTEN A MOMENT LATER, OFF THE UI THREAD (2026-11-16, performance walkthrough). *** A board
+        // switch saved the settings one to four times, each a whole file written and swapped on the UI
+        // thread. The settings are serialized here, as they are now, and written AppConfig.SettingsWriteDelay
+        // later on a pool thread - the latest of them, and nothing when it is what was written last
+        // (DeferredTextFile). Flush writes what waits at once: every way out calls it (Program.Main, the
+        // crash handlers, the update's restart, ProcessExit), and so does loading another file.
         // ###########################################################################################
         private static void Save()
         {
             if (string.IsNullOrEmpty(_settingsFilePath))
                 return;
 
-            AtomicJsonFile.Write(_settingsFilePath, _data, SaveJsonOptions, "settings");
+            if (AtomicJsonFile.TrySerialize(_settingsFilePath, _data, SaveJsonOptions, "settings", out string json))
+            {
+                UserSettings.Writer.Queue(_settingsFilePath, json);
+            }
+        }
+
+        // ###########################################################################################
+        // Writes the settings waiting to be written, at once - before CRT ends, restarts for an update, or
+        // reads another settings file. Never throws: a write that fails is logged as every save's is.
+        // ###########################################################################################
+        internal static void Flush()
+        {
+            try
+            {
+                UserSettings.Writer.Flush();
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"The settings waiting to be written could not be written - [{ex.Message}]");
+            }
+        }
+
+        // Whether settings wait to be written - for tests.
+        internal static bool IsWritePendingForTests => UserSettings.Writer.IsPending;
+
+        private static readonly DeferredTextFile Writer = UserSettings.NewWriter();
+
+        private static DeferredTextFile NewWriter()
+        {
+            var writer = new DeferredTextFile(
+                AppConfig.SettingsWriteDelay,
+                (path, text) => AtomicJsonFile.WriteText(path, text, "settings"));
+
+            // Every way out - Velopack's restart and Environment.Exit included.
+            AppDomain.CurrentDomain.ProcessExit += (_, _) => UserSettings.Flush();
+
+            return writer;
         }
 
         // ###########################################################################################
@@ -2672,14 +2720,31 @@ namespace Handlers.DataHandling
 
                 // The colors and how far they followed the defaults, from the same file (code review, 2026-11-14): the
                 // revision held in memory says what THIS run followed, and a save of it that failed left the file behind.
+                Dictionary<string, string> before = _data.UserThemeColors;
+                int? revisionBefore = _data.UserThemeDefaultsRevision;
                 _data.UserThemeColors = loaded.UserThemeColors ?? new Dictionary<string, string>();
                 _data.UserThemeDefaultsRevision = loaded.UserThemeDefaultsRevision;
 
                 var addedMissingDefaults = EnsureUserThemeColors();
 
-                if (addedMissingDefaults)
+                // ###########################################################################################
+                // *** WHAT WAS RELOADED IS WHAT IS WRITTEN NEXT (code review, 2026-11-16). *** The settings are written a moment
+                // after a change (DeferredTextFile): a text queued before the file was edited by hand, or being written as it
+                // was read, held the colors from before - and replaced the file up to a moment later, the hand edit gone at the
+                // next launch. So when the colors read differ from those held, or a text still waits, the settings as they now
+                // are take its place.
+                // ###########################################################################################
+                bool reloadedOther = revisionBefore != _data.UserThemeDefaultsRevision ||
+                    before.Count != _data.UserThemeColors.Count ||
+                    before.Any(color => !_data.UserThemeColors.TryGetValue(color.Key, out string? now) || !string.Equals(now, color.Value, StringComparison.Ordinal));
+
+                if (addedMissingDefaults || reloadedOther || UserSettings.Writer.IsPending)
                 {
                     Save();
+                }
+
+                if (addedMissingDefaults)
+                {
                     Logger.Info("Missing [UserThemeColors] entries were added to configuration during reload");
                 }
 

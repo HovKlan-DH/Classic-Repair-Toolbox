@@ -459,6 +459,52 @@ public sealed class WorkbooksBoardPreviewTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // *** A picture that cannot be read is not read again and again while the tab is shown (code review, 2026-11-16). *** A
+    // read that came to nothing is not kept, and the reads ending start a fresh pass - which asked again, whose read ended,
+    // which started another, for ever: "Reading the schematic images..." for good, and the CPU decoding without end. Here
+    // the picture is held open by another program the whole time.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_picture_that_cannot_be_read_is_said_and_not_read_again_and_again()
+    {
+        const string NotFound = "The schematic images these worklogs are on could not be found.";
+
+        this.LoadWorklog();
+        var workbook = WorklogManager.CreateWorkbook(this.thisBoardKey, "Damaged", "")!;
+        WorklogManager.AddEntry(workbook.Id, "Sheet 1", new Avalonia.Rect(0, 0, 10, 10), "Fault", "", "Note", "Open", Array.Empty<string>());
+
+        string image = this.WriteSchematicImage("held.png");
+        var boardData = BuildBoardData(new BoardSchematicEntry { SchematicName = "Sheet 1", SchematicImageFile = image });
+
+        using var held = new FileStream(this.thisWorkspace.Path_(image), FileMode.Open, FileAccess.Read, FileShare.None);
+
+        await UiTest.RunAsync(async () =>
+        {
+            TabWorkbooks tab = BuildShownTab(this.thisBoardKey, boardData, workbook.Id);
+            TextBlock said = tab.GetControl<TextBlock>("NoBoardPreviewsText");
+
+            for (int attempt = 0; attempt < 300 && said.Text != NotFound; attempt++)
+            {
+                Dispatcher.UIThread.RunJobs();
+                await Task.Delay(10);
+            }
+
+            int readsThen = SchematicPreviewPictures.ReadsMadeForTests;
+
+            for (int attempt = 0; attempt < 30; attempt++)
+            {
+                Dispatcher.UIThread.RunJobs();
+                await Task.Delay(10);
+            }
+
+            Assert.Equal(NotFound, said.Text);
+            Assert.Equal(readsThen, SchematicPreviewPictures.ReadsMadeForTests);
+
+            ((Window)TopLevel.GetTopLevel(tab)!).Close();
+        });
+    }
+
     // Switching the selected workbook must rebuild the board pane for the NEWLY selected one - the
     // whole point of tying marker 3 to selection rather than to the board as a whole.
     [Fact]

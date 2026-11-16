@@ -221,7 +221,9 @@ namespace Handlers.OnlineHandling
 
             try
             {
-                var entries = JsonSerializer.Deserialize<List<DataFileEntry>>(json);
+                // Parsed on the pool (2026-11-16, performance walkthrough): some 3 MB of JSON, read on the UI thread under
+                // the splash at every launch.
+                var entries = await Task.Run(() => JsonSerializer.Deserialize<List<DataFileEntry>>(json));
 
                 if (entries is null || entries.Count == 0)
                 {
@@ -260,6 +262,30 @@ namespace Handlers.OnlineHandling
 
         internal static int FailedDownloads => Volatile.Read(ref OnlineServices.thisFailedDownloads);
 
+        // ###########################################################################################
+        // Of the manifest's files `filter` takes, those a sync WOULD download - not there, or not as the manifest has them -
+        // by the very comparison a sync goes by (CompareWithManifest), downloading nothing. The manifest's own names. What a
+        // data check leaves out of a board unticked under "Visible hardware and boards" is told by it (DataSyncScope).
+        // ###########################################################################################
+        internal static async Task<HashSet<string>> FilesNotCurrentAsync(List<DataFileEntry> manifest, string dataRoot, Func<string, bool> filter)
+        {
+            List<DataFileEntry> entries = manifest.FindAll(entry => filter(entry.File));
+
+            if (entries.Count == 0)
+                return [];
+
+            var (_, toDownload, _) = await Task.Run(() => OnlineServices.CompareWithManifest(entries, dataRoot, OnlineServices.ChecksumCacheFor(dataRoot))).ConfigureAwait(false);
+
+            var files = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var item in toDownload)
+            {
+                files.Add(item.Entry.File);
+            }
+
+            return files;
+        }
+
         internal static async Task<int> SyncFilesAsync(
             List<DataFileEntry> manifest,
             string dataRoot,
@@ -286,7 +312,10 @@ namespace Handlers.OnlineHandling
             // Every launch hashed the whole data tree (1.1 GB), with the continuation of each file's
             // hash back on the caller's thread - the UI thread. Now the whole phase runs on the pool,
             // and a file whose stamp is as it was when last hashed answers from LocalChecksumCache.
-            var checksumCache = OnlineServices.ChecksumCacheFor(dataRoot);
+            //
+            // The cache itself is read on the pool too (2026-11-16, performance walkthrough): the first sync of a run parsed
+            // the whole cache file - an entry per data file - on the UI thread, under the splash.
+            LocalChecksumCache checksumCache = await Task.Run(() => OnlineServices.ChecksumCacheFor(dataRoot)).ConfigureAwait(true);
             var (validEntries, toDownload, invalidFiles) = await Task.Run(
                 () => OnlineServices.CompareWithManifest(entries, dataRoot, checksumCache)).ConfigureAwait(true);
 

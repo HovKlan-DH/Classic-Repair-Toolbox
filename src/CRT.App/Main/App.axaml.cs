@@ -91,11 +91,28 @@ namespace CRT
         // data folder, beside "Data v4" (code review, 2026-10-25): under the temporary folder - the
         // shared /tmp on Linux - another account could make the copy's folder a link, and the copy
         // deletes every file there it does not want.
-        // Used by: Main.KiCadRawPathsFor, KiCadDataPanel
-        public static string KiCadCacheFolder => Path.Combine(
+        // How much the renderer may keep on the graphics card - a large board's schematic image is about
+        // 50 MB decoded, Avalonia's own room some 28 MB (Program.SkiaOptionsForCrt; 2026-11-16).
+        // Used by: Program.BuildAvaloniaApp
+        public const long GpuPictureBytes = 256L * 1024 * 1024;
+
+        // How long after a change the settings file is written, off the UI thread - every change in
+        // between written with it (UserSettings.Save, DeferredTextFile; 2026-11-16).
+        // Used by: UserSettings
+        public static readonly TimeSpan SettingsWriteDelay = TimeSpan.FromMilliseconds(300);
+
+        // Used by: Main.KiCadRawPathsFor, KiCadDataPanel, Main.SweepKiCadCopiesSoon
+        public static string KiCadCacheFolder => KiCadCacheFolderForTests ?? DefaultKiCadCacheFolder;
+
+        public static string DefaultKiCadCacheFolder => Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             AppFolderName,
             "KiCad cache");
+
+        // A test process's own folder (2026-11-16, performance walkthrough): the suite copied every
+        // test board's KiCad files into the user's real cache, where nothing ever took them away.
+        // Set once, as a test assembly loads (tests/CRT.App.Tests/Shared/TestKiCadCache.cs).
+        internal static string? KiCadCacheFolderForTests { get; set; }
 
         // Where a scope capture waits for "Add this baseline" in the component pane - in the user's
         // OWN app data folder, for the KiCad cache's reason (code review, 2026-10-26): under the
@@ -602,9 +619,13 @@ namespace CRT
             // Every handler ends with Logger.Flush: the log is written in batches (Logger), and the
             // lines just before a crash are the ones that explain it. CrashLogger's report is a
             // Critical line, written at once anyway; the flush is for everything that led up to it.
+            //
+            // The settings waiting to be written go out too (UserSettings.Flush, 2026-11-16) wherever the
+            // crash is fatal: they are written a moment after they change, and a crash in between lost them.
             Dispatcher.UIThread.UnhandledExceptionFilter += (s, e) =>
             {
                 CrashLogger.Log("Dispatcher (UI thread)", e.Exception, isFatal: true);
+                UserSettings.Flush();
                 Logger.Flush();
             };
 
@@ -616,6 +637,7 @@ namespace CRT
             Dispatcher.UIThread.UnhandledException += (s, e) =>
             {
                 CrashLogger.Log("Dispatcher (UI thread, unhandled)", e.Exception, isFatal: true);
+                UserSettings.Flush();
                 Logger.Flush();
 
                 // Deliberately NOT setting "e.Handled = true" - see the note above.
@@ -637,6 +659,11 @@ namespace CRT
                 {
                     // A non-Exception throw. Previously this branch logged nothing whatsoever.
                     Logger.Critical($"Unhandled non-Exception object thrown: [{e.ExceptionObject}]");
+                }
+
+                if (e.IsTerminating)
+                {
+                    UserSettings.Flush();
                 }
 
                 Logger.Flush();

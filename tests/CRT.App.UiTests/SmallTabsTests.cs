@@ -671,6 +671,32 @@ public class SmallTabsTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // THE CREDITS ARE THE BOARD'S HISTORY TOO (owner requests, 2026-11-14 and 2026-11-15): in the board's order - the server
+    // keeps it oldest first, those from before the history undated at the top - each with its date and its main contribution,
+    // shown with its formatting. A credit with no date shows none.
+    // ###########################################################################################
+    [Fact]
+    public void Board_credits_are_listed_in_the_board_s_order_with_their_date_and_main_contribution()
+    {
+        UiTest.Run(() =>
+        {
+            var tab = new TabAbout();
+
+            tab.SetBoardInfo("2026-12-03", new List<CreditEntry>
+            {
+                new() { Category = "Schematics", NameOrHandle = "First" },
+                new() { Category = "Board data", NameOrHandle = "Later", Date = " 2026-December-3 ", MainContribution = "- Drew the **top** side" },
+                new() { Category = "Board data", NameOrHandle = "Draft", MainContribution = "Pinouts" },
+            });
+
+            Assert.Equal(["First", "Later", "Draft"], tab.CreditsList.Select(item => item.Name));
+            Assert.Equal([string.Empty, "2026-December-3", string.Empty], tab.CreditsList.Select(item => item.Date));
+            Assert.False(tab.CreditsList[0].HasMainContribution);
+            Assert.Equal("- Drew the **top** side", tab.CreditsList[1].MainContribution);
+        });
+    }
+
     // A contact that is a web address or an email is clickable; anything else is plain text
     // rather than a dead link.
     //

@@ -5,13 +5,13 @@ using Handlers.DataHandling;
 namespace ClassicRepairToolbox.Tests.Ui;
 
 // ###########################################################################################
-// THE WHOLE RETIRE STEP, ON A REAL Main (code review, 2026-11-02): Main.RetirePublishedDraftsAsync with
-// its test-server gate passed in, over a published board in a temp data tree, a seeded draft and a
-// published receipt. WHETHER a draft may go is DraftRetirement's, tested in CRT.Data; HOW the deleting is
-// sequenced is PublishedDraftRetirer's, tested with delegates. What only this reaches is the wiring
-// between them: the gate shut, no test or pre-release ever ran it, so taking "anything open" out of what
-// Main asks left the suite green, and its first real run would have been on users' drafts after the
-// release. StartAsync is never called (MainWindowTests' header).
+// THE WHOLE RETIRE STEP, ON A REAL Main (code review, 2026-11-02): Main.RetirePublishedDraftsAsync over a
+// published board in a temp data tree, a seeded draft and a published receipt. WHETHER a draft may go is
+// DraftRetirement's, tested in CRT.Data; HOW the deleting is sequenced is PublishedDraftRetirer's, tested
+// with delegates. What only this reaches is the wiring between them: taking "anything open" out of what
+// Main asks once left the suite green. The suite runs as the pre-release it is built as, so these show a
+// pre-release retiring against the test server's stable data (owner decision, 2026-11-14). StartAsync is
+// never called (MainWindowTests' header).
 //
 // Every draft here equals the published board and was made before the receipt was sent, so each is
 // retired unless the thing the test is about holds it.
@@ -127,26 +127,9 @@ public sealed class MainRetirePublishedDraftsTests : IDisposable
             CRT.Main window = MainRetirePublishedDraftsTests.Window();
             MainRetirePublishedDraftsTests.RecordPublished();
 
-            await window.RetirePublishedDraftsAsync(testServer: false);
+            await window.RetirePublishedDraftsAsync();
 
             Assert.False(MainRetirePublishedDraftsTests.HasDraft);
-
-            window.Close();
-        });
-    }
-
-    // The test instance's stable data does not last, so nothing is retired against it.
-    [Fact]
-    public async Task Nothing_goes_while_CRT_talks_to_the_test_server()
-    {
-        await UiTest.RunAsync(async () =>
-        {
-            CRT.Main window = MainRetirePublishedDraftsTests.Window();
-            MainRetirePublishedDraftsTests.RecordPublished();
-
-            await window.RetirePublishedDraftsAsync(testServer: true);
-
-            Assert.True(MainRetirePublishedDraftsTests.HasDraft);
 
             window.Close();
         });
@@ -166,14 +149,14 @@ public sealed class MainRetirePublishedDraftsTests : IDisposable
 
             await tab.OpenTableAsync(MainRetirePublishedDraftsTests.Entry);
 
-            await window.RetirePublishedDraftsAsync(testServer: false);
+            await window.RetirePublishedDraftsAsync();
 
             Assert.True(MainRetirePublishedDraftsTests.HasDraft);
             Assert.True(tab.IsTableOpen);
 
             Assert.True(await tab.CloseTableAsync());
 
-            await window.RetirePublishedDraftsAsync(testServer: false);
+            await window.RetirePublishedDraftsAsync();
 
             Assert.False(MainRetirePublishedDraftsTests.HasDraft);
 
@@ -192,7 +175,7 @@ public sealed class MainRetirePublishedDraftsTests : IDisposable
 
             await tab.OpenBoardPartAsync(PaneBoardPart.Credits);
 
-            await window.RetirePublishedDraftsAsync(testServer: false);
+            await window.RetirePublishedDraftsAsync();
 
             Assert.True(MainRetirePublishedDraftsTests.HasDraft);
             Assert.True(tab.IsComponentOpen);
@@ -200,7 +183,7 @@ public sealed class MainRetirePublishedDraftsTests : IDisposable
             tab.CloseComponent();
             await tab.ComponentPaneForTests.LastSave;
 
-            await window.RetirePublishedDraftsAsync(testServer: false);
+            await window.RetirePublishedDraftsAsync();
 
             Assert.False(MainRetirePublishedDraftsTests.HasDraft);
 
@@ -219,14 +202,14 @@ public sealed class MainRetirePublishedDraftsTests : IDisposable
 
             await tab.OpenKiCadAsync();
 
-            await window.RetirePublishedDraftsAsync(testServer: false);
+            await window.RetirePublishedDraftsAsync();
 
             Assert.True(MainRetirePublishedDraftsTests.HasDraft);
             Assert.True(tab.IsKiCadOpen);
 
             await tab.CloseKiCadAsync();
 
-            await window.RetirePublishedDraftsAsync(testServer: false);
+            await window.RetirePublishedDraftsAsync();
 
             Assert.False(MainRetirePublishedDraftsTests.HasDraft);
 
@@ -249,7 +232,7 @@ public sealed class MainRetirePublishedDraftsTests : IDisposable
                 Board = BoardPartEdits.WithCredits(content.Board, [new CreditEntry { Category = "Board data", NameOrHandle = "Bo" }]),
             }));
 
-            await window.RetirePublishedDraftsAsync(testServer: false);
+            await window.RetirePublishedDraftsAsync();
 
             Assert.True(MainRetirePublishedDraftsTests.HasDraft);
             Assert.True(session.HasUnsavedChanges);
@@ -275,7 +258,7 @@ public sealed class MainRetirePublishedDraftsTests : IDisposable
 
             DraftSession session = MainRetirePublishedDraftsTests.ChangedAndUndone();
 
-            await window.RetirePublishedDraftsAsync(testServer: false);
+            await window.RetirePublishedDraftsAsync();
 
             Assert.True(MainRetirePublishedDraftsTests.HasDraft);
             Assert.True(session.Redo());
@@ -287,7 +270,7 @@ public sealed class MainRetirePublishedDraftsTests : IDisposable
             // The run ends, and the session with it.
             DraftManager.Sessions.Close(DraftManager.DraftsRoot, MainRetirePublishedDraftsTests.C64.Identity);
 
-            await window.RetirePublishedDraftsAsync(testServer: false);
+            await window.RetirePublishedDraftsAsync();
 
             Assert.False(MainRetirePublishedDraftsTests.HasDraft);
 
@@ -310,13 +293,13 @@ public sealed class MainRetirePublishedDraftsTests : IDisposable
             MainRetirePublishedDraftsTests.RecordPublished();
             MainRetirePublishedDraftsTests.ChangedAndUndone();
 
-            await window.RetirePublishedDraftsAsync(refreshDraftsTab: false, testServer: false);
+            await window.RetirePublishedDraftsAsync(refreshDraftsTab: false);
 
             Assert.True(MainRetirePublishedDraftsTests.HasDraft);
             Assert.Null(window.ContributeTabBadgeForTests);
 
             // What the caller asked for it still gets: a receipt moved, or the launch check.
-            await window.RetirePublishedDraftsAsync(refreshDraftsTab: true, testServer: false);
+            await window.RetirePublishedDraftsAsync(refreshDraftsTab: true);
 
             Assert.True(MainRetirePublishedDraftsTests.HasDraft);
             Assert.NotNull(window.ContributeTabBadgeForTests);
@@ -332,7 +315,7 @@ public sealed class MainRetirePublishedDraftsTests : IDisposable
             var window = new CRT.Main();
             MainRetirePublishedDraftsTests.RecordPublished();
 
-            await window.RetirePublishedDraftsAsync(refreshDraftsTab: false, testServer: false);
+            await window.RetirePublishedDraftsAsync(refreshDraftsTab: false);
 
             Assert.False(MainRetirePublishedDraftsTests.HasDraft);
             Assert.NotNull(window.ContributeTabBadgeForTests);

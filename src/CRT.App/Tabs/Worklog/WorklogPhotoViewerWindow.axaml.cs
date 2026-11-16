@@ -7,6 +7,7 @@ using Handlers.Geometry;
 using Handlers.Theming;
 using System;
 using System.IO;
+using System.Threading.Tasks;
 
 namespace CRT
 {
@@ -29,9 +30,22 @@ namespace CRT
             // Full-resolution decode is the point of this window, which makes the bitmap large -
             // tens of megabytes for a phone photo - so it is released when the window closes rather
             // than left waiting on a finalizer. Opening the viewer repeatedly would otherwise
-            // accumulate a decoded copy per visit.
-            this.Closed += (_, _) => (this.PhotoImage.Source as IDisposable)?.Dispose();
+            // accumulate a decoded copy per visit. Only the window's OWN decode: the small one shown
+            // meanwhile is DevicePhotoThumbnails', which other screens show too (2026-11-16).
+            this.Closed += (_, _) =>
+            {
+                this.thisIsClosed = true;
+                this.thisWholePhoto?.Dispose();
+                this.thisWholePhoto = null;
+            };
         }
+
+        // The photo decoded whole, this window's own - null until it is in.
+        private Bitmap? thisWholePhoto;
+
+        internal Bitmap? WholePhotoForTests => this.thisWholePhoto;
+
+        private bool thisIsClosed;
 
         // ###########################################################################################
         // Loads the photo to display. A missing or undecodable file leaves the frame empty with an
@@ -54,15 +68,70 @@ namespace CRT
                 return;
             }
 
+            this.ShowPhotoAsync(imagePath);
+        }
+
+        // ###########################################################################################
+        // *** THE WINDOW SHOWS AT ONCE (2026-11-16, performance walkthrough). *** It waited for the photo's whole
+        // decode on the UI thread - 100-200 ms for a phone photo - before it appeared. Now the small read the photo
+        // rows already hold (DevicePhotoThumbnails) shows at once when it is there, and the whole photo takes its
+        // place once decoded on the pool. One decoded after the window closed is let go of at once.
+        // ###########################################################################################
+        private async void ShowPhotoAsync(string imagePath)
+        {
             try
             {
-                using var stream = File.OpenRead(imagePath);
-                this.PhotoImage.Source = new Bitmap(stream);
+                // Only a small read made already: one begun here would come after the whole photo (code review, 2026-11-16).
+                bool smallMade = DevicePhotoThumbnails.TryGetReadMadeAlready(imagePath, out Task<Bitmap?> small);
+                Task<Bitmap?> whole = Task.Run(() => WorklogPhotoViewerWindow.Decode(imagePath));
+                bool previewShown = false;
+
+                if (smallMade && small is { IsCompletedSuccessfully: true, Result: { } preview } && !whole.IsCompleted)
+                {
+                    this.PhotoImage.Source = preview;
+                    previewShown = true;
+                }
+
+                Bitmap? decoded = await whole;
+
+                if (this.thisIsClosed)
+                {
+                    decoded?.Dispose();
+                    return;
+                }
+
+                if (decoded is null)
+                {
+                    this.ShowUnavailable("This photo could not be displayed.");
+                    return;
+                }
+
+                this.thisWholePhoto = decoded;
+
+                // In the preview's place, the zoom made on it kept.
+                if (previewShown)
+                    this.PhotoImage.ShowSharper(decoded);
+                else
+                    this.PhotoImage.Source = decoded;
             }
             catch (Exception ex)
             {
                 Logger.Warning($"Failed to open worklog photo [{imagePath}]: {ex.Message}");
-                this.ShowUnavailable("This photo could not be displayed.");
+            }
+        }
+
+        // Never throws - a photo that cannot be decoded is said on the window.
+        private static Bitmap? Decode(string imagePath)
+        {
+            try
+            {
+                using var stream = File.OpenRead(imagePath);
+                return new Bitmap(stream);
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"Failed to open worklog photo [{imagePath}]: {ex.Message}");
+                return null;
             }
         }
 

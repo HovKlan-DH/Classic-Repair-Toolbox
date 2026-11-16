@@ -50,12 +50,15 @@ public sealed class MainBoardSwitchTests : IDisposable
     }
 
     // A data root listing these boards, each with one picture and one component of its own.
-    private void LoadBoards(params string[] boardNames)
+    private void LoadBoards(params string[] boardNames) =>
+        this.LoadBoardsOf(boardNames.Select(name => (MainBoardSwitchTests.Hardware, name)).ToArray());
+
+    private void LoadBoardsOf(params (string Hardware, string Board)[] boards)
     {
         string dataRoot = this.thisWorkspace.Path_("Data");
 
-        MainFiles.Board[] listed = boardNames
-            .Select(name => new MainFiles.Board("Commodore/C64/" + name, MainBoardSwitchTests.Hardware, name))
+        MainFiles.Board[] listed = boards
+            .Select(board => new MainFiles.Board($"Commodore/{board.Hardware.Replace(" ", string.Empty)}/{board.Board}", board.Hardware, board.Board))
             .ToArray();
 
         DataManager.LoadFrom(dataRoot, MainFiles.Write(dataRoot, listed));
@@ -151,6 +154,116 @@ public sealed class MainBoardSwitchTests : IDisposable
                 }
 
                 Assert.False(main.IsCountingBoardViewForTests);
+            }
+            finally
+            {
+                main.Close();
+            }
+        });
+    }
+
+    // ###########################################################################################
+    // THE TABS NOT SHOWN ARE FILLED AS THEY ARE SHOWN (2026-11-16, performance walkthrough): every board load built the
+    // "Overview" tab's rows and resolved the "Resources" tab's files on the UI thread, for tabs nobody was looking at.
+    // ###########################################################################################
+    [Fact]
+    public async Task The_overview_and_resources_are_filled_as_they_are_shown_not_at_every_board_load()
+    {
+        this.LoadBoards("250407", "250425");
+
+        await UiTest.RunAsync(async () =>
+        {
+            CRT.Main main = MainBoardSwitchTests.ShowMain();
+            TabControl tabs = main.GetControl<TabControl>("MainTabControl");
+
+            try
+            {
+                await MainBoardSwitchTests.AssertShowsAsync(main, "250407");
+                Assert.True(main.TabOverview.RowsWaitForTabForTests);
+
+                tabs.SelectedItem = main.GetControl<TabItem>("OverviewTabItem");
+                Dispatcher.UIThread.RunJobs();
+
+                Assert.False(main.TabOverview.RowsWaitForTabForTests);
+                Assert.Equal(
+                    [MainBoardSwitchTests.ComponentOf("250407")],
+                    (main.TabOverview.GetControl<ItemsControl>("OverviewItemsControl").ItemsSource as IEnumerable<OverviewRow>)!.Select(row => row.Component));
+
+                // Shown, a board load fills it at once.
+                main.BoardComboBox.SelectedItem = "250425";
+                await MainBoardSwitchTests.Until(
+                    () => (main.TabOverview.GetControl<ItemsControl>("OverviewItemsControl").ItemsSource as IEnumerable<OverviewRow>)?
+                        .Select(row => row.Component).SequenceEqual([MainBoardSwitchTests.ComponentOf("250425")]) == true,
+                    "The overview shown did not follow the board loaded");
+            }
+            finally
+            {
+                main.Close();
+            }
+        });
+    }
+
+    // ###########################################################################################
+    // ANOTHER HARDWARE LOADS ITS BOARD ONCE (2026-11-16, performance walkthrough): replacing the board list let go of the
+    // selection, and that ran a whole load with no board - the worklog bar, the "Workbooks" tab, the "Contribute" tab
+    // emptied, the "Schematics" tab reset - before the real one.
+    // ###########################################################################################
+    [Fact]
+    public async Task Another_hardware_loads_its_board_once_never_a_load_with_no_board_before_it()
+    {
+        this.LoadBoardsOf((MainBoardSwitchTests.Hardware, "250407"), ("Commodore 128", "310378"));
+
+        await UiTest.RunAsync(async () =>
+        {
+            CRT.Main main = MainBoardSwitchTests.ShowMain();
+
+            try
+            {
+                await MainBoardSwitchTests.AssertShowsAsync(main, "250407");
+                int loadsBefore = main.BoardLoadsStartedForTests;
+
+                main.HardwareComboBox.SelectedItem = "Commodore 128";
+                await MainBoardSwitchTests.AssertShowsAsync(main, "310378");
+
+                Assert.Equal(loadsBefore + 1, main.BoardLoadsStartedForTests);
+
+                main.HardwareComboBox.SelectedItem = MainBoardSwitchTests.Hardware;
+                await MainBoardSwitchTests.AssertShowsAsync(main, "250407");
+
+                Assert.Equal(loadsBefore + 2, main.BoardLoadsStartedForTests);
+            }
+            finally
+            {
+                main.Close();
+            }
+        });
+    }
+
+    // ###########################################################################################
+    // *** Another hardware with a board of the same name loads that board (code review, 2026-11-16). *** The new board list is
+    // put in with the selection change unheard - and Avalonia restores the selection when the new list holds the item selected
+    // before: "Rev A" stood selected already, the pick of "Rev A" changed nothing, and no board was loaded. The drop-downs said
+    // the new hardware while everything else showed the old one.
+    // ###########################################################################################
+    [Fact]
+    public async Task Another_hardware_with_a_board_of_the_same_name_loads_that_board()
+    {
+        this.LoadBoardsOf((MainBoardSwitchTests.Hardware, "Rev A"), ("Commodore 128", "Rev A"), ("Commodore 128", "Rev B"));
+
+        await UiTest.RunAsync(async () =>
+        {
+            CRT.Main main = MainBoardSwitchTests.ShowMain();
+
+            try
+            {
+                await MainBoardSwitchTests.AssertShowsAsync(main, "Rev A");
+                int loadsBefore = main.BoardLoadsStartedForTests;
+
+                main.HardwareComboBox.SelectedItem = "Commodore 128";
+
+                await MainBoardSwitchTests.Until(() => main.BoardLoadsStartedForTests == loadsBefore + 1, "No board was loaded for the other hardware");
+                await MainBoardSwitchTests.AssertShowsAsync(main, "Rev A");
+                Assert.StartsWith("Commodore 128|", main.GetCurrentBoardKey(), StringComparison.Ordinal);
             }
             finally
             {

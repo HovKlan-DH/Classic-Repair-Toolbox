@@ -126,7 +126,7 @@ namespace Handlers.Tours
                             new TourPart("<b>Mark all</b> selects every component in the list."),
                             new TourPart("The region buttons, such as <b>PAL</b> and <b>NTSC</b>, switch between the board's versions for each region.", Shows: "RegionButtonsGrid"),
                             new TourPart("<b>Fullscreen</b> shows the schematic image on the whole screen - so does <b>F11</b>."),
-                            new TourPart("<b>Blink selected</b> makes the selected components blink, so they are easy to spot."))),
+                            new TourPart("<b>Blink selected</b> makes the selected components blink, so they are easy to spot - <b>Enter</b> turns it on and off."))),
                     new TourStep(
                         Crt4,
                         ["TabSchematicsControl/SchematicsContainer"],

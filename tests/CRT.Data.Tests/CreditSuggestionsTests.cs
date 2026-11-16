@@ -56,6 +56,32 @@ public sealed class CreditSuggestionsTests
             CreditSuggestions.For(Published(), draft).Select(suggestion => suggestion.Category));
     }
 
+    // ###########################################################################################
+    // *** A LIST'S KEYS ARE WORKED OUT ONCE (2026-11-16, performance walkthrough). *** Every change in the component pane asks
+    // what the draft's work is, and each ask keyed and sorted every row of both boards. The base and every section an edit
+    // left as the very list it was are not keyed again; a list that grew since is.
+    // ###########################################################################################
+    [Fact]
+    public void A_list_already_keyed_is_not_keyed_again_and_one_grown_since_is()
+    {
+        BoardData published = Published();
+        BoardData draft = Draft().WithComponentSections(components: [new ComponentEntry { BoardLabel = "U8", FriendlyName = "Processor", Category = "IC" }]);
+
+        List<CreditSuggestion> first = CreditSuggestions.For(published, draft);
+
+        // An edit of the credits alone: every other section the very list it was.
+        int before = CreditSuggestions.KeysWorkedOutForTests;
+        List<CreditSuggestion> again = CreditSuggestions.For(published, draft.WithBoardSections(credits: [new CreditEntry { Category = "Board data", NameOrHandle = "Bo" }]));
+
+        Assert.Equal(first, again);
+        Assert.Equal(before, CreditSuggestions.KeysWorkedOutForTests);
+
+        // The draft's pins are none until a pin is added to that very list: then they are keyed again, and are work.
+        draft.ComponentPins.Add(new ComponentPinEntry { BoardLabel = "U8", Pin = "1", Name = "VSS" });
+
+        Assert.Contains("Component pinouts", CreditSuggestions.For(published, draft).Select(suggestion => suggestion.Category));
+    }
+
     // A picture's colours changed is the board's data - not a new schematic image.
     [Fact]
     public void A_pictures_colours_changed_are_board_data()
@@ -116,18 +142,4 @@ public sealed class CreditSuggestionsTests
         Assert.Equal("Top", CreditSuggestions.For(null, Published())[0].SubCategory);
     }
 
-    // The rows to add name the person; a credit the board already gives that name is left out, and a
-    // blank name adds nothing.
-    [Fact]
-    public void A_credit_the_board_already_gives_the_name_is_not_added_again()
-    {
-        BoardData draft = Draft();
-        CreditSuggestion[] picked = [new("Oscilloscope baseline", ""), new("Board data", "")];
-
-        List<CreditEntry> added = CreditSuggestions.ToAdd(draft, picked, " anna ", " RHD ");
-
-        CreditEntry credit = Assert.Single(added);
-        Assert.Equal(("Board data", "anna", "RHD"), (credit.Category, credit.NameOrHandle, credit.Contact));
-        Assert.Empty(CreditSuggestions.ToAdd(draft, picked, "  ", "RHD"));
-    }
 }

@@ -72,7 +72,6 @@ namespace CRT
         // Each list's drag - made once, by InitializeBoardParts.
         private ListRowDrag<ComponentPaneBoardFileRow>? thisBoardFilesDrag;
         private ListRowDrag<ComponentPaneBoardLinkRow>? thisBoardLinksDrag;
-        private ListRowDrag<ComponentPaneCreditRow>? thisCreditsDrag;
         private ListRowDrag<ComponentPaneSignalRow>? thisSignalsDrag;
         private ListRowDrag<ComponentPaneCategoryRow>? thisCategoriesDrag;
         private ListRowDrag<ComponentPaneRegionRow>? thisRegionsDrag;
@@ -104,8 +103,8 @@ namespace CRT
                 this, this.BoardFilesItemsControl, this.BoardPartPanel, this.thisBoardFiles, (_, _, _) => this.CommitBoardFiles());
             this.thisBoardLinksDrag = new ListRowDrag<ComponentPaneBoardLinkRow>(
                 this, this.BoardLinksItemsControl, this.BoardPartPanel, this.thisBoardLinks, (_, _, _) => this.CommitBoardLinks());
-            this.thisCreditsDrag = new ListRowDrag<ComponentPaneCreditRow>(
-                this, this.CreditsItemsControl, this.BoardPartPanel, this.thisCredits, (_, _, _) => this.CommitCredits());
+
+            // No drag for the credits (2026-11-14): they are kept in date order, oldest first (CreditOrder).
             this.thisSignalsDrag = new ListRowDrag<ComponentPaneSignalRow>(
                 this, this.SignalsItemsControl, this.BoardPartPanel, this.thisSignals, (_, _, _) => this.CommitSignals());
             this.thisCategoriesDrag = new ListRowDrag<ComponentPaneCategoryRow>(
@@ -123,7 +122,6 @@ namespace CRT
         {
             this.thisBoardFilesDrag?.Reset();
             this.thisBoardLinksDrag?.Reset();
-            this.thisCreditsDrag?.Reset();
             this.thisSignalsDrag?.Reset();
             this.thisCategoriesDrag?.Reset();
             this.thisRegionsDrag?.Reset();
@@ -133,7 +131,7 @@ namespace CRT
 
         internal bool IsDraggingARowForTests =>
             this.thisBoardFilesDrag?.IsDragging == true || this.thisBoardLinksDrag?.IsDragging == true ||
-            this.thisCreditsDrag?.IsDragging == true || this.thisSignalsDrag?.IsDragging == true ||
+            this.thisSignalsDrag?.IsDragging == true ||
             this.thisCategoriesDrag?.IsDragging == true || this.thisRegionsDrag?.IsDragging == true ||
             this.thisFilesDrag?.IsDragging == true || this.thisLinksDrag?.IsDragging == true;
 
@@ -259,9 +257,12 @@ namespace CRT
                 ComponentPane.Fill(
                     this.thisBoardLinks,
                     board.BoardLinks.Select(row => ComponentPaneBoardLinkRow.From(row, linkCategories)));
+                PublishedCredits publishedCredits = PublishedCredits.Of(this.thisPublished?.Credits);
+                IReadOnlySet<CreditEntry> newCredits = CreditOrder.NotPublished(board.Credits, this.thisPublished?.Credits);
+
                 ComponentPane.Fill(
                     this.thisCredits,
-                    board.Credits.Select(row => ComponentPaneCreditRow.From(row, creditCategories)));
+                    board.Credits.Select(row => ComponentPaneCreditRow.From(row, creditCategories, publishedCredits, newCredits.Contains(row))));
                 ComponentPane.Fill(
                     this.thisSignals,
                     board.KiCadImportantSignals.Select(row => ComponentPaneSignalRow.From(row, this.thisNetChoices)));
@@ -482,8 +483,27 @@ namespace CRT
         private void CommitBoardLinks() =>
             this.CommitList(this.thisBoardLinks, DraftStepWording.BoardLinks, BoardPartEdits.WithBoardLinks);
 
-        private void CommitCredits() =>
+        private void CommitCredits()
+        {
             this.CommitList(this.thisCredits, DraftStepWording.Credits, BoardPartEdits.WithCredits);
+            this.FollowSentInCredits();
+        }
+
+        // ###########################################################################################
+        // Which credits are sent with the submission, worked out again from what the rows now hold (code review, 2026-11-16):
+        // set once as the rows were filled, a published credit whose name was changed - new history now - kept no green frame,
+        // and one added and typed the same as a published credit kept its strip, until the part was opened again.
+        // ###########################################################################################
+        private void FollowSentInCredits()
+        {
+            List<CreditEntry> entries = this.thisCredits.Select(row => row.ToEntry()).ToList();
+            IReadOnlySet<CreditEntry> sent = CreditOrder.NotPublished(entries, this.thisPublished?.Credits);
+
+            for (int index = 0; index < this.thisCredits.Count; index++)
+            {
+                this.thisCredits[index].IsNew = sent.Contains(entries[index]);
+            }
+        }
 
         private void CommitSignals()
         {
@@ -768,7 +788,6 @@ namespace CRT
             {
                 ComponentPaneBoardFileRow => this.BoardFilesItemsControl,
                 ComponentPaneBoardLinkRow => this.BoardLinksItemsControl,
-                ComponentPaneCreditRow => this.CreditsItemsControl,
                 ComponentPaneCategoryRow => this.CategoriesItemsControl,
                 ComponentPaneRegionRow => this.RegionsItemsControl,
                 ComponentPaneSignalRow => this.SignalsItemsControl,
@@ -788,7 +807,6 @@ namespace CRT
             {
                 ComponentPaneBoardFileRow file => this.MoveBoardFile(file, by),
                 ComponentPaneBoardLinkRow link => this.MoveBoardLink(link, by),
-                ComponentPaneCreditRow credit => this.MoveCredit(credit, by),
                 ComponentPaneSignalRow signal => this.MoveSignal(signal, by),
                 ComponentPaneCategoryRow category => this.MoveCategory(category, by),
                 ComponentPaneRegionRow region => this.MoveRegion(region, by),
@@ -896,26 +914,15 @@ namespace CRT
             this.thisCredits.Add(new ComponentPaneCreditRow
             {
                 CategoryChoices = BoardPartEdits.CategoriesOf(this.thisCredits, row => row.Category),
+                Published = PublishedCredits.Of(this.thisPublished?.Credits),
             });
 
             this.ShowBoardPartLines();
         }
 
         // "Add me" - a credit by the name CRT remembered - went on 2026-10-29 (owner decision: "Remove
-        // the button entirely - there is already the 'Add credit' button, which can be used").
-
-        private void OnCreditHandlePressed(object? sender, PointerPressedEventArgs e) => this.thisCreditsDrag?.Press(sender, e);
-
-        internal bool MoveCredit(ComponentPaneCreditRow row, int by)
-        {
-            if (!this.MoveRow(this.thisCredits, row, by))
-            {
-                return false;
-            }
-
-            this.CommitCredits();
-            return true;
-        }
+        // the button entirely - there is already the 'Add credit' button, which can be used"). And moving a
+        // credit, by its handle or Alt+Up/Down, on 2026-11-14: the credits are kept in date order (CreditOrder).
 
         private void OnRemoveCreditClick(object? sender, RoutedEventArgs e)
         {
@@ -1318,29 +1325,85 @@ namespace CRT
 
         public string Contact { get => this.thisContact; set => this.SetField(ref this.thisContact, value); }
 
-        // "What" and "Name or handle" - which part of it and the contact may stay empty.
+        // ###########################################################################################
+        // What the contribution was, a note with formatting (owner request, 2026-11-14: "the contributor or maintainer can
+        // provide description of what has been done for this contribution") - required on a credit the board has not
+        // published as it stands (`Published`; BoardRowRequired). And when it was published, the server's: shown, never typed.
+        // ###########################################################################################
+        private string thisMainContribution = string.Empty;
+
+        public string MainContribution { get => this.thisMainContribution; set => this.SetField(ref this.thisMainContribution, value); }
+
+        public string Date { get; init; } = string.Empty;
+
+        // Not on the published board - a credit added: its date comes as it is published. An undated credit the board has is
+        // one from before the history, and says nothing (2026-11-15). Worked out again as the list is committed
+        // (ComponentPane.FollowSentInCredits), so the frame, the strip and "Required" follow an edit.
+        private bool thisIsNew = true;
+
+        public bool IsNew
+        {
+            get => this.thisIsNew;
+            set
+            {
+                if (this.thisIsNew != value)
+                {
+                    this.thisIsNew = value;
+                    this.Raise(nameof(this.IsNew));
+                    this.Raise(nameof(this.DateShown));
+                    this.RaiseMissing();
+                }
+            }
+        }
+
+        // A new credit is dated as it is published, whatever date it holds (owner decision, 2026-11-16: "Should not be possible
+        // to back-date" - CreditOrder.Dated).
+        public string DateShown =>
+            this.IsNew ? ComponentPaneWording.CreditDateToCome
+            : !string.IsNullOrWhiteSpace(this.Date) ? ComponentPaneWording.CreditPublishedOn(this.Date.Trim())
+            : string.Empty;
+
+        // The board's credits as published - a credit standing so needs no main contribution.
+        public PublishedCredits Published { get; init; } = PublishedCredits.None;
+
+        // "What", "Name or handle" and - on a credit not published as it stands - "Main contribution"; which part of it and
+        // the contact may stay empty.
         public bool CategoryMissing => this.IsMissing(BoardWorkbookSchema.ColCategory);
 
         public bool NameOrHandleMissing => this.IsMissing(BoardWorkbookSchema.ColNameOrHandle);
 
+        public bool MainContributionMissing => this.IsMissing(BoardWorkbookSchema.ColMainContribution);
+
         public override bool IsBlank => BoardPartEdits.IsBlank(this.ToEntry());
 
-        protected override IReadOnlyList<string> EmptyColumns() => BoardRowRequired.EmptyColumns(this.ToEntry());
+        // A credit sent with the submission always needs its main contribution - even the same as one published, which stands
+        // for its own row alone (owner report, 2026-11-15: such a credit for the work was submitted with it empty); any other
+        // needs it once it differs from the published one.
+        protected override IReadOnlyList<string> EmptyColumns()
+        {
+            CreditEntry row = this.ToEntry();
+            return BoardRowRequired.EmptyColumns(row, this.IsNew || !this.Published.StandsAsPublished(row));
+        }
 
         protected override void RaiseMissing()
         {
             this.Raise(nameof(this.CategoryMissing));
             this.Raise(nameof(this.NameOrHandleMissing));
+            this.Raise(nameof(this.MainContributionMissing));
         }
 
         public IReadOnlyList<string> CategoryChoices { get; init; } = [];
 
-        public static ComponentPaneCreditRow From(CreditEntry row, IReadOnlyList<string> categories) => new()
+        public static ComponentPaneCreditRow From(CreditEntry row, IReadOnlyList<string> categories, PublishedCredits published, bool isNew) => new()
         {
+            IsNew = isNew,
             Category = row.Category ?? string.Empty,
             SubCategory = row.SubCategory ?? string.Empty,
             NameOrHandle = row.NameOrHandle ?? string.Empty,
             Contact = row.Contact ?? string.Empty,
+            MainContribution = row.MainContribution ?? string.Empty,
+            Date = row.Date ?? string.Empty,
+            Published = published,
             CategoryChoices = categories,
             Committed = row,
         };
@@ -1351,6 +1414,8 @@ namespace CRT
             SubCategory = this.thisSubCategory,
             NameOrHandle = this.thisNameOrHandle,
             Contact = this.thisContact,
+            MainContribution = this.thisMainContribution,
+            Date = this.Date,
         };
     }
 

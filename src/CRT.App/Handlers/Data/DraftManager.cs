@@ -39,8 +39,22 @@ namespace Handlers.DataHandling
         // 4.0 step 1, 2026-10-25). The Drafts tab's table works on its draft's session; the session
         // saves itself. Kept for the whole run, so a draft's undo history outlives closing its table;
         // a draft that is discarded or retired takes its session with it (DiscardDraft).
+        //
+        // *** EACH DRAFT'S WORK IS CREDITED AS IT IS DONE (owner request, 2026-11-15): the first change of
+        // a published board's draft adds the credit for it to "Board: Credits", in the same step, under
+        // the name and contact CRT remembers (SubmissionCredit, DraftSessions.CreditIdentity). *** The work and the credits it
+        // sends are judged against the board as published now (DraftSessions.PublishedBoard), as Submit judges them.
         // ###########################################################################################
-        public static DraftSessions Sessions { get; } = new();
+        public static DraftSessions Sessions { get; } = new()
+        {
+            CreditIdentity = () => (UserSettings.CreditName, UserSettings.CreditContact),
+            PublishedBoard = session => DraftManager.PublishedBoardOf(session.ExcelDataFile),
+        };
+
+        // The board as published, read where Submit reads it (DraftBoardSource.PublishedPathOf) - null for a board nothing is
+        // published of, or one whose file cannot be read.
+        internal static BoardData? PublishedBoardOf(string excelDataFile) =>
+            DraftStatusReader.PublishedBoardOf(DraftBoardSource.PublishedPathOf(DataManager.DataRoot, excelDataFile));
 
         // ###########################################################################################
         // Resolves the folder to store drafts in - "--drafts-root=" if given, otherwise a "Drafts"
@@ -465,7 +479,17 @@ namespace Handlers.DataHandling
                 return true;
             }
 
-            return DraftWorkbookStore.Discard(_draftsRoot, excelDataFile);
+            string boardFile = DraftFolderLayout.GetWorkbookPath(_draftsRoot, excelDataFile);
+            bool discarded = DraftWorkbookStore.Discard(_draftsRoot, excelDataFile);
+
+            // Its KiCad copy goes with it, unless the published board holds the same (BoardKiCadFolder.LetGoOf; owner
+            // request, 2026-11-16: "a temporary file should be deleted when it is not used anymore").
+            if (discarded)
+            {
+                BoardKiCadFolder.LetGoOf(boardFile, AppConfig.KiCadCacheFolder);
+            }
+
+            return discarded;
         }
 
         // Whether the draft held in memory has a change its file does not have yet - a save waiting,

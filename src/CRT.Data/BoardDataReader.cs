@@ -526,13 +526,15 @@ namespace Handlers.DataHandling
         internal static string StampOf(string? excelPath) =>
             $"{BoardDataReader.FileStamp(excelPath)}|{BoardDataReader.FileStamp(BoardComponentHighlightStorage.GetJsonPath(excelPath ?? string.Empty))}";
 
-        // One file's length and last-write time, or "-" when it is not there - so a file arriving or
-        // vanishing is a change too. DraftStatusReader's caches stamp with it as well.
+        // One file's length and last-write time, or NoFileStamp when it is not there - so a file arriving
+        // or vanishing is a change too. THE one stamp rule (code review, 2026-11-16: copies of it stood
+        // beside it, each saying "no file" and "could not ask" its own way): DraftStatusReader's caches,
+        // a draft's base (DraftSession), the "Schematics" tab's pictures and the board pane's stamp with it.
         internal static string FileStamp(string? path)
         {
             if (string.IsNullOrWhiteSpace(path))
             {
-                return "-";
+                return BoardDataReader.NoFileStamp;
             }
 
             try
@@ -541,13 +543,24 @@ namespace Handlers.DataHandling
 
                 return info.Exists
                     ? $"{info.Length}:{info.LastWriteTimeUtc.Ticks}"
-                    : "-";
+                    : BoardDataReader.NoFileStamp;
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
             {
                 // Unreadable metadata is never a cache hit: a unique stamp forces a new read.
                 return Guid.NewGuid().ToString("N");
             }
+        }
+
+        // FileStamp's answer for no file there.
+        internal const string NoFileStamp = "-";
+
+        // FileStamp of a file that is there - null for none, which a reader of pictures answers "nothing" for at once.
+        internal static string? FileStampIfThere(string? path)
+        {
+            string stamp = BoardDataReader.FileStamp(path);
+
+            return stamp == BoardDataReader.NoFileStamp ? null : stamp;
         }
 
 

@@ -79,6 +79,9 @@ namespace CRT
     {
         private readonly List<Bitmap> _loadedBitmaps = new List<Bitmap>();
         private CancellationTokenSource? _loadCts;
+
+        // How many of a component's images are decoded at once (LoadImagesAsync) - as SchematicThumbnailSet.DecodedAtOnce.
+        internal static int ImagesDecodedAtOnce => Math.Clamp(Environment.ProcessorCount, 1, 4);
         private string _pinBuffer = string.Empty;
         private CancellationTokenSource? _pinBufferCts;
         private CancellationTokenSource? _pinFlashCts;
@@ -1198,40 +1201,49 @@ namespace CRT
                     return;
                 }
 
+                // *** SEVERAL AT ONCE (2026-11-16, performance walkthrough). *** One after another, a component with many
+                // images - U19's 81 baselines - waited for every decode in turn before any image showed. In order still:
+                // each image has its place, and a load overtaken stops starting new decodes.
                 var loaded = await Task.Run(() =>
                 {
-                    var result = new List<(ComponentImageEntry Entry, Bitmap? Bitmap)>();
+                    var bitmaps = new Bitmap?[displayableEntries.Count];
 
-                    foreach (var entry in displayableEntries)
+                    try
                     {
-                        if (cts.Token.IsCancellationRequested)
-                            break;
-
-                        Bitmap? bitmap = null;
-
-                        try
-                        {
-                            // An image attached only in a local draft (not yet synced under Data/) is
-                            // resolved via the same official-first/draft-fallback rule every other
-                            // BoardData File value now uses - see DraftFileResolver.
-                            var fullPath = DraftFileResolver.Resolve(dataRoot, draftBoardFolder, entry.File, boardIdentity) ??
-                                DraftFileResolver.PathUnderDataRoot(dataRoot, entry.File);
-                            if (File.Exists(fullPath))
+                        Parallel.For(
+                            0,
+                            displayableEntries.Count,
+                            new ParallelOptions { MaxDegreeOfParallelism = ComponentInfoWindow.ImagesDecodedAtOnce, CancellationToken = cts.Token },
+                            at =>
                             {
-                                bitmap = new Bitmap(fullPath);
-                            }
-                        }
-                        catch
-                        {
-                            // A malformed File value (e.g. from hand-edited or contributed board data)
-                            // should skip this one image, not crash the whole load - this method has
-                            // no caller-side exception handling since it is async void.
-                        }
+                                var entry = displayableEntries[at];
 
-                        result.Add((entry, bitmap));
+                                try
+                                {
+                                    // An image attached only in a local draft (not yet synced under Data/) is
+                                    // resolved via the same official-first/draft-fallback rule every other
+                                    // BoardData File value now uses - see DraftFileResolver.
+                                    var fullPath = DraftFileResolver.Resolve(dataRoot, draftBoardFolder, entry.File, boardIdentity) ??
+                                        DraftFileResolver.PathUnderDataRoot(dataRoot, entry.File);
+                                    if (File.Exists(fullPath))
+                                    {
+                                        bitmaps[at] = new Bitmap(fullPath);
+                                    }
+                                }
+                                catch
+                                {
+                                    // A malformed File value (e.g. from hand-edited or contributed board data)
+                                    // should skip this one image, not crash the whole load - this method has
+                                    // no caller-side exception handling since it is async void.
+                                }
+                            });
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // Overtaken: what was decoded is let go of below, as an overtaken load's always was.
                     }
 
-                    return result;
+                    return displayableEntries.Select((entry, at) => (Entry: entry, Bitmap: bitmaps[at])).ToList();
                 });
 
                 if (cts.Token.IsCancellationRequested)

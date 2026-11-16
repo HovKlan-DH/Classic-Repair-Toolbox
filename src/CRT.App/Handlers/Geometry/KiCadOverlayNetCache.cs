@@ -110,8 +110,12 @@ namespace Handlers.Geometry
             bool isHovered,
             bool shouldBlink,
             double opacity,
-            string? hoveredComponentIfOnThisNet)
+            string? hoveredComponentIfOnThisNet,
+            string? activeReferencesOnThisNet = null)
         {
+            // What of the active references this net is drawn from (KiCadOverlayCacheKeys.ActiveReferencesOnNet).
+            this.ActiveReferencesOnThisNet = activeReferencesOnThisNet ?? string.Empty;
+
             this.IsExplicitHighlight = isExplicitHighlight;
             this.IsHovered = isHovered;
             this.ShouldBlink = shouldBlink;
@@ -140,5 +144,7 @@ namespace Handlers.Geometry
         public double Opacity { get; }
 
         public string HoveredComponentIfOnThisNet { get; }
+
+        public string ActiveReferencesOnThisNet { get; }
     }
 }

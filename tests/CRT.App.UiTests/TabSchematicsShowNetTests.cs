@@ -72,6 +72,51 @@ public sealed class TabSchematicsShowNetTests
     }
 
     // ###########################################################################################
+    // THE PANEL IS AS WIDE AS ITS WIDEST LINE (owner report, 2026-11-14, with a picture: "[C19 | Electrolytic Axial |
+    // 2200uF 16V] pin 2 [E" - the rest cut off). A MaxWidth of 250 held it narrower than its lines, which never wrap.
+    // ###########################################################################################
+    [Fact]
+    public void The_KiCad_nets_panel_shows_its_longest_line_whole()
+    {
+        UiTest.Run(() =>
+        {
+            var tab = new TabSchematics();
+            var window = new Avalonia.Controls.Window { Width = 2400, Height = 900, Content = tab };
+            window.Show();
+
+            var panel = Avalonia.Controls.ControlExtensions.GetControl<Avalonia.Controls.Border>(tab, "KiCadNetConnectionsPanel");
+            var list = Avalonia.Controls.ControlExtensions.GetControl<Avalonia.Controls.ItemsControl>(tab, "KiCadNetConnectionsList");
+
+            panel.IsVisible = true;
+            list.ItemsSource = new[]
+            {
+                new KiCadNetConnectionLine("C1", " | Ceramic | 100nF 25V", "2", "Earth"),
+                new KiCadNetConnectionLine("C19", " | Electrolytic Axial | 2200uF 16V", "2", "Earth"),
+            };
+            window.UpdateLayout();
+
+            List<Avalonia.Controls.TextBlock> lines = list.GetRealizedContainers()
+                .Select(container => Avalonia.VisualTree.VisualExtensions.FindDescendantOfType<Avalonia.Controls.TextBlock>(container)!)
+                .ToList();
+
+            Assert.Equal(2, lines.Count);
+            Assert.True(double.IsPositiveInfinity(panel.MaxWidth), $"the panel is held to {panel.MaxWidth}");
+
+            foreach (Avalonia.Controls.TextBlock line in lines)
+            {
+                // What the line asks for with nothing holding it in.
+                string text = string.Concat(line.Inlines!.OfType<Avalonia.Controls.Documents.Run>().Select(run => run.Text));
+                var free = new Avalonia.Controls.TextBlock { FontSize = line.FontSize, FontWeight = Avalonia.Media.FontWeight.Bold, Text = text };
+                free.Measure(Avalonia.Size.Infinity);
+
+                Assert.True(line.Bounds.Width + 0.5 >= free.DesiredSize.Width, $"\"{text}\" is {line.Bounds.Width} wide of the {free.DesiredSize.Width} it needs");
+            }
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
     // ONLY that net: a component selected on the board - its highlight and its nets lit - is let go
     // of too (code review, 2026-10-26: one selected only on the schematic kept its nets lit beside the
     // net asked for, since clearing the list's selection changed nothing).

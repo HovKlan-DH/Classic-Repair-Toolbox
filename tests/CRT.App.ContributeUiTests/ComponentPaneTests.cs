@@ -2143,9 +2143,13 @@ public sealed class ComponentPaneTests : IDisposable
         });
     }
 
-    // A credit is dragged by its handle as a file is - its row a placeholder while it moves.
+    // ###########################################################################################
+    // A CREDIT IS NO LONGER DRAGGED - THE CREDITS ARE KEPT IN DATE ORDER (owner decision, 2026-11-14: "Always kept in date
+    // order"), so no row has a handle. A new credit, undated until published, says so and needs its main contribution -
+    // marked on its box until typed, then in the draft with it; the published one, as it stands, needs none.
+    // ###########################################################################################
     [Fact]
-    public void A_credit_dragged_by_its_handle_moves_as_one_step()
+    public void A_new_credit_needs_its_main_contribution_and_no_credit_has_a_handle()
     {
         DraftSession session = this.OpenDraftWithBoardParts();
 
@@ -2154,25 +2158,184 @@ public sealed class ComponentPaneTests : IDisposable
             (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Credits);
 
             Click(Get<Button>(pane, "AddCreditButton"));
-            pane.CreditsForTests[^1].Category = "Schematic image";
-            pane.CreditsForTests[^1].NameOrHandle = "Bo";
+            ComponentPaneCreditRow added = pane.CreditsForTests[^1];
+            added.Category = "Schematic image";
+            added.NameOrHandle = "Bo";
             pane.CommitHeld();
             Dispatcher.UIThread.RunJobs();
 
             ItemsControl list = Get<ItemsControl>(pane, "CreditsItemsControl");
-            Point from = CentreOf(window, Handles(list)[1]);
-            Point top = TopOf(window, list.ContainerFromIndex(0)!) + new Point(0, 2);
+            Assert.Empty(Handles(list));
 
-            window.MouseDown(from, MouseButton.Left);
-            Dispatcher.UIThread.RunJobs();
-            window.MouseMove(top, RawInputModifiers.LeftMouseButton);
-            Dispatcher.UIThread.RunJobs();
-            Assert.True(pane.CreditsForTests[0].IsDropPlaceholder);
-            window.MouseUp(top, MouseButton.Left);
+            Assert.False(pane.CreditsForTests[0].MainContributionMissing);
+            Assert.True(pane.CreditsForTests[1].MainContributionMissing);
+            Assert.Equal("Dated when published", pane.CreditsForTests[1].DateShown);
+
+            pane.CreditsForTests[1].MainContribution = "- Drew the **top** side";
+            pane.CommitHeld();
+
+            Assert.False(pane.CreditsForTests[1].MainContributionMissing);
+            Assert.Equal("- Drew the **top** side", session.Content.Board.Credits.Single(row => row.NameOrHandle == "Bo").MainContribution);
+            Assert.Equal(["Anna", "Bo"], session.Content.Board.Credits.Select(row => row.NameOrHandle));
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // *** A credit's frame and "Required" follow what it holds, as the checks and the server judge it (code review,
+    // 2026-11-16). *** The author's "Schematic image" credit following its image's rename stands as published - no main
+    // contribution asked of it, though the pane asked one by its very values alone; and a credit changed into new history (a
+    // name changed) is framed as sent once committed - set once as the rows were filled, it kept no frame.
+    // ###########################################################################################
+    [Fact]
+    public void A_credits_frame_and_required_box_follow_what_it_holds()
+    {
+        DraftSession session = this.OpenDraftWithBoardParts();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Credits);
+            ComponentPaneCreditRow anna = Assert.Single(pane.CreditsForTests);
+            Assert.False(anna.IsNew);
+
+            // Its image renamed: the credit follows, and stands as published.
+            anna.SubCategory = "NTSC";
+            pane.CommitHeld();
             Dispatcher.UIThread.RunJobs();
 
-            Assert.Equal(["Bo", "Anna"], session.Content.Board.Credits.Select(row => row.NameOrHandle));
-            Assert.Equal("Credits", session.UndoDescription);
+            Assert.False(anna.IsNew);
+            Assert.False(anna.MainContributionMissing);
+
+            // Another person named: new history, sent with the submission, its main contribution required.
+            anna.NameOrHandle = "Anne";
+            pane.CommitHeld();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.True(anna.IsNew);
+            Assert.True(anna.MainContributionMissing);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // *** The credit the pane's own edit brought along is shown on "Board: Credits" (code review, 2026-11-16). *** A draft with
+    // work and no credit sent: a published credit's contact changed on the page is the pane's own edit, and the credit for the
+    // work comes in the same step (DraftSessionChange.FollowedUp). The pane read nothing again after its own edit - the credit
+    // went unshown, and the next commit of the list, which replaces it whole, took it out again.
+    // ###########################################################################################
+    [Fact]
+    public void The_credit_the_panes_own_edit_brought_along_is_shown_on_the_credits_page()
+    {
+        DraftSession session = this.OpenDraftWithBoardParts();
+        BoardData published = session.Content.Board;
+
+        // Work, no credit sent for it - then the credit follows the work from here on, as DraftSessions sets it.
+        session.Apply("Work", content => content with
+        {
+            Board = content.Board.WithBoardSections(boardLinks:
+                [.. content.Board.BoardLinks, new BoardLinkEntry { Category = "Forums", Name = "Forum 64", Url = "https://forum64.de" }]),
+        });
+        session.FollowUp = (before, after) => SubmissionCredit.Follow(published, before, after, "Bo", "bo@example.com");
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Credits);
+            Assert.Single(pane.CreditsForTests);
+
+            pane.CreditsForTests[0].Contact = "rhd.example.com";
+            pane.CommitHeld();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(["Anna", "Bo"], session.Content.Board.Credits.Select(row => row.NameOrHandle));
+            Assert.Equal(["Anna", "Bo"], pane.CreditsForTests.Select(row => row.NameOrHandle));
+
+            // Another commit of the list keeps it.
+            pane.CreditsForTests[0].Contact = "rhd.example.org";
+            pane.CommitHeld();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(["Anna", "Bo"], session.Content.Board.Credits.Select(row => row.NameOrHandle));
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // *** A CREDIT SENT THAT IS THE SAME AS A PUBLISHED ONE STILL NEEDS ITS MAIN CONTRIBUTION (owner report, 2026-11-15: the credit
+    // for a change came out as one the board had published, no main contribution, and was submitted so). *** The published one
+    // stands for its own row alone: the second is framed as sent and marked "Required" until its main contribution is written.
+    // ###########################################################################################
+    [Fact]
+    public void A_credit_sent_like_a_published_one_still_needs_its_main_contribution()
+    {
+        DraftSession session = this.OpenDraftWithBoardParts();
+        session.Apply("Credits", content => content with
+        {
+            Board = content.Board.WithBoardSections(credits:
+            [
+                .. content.Board.Credits,
+                new CreditEntry { Category = "Schematic image", SubCategory = "PAL", NameOrHandle = "Anna", Contact = "RHD" },
+            ]),
+        });
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Credits);
+
+            Assert.Equal([false, true], pane.CreditsForTests.Select(row => row.IsNew));
+            Assert.Equal([false, true], pane.CreditsForTests.Select(row => row.MainContributionMissing));
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // *** THE CREDIT SENT WITH THE SUBMISSION STANDS OUT (owner request, 2026-11-15: "Make this row specifically visual, so the
+    // user can see THIS is the row being submitted for their edits done"). *** A credit the published board has not is framed,
+    // a strip on top saying it is sent and that the maintainers may change it; the published one has neither. Its short fields
+    // take no more than their limits (CreditLimits).
+    // ###########################################################################################
+    [Fact]
+    public void The_credit_sent_with_the_submission_is_framed_and_says_so()
+    {
+        DraftSession session = this.OpenDraftWithBoardParts();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Credits);
+
+            Click(Get<Button>(pane, "AddCreditButton"));
+            ComponentPaneCreditRow added = pane.CreditsForTests[^1];
+            added.Category = "Board data";
+            added.NameOrHandle = "Bo";
+            pane.CommitHeld();
+            Dispatcher.UIThread.RunJobs();
+            window.UpdateLayout();
+
+            List<Border> rows = Get<ItemsControl>(pane, "CreditsItemsControl").GetVisualDescendants()
+                .OfType<Border>()
+                .Where(border => border.Classes.Contains("MovableRow"))
+                .ToList();
+
+            Assert.Equal(2, rows.Count);
+            Assert.DoesNotContain("SentWithSubmission", rows[0].Classes);
+            Assert.Contains("SentWithSubmission", rows[1].Classes);
+
+            static Border StripOf(Border row) =>
+                row.GetVisualDescendants().OfType<Border>().Single(border => border.Classes.Contains("SentWithSubmissionStrip"));
+
+            Assert.False(StripOf(rows[0]).IsEffectivelyVisible);
+            Assert.True(StripOf(rows[1]).IsEffectivelyVisible);
+
+            string said = string.Join(" ", StripOf(rows[1]).GetVisualDescendants().OfType<TextBlock>().Select(text => text.Text));
+            Assert.Contains("Sent with your submission", said, StringComparison.Ordinal);
+            Assert.Contains("maintainers may change it", said, StringComparison.Ordinal);
+
+            Assert.Equal(CreditLimits.Category, rows[1].GetVisualDescendants().OfType<AutoCompleteBox>().Single().MaxLength);
+            List<TextBox> boxes = rows[1].GetVisualDescendants().OfType<TextBox>().Where(box => box is not RichNoteTextBox && !box.GetVisualAncestors().OfType<AutoCompleteBox>().Any()).ToList();
+            Assert.Equal([CreditLimits.SubCategory, CreditLimits.NameOrHandle, CreditLimits.Contact], boxes.Select(box => box.MaxLength));
 
             window.Close();
         });
@@ -2726,7 +2889,7 @@ public sealed class ComponentPaneTests : IDisposable
             // Every one of them an error of the draft's, the table's and the server's own rule.
             Assert.Equal(
                 new BoardRowsIncomplete(Files: 1, Links: 0, Credits: 0, Signals: 1, Errors: 2),
-                BoardRowRequired.Of(session.Content.Board));
+                BoardRowRequired.Of(session.Content.Board, null));
 
             window.Close();
         });

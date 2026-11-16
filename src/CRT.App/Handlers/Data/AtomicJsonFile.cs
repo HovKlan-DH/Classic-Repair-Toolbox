@@ -26,7 +26,34 @@ namespace Handlers.DataHandling
         // saved (`needsNothingDone`, code review 2026-11-07: a rebuildable cache, the local checksum
         // cache, held for a moment by a virus scanner, raised the card), which is a warning, only listed.
         // ###########################################################################################
-        public static bool Write<T>(string path, T value, JsonSerializerOptions options, string whatFailed, bool needsNothingDone = false)
+        public static bool Write<T>(string path, T value, JsonSerializerOptions options, string whatFailed, bool needsNothingDone = false) =>
+            AtomicJsonFile.TrySerialize(path, value, options, whatFailed, out string json, needsNothingDone) &&
+            AtomicJsonFile.WriteText(path, json, whatFailed, needsNothingDone);
+
+        // ###########################################################################################
+        // `value` as the text Write would write - false, said as Write says a failure, when it cannot be serialized. The
+        // settings' save serializes as they change and writes a moment later (UserSettings.Save, DeferredTextFile).
+        // ###########################################################################################
+        public static bool TrySerialize<T>(string path, T value, JsonSerializerOptions options, string whatFailed, out string json, bool needsNothingDone = false)
+        {
+            try
+            {
+                json = JsonSerializer.Serialize(value, options);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                AtomicJsonFile.SayNotSaved($"Failed to save {whatFailed}: [{path}] [{ex.Message}]", needsNothingDone);
+                json = string.Empty;
+                return false;
+            }
+        }
+
+        // ###########################################################################################
+        // The same swap for a text already made - the settings, serialized as they changed and written
+        // a moment later (DeferredTextFile).
+        // ###########################################################################################
+        public static bool WriteText(string path, string json, string whatFailed, bool needsNothingDone = false)
         {
             if (string.IsNullOrEmpty(path))
             {
@@ -38,7 +65,6 @@ namespace Handlers.DataHandling
 
             try
             {
-                var json = JsonSerializer.Serialize(value, options);
                 File.WriteAllText(tempPath, json);
 
                 // File.Replace, not File.Move: on Windows a rename-over cannot displace a file
@@ -54,16 +80,7 @@ namespace Handlers.DataHandling
             }
             catch (Exception ex)
             {
-                string message = $"Failed to save {whatFailed}: [{path}] [{ex.Message}]";
-
-                if (needsNothingDone)
-                {
-                    Logger.Warning(message);
-                }
-                else
-                {
-                    Logger.Critical(message);
-                }
+                AtomicJsonFile.SayNotSaved($"Failed to save {whatFailed}: [{path}] [{ex.Message}]", needsNothingDone);
 
                 // Clean up the temp file if it was left behind. Best-effort: the real failure is
                 // already logged above, and failing to delete a leftover temp file is not itself
@@ -71,6 +88,18 @@ namespace Handlers.DataHandling
                 try { if (File.Exists(tempPath)) File.Delete(tempPath); } catch { }
 
                 return false;
+            }
+        }
+
+        private static void SayNotSaved(string message, bool needsNothingDone)
+        {
+            if (needsNothingDone)
+            {
+                Logger.Warning(message);
+            }
+            else
+            {
+                Logger.Critical(message);
             }
         }
     }

@@ -84,6 +84,9 @@ namespace CRT
         // How many credits' rows a new board would be given, as last worked out, and the board it is of.
         private (string Board, int Rows)? thisStatusCreditsToOffer;
 
+        // The board's published credits as last read - which need no "Main contribution" while they stand so (2026-11-14).
+        private (string Board, PublishedCredits Credits)? thisStatusPublishedCredits;
+
         // ###########################################################################################
         // What a button did - said only while the draft is as it left it (code review,
         // 2026-10-26: after an Undo it still said the components were added): its board, the draft's
@@ -259,22 +262,26 @@ namespace CRT
                 // they ran on.
                 Task<BoardProblemsRead>? publishedCheck = session is null && !entry.IsDraftOnly ? this.PublishedProblemsOf(entry) : null;
 
-                (BoardContent? content, List<string> files, BoardProblemsRead? ofDraft, int creditsToOffer) = await Task.Run(() =>
+                (BoardContent? content, List<string> files, BoardProblemsRead? ofDraft, int creditsToOffer, PublishedCredits publishedCredits) = await Task.Run(() =>
                 {
                     BoardContent? read = session?.Content ?? TabDrafts.PublishedContentOf(published);
+
+                    // A credit the board has published as it stands needs no main contribution (2026-11-14).
+                    PublishedCredits credits = entry.IsDraftOnly ? PublishedCredits.None : DraftStatusReader.PublishedCreditsOf(published);
 
                     BoardProblemsRead? found = null;
 
                     if (session is not null && read is not null)
                     {
-                        IReadOnlyList<BoardDataProblem> problemsOfDraft = DraftStatusReader.ProblemsOf(read.Board, dataRoot, draftFolder);
+                        IReadOnlyList<BoardDataProblem> problemsOfDraft = DraftStatusReader.ProblemsOf(read.Board, dataRoot, draftFolder, credits);
                         found = new BoardProblemsRead(BoardProblemCounts.Of(problemsOfDraft), problemsOfDraft, read.Board);
                     }
 
                     return (read,
                             TabDrafts.KiCadFileNamesOf(draftsRoot, identity, listed, published),
                             found,
-                            session is null ? 0 : TabDrafts.NewBoardCreditsToOffer(entry, session));
+                            session is null ? 0 : TabDrafts.NewBoardCreditsToOffer(entry, session),
+                            credits);
                 });
 
                 BoardProblemsRead problems = ofDraft ?? (publishedCheck is null ? BoardProblemsRead.None : await publishedCheck);
@@ -287,6 +294,7 @@ namespace CRT
                 this.thisStatusFiles = (identity, files);
                 this.thisStatusProblems = (identity, problems);
                 this.thisStatusCreditsToOffer = (identity, creditsToOffer);
+                this.thisStatusPublishedCredits = (identity, publishedCredits);
 
                 BoardKiCadFacts? known = files.Count > 0 ? this.KnownKiCadFacts(identity) : null;
                 this.ShowStatus(entry, session, session?.Content.Board ?? content?.Board ?? shown, session?.Content.Calibrations ?? content?.Calibrations, files, known, problems, creditsToOffer);
@@ -348,6 +356,13 @@ namespace CRT
         private BoardProblemsRead KnownProblems(string identity) =>
             this.thisStatusProblems is { } last && string.Equals(last.Board, identity, StringComparison.OrdinalIgnoreCase) ? last.Read : BoardProblemsRead.None;
 
+        // The board's published credits as last read - until they are, every credit of the board shown counts as published,
+        // so no main contribution is said missing before it is known to be.
+        private PublishedCredits KnownPublishedCredits(string identity, BoardData board) =>
+            this.thisStatusPublishedCredits is { } last && string.Equals(last.Board, identity, StringComparison.OrdinalIgnoreCase)
+                ? last.Credits
+                : PublishedCredits.Of(board.Credits);
+
         // The credits' rows a new board would be given, as last worked out - none known yet is none said.
         private int KnownCreditsToOffer(string identity) =>
             this.thisStatusCreditsToOffer is { } last && string.Equals(last.Board, identity, StringComparison.OrdinalIgnoreCase) ? last.Rows : 0;
@@ -387,7 +402,7 @@ namespace CRT
         {
             this.CreateStatusRows();
 
-            BoardMissing missing = BoardReadiness.Missing(board, hasKiCadFiles: files is { Count: > 0 }, kiCad);
+            BoardMissing missing = BoardReadiness.Missing(board, this.KnownPublishedCredits(entry.ExcelDataFile, board), hasKiCadFiles: files is { Count: > 0 }, kiCad);
             List<BoardStatusPanel> panels = BoardStatusPage.Panels(board, missing, calibrations, files, kiCad, problems.Problems, creditsToOffer, problems.Board);
 
             this.MissingForTests = missing;

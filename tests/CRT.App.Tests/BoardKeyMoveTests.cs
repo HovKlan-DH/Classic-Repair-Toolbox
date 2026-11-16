@@ -62,6 +62,7 @@ public sealed class BoardKeyMoveTests : IDisposable
         UserSettings.LoadFrom(path);
 
         UserSettings.MoveBoard(From, To);
+        UserSettings.Flush();
 
         UserSettingsData saved = JsonSerializer.Deserialize<UserSettingsData>(File.ReadAllText(path))!;
 

@@ -55,6 +55,33 @@ public sealed class ComponentRevertTests
     }
 
     // ###########################################################################################
+    // *** A SECTION WITH NOTHING OF THE COMPONENT IS THE DRAFT'S VERY LIST (2026-11-16, performance walkthrough). ***
+    // "Is this component changed?" puts it back and compares the boards after every change in the pane; copies of
+    // every section had the differ compare them all. Shared, the differ passes them over (the same list is the same
+    // rows) - and the answers stay what they were.
+    // ###########################################################################################
+    [Fact]
+    public void A_section_holding_nothing_of_the_component_is_the_drafts_very_list()
+    {
+        BoardData published = Board(Component("U1", "VIC"), Component("U8", "CPU"));
+        published.ComponentLinks.Add(new ComponentLinkEntry { BoardLabel = "U1", Name = "Datasheet", Url = "https://example.com" });
+
+        BoardData draft = Board(Component("U1", "VIC"), Component("U8", "6510"));
+        draft.ComponentLinks.Add(new ComponentLinkEntry { BoardLabel = "U1", Name = "Datasheet", Url = "https://example.com" });
+        draft.ComponentImages.Add(Picture("U1", "Top"));
+
+        BoardData reverted = ComponentRevert.ToPublished(draft, published, "U8");
+
+        Assert.Same(draft.ComponentLinks, reverted.ComponentLinks);
+        Assert.Same(draft.ComponentImages, reverted.ComponentImages);
+        Assert.NotSame(draft.Components, reverted.Components);
+
+        Assert.True(ComponentRevert.HasChanges(draft, published, "U8"));
+        Assert.False(ComponentRevert.HasChanges(reverted, published, "U8"));
+        Assert.True(ComponentRevert.HasChanges(draft, published, "U1"));
+    }
+
+    // ###########################################################################################
     // *** ITS ROWS ONLY PUT IN ANOTHER ORDER (code review, 2026-11-02). *** Order is a change
     // (BoardRowOrder), which Submit and "Review changes" counted - while the component read as unchanged:
     // no "Draft", no "Undo changes to", and that undo, asked anyway, did nothing.

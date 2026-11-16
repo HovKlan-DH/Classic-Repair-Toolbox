@@ -172,7 +172,9 @@ namespace Handlers.DataHandling
         // field they need left empty. With KiCad data read, the board's components it does not have -
         // their traces cannot light up.
         // ###########################################################################################
-        public static BoardMissing Missing(BoardData board, bool hasKiCadFiles = false, BoardKiCadFacts? kiCad = null)
+        // `publishedCredits`: the board's credits as published, which need no "Main contribution" while they stand so (2026-11-14) -
+        // null leaves the main contribution unjudged.
+        public static BoardMissing Missing(BoardData board, PublishedCredits? publishedCredits, bool hasKiCadFiles = false, BoardKiCadFacts? kiCad = null)
         {
             ArgumentNullException.ThrowIfNull(board);
 
@@ -200,7 +202,7 @@ namespace Handlers.DataHandling
             // request, 2026-11-01: "These errors must be flagged in 'Board status'"). *** Each is an error
             // of the draft's (BoardRowRequired), its list's panel opening it where the empty boxes are marked.
             // ###########################################################################################
-            BoardRowsIncomplete incomplete = BoardRowRequired.Of(board);
+            BoardRowsIncomplete incomplete = BoardRowRequired.Of(board, publishedCredits);
 
             var gaps = new List<BoardGap>();
 

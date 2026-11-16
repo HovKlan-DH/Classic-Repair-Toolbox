@@ -11,6 +11,17 @@ every push of that version, so a section reworded later reaches the release with
 - Plain ASCII punctuation.
 -->
 
+# 11.0.0, 2026-November-15
+--------------------------
+- A board's credits carry what each contribution was and the date it was published
+- A new or changed credit must say what the contribution was, or the submission is refused - also when it is the same as a credit already published
+- A credit's date that cannot be read as a date is refused
+- A new or changed credit's "what" and "which part of it" are at most 60 characters, its name 50 and its contact 100
+- A new or changed credit's main contribution is at most 500 characters
+- The server dates each new credit as it is published; credits from before have no date
+- A new credit is always dated the day it is published, never with a date sent with it
+- The credits are kept with the undated first, then oldest first
+
 # 10.4.3, 2026-November-13
 --------------------------
 - The database driver and the Excel library are updated to their newest versions

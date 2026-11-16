@@ -57,6 +57,12 @@ namespace Handlers.DataHandling
         public static PublishedTreeView Empty { get; } = new(_ => null, _ => null);
 
         // ###########################################################################################
+        // The board's credits as published (2026-11-14) - which need no "Main contribution" while they stand as published
+        // (BoardRowRequired). None for a board the tree does not hold.
+        // ###########################################################################################
+        public PublishedCredits Credits { get; init; } = PublishedCredits.None;
+
+        // ###########################################################################################
         // The lowercase SHA-256 of the file published at this relative path, or null.
         // ###########################################################################################
         public string? HashOf(string relativePath)

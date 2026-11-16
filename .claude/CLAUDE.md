@@ -353,7 +353,11 @@ not go looking for more to extract there. Two traps worth knowing in extracted c
 
 - `UserSettings.LoadFrom(path)` - tests point it at a temp file. **Never call `UserSettings.Load()`.**
   `LoadFrom` on a MISSING file keeps the previous settings, so write `{}` first when a test needs a
-  clean slate.
+  clean slate. **The settings file is written a moment AFTER a change, off the UI thread** (`UserSettings.Save` ->
+  `DeferredTextFile`, `AppConfig.SettingsWriteDelay`; 2026-11-16, performance walkthrough - a board switch wrote it whole
+  one to four times on the UI thread): **a test reading the file calls `UserSettings.Flush()` first**. Every way out
+  flushes (Program.Main, ProcessExit, the fatal crash handlers, the update's restart) and so does `LoadFrom`; a new way
+  out of the process flushes too. A text the same as the one written last is not written.
 - `DataManager.LoadFrom(dataRoot, workbookName)` - **never call `DataManager.InitializeAsync()`.**
 - `Logger` writes nothing until `Logger.Initialize()` - **never call it from a test.** A test about the LEVEL a line is
   logged at reads it through `LoggedLines.Watch()` (CRT.App.Tests; `Logger.SeenForTests`), in a `using`.
@@ -650,7 +654,11 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
   tour share a headline (`TourCatalogueTests`). A tour waits while a tool of the schematic image is on (a picture tool,
   a worklog's area, "Draw trace"). A step may set the window up for itself (`TourStage` - the "Schematics" tour's
   panels shown expanded, owner request 2026-11-11), put back however the step is left and NEVER stored (the panels'
-  "...PanelExpanded" settings are not written). A step's body may mark bold pieces `<b>...</b>`. "Take the introduction tours again" (the "Configuration" tab) forgets them all.
+  "...PanelExpanded" settings are not written). A step's body may mark bold pieces `<b>...</b>`. "Take the introduction tours again" (the "Configuration" tab) forgets them all
+  **and leaves that tab shown** - the next tab picked starts its tour (owner request, 2026-11-14; the "Schematics" tab was
+  shown until then) - **a window saying so, "OK" its one button** (owner request, 2026-11-15; `ToursAgainWindow`, words
+  `TourWording.ToursAgainTitle`/`ToursAgainBody`, `Main.ToursAgainWindowOverrideForTests` in a test). **"Skip tour" (or Escape) skips EVERY tab's tour** (owner request, 2026-11-14: "skip the tour entirely, and
+  not continue for other tabs"; `Main.SkipEveryOtherTour` - each remembered as seen at the version it would show).
   Tours start only once `StartAsync` ran (`LetToursStartForTests` in a test), so no other test of `Main` meets one.
   **Kept in step with the UI two ways, as the Wiki is** (owner question, 2026-11-12: "Isn't Wiki a hook that never can be
   forgotten/missed, and should this also then be?"): **every bold name in a tour is the text of a control** of CRT's
@@ -702,7 +710,9 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
 
 ### Bootstrap (`Main/`)
 
-- `Main/Program.cs` - entry point; initialises Velopack, then Avalonia.
+- `Main/Program.cs` - entry point; initialises Velopack, then Avalonia - with room on the graphics card for a large
+  schematic image (`SkiaOptionsForCrt`, `AppConfig.GpuPictureBytes`; Avalonia's own is some 28 MB, one image about 50 MB
+  decoded) - and writes the settings and the log still waiting as it ends.
 - `Main/App.axaml.cs` - holds `AppConfig`, nearly every tunable value (file/folder names, URLs,
   timeouts, zoom limits, version helpers, the Wiki page names). **Check here before hardcoding a
   constant.** `App` wires theme application, global exception logging and the startup sequence:
@@ -913,6 +923,84 @@ there, and `await` on a finished task looped for ever on the UI thread. A tool f
   NONE OF IT** - nothing is published to differ from: no mark in either list, on the pane's header or a board part, no tint on the
   Schematics tab (`DataManager`'s summary is Empty with no published board) and no "Undo changes to", in the pane
   (`ComponentPane.IsComponentChanged`) or "Review changes" (`ReviewChangesAsync`).
+- **A CREDIT IS ALSO A STEP OF THE BOARD'S HISTORY: ITS "Main contribution" AND ITS "Date"** (owner request, 2026-11-14:
+  "two more columns ... we get a cronological order and a little more details on what has been done"; owner decisions, asked:
+  "New credits only", "Set by the server at publish", "Always kept in date order"; and 2026-11-15: "the existing credits should
+  actually have NO date at all - but all new credits must have it set"; every rule CRT.Data's - `CreditEntry`,
+  `CreditOrder`, `PublishedCredits`). The main contribution is a note with formatting (`[RichNoteMarkup]`, a NoteColumn),
+  **required on a credit the board has not published AS IT STANDS** (none published before had one, and a contributor fixing a
+  typo must not write them) - **AND EACH PUBLISHED CREDIT STANDS FOR ONE ROW** (owner report, 2026-11-15: the credit made for a
+  change came out the same as a published one, no main contribution, and was submitted so - asked by its values alone, it "stood
+  as published" too): which rows stand is said of the LIST, `PublishedCredits.Judged` (one-to-one, the first in the board's order;
+  BETA's and stable's together count a credit once), then `BoardRowRequired.EmptyColumns(row, needsContribution)` and
+  `CreditLimits.TooLong(row, judged)` per row - never `PublishedCredits.Has` alone, which says only that such values are
+  published; the pane's row needs it when sent (`IsNew`, one-to-one too) or changed. The checks take the published credits in
+  `BoardCheckRows.PublishedCredits` - the table its baseline's, a draft its published board file's
+  (`DraftStatusReader.PublishedCreditsOf`), the server BETA's and stable's at create and amend (`PublishedTreeView.Credits`) -
+  **null leaves it unjudged**, only the finalise (it has no view of the published board; the create judged the same rows).
+  **The date is the server's**: empty in a draft ("Dated when published"), and an empty date on the DRAFT side is no change
+  (`[SetWhenPublished]`, a sheet's `SetWhenPublishedColumns` - the differ and the table's cells; else a draft fully published
+  read "1 row changed" and never retired). **A credit from before the history has NO date, for good** - the conversion
+  leaves every credit as the workbook has it - **so an undated credit is either old or not published yet, and only the
+  PUBLISH can tell them apart**, against the published board (`CreditOrder.Dated`, in `PublishMerge.WithCreditsDated`): each
+  published credit answers for ONE credit sent - its very values first (category, sub-category, name, contact, main
+  contribution), then its category, sub-category and name - and a credit answered for keeps its published date, or its
+  having none; every other one is NEW and gets the day - **WHATEVER DATE IT WAS SENT WITH: a new credit cannot be back-dated**
+  (owner decision, 2026-11-16: "Should not be possible to back-date - new contributions, not seen before, must be set when board
+  maintainer pushes this to BETA and STABLE"; a promotion copies the date BETA's publish set), while a credit the board has keeps a
+  date sent with it - a maintainer's correction. The review shows a credit sent undated with the board's published
+  date, and a new one undated whatever it was sent with (`CreditOrder.WithPublishedDates`, in `PublishMerge.Build`); "Board:
+  Credits" says "Dated when published" of every one the published board has not (`CreditOrder.NotPublished`), a date typed in it
+  or not. **A credit's identity holds its main contribution when it has one**
+  (`BoardDraftNaturalKeys.ForCredit`): the same person - or "Unknown" - credited again for the same kind of work is a row of
+  its own. A date given that cannot be read is the error `credit.date_unreadable`. **Kept with the undated first, then oldest
+  first by day**, sorted by the server at every publish (`CreditOrder.Sorted`) - "Board: Credits" (no drag handle) keeps the
+  board's order, a credit added last, and the "About" tab shows them as the board holds them, each with its date and main
+  contribution, its text saying the list both credits and records the board's history. Server 11.0.0.
+- **THE CREDIT FOR A DRAFT'S WORK IS A ROW OF "Board: Credits", NEVER THE SUBMIT DIALOG'S** (owner request, 2026-11-15: "remove
+  it from this modal, and have this directly done in the "Board: Credits" data, so the user can see how it will show ... have it
+  mandatory ... as soon as the user does a modification for an existing board, then it will populate a new entry"; asked the same
+  day: "CRT's Submit only", a new board "Its starting rows", no name "Write "Unknown""; every rule CRT.Data's `SubmissionCredit`):
+  **the credits a draft SENDS are those the published board does not have** (`CreditOrder.NotPublished`, `SubmissionCredit.SentWith`)
+  - framed in green on "Board: Credits" with a strip saying so and that the maintainers may change it (`Border.MovableRow
+  .SentWithSubmission`, `SubmittedCredit_*` in both themes, by the row's `IsNew`). **The first change worth a credit adds ONE such row
+  IN THE SAME STEP** (`SubmissionCredit.Follow`, run by `DraftSession.Prepare` as `DraftSession.FollowUp` - set by `DraftSessions` on
+  every session it opens once handed `CreditIdentity`, which `DraftManager.Sessions` is: `UserSettings.CreditName`/`CreditContact`;
+  **judged against the board as PUBLISHED NOW** - the work and the credits sent alike, as Submit and the server judge a submission
+  (`DraftSessions.PublishedBoard`, `BoardToJudgeAgainst`; code reviews, 2026-11-16: against the draft's base, a credit an earlier
+  submission of the draft sent, published since, still counted as sent, and with only the credits judged against the board now,
+  that published work counted again at every edit) - the draft's BASE, `DraftSession.BaseBoard`, only when that cannot be read, so
+  a new board - neither - gets none; both read as the session opens, so an edit finds them kept): "What" and "Which part of it" the
+  kinds of work (`SubmissionCredit.Offer` - within `CreditLimits`, too many kinds being "Board data", too many parts ending ", ...";
+  a remembered name or contact past its limit left out, never cut),
+  no main contribution, which `BoardRowRequired` then holds Submit to. While its "What" and "Which part of it" are as written they
+  follow the work; with no work left a row nothing was written in goes; a credit of the contributor's own gets none beside it; the
+  edit that took the sent credits away adds none back. **One undo takes a change and its credit together**, and a change that did
+  more than its editor asked says so (`DraftSessionChange.FollowedUp`) - **the table builds itself again on its own edit then**
+  (`BoardTableEditor.DraftSession.cs`), or its "Credits" sheet missed the row. **Before Submit a credit taken away is put back as one
+  step** (`TabDrafts.EnsureCreditForChangesAsync`, `SubmissionCredit.Ensure`, `DraftStepWording.CreditForYourChanges`), and **once
+  the send is ACCEPTED** the sent credit's name and contact remembered - only of a published board's submission whose sent credits
+  all name ONE person, never "Unknown", never a new board's (`SubmissionCredit.ToRemember`, `RememberWhoIsCredited`; code review,
+  2026-11-16: nothing says which credit is the contributor's own, and the first one sent - a starting row crediting a scan's
+  author - became the next draft's credit). A published board that could not be read says nothing of which credits are sent:
+  none then make the summary (`SubmissionCredit.KnownSent`). Work that deserves no credit (`CreditSuggestions`:
+  the credits alone, the KiCad data, a calibration, an order) needs none. **The server does not ask for one** (owner decision) - a
+  maintainer's edit straight to BETA and an amendment need no credit row. **The Submit dialog asks for the address alone; "What did
+  you change?" is gone too** (owner request, 2026-11-15: "there is no need to ALSO specify the detailed changes in this field"): the
+  submission's summary - the queue, the maintainers' mail, the board's history, "My submissions" - is the sent credits' main
+  contributions in plain words, else the changes as "Your changes" says them (CRT.Data's `SubmissionSummaryText`, cut to the
+  server's `MaximumSummaryLength`; worked out by `TabDrafts.SubmitAsync`, handed to `SubmitDraftWindow.Initialize`) - never empty,
+  or the server's `summary.missing` warning would ask for a sentence with no box for it. **ONE board per submit** (owner request,
+  2026-11-15) - the other drafts were offered to go with it from 2026-10-26 (slice 5) until then; `SubmitDraftWindow.OtherDrafts.cs`,
+  `TabDrafts.SubmitOthers.cs`, `SubmitDraftsWording` and the dialog's credit (`CreditSuggestions.OneFor`, `AddCreditsFirstAsync`) are
+  in git history.
+- **A CREDIT'S SHORT FIELDS ARE ONE LINE** (owner request, 2026-11-15: "this should be a one-liner only"; asked: 60 / 60 / 50 / 100;
+  CRT.Data's `CreditLimits`): "What" and "Which part of it" at most 60 characters, "Name or handle" 50, "Contact" 100 (eight
+  published contacts are web addresses of 57-60), trimmed - on a credit not published as it stands, as its main contribution. The
+  error `credit.too_long` on the cell in both scopes, so the server refuses it (server 11.0.0); the pane's boxes take no more
+  (`MaxLength="{x:Static data:CreditLimits...}"`). **The main contribution at most 500 characters of its words** (owner decision,
+  2026-11-16: "Shouldn't this be enough to state the most important things? ... let us start with this"; `CreditLimits.MainContribution`,
+  counted by `RichNote.PlainOf` - formatting marks are no characters), the same error and rule.
 - **A NEW BOARD'S CREDITS START WITH THEIR ROWS** (owner request, 2026-11-02; CRT.Data's `NewBoardCredits`,
   `TabDrafts.NewBoardCredits.cs`): one per schematic image, "Board data", "Oscilloscope baseline" per region - to be filled in
   or deleted. Nobody named is an error on purpose (`BoardRowRequired`), so Submit waits. Offered as "Board: Credits" opens, as
@@ -1254,7 +1342,8 @@ there, and `await` on a finished task looped for ever on the UI thread. A tool f
   slice 4b; KiCad data opens a panel of its own there (below). Each list is ONE step when changed
   (`BoardPartEdits`, replaced as a whole); **a list is shown and written in the board's OWN order** -
   grouped by category until 2026-10-30 - so the board's list as the pane shows it is the SAME board,
-  and opening and leaving a part changes nothing. **A file, a link, a credit or an important signal
+  and opening and leaving a part changes nothing. **A file, a link or an important signal (a credit
+  until 2026-11-14 - the credits are kept in date order since, below)
   MOVES up or down past ANY row, whatever its category** (owner requests, 2026-10-29 and 2026-10-30:
   "the entire line moving up/down, and not only within its own category ... I also want to be able to
   rearrange the categories") - **DRAGGED by its handle**, Font Awesome's up-down (U+F338) at the row's
@@ -1281,7 +1370,8 @@ there, and `await` on a finished task looped for ever on the UI thread. A tool f
   typing (`ComponentPaneBoardLinkRow.OfferedCategory`; code review, 2026-11-01). Until 2026-11-01 the pane held such a row
   back with a line under it - so nothing but the pane knew - and the table DROPPED an important signal
   missing a half on save (a warning, "left out when saving"); **no mapper drops a row now**
-  (`BoardWorkbookSchemaTests`). `BoardPartRequired` only names the fields by the pane's headings. "Add
+  (`BoardWorkbookSchemaTests`). `BoardPartRequired` only makes a new file's row (it named the fields by the pane's headings
+  too, `EmptyOf`, which nothing but its tests ever called - deleted 2026-11-15). "Add
   file" fills every field - the last row's category, else "Resources" (`BoardPartRequired.NewFile`).
   **A LINK'S ADDRESS SUBMIT WOULD REFUSE IS MARKED THE SAME WAY** (code review, 2026-11-01:
   `BoardDataChecks.IsRefusedLink`, the rule of the error `link.not_web`, on a board's links and a
@@ -1500,13 +1590,12 @@ there, and `await` on a finished task looped for ever on the UI thread. A tool f
   now"): a credit name and contact are REMEMBERED (`UserSettings.CreditName`/`CreditContact`, set
   together by `RememberCreditIdentity` - a blank name changes nothing; NEVER the contact email, since
   credits are shown to everybody). **The Credits part has no "Add me"** (owner decision, 2026-10-29:
-  "Remove the button entirely - there is already the 'Add credit' button") - the name is remembered by
-  the Submit dialog's credits below, and used there and by "Submit this model". **The Submit dialog offers a credit for the
-  work sent, BEFORE sending** (`CreditSuggestions.For` - the draft against the published board, each
-  kind of change its category in the board's own spelling; `SubmitDraftWindow.AddCreditsFirstAsync`):
-  ticked ones go into the draft as one "Credits" step and are saved, and the board and fingerprint
-  sent are read again (`TabDrafts.AddCreditsToDraftAsync`) - a credit added after sending would need
-  a submission of its own. A draft that cannot take them sends nothing (`CreditsNotAdded`).
+  "Remove the button entirely - there is already the 'Add credit' button") - the name is remembered at
+  Submit from the credit sent (`TabDrafts.RememberWhoIsCredited`), and used for the credit a draft's first change
+  makes and by "Submit this model". **The credit for the work sent is a row of "Board: Credits" since 2026-11-15**
+  (the Submit dialog offered it from 2026-10-26 until then - see "THE CREDIT FOR A DRAFT'S WORK" above;
+  `CreditSuggestions.For` still says what the work is, each kind of change its category in the board's own
+  spelling). A credit naming "Unknown" (no credit wanted) remembers nothing.
 
 - **THE DRAFT'S ERRORS AND WARNINGS STAND WHERE THEY ARE** (owner request, 2026-11-04: "move the error and warning badges to where the
   problem is. E.g. if there are errors in 'Component: Basics' then there should be a badge there ... and then those errors and warnings should be
@@ -1555,7 +1644,9 @@ there, and `await` on a finished task looped for ever on the UI thread. A tool f
   what is open on it, as that restart can still fail (`LetGoOfUntouchedDraftBeforeRestart`).
 - **ORDER IS A CHANGE** (owner decision, 2026-10-30: "a change of (any) order should also be submitted as
   a change"; CRT.Data's `BoardRowOrder` - the lists of `ReviewSummary.AllSections` but the component
-  highlights, whose order nobody sees; only rows BOTH boards have are compared). It is counted BESIDE
+  highlights, whose order nobody sees, and the credits, whose order the server keeps by date at every publish -
+  so their table rows cannot be moved either, `BoardTableSheet.RowsCanBeMoved` (code review, 2026-11-16); only
+  rows BOTH boards have are compared). It is counted BESIDE
   `BoardDataDiffer`, which still counts rows (a moved row is none added, changed or removed - the table
   colours none). **Component images are compared as a board file holds them, the pictures first and the
   scope baselines after them, each kind among its own** (`AsAFileHolds`; code review, 2026-11-01: a
@@ -1950,19 +2041,9 @@ The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainer
   its cache (an image renamed for a board not selected in the drop-down lists went to the queue
   under its OLD name, 2026-10-11) and answers the PUBLISHED board under "view boards as officially
   published". `TabDraftsSubmitBoardTests`.
-- **Several drafts in one submit** (slice 5, 2026-10-26; `SubmitDraftWindow.OtherDrafts.cs`,
-  `TabDrafts.SubmitOthers.cs`, words `SubmitDraftsWording`): the Submit dialog lists the OTHER drafts
-  "My drafts" holds, UNTICKED, each greyed out with its row's reason (nothing in it, already sent,
-  errors). Each one ticked is sent AFTER the board's own, as a submission of its OWN (the server and a
-  maintainer take one board at a time - no server change), with the same address and message. It is
-  made ready only once Submit is pressed (`PrepareOtherDraftAsync`: its session saved, the same checks
-  as its own Submit, a draft with errors NOT sent - no table can open from inside the dialog - and
-  credited under the name typed, for its own work). One that cannot go is said by name and never
-  stops the rest; several boards' outcome lists each. Nothing ticked: the dialog is as it always was.
-  **The other drafts are credited only while "Credit me on the other drafts I tick too" is ticked**
-  (`CreditOthersCheckBox`; unticking every credit of this board unticks it - code review, 2026-10-26),
-  and **a credit put into a draft before a send that then failed is SAID** - the draft is not
-  "unchanged" (`SubmitDraftWindow.NoConnectionMessage(credited)`, `SubmitDraftsWording.Intro`).
+- **One board per submit** (owner request, 2026-11-15 - above, "THE CREDIT FOR A DRAFT'S WORK";
+  `SubmitDraftWindow.Sending.cs`): **the dialog changes nothing in the draft**, so a send that failed says the
+  draft is unchanged (`SubmitDraftWindow.NoConnectionMessage`) - its credit is a row the draft already holds.
 - **A submission the server no longer knows reads "No longer on the server"** (404 after a board
   deletion or the data reset; `SubmissionReceipt.NotFoundUtc`): neutral colour, never blocks Submit,
   no BETA try, not reported on a discard.
@@ -2047,7 +2128,12 @@ The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainer
   the panel's move from a window dropped it, code review 2026-11-01), so a change that cannot be saved
   is asked about once, not behind every click.
 - **Each draft's row counts problems too** (`DraftStatusReader.CountProblemsCached`), and the list is
-  read again when the tab is shown or CRT's window is activated - when an Excel edit arrives.
+  read again when the tab is shown or CRT's window is activated - when an Excel edit arrives. **Read after every save, so
+  it reads each board file ONCE a refresh** (`DraftStatusReader.OnePass`, around the rows' reading only) **and keeps each
+  draft's file lookup from one check to the next** (`DiskFileLookup.ForgetWhatTheListMoved` - only a name its board file
+  now lists with other bytes is looked for again; 2026-11-16, performance walkthrough: thousands of stat calls and three
+  or four parses of the draft just written, on the UI thread, at every autosave). A file taken away by hand is seen by a
+  new lookup - the table opening, Submit.
   **That read keeps every unchanged row** (`TabDrafts.KeepUnchangedRows` - `InPlaceList.KeepUnchanged` -
   and `DraftListItem.ShowsTheSameAs`)
   - never Clear and rebuild: a click INTO CRT activates it between the press and the release, and a
@@ -2066,9 +2152,10 @@ The folder also holds that flow's dialogs (`NewBoardWindow`, `NewBoardMaintainer
   **A receipt names its board by ID; the drafts flow is keyed by WORKBOOK path** -
   `DraftStatusReader.ResolveForBoard` maps one to the other. A new board's draft is retired once its
   published board is on the machine. A user on the BETA source is told once, when their work reaches
-  stable, to switch back (`Main.SourceSwitchNotice.cs`). **Nothing is retired while CRT talks to the
-  test instance** (`ContributionServer.RetiresPublishedDrafts`; code review, 2026-10-25): its stable
-  data never reaches the live data, so the draft is the work's only lasting copy.
+  stable, to switch back (`Main.SourceSwitchNotice.cs`). **A pre-release retires against the test
+  instance's stable data too** (owner decision, 2026-11-14: "Retire on test server too" - from 2026-10-25
+  it kept every such draft as the work's only lasting copy, and a draft fully published there stayed on
+  screen as "0 rows changed"; the Submit dialog's test-server note no longer says the draft is kept).
 
 #### The board table editor (`Controls/BoardTable/`, shown by the Contribute and Maintainer tabs)
 
@@ -2355,10 +2442,14 @@ repair on one board; it holds worklogs.
   `Handlers/Theme/WorklogInfoPillBuilder.cs` (1px border in its own colour). Do not draw one by hand.
   A counted pill drops its icon. A "#N" badge's fill is the CATEGORY colour and its padlock the STATE
   colour.
-- **Schematic bitmaps are shared per attachment** and disposed in `OnDetachedFromVisualTree` - which a
-  `TabControl` calls on every tab SWITCH. Detach clears the pane FIRST, then disposes; attach rebuilds.
-  Anything new rendering one of these bitmaps must be cleared alongside. Disposing under an open editor
-  crashes the render thread.
+- **The board pane's schematic images are `SchematicPreviewPictures`'** (2026-11-16, performance walkthrough - each
+  was decoded full size on the UI thread, three or four times a board switch): decoded off the UI thread at most
+  `SchematicPreviewPictures.Width` wide, their own size from the header (the worklog editor maps areas by it -
+  `Initialize(..., schematicPixelSize)`), kept by path and stamp, and **never disposed by the tab or the editor** - a
+  picture still drawn takes the render thread down. Detach only clears the pane. **The tab's cards and pane are built
+  only while it is SHOWN** (`TabWorkbooks.IsShown`; Main calls `RefreshWorkbooksIfShown`/`RefreshBoardPreviewsIfShown`),
+  its attach building them; a test of the tab's cards shows the tab first. The Overview and Resources tabs too wait to
+  be shown (`TabOverview.BuildRowsWhenShown`, `Main.ShowResourcesWanted`).
 - **Storage: one folder per workbook (`workbook_{id}/`), one per worklog inside it (`worklog_{id}/`),
   each holding its own `index.json`.** **A deleted id is never handed out again** - workbook ids (the
   root's own `index.json`) and worklog ids (`WorkbookRecord.LastWorklogId`) - because ids name
@@ -2627,6 +2718,17 @@ platform keeps no pixels, so a test hands the border over (`ShowImageForTests`).
 | `TabSchematics.Settings.cs` | Board-level and global setting rows |
 | `TabSchematics.PictureTools.cs` | "Mark components"/"Align KiCad" asked for from the Contribute tab, and their bar (Done/Cancel) |
 | `TabSchematics.ViewTools.cs` | Panning with the right OR middle button (`TryBeginPan`, every mode) and the one-time tip saying so; "Draw trace" |
+| `TabSchematics.PictureReads.cs` | The schematic images read off the UI thread, the last `PicturesKept` (3) kept (`PictureReads`) |
+
+**The schematic image shown is read through `PictureReads`** (2026-11-16, performance walkthrough - it was decoded only after
+every thumbnail, twice, and never kept): Main starts the read in the board load's pool pass (`StartReadingPicture`), the
+thumbnail stands in until it is there, and going back to a board just shown decodes nothing. **`PictureReads` owns the
+bitmaps** - it disposes one only once it is neither shown nor among the last kept, on the UI thread; nothing else disposes
+them. **The KiCad overlay is drawn again only when what it shows changes**: the hovered net names compared before anything
+is redone (`SetHoveredKiCadNet`), the hovered component's references part of each NET's look only where they meet it
+(`KiCadOverlayCacheKeys.ActiveReferencesOnNet`), never of the whole overlay's generation; and a KiCad calibration is read
+from the board file once per stamp (`BoardComponentHighlightStorage.BoardFileCalibrations` - every pointer move re-read the
+whole board file).
 
 **The view's small tools** (CRT 4.0 step 5's slice 5a, 2026-10-29): **traces are drawn and changed
 ONLY while "Draw trace" is on** (the plan: "Traces are drawn only with Draw trace") - off, a press on
@@ -2661,6 +2763,14 @@ button's popover from step 5 until then), its "Collapse" remembered (`schematics
 while a row is - every row is a KiCad one. **The three panels - "Global settings", "Labels visible", "Important KiCad signals" -
 collapse and expand by a left press on their headline and the room around it too** (owner request, 2026-11-06; `OnPanelHeaderPressed`,
 the header's border taking the panel's padding back); a press on the button is the button's, never a second toggle.
+
+**Enter turns "Blink selected" on and off on the "Schematics" tab** (owner request, 2026-11-14 - CRT 2.x's key, never carried
+over; `Main.KeyIsForBlink`, the window's tunnel key handler): from the filter, the lists or the schematic image - never from
+another text box, a button or a drop-down, nor while a picture tool, "Align KiCad" or a worklog's area is on. **The data
+check's icon itself turns while a check runs** (owner request, 2026-11-14; a dashed circle stood 2px right of and 4px below it
+until then): its TextBlock takes its glyph's size - arrows-rotate fills its em box exactly (`FontAwesomeAssetTests`) - and turns
+about its centre (`Main.DataSyncStatusIconSpinAngle`). **The "KiCad nets" panel is as wide as its widest line** (owner report,
+2026-11-14: a MaxWidth of 250 cut "Connected to:" lines off).
 
 #### Maintainer (`Tabs/Maintainer/`, logic in `Handlers/Maintainer/`)
 
@@ -2809,6 +2919,13 @@ in CRT.App (Avalonia types, 21 call sites).
 
 - **`BoardWorkbookSchema.AllSheets` is the order of every workbook written, ending in "Credits"** (the
   table's tabs have their own: `BoardTableTabs`). Readers find sheets by name.
+- **NOTHING CHANGES A `BoardData` IT WAS GIVEN - AND SINCE 2026-11-16 THE SPEED RESTS ON IT** (performance walkthrough): an
+  edit replaces only the sections it changes, the others the very lists they were, and the same list is taken as the same
+  rows - `BoardDataDiffer` compares no section that is one list on both sides, `BoardTableDocument.HasSameRows` builds none,
+  `ComponentRevert.ToPublished` hands back the draft's own list for a section with nothing of the component, and
+  `CreditSuggestions` keeps each list's sorted keys while the list lives (worked out again only when its length moved). A
+  list changed in place after a board was handed over would be read as unchanged: make a new list, never `Add` to a board
+  someone else holds.
 - **`BoardDataReader`'s cache answers only while the workbook AND its JSON sidecar are as they were
   read** (length + write time, `BoardDataReader.StampOf`; owner report 2026-10-11) - a write by
   anything (CRT, Excel, the sync) is a new read. The `ClearBoardCache` calls stay, but nothing may
@@ -2866,7 +2983,14 @@ service to the 4.0 trees"). CRT reads a main file only at or below its own versi
   as it was (a new folder is seeded from the install package; `DataManager.FindLegacyDataRoot` lets a
   hand-placed Excel-era draft find 3.x's shared files while it is converted). The manifest is
   `app-data-v4`'s. The launch syncs the main file, then the listed board files; everything else (the
-  store, the MiniPro tests) syncs in the background (`DataManager.IsListFile`). The orphan cleanup maps
+  store, the MiniPro tests) syncs in the background (`DataManager.IsListFile`). **A board unchecked under
+  "Visible hardware, boards and schematics" - or its hardware - is not downloaded** (owner request,
+  2026-11-14; `DataSyncScope`): neither its board file nor the stored files only it names (the checked
+  boards' and the drafts' are; one that cannot be read, and every stored file comes); what it has here
+  already stays, not brought up to date. **Checked again with its data missing or behind, Main's
+  "data needed" card says so** with "Check for new data" (`Main.DataNeededNotice.cs`,
+  `DataManager.BoardsWithoutData`; behind is what the last check found comparing, never downloading -
+  `OnlineServices.FilesNotCurrentAsync`). With nothing unchecked a check is as it always was. The orphan cleanup maps
   the main file, its boards and the stored files they name, and **the stored files any draft lists**
   (2026-11-02: a draft keeps a published file by checksum and holds none of its bytes) - and fails closed
   as before, on a draft's board file too.
@@ -2889,7 +3013,19 @@ service to the 4.0 trees"). CRT reads a main file only at or below its own versi
   board file (pass the board identity), then an Excel-era data-root path. Every caller that opens what
   it finds passes the ROOT it was found under to `ExternalTargetLauncher` (the Resources tab too).
 - **KiCad files are copied under their names** into a cache (`BoardKiCadFolder`,
-  `AppConfig.KiCadCacheFolder`) - a project's sheets name each other. A board shown with a draft reads
+  `AppConfig.KiCadCacheFolder`) - a project's sheets name each other. **A copy is named by WHAT IT HOLDS**
+  ("v2-" and a checksum of the names and bytes, `FolderNameOf`; 2026-11-16, performance walkthrough - by the board
+  file's path until then), so a board and its draft share one copy and `KiCadProjectLoader` one parse; other bytes
+  are another folder. **A copy goes as soon as no board's KiCad files are what it holds** (owner request, 2026-11-16:
+  "a temporary file should be deleted when it is not used anymore" - one nothing had used for 14 days went until then):
+  which board file holds which copy is kept beside them (`BoardKiCadFolder.OwnersFileName`); a board file whose KiCad
+  files change lets go of its copy at once unless another holds it, a discarded draft too (`LetGoOf`, from
+  `DraftManager.DiscardDraft`), and `Sweep`, in the background after launch (`Main.SweepKiCadCopiesSoon`), lets go of
+  every board file gone or changed since and takes away every copy nobody holds, and the path-named ones. So the cache
+  holds one copy of each board looked at, as it now is - kept between runs, as copying a large board's again at every
+  launch takes seconds. **The test processes copy into a folder of their own**
+  (`AppConfig.KiCadCacheFolderForTests`, set as each App test assembly loads by `CRT.App.Tests/Shared/TestKiCadCache.cs`)
+  - the suite had left some 26,000 folders, a gigabyte, in the real cache. A board shown with a draft reads
   only the draft's (the draft lists the published ones too). The "KiCad data" window's "imported"
   files are the draft's own (`BoardKiCadFolder.ImportedNames`); Remove takes a name off the draft's
   list (`DraftWorkbookStore.RemoveFiles`) - **or, for a name the published board has, puts the

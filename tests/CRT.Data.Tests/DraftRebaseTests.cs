@@ -73,6 +73,29 @@ public sealed class DraftRebaseTests
         Assert.Equal("6526A", Assert.Single(result.Board.ComponentReplacements).PartNumber);
     }
 
+    // ###########################################################################################
+    // *** A date given on an undated credit is the contributor's change, and is kept (code review, 2026-11-16). *** An empty
+    // date on the DRAFT'S side is no change - the server sets it - and the draft's row was passed on the wrong side: the date
+    // typed read as left alone, and bringing the draft up to date dropped it without a word.
+    // ###########################################################################################
+    [Fact]
+    public void A_date_given_on_an_undated_credit_is_kept_by_bringing_the_draft_up_to_date()
+    {
+        BoardData based = Board([Component("U8")]);
+        based.Credits.Add(new CreditEntry { Category = "Board data", NameOrHandle = "Bo" });
+
+        BoardData draft = Board([Component("U8")]);
+        draft.Credits.Add(new CreditEntry { Category = "Board data", NameOrHandle = "Bo", Date = "2020-January-1" });
+
+        BoardData published = Board([Component("U8"), Component("U9")], revision: "2026-10-01");
+        published.Credits.Add(new CreditEntry { Category = "Board data", NameOrHandle = "Bo" });
+
+        DraftRebaseResult result = Merge(based, draft, published);
+
+        Assert.Equal("2020-January-1", Assert.Single(result.Board.Credits).Date);
+        Assert.Equal(["U8", "U9"], Labels(result.Board));
+    }
+
     [Fact]
     public void A_stale_draft_with_one_change_keeps_everything_published_since()
     {

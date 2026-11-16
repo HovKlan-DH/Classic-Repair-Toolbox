@@ -280,6 +280,15 @@ namespace Handlers.DataHandling
             [JsonPropertyName("subCategory")] public string SubCategory { get; set; } = string.Empty;
             [JsonPropertyName("nameOrHandle")] public string NameOrHandle { get; set; } = string.Empty;
             [JsonPropertyName("contact")] public string Contact { get; set; } = string.Empty;
+
+            // What the contribution was (2026-11-14), a note with formatting - written only when filled.
+            [JsonPropertyName("mainContribution"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+            public string? MainContribution { get; set; }
+
+            // When it was published, "2026-November-14" - the server's (2026-11-14), written only when filled.
+            [JsonPropertyName("date"), JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+            public string? Date { get; set; }
+
             [JsonExtensionData] public Dictionary<string, JsonElement>? Unknown { get; set; }
         }
 

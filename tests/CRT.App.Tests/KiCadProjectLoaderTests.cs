@@ -92,6 +92,43 @@ public sealed class KiCadProjectLoaderTests : IDisposable
         Assert.Single(later!.Root.Pcb);
     }
 
+    // ###########################################################################################
+    // TWO ASKING AT ONCE SHARE ONE PARSE (2026-11-16, performance walkthrough): the "Schematics" tab and the "Contribute"
+    // tab's readers each parsed the whole project when they asked before the first parse was cached.
+    // ###########################################################################################
+    [Fact]
+    public async Task Two_asking_at_once_share_one_parse()
+    {
+        string pcb = this.WritePcb(name: "shared.kicad_pcb");
+        int before = KiCadProjectLoader.LoadsStartedForTests;
+
+        Task<KiCadProjectBundle?> first = LoadAsync(pcb);
+        Task<KiCadProjectBundle?> second = LoadAsync(pcb);
+
+        Assert.Same(await first, await second);
+        Assert.NotNull(await first);
+        Assert.Equal(before + 1, KiCadProjectLoader.LoadsStartedForTests);
+    }
+
+    // One asker giving up - its board switched away from - leaves the parse to whoever still waits for it.
+    [Fact]
+    public async Task One_asker_giving_up_leaves_the_parse_to_the_other()
+    {
+        string pcb = this.WritePcb(name: "kept.kicad_pcb");
+        using var givingUp = new CancellationTokenSource();
+
+        Task<KiCadProjectBundle?> leaving = KiCadProjectLoader.LoadRawAsync([pcb], cancellationToken: givingUp.Token);
+        Task<KiCadProjectBundle?> staying = LoadAsync(pcb);
+        givingUp.Cancel();
+
+        KiCadProjectBundle? left = await leaving;
+        KiCadProjectBundle? stayed = await staying;
+
+        Assert.NotNull(stayed);
+        Assert.Single(stayed!.Root.Pcb);
+        Assert.True(left is null || ReferenceEquals(left, stayed));
+    }
+
     [Fact]
     public async Task Editing_a_file_invalidates_the_cache()
     {

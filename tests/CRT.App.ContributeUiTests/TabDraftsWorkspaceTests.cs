@@ -1615,6 +1615,11 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             await tab.OpenKiCadAsync();
             Assert.True(tab.IsKiCadOpen);
 
+            // Its KiCad data read off the UI thread first: Windows refuses to delete a file a read still holds open, which the
+            // full suite's load showed (2026-11-16 - "board.json ... being used by another process").
+            Dispatcher.UIThread.RunJobs();
+            await tab.KiCadPanelForTests!.LastKiCadReadForTests;
+
             DraftManager.Sessions.Close(DraftManager.DraftsRoot, BoardA);
             Directory.Delete(DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, BoardA), recursive: true);
             tab.RefreshDrafts();
@@ -2072,36 +2077,67 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
     }
 
     // ###########################################################################################
-    // The credits ticked in the Submit dialog (2026-10-26) go into the draft as ONE step and are
-    // saved - and the board then handed back, the one a submit sends, carries them, with the draft's
-    // fingerprint as it now is.
+    // *** THE CREDIT FOR THE WORK IS BACK BEFORE SUBMIT (owner request, 2026-11-15: "have it mandatory, that the contributor
+    // has created a new line in the "Board: Credits" with the changes done by the user"). *** A published board's draft with
+    // changes and no credit sent gets it as ONE step, under the name and contact CRT remembers - and nothing more once it has one.
     // ###########################################################################################
     [Fact]
-    public async Task Credits_from_the_Submit_dialog_go_into_the_draft_and_the_board_sent_carries_them()
+    public async Task Before_Submit_the_credit_for_the_work_is_put_back_as_one_step()
     {
-        WriteDraft(BoardA, Board());
+        BoardData published = Board();
+        WriteDraft(BoardA, published.WithComponentSections(components: [.. published.Components.Select(component =>
+            component.BoardLabel == "U8" ? new ComponentEntry { BoardLabel = "U8", Category = "IC", FriendlyName = "CPU 6510" } : component)]));
+        DraftBaseStore.SaveDocument(DraftManager.DraftsRoot, BoardA, BoardDocumentMapping.ToDocument(new BoardContent(published, [], []), name => name, []));
 
-        await UiTest.RunAsync(async () =>
+        UserSettings.LoadFrom(this.thisWorkspace.WriteFile("settings.json", "{}"));
+        UserSettings.RememberCreditIdentity("Anna", "RHD");
+
+        try
         {
-            HardwareBoardEntry entry = Entry("250407", BoardA);
-            TabDrafts tab = Tab(entry);
-            DraftStatus status = DraftStatusReader.Resolve(this.thisWorkspace.Root, DraftManager.DraftsRoot, BoardA)!;
-            string before = DraftFingerprint.Compute(status.WorkbookPath, DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, BoardA));
+            await UiTest.RunAsync(async () =>
+            {
+                HardwareBoardEntry entry = Entry("250407", BoardA);
+                TabDrafts tab = Tab(entry);
 
-            (BoardData Board, string Fingerprint)? added = await tab.AddCreditsToDraftAsync(
-                entry,
-                status,
-                [new CreditEntry { Category = "Board data", NameOrHandle = "Bo", Contact = "RHD" }]);
+                await tab.EnsureCreditForChangesAsync(entry);
 
-            Assert.NotNull(added);
-            Assert.Contains(added!.Value.Board.Credits, credit => credit.NameOrHandle == "Bo" && credit.Category == "Board data");
-            Assert.NotEqual(before, added.Value.Fingerprint);
+                DraftSession session = DraftManager.Sessions.Find(DraftManager.DraftsRoot, BoardA)!;
+                CreditEntry credit = Assert.Single(session.Content.Board.Credits);
+                Assert.Equal((CreditSuggestions.BoardData, "Anna", "RHD", string.Empty), (credit.Category, credit.NameOrHandle, credit.Contact, credit.MainContribution));
+                Assert.Equal(DraftStepWording.CreditForYourChanges, session.UndoDescription);
 
-            DraftSession session = DraftManager.Sessions.Find(DraftManager.DraftsRoot, BoardA)!;
-            Assert.Equal("Credits", session.UndoDescription);
-            Assert.False(session.HasUnsavedChanges);
-        });
+                // Once there, it is left alone.
+                await tab.EnsureCreditForChangesAsync(entry);
+                Assert.Single(session.Content.Board.Credits);
+            });
+        }
+        finally
+        {
+            UserSettings.LoadFrom(this.thisWorkspace.WriteFile("settings-after.json", "{}"));
+        }
     }
+
+    // The name and contact of the credit sent are remembered for the next draft's credit - never "Unknown", a credit to nobody.
+    [Fact]
+    public void The_name_of_the_credit_sent_is_remembered_but_never_Unknown()
+    {
+        UserSettings.LoadFrom(this.thisWorkspace.WriteFile("settings.json", "{}"));
+
+        try
+        {
+            TabDrafts.RememberWhoIsCredited([new CreditEntry { Category = "Board data", NameOrHandle = "Anna", Contact = "RHD" }]);
+            Assert.Equal(("Anna", "RHD"), (UserSettings.CreditName, UserSettings.CreditContact));
+
+            TabDrafts.RememberWhoIsCredited([new CreditEntry { Category = "Board data", NameOrHandle = "unknown" }]);
+            TabDrafts.RememberWhoIsCredited([]);
+            Assert.Equal(("Anna", "RHD"), (UserSettings.CreditName, UserSettings.CreditContact));
+        }
+        finally
+        {
+            UserSettings.LoadFrom(this.thisWorkspace.WriteFile("settings-after.json", "{}"));
+        }
+    }
+
 
     // ###########################################################################################
     // "Clone component from another board" offers only the OTHER published boards - never the one the
@@ -2297,64 +2333,6 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             Dispatcher.UIThread.RunJobs();
 
             Assert.Equal("VSS", Assert.Single(tab.ComponentPaneForTests.KiCadPinsForTests).Name);
-        });
-    }
-
-    // ###########################################################################################
-    // Several drafts in one submit (slice 5): the Submit dialog is offered every OTHER draft, and one
-    // ticked is made ready as its own Submit would - a change held only in memory saved into its file
-    // first, the credit typed put in for its own work - while one with errors is not sent and says so.
-    // ###########################################################################################
-    [Fact]
-    public async Task Another_draft_is_offered_and_made_ready_to_send_with_the_credit_typed()
-    {
-        const string BoardC = "Commodore/C64/250469/board.json";
-
-        WriteDraft(BoardA, Board());
-        WriteDraft(BoardB, new BoardData { Components = [new ComponentEntry { BoardLabel = "U7", Category = "IC", FriendlyName = "CPU" }] });
-        WriteDraft(BoardC, new BoardData
-        {
-            Schematics = [new BoardSchematicEntry { SchematicName = "" }],
-            Components = [new ComponentEntry { BoardLabel = "U1", Category = "IC", FriendlyName = "CPU" }],
-        });
-
-        await UiTest.RunAsync(async () =>
-        {
-            HardwareBoardEntry a = Entry("250407", BoardA);
-            HardwareBoardEntry b = Entry("250425", BoardB);
-            HardwareBoardEntry c = Entry("250469", BoardC);
-            TabDrafts tab = Tab(a, b, c);
-
-            IReadOnlyList<OtherDraftOffer> offers = tab.OtherDraftOffers(a);
-            Assert.Equal([BoardB, BoardC], offers.Select(offer => offer.Entry.ExcelDataFile));
-            Assert.Null(offers[0].NotOffered);
-            Assert.EndsWith("to fix first", offers[1].NotOffered, StringComparison.Ordinal);
-
-            // A change held only in memory, its save not made yet.
-            DraftSession session = DraftManager.Sessions.Get(DraftManager.DraftsRoot, BoardB)!;
-            Assert.True(session.Apply("Links", content => content with { Board = BoardPartEdits.WithBoardLinks(content.Board, [new BoardLinkEntry { Category = "Forums", Name = "Forum", Url = "https://example.org" }]) }));
-            Assert.True(session.HasUnsavedChanges);
-
-            OtherDraftReady ready = await tab.PrepareOtherDraftAsync(b, "Bo", "RHD");
-
-            SubmitDraftTarget target = Assert.IsType<SubmitDraftTarget>(ready.Target);
-            Assert.Equal(b.ToString(), target.DisplayName);
-            Assert.Equal("Commodore/C64/250425", target.Identity.BoardId);
-            Assert.Equal("Forum", Assert.Single(target.Board.BoardLinks).Name);
-            Assert.Contains(target.Board.Credits, credit => credit.NameOrHandle == "Bo" && credit.Contact == "RHD");
-            Assert.True(target.Credited);
-            Assert.False(session.HasUnsavedChanges);
-            Assert.NotEmpty(target.Fingerprint);
-
-            // Its errors cannot be shown from inside the dialog, so it is not sent.
-            OtherDraftReady withErrors = await tab.PrepareOtherDraftAsync(c, "Bo", "RHD");
-            Assert.Null(withErrors.Target);
-            Assert.EndsWith("to fix first", withErrors.Reason, StringComparison.Ordinal);
-
-            // No name typed: nothing more is credited.
-            OtherDraftReady uncredited = await tab.PrepareOtherDraftAsync(b, " ", "");
-            Assert.False(Assert.IsType<SubmitDraftTarget>(uncredited.Target).Credited);
-            Assert.Equal(target.Board.Credits.Count, uncredited.Target.Board.Credits.Count);
         });
     }
 

@@ -22,6 +22,70 @@ public sealed class InPlaceListTests
 
     private static List<string> Names(List<Item> items) => items.Select(item => item.Name).ToList();
 
+    private static void SyncKeyed(IList<Item> items, string[] wanted, Item? keep = null) =>
+        InPlaceList.Sync(items, wanted, (item, name) => item.Name == name, name => new Item(name), keep, item => item.Name, name => name);
+
+    // ###########################################################################################
+    // KEYED, THE SAME LIST AND THE SAME OBJECTS (2026-11-16, performance walkthrough): with a key per item, a list
+    // sharing nothing with what is wanted is emptied once and filled, and an entry no remaining item has is put in
+    // without being looked for - another board's components were each looked for in every row and put in at the top
+    // one by one. Random lists of a few names, many times over: keyed and not keyed end alike, item for item.
+    // ###########################################################################################
+    [Fact]
+    public void Keyed_or_not_the_list_ends_the_same_keeping_the_same_objects()
+    {
+        var random = new Random(20261116);
+        string[] names = ["A", "B", "C", "D", "E", "F"];
+
+        for (int round = 0; round < 2000; round++)
+        {
+            string[] before = Enumerable.Range(0, random.Next(0, 7)).Select(_ => names[random.Next(names.Length)]).ToArray();
+            string[] wanted = Enumerable.Range(0, random.Next(0, 7)).Select(_ => names[random.Next(names.Length)]).ToArray();
+
+            var originals = before.Select(name => new Item(name)).ToList();
+            var plain = originals.ToList();
+            var keyed = originals.ToList();
+            Item? keep = originals.Count > 0 && random.Next(2) == 0 ? originals[random.Next(originals.Count)] : null;
+
+            Sync(plain, wanted, keep);
+            SyncKeyed(keyed, wanted, keep);
+
+            Assert.Equal(wanted, Names(keyed));
+            Assert.Equal(Names(plain), Names(keyed));
+
+            for (int at = 0; at < plain.Count; at++)
+            {
+                // An object kept by one is kept by the other, in the same place; a new one is new in both.
+                bool keptPlain = originals.Any(original => ReferenceEquals(original, plain[at]));
+                bool keptKeyed = originals.Any(original => ReferenceEquals(original, keyed[at]));
+
+                Assert.Equal(keptPlain, keptKeyed);
+
+                if (keptPlain)
+                {
+                    Assert.Same(plain[at], keyed[at]);
+                }
+            }
+        }
+    }
+
+    [Fact]
+    public void A_list_sharing_nothing_with_what_is_wanted_is_emptied_once_and_filled()
+    {
+        var items = new System.Collections.ObjectModel.ObservableCollection<Item> { new("U1"), new("U2"), new("U3") };
+        var changes = new List<System.Collections.Specialized.NotifyCollectionChangedAction>();
+        items.CollectionChanged += (_, e) => changes.Add(e.Action);
+
+        SyncKeyed(items, ["R1", "R2"]);
+
+        Assert.Equal(["R1", "R2"], items.Select(item => item.Name));
+        Assert.Equal(
+            [System.Collections.Specialized.NotifyCollectionChangedAction.Reset,
+             System.Collections.Specialized.NotifyCollectionChangedAction.Add,
+             System.Collections.Specialized.NotifyCollectionChangedAction.Add],
+            changes);
+    }
+
     [Fact]
     public void Entries_already_there_keep_their_objects_and_new_ones_are_inserted_in_order()
     {

@@ -110,13 +110,10 @@ namespace CRT
         // exactly as before when the setting is off (the single global flag does not vary by board,
         // so there is nothing to re-apply).
         //
-        // Always closes and reopens the window on a board change rather than trying to move it: two
-        // boards can each want their OWN size/position (a maximized window for one, a small one for
-        // another, as asked for), and SchematicsThumbnailsWindow resolves its layout once, in
-        // Initialize - so the only way to pick up a different board's saved layout is a fresh
-        // window. Closing first also means the CLOSING board's own layout is saved (via its Closing
-        // handler) before the new board's window is opened, rather than losing whatever size/position
-        // the user just left it at.
+        // Two boards can each want their OWN size/position (a maximized window for one, a small one for
+        // another, as asked for): an open window takes the next board's saved layout, the board left's
+        // saved first (SchematicsThumbnailsWindow.MoveToBoard - it was closed and opened again until
+        // 2026-11-16); it is closed only when the next board shows its thumbnails in the tab.
         //
         // Skipped entirely before Main itself has ever been shown: PopulateHardwareDropDown (in
         // StartAsync) selects the startup board, and so raises OnBoardSelectionChanged, BEFORE
@@ -146,9 +143,36 @@ namespace CRT
             if (!this.thisWindowOpenedCompletionSource.Task.IsCompleted)
                 return;
 
+            // ###########################################################################################
+            // *** AN OPEN WINDOW STAYS OPEN (2026-11-16, performance walkthrough). *** It was closed and a new one opened at
+            // every board load - the same board read again after an edit too - a new window, its gallery, its first
+            // layout and a flicker each time. The board it is already for: nothing to do. Another board that shows its
+            // thumbnails detached too: the window takes that board's saved layout (MoveToBoard), saving the one left.
+            // Only a board that shows them in the tab closes it, as before.
+            // ###########################################################################################
+            if (this._schematicsThumbnailsWindow is { } open && this.ResolveThumbnailsDetachedForCurrentBoard())
+            {
+                string boardKey = this.GetCurrentBoardKey();
+                string? wantedKey = UserSettings.RememberThumbnailWindowSettingsPerBoard && !string.IsNullOrEmpty(boardKey)
+                    ? boardKey
+                    : null;
+
+                if (!string.Equals(open.PerBoardKey, wantedKey, StringComparison.OrdinalIgnoreCase))
+                {
+                    open.MoveToBoard(wantedKey);
+                }
+
+                return;
+            }
+
             this.CloseThumbnailsWindowForReopen();
             this.ApplyThumbnailsDetachedState();
         }
+
+        // For a test: the detached thumbnails window open now, and the board-change step on its own.
+        internal SchematicsThumbnailsWindow? ThumbnailsWindowForTests => this._schematicsThumbnailsWindow;
+
+        internal void ApplyThumbnailsDetachedStateForBoardChangeForTests() => this.ApplyThumbnailsDetachedStateForBoardChange();
 
         // ###########################################################################################
         // Re-applies the detached-thumbnails state after "Remember thumbnail window settings per
@@ -317,13 +341,13 @@ namespace CRT
                 // the other two do. The field above is already null, so the CloseSchematicsThumbnailsWindow
                 // inside it finds nothing to close and this cannot recurse.
                 //
-                // Uses the board this window was opened FOR (perBoardKey), not whatever board is
-                // currently selected - a board switch takes the path above instead of reaching here,
-                // so by the time this handler runs for a genuine user-initiated close the two already
-                // agree; captured explicitly anyway so this cannot silently turn off the WRONG
-                // board's setting if that ever changes.
-                bool stillDetachedForOpenedBoard = perBoardKey != null
-                    ? UserSettings.GetThumbnailWindowSettingsForBoard(perBoardKey)?.IsDetached == true
+                // Uses the board this window BELONGS TO NOW (its PerBoardKey) - the one it was opened
+                // for, or the one another board shown moved it to (MoveToBoard, 2026-11-16; code
+                // review, the same day: the key captured as it opened was the board left behind).
+                string? windowBoardKey = thumbnailsWindow.PerBoardKey;
+
+                bool stillDetachedForOpenedBoard = windowBoardKey != null
+                    ? UserSettings.GetThumbnailWindowSettingsForBoard(windowBoardKey)?.IsDetached == true
                     : UserSettings.DetachSchematicsThumbnails;
 
                 if (stillDetachedForOpenedBoard)

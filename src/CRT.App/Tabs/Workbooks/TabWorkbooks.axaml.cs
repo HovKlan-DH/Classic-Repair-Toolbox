@@ -29,6 +29,8 @@ namespace CRT
     //   TabWorkbooks.BoardPreviews.cs the board pane and the entry list beside it - schematic
     //                                previews, entry badges, schematic selection, entry detail
     //                                cards, and the editor a badge opens
+    //   TabWorkbooks.PreviewPictures.cs the board pane's schematic images - read, held while drawn,
+    //                                and one that came to nothing not asked for again and again
     //   TabWorkbooks.PreviewReorder.cs drag-to-reorder for those schematic previews, grabbed by a
     //                                preview's caption and persisted per workbook
     //   TabWorkbooks.Summary.cs      the collapsible workbook-summary strip above the board pane
@@ -233,6 +235,32 @@ namespace CRT
         // entry save must be visible on the very next refresh.
         private readonly Dictionary<int, List<WorklogEntryRecord>> thisEntriesReadThisPass = new();
 
+        // True while a pause in typing a search refreshes the tab - the worklogs read for the pause before are kept.
+        private bool thisSearchKeepsEntriesRead;
+
+        // A pause in typing a search, as the debounce timer ends it - for the tests.
+        internal void EndSearchPauseForTests() => this.EndSearchPause();
+
+        // ###########################################################################################
+        // A pause in typing a search: only the words changed, so the worklogs read for the pause before
+        // are what is on disk still - any save goes through RefreshWorklogBar, a fresh pass - and they
+        // are searched again, not read again (2026-11-16, performance walkthrough: every pause read
+        // every listed workbook's worklogs, one index.json each, on the UI thread).
+        // ###########################################################################################
+        private void EndSearchPause()
+        {
+            this.thisSearchKeepsEntriesRead = true;
+
+            try
+            {
+                this.RefreshWorkbooks();
+            }
+            finally
+            {
+                this.thisSearchKeepsEntriesRead = false;
+            }
+        }
+
         public TabWorkbooks()
         {
             this.InitializeComponent();
@@ -256,29 +284,18 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Releases the full-resolution schematic bitmaps the board pane decoded - see
-        // thisSchematicBitmapsByPath in TabWorkbooks.BoardPreviews.cs for why they are held for a
-        // whole attachment rather than freed on each rebuild. Without this the last set outlives the
-        // tab, exactly as WorklogEntryEditorWindow's own Closed handler documents for its thumbnails.
-        //
-        // DETACH IS NOT "THE TAB IS GOING AWAY". A TabControl detaches the previous tab's content
-        // from the visual tree on every tab SWITCH, and this tab's Image controls keep their Source
-        // pointing at these bitmaps while detached. Disposing without clearing the pane therefore
-        // left every preview holding a dead Skia surface, and the next render pass over them threw
-        // ObjectDisposedException on the RENDER thread - fatal in Avalonia, and reported as a crash
-        // on switching away from Workbooks.
-        //
-        // So the pane is torn down FIRST and the bitmaps disposed second. Nothing then references a
-        // disposed bitmap, and OnAttachedToVisualTree rebuilds the pane when the tab comes back -
-        // the decode cost is the same one the first build already pays, and it only lands on a tab
-        // the user has actually returned to.
+        // The board pane goes as the tab leaves the screen (a TabControl detaches the previous tab's
+        // content on every tab SWITCH), and OnAttachedToVisualTree builds it again as the tab comes
+        // back. Its pictures are NOT disposed (2026-11-16, performance walkthrough):
+        // SchematicPreviewPictures holds them, decoded small, for the next visit - disposing them here
+        // re-decoded every picture on every return to the tab, and once crashed the render thread
+        // when a preview still showed one.
         // ###########################################################################################
         protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
         {
             base.OnDetachedFromVisualTree(e);
 
-            this.ClearBoardPreviewsBeforeDisposingBitmaps();
-            this.DisposeSchematicBitmaps();
+            this.ClearBoardPreviews();
 
             // The shared search highlighting is dropped with the tab. It is process-wide state
             // written only by this tab's refresh, so a query left in the box would otherwise keep
@@ -294,19 +311,10 @@ namespace CRT
         //
         // RefreshWorkbooks is the whole-tab funnel (list, top-line and board pane), which is what a
         // returning tab needs: the board or the active workbook may have changed while it was away -
-        // Main.RefreshWorklogBar's own calls reach this tab only while it is attached.
+        // Main's refreshes reach this tab only while it is shown (RefreshWorkbooksIfShown).
         //
-        // COST, and why it is not conditional. This re-reads every workbook from disk and re-decodes
-        // every schematic the active workbook has entries on, synchronously, on each return to the
-        // tab. That is not incidental waste that a "did anything change?" guard could skip: detach
-        // tore the pane down and disposed the bitmaps outright (it has to - see
-        // OnDetachedFromVisualTree), so there is nothing left to reuse and the pane genuinely has to
-        // be rebuilt from scratch whether or not anything changed.
-        //
-        // Making it cheaper means not disposing on detach, which is exactly the crash that pairing
-        // was written to fix, or holding the workbooks in a cache that an out-of-app edit could make
-        // stale. Neither is worth trading a correct tab for, so the cost is accepted deliberately
-        // rather than overlooked.
+        // It reads every workbook from disk again, so an edit made outside CRT is seen; the pane's
+        // pictures come from SchematicPreviewPictures, decoded once and kept (2026-11-16).
         // ###########################################################################################
         protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
         {
@@ -548,6 +556,36 @@ namespace CRT
         // UpdateClearSearchButtonVisibility captures it.
         private double thisSearchBoxNaturalRightPadding = double.NaN;
 
+        // ###########################################################################################
+        // *** MAIN'S REFRESHES REACH THIS TAB ONLY WHILE IT IS SHOWN (2026-11-16, performance walkthrough). ***
+        // A tab not shown is detached - a TabControl does that on every switch - and every board switch
+        // rebuilt it three or four times all the same: its cards, its device list and its board pane,
+        // decoding the pane's schematic images on the UI thread (62-77 ms each, measured), for nobody to
+        // see. Attaching builds it all again from disk (OnAttachedToVisualTree), so a refresh skipped
+        // while hidden loses nothing. A card clicked, a workbook added from the tab - anything done ON
+        // the tab - finds it shown. A test drives RefreshWorkbooks itself, on a tab it never shows.
+        // ###########################################################################################
+        internal bool IsShown => this.VisualRoot is not null;
+
+        public void RefreshWorkbooksIfShown(
+            List<WorkbookRecord>? boardWorkbooks,
+            List<WorkbookRecord>? allWorkbooks,
+            List<OwnedDeviceRecord>? devices)
+        {
+            if (this.IsShown)
+            {
+                this.RefreshWorkbooks(boardWorkbooks, allWorkbooks, devices);
+            }
+        }
+
+        public void RefreshBoardPreviewsIfShown()
+        {
+            if (this.IsShown)
+            {
+                this.RefreshBoardPreviewsForCurrentSelection();
+            }
+        }
+
         // allWorkbooks: every board's, when the caller has read them (Main.RefreshWorklogBar has) - a
         // device's page lists its repairs on any board from them, never reading them again. devices:
         // the user's devices, likewise.
@@ -580,8 +618,12 @@ namespace CRT
             this.UpdateClearSearchButtonVisibility();
 
             // Fresh per pass - this caches reads WITHIN one rebuild, never across them, so an entry
-            // saved between refreshes is picked up by the next one. See the field's own comment.
-            this.thisEntriesReadThisPass.Clear();
+            // saved between refreshes is picked up by the next one. See the field's own comment. The
+            // one exception is a pause in typing a search, which changes nothing on disk.
+            if (!this.thisSearchKeepsEntriesRead)
+            {
+                this.thisEntriesReadThisPass.Clear();
+            }
             this.thisAllWorkbooksThisPass = allWorkbooks;
 
             // "My devices" first: the workbook cards below name the device each repair is on, and the device
@@ -825,7 +867,13 @@ namespace CRT
                 this.thisSearchDebounceTimer.Tick += (_, _) =>
                 {
                     this.thisSearchDebounceTimer.Stop();
-                    this.RefreshWorkbooks();
+
+                    // Not on a tab left meanwhile (code review, 2026-11-16): it built the pane for nobody, decoding its
+                    // pictures on the UI thread. Showing the tab again builds it, the box read as it stands (IsShown).
+                    if (this.IsShown)
+                    {
+                        this.EndSearchPause();
+                    }
                 };
             }
 

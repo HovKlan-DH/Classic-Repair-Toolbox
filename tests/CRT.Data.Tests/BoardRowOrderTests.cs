@@ -210,6 +210,24 @@ public sealed class BoardRowOrderTests
         Assert.Equal([BoardWorkbookSchema.SheetComponentImages], BoardRowOrder.ReorderedSheets(published, picturesMoved));
     }
 
+    // ###########################################################################################
+    // *** The credits' order is no change of a draft (code review, 2026-11-16). *** Every publish keeps them in date order
+    // (CreditOrder.Sorted): a credit inserted mid-list, or one the publish dated and moved last, read as an order the draft
+    // changed - and the draft never retired. Another list's order still is a change.
+    // ###########################################################################################
+    [Fact]
+    public void The_credits_order_is_no_change_of_a_draft()
+    {
+        var anna = new CreditEntry { Category = "Board data", NameOrHandle = "Anna" };
+        var bo = new CreditEntry { Category = "Board data", NameOrHandle = "Bo" };
+
+        BoardData published = new() { Credits = [anna, bo] };
+        BoardData draft = new() { Credits = [bo, anna] };
+
+        Assert.False(BoardRowOrder.DiffersFrom(published, draft));
+        Assert.Empty(BoardRowOrder.ReorderedSheets(published, draft));
+    }
+
     [Theory]
     [InlineData(BoardWorkbookSchema.SheetBoardLocalFiles, "Order of the files changed")]
     [InlineData(BoardWorkbookSchema.SheetBoardLinks, "Order of the links changed")]

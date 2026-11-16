@@ -1005,6 +1005,19 @@ namespace CRT
 
                 this.ShowComponent();
                 this.FollowKiCadFiles();
+                return;
+            }
+
+            // ###########################################################################################
+            // *** THE PANE'S OWN EDIT THAT THE CREDIT FOLLOWED, ON "Board: Credits": THE CREDITS READ AGAIN (code review,
+            // 2026-11-16). *** The credit for the work came, or went, in the very step of the pane's own edit
+            // (DraftSessionChange.FollowedUp) - unshown, and the pane's next commit of the list, which replaces it whole, took
+            // it out again, the draft flipping with and without it at every commit. The table reads itself again for the same
+            // reason (BoardTableEditor.DraftSession.cs). On any other page the credits are not shown, and nothing is read again.
+            // ###########################################################################################
+            if (change.FollowedUp && this.thisBoardPart == PaneBoardPart.Credits)
+            {
+                this.ShowComponent();
             }
         }
 

@@ -25,13 +25,22 @@ namespace CRT
         // A `keep` NO wanted entry shows any more is no item to keep (code review, 2026-10-30): the
         // component open renamed in the pane, every item after it was made again around it, and it was
         // let go of at the end all the same - the list's selection with it.
+        //
+        // `itemKey` and `wantedKey` (2026-11-16, performance walkthrough), when given: a key per item and per
+        // entry, the same for any two that `shows` pairs (equal keys may still not pair; different keys never
+        // do). With them a list sharing NO key with what is wanted - another board's components - is emptied
+        // once and filled (one Reset, then the new items at its end), where every entry was looked for in every
+        // item and put in at the top one by one; and an entry whose key no remaining item has is put in without
+        // being looked for. The result is the same list, the same objects kept.
         // ###########################################################################################
         public static void Sync<TItem, TWanted>(
             IList<TItem> items,
             IReadOnlyList<TWanted> wanted,
             Func<TItem, TWanted, bool> shows,
             Func<TWanted, TItem> create,
-            TItem? keep = null)
+            TItem? keep = null,
+            Func<TItem, string>? itemKey = null,
+            Func<TWanted, string>? wantedKey = null)
             where TItem : class
         {
             if (keep is not null && !InPlaceList.AnyShows(keep, wanted, shows))
@@ -39,21 +48,65 @@ namespace CRT
                 keep = null;
             }
 
+            // How many of the items not yet passed have each key - null without keys.
+            Dictionary<string, int>? remaining = null;
+
+            if (itemKey is not null && wantedKey is not null)
+            {
+                var wantedKeys = new HashSet<string>(StringComparer.Ordinal);
+
+                for (int i = 0; i < wanted.Count; i++)
+                {
+                    wantedKeys.Add(wantedKey(wanted[i]));
+                }
+
+                remaining = new Dictionary<string, int>(StringComparer.Ordinal);
+                bool anyShared = false;
+
+                for (int i = 0; i < items.Count; i++)
+                {
+                    string key = itemKey(items[i]);
+                    remaining[key] = remaining.GetValueOrDefault(key) + 1;
+                    anyShared |= wantedKeys.Contains(key);
+                }
+
+                if (!anyShared)
+                {
+                    items.Clear();
+
+                    for (int i = 0; i < wanted.Count; i++)
+                    {
+                        items.Add(create(wanted[i]));
+                    }
+
+                    return;
+                }
+            }
+
             for (int i = 0; i < wanted.Count; i++)
             {
                 int found = -1;
 
-                for (int j = i; j < items.Count; j++)
+                if (remaining is null || remaining.GetValueOrDefault(wantedKey!(wanted[i])) > 0)
                 {
-                    if (shows(items[j], wanted[i]))
+                    for (int j = i; j < items.Count; j++)
                     {
-                        found = j;
-                        break;
+                        if (shows(items[j], wanted[i]))
+                        {
+                            found = j;
+                            break;
+                        }
                     }
                 }
 
-                int keptAt = InPlaceList.IndexOfObject(items, keep);
-                bool wouldDropKept = found > i && keptAt >= i && keptAt < found;
+                // Where the kept item is matters only when items are about to be taken out above the one found.
+                bool wouldDropKept = false;
+
+                if (found > i && keep is not null)
+                {
+                    int keptAt = InPlaceList.IndexOfObject(items, keep);
+                    wouldDropKept = keptAt >= i && keptAt < found;
+                }
 
                 if (found < 0 || wouldDropKept)
                 {
@@ -63,14 +116,27 @@ namespace CRT
 
                 while (found > i)
                 {
+                    InPlaceList.Passed(remaining, itemKey, items[i]);
                     items.RemoveAt(i);
                     found--;
                 }
+
+                InPlaceList.Passed(remaining, itemKey, items[i]);
             }
 
             while (items.Count > wanted.Count)
             {
                 items.RemoveAt(items.Count - 1);
+            }
+        }
+
+        // An item left behind - kept in its place or taken out - is no longer among those remaining.
+        private static void Passed<TItem>(Dictionary<string, int>? remaining, Func<TItem, string>? itemKey, TItem item)
+        {
+            if (remaining is not null && itemKey is not null)
+            {
+                string key = itemKey(item);
+                remaining[key] = remaining.GetValueOrDefault(key) - 1;
             }
         }
 

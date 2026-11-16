@@ -64,9 +64,63 @@ namespace Handlers.Geometry
                 state.ShowOppositeSideTraces.ToString(),
                 state.ShowZones.ToString(),
                 state.IsCalibrationMode.ToString(),
-                KiCadOverlayCacheKeys.References(state.ActiveReferences),
                 KiCadOverlayCacheKeys.References(state.SelectedReferences));
         }
+
+        // ###########################################################################################
+        // What of the ACTIVE references - the selected components, and the hovered one while "show traces
+        // on the selected component" is on - a net's drawing depends on: none for a net drawn whole (hovered,
+        // locked, an important signal), "*" with no reference active at all (every pad a target), else
+        // the active references with a pad on this net, sorted (2026-11-16, performance walkthrough).
+        //
+        // KiCadNetGraphBuilder.BuildKiCadPcbActiveDrawIds walks a net from the pads of active references and
+        // stops at foreign pads - pads of THIS net - so a reference with no pad on the net changes nothing
+        // drawn there. The active set stood in the generation key until then, so every component the pointer
+        // entered or left over a PCB picture with a component selected rebuilt every net drawn
+        // (KiCadOverlayCacheKeysTests holds the two together).
+        //
+        // `active` is ActiveSetOf the active references, made ONCE for every net of a rebuild (code review, 2026-11-16: made
+        // again for each, a dense board's 249 nets copied the whole active set 249 times at every rebuild).
+        // ###########################################################################################
+        public static string ActiveReferencesOnNet(
+            bool isExplicitHighlight,
+            IReadOnlySet<string>? active,
+            IEnumerable<string?>? netPadReferences)
+        {
+            if (isExplicitHighlight)
+            {
+                return string.Empty;
+            }
+
+            if (active is null)
+            {
+                return "*";
+            }
+
+            var onThisNet = new SortedSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (string? reference in netPadReferences ?? [])
+            {
+                string trimmed = reference?.Trim() ?? string.Empty;
+
+                if (trimmed.Length > 0 && active.Contains(trimmed))
+                {
+                    onThisNet.Add(trimmed.ToUpperInvariant());
+                }
+            }
+
+            // "+" before the list: a set holding no reference of this net is not "*" (nothing active at all).
+            return "+" + string.Join(",", onThisNet);
+        }
+
+        // The active references as ActiveReferencesOnNet takes them - trimmed, capitals no difference - or null with none at
+        // all (every pad a target).
+        public static IReadOnlySet<string>? ActiveSetOf(IReadOnlyCollection<string>? activeReferences) =>
+            activeReferences == null || activeReferences.Count == 0
+                ? null
+                : new HashSet<string>(
+                    activeReferences.Where(reference => !string.IsNullOrWhiteSpace(reference)).Select(reference => reference.Trim()),
+                    StringComparer.OrdinalIgnoreCase);
 
         // ###########################################################################################
         // Returns the hovered component's label if it has a pad on this net, and an empty string if
@@ -162,7 +216,8 @@ namespace Handlers.Geometry
         public bool ShowOppositeSideTraces { get; init; }
         public bool ShowZones { get; init; }
         public bool IsCalibrationMode { get; init; }
-        public IReadOnlyCollection<string> ActiveReferences { get; init; } = Array.Empty<string>();
+
+        // The ACTIVE references are per net - KiCadOverlayCacheKeys.ActiveReferencesOnNet, in the net's appearance.
         public IReadOnlyCollection<string> SelectedReferences { get; init; } = Array.Empty<string>();
     }
 }

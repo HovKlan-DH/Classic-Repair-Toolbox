@@ -78,7 +78,9 @@ namespace Handlers.DataHandling
                 ComponentLinks = [.. rows.ComponentLinks],
                 BoardLocalFiles = [.. rows.BoardLocalFiles],
                 BoardLinks = [.. rows.BoardLinks],
-                Credits = [.. rows.Credits],
+                // A credit sent undated that the board has published keeps its published date; a new one stays undated until
+                // the publish dates it (CreditOrder.WithPublishedDates, WithCreditsDated - 2026-11-14).
+                Credits = CreditOrder.WithPublishedDates(rows.Credits, published?.Credits),
                 KiCadImportantSignals = [.. rows.KiCadImportantSignals],
                 ComponentPins = [.. rows.ComponentPins ?? published?.ComponentPins ?? []],
                 ComponentReplacements = [.. rows.ComponentReplacements ?? published?.ComponentReplacements ?? []],
@@ -102,6 +104,21 @@ namespace Handlers.DataHandling
         // All or nothing: a board with either line keeps its own, so one caption never mixes two
         // sources ("Commodore 128 and 128D" over "310378 (C128 & C128D)").
         // ###########################################################################################
+        // ###########################################################################################
+        // *** A CREDIT'S DATE IS THE SERVER'S, like the revision date (owner decisions, 2026-11-14: "Set by the server at
+        // publish"; 2026-11-15: "the existing credits should actually have NO date at all - but all new credits must have it
+        // set"). *** Every credit `published` (the board as it stands) does not have - one new in this submission - is dated
+        // `publishedUtc`, the day it reaches the data; one it has keeps its date there, none for one from before the history; and
+        // the credits are put oldest first (CreditOrder.Dated). The approval does this as it writes BETA; a promotion to stable
+        // copies BETA's board file as it is, so a credit keeps the day it reached BETA.
+        // ###########################################################################################
+        public static BoardData WithCreditsDated(BoardData board, BoardData? published, DateTimeOffset publishedUtc)
+        {
+            ArgumentNullException.ThrowIfNull(board);
+
+            return board.WithBoardSections(credits: CreditOrder.Dated(board.Credits, published?.Credits, publishedUtc));
+        }
+
         public static BoardData CaptionedAs(BoardData board, string? hardwareName, string? boardName)
         {
             ArgumentNullException.ThrowIfNull(board);

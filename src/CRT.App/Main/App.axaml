@@ -277,6 +277,12 @@
 					<SolidColorBrush x:Key="Notice_Border">#E8B866</SolidColorBrush>
 					<SolidColorBrush x:Key="Notice_Fg">#5C3A00</SolidColorBrush>
 
+					<!-- Light, the credit sent with a submission on "Board: Credits" (2026-11-15): its frame, and the strip saying
+					     so - green, the color of what goes ahead. -->
+					<SolidColorBrush x:Key="SubmittedCredit_Bg">#E3F1E5</SolidColorBrush>
+					<SolidColorBrush x:Key="SubmittedCredit_Fg">#1E5A2B</SolidColorBrush>
+					<SolidColorBrush x:Key="SubmittedCredit_Border">#2E7D3E</SolidColorBrush>
+
 					<!-- Light, the changelog on the "About" tab (MarkdownRenderer, 2026-11-06): GitHub's own
 					     light colors - its inline code ground, the bar of a thematic break, the line under
 					     a heading, a quote's bar and muted text, and the five alerts' colors - each alert's a shade deeper
@@ -529,6 +535,11 @@
 				<SolidColorBrush x:Key="Notice_Bg">#33270F</SolidColorBrush>
 				<SolidColorBrush x:Key="Notice_Border">#7A5A1E</SolidColorBrush>
 				<SolidColorBrush x:Key="Notice_Fg">#F7D9A0</SolidColorBrush>
+
+				<!-- Dark, the credit sent with a submission on "Board: Credits". -->
+				<SolidColorBrush x:Key="SubmittedCredit_Bg">#1D3A24</SolidColorBrush>
+				<SolidColorBrush x:Key="SubmittedCredit_Fg">#CDEBD3</SolidColorBrush>
+				<SolidColorBrush x:Key="SubmittedCredit_Border">#5DB872</SolidColorBrush>
 
 				<!-- Dark, the changelog on the "About" tab: GitHub's dark alert colors, the grounds and
 				     lines in this theme's own browns. -->

@@ -59,10 +59,32 @@ namespace CRT
         {
             base.OnPropertyChanged(change);
 
-            // Another photo starts whole.
-            if (change.Property == SourceProperty)
+            // Another photo starts whole - the same one sharper keeps the view (ShowSharper).
+            if (change.Property == SourceProperty && !this.thisSamePhoto)
             {
                 this.ShowWhole();
+            }
+        }
+
+        // Set while ShowSharper puts the same photo in.
+        private bool thisSamePhoto;
+
+        // ###########################################################################################
+        // *** THE SAME PHOTO, SHARPER, KEEPS THE VIEW (code review, 2026-11-16). *** The viewer shows the small read at once
+        // and the whole photo once decoded; a zoom made meanwhile was undone the moment it came. The zoom and the centre are
+        // the photo's own proportions, so they mean the same on either.
+        // ###########################################################################################
+        internal void ShowSharper(Bitmap sharper)
+        {
+            this.thisSamePhoto = true;
+
+            try
+            {
+                this.Source = sharper;
+            }
+            finally
+            {
+                this.thisSamePhoto = false;
             }
         }
 

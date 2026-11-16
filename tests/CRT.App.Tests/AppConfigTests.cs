@@ -20,8 +20,34 @@ public sealed class AppConfigTests
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             AppConfig.AppFolderName);
 
-        Assert.StartsWith(ownFolder + Path.DirectorySeparatorChar, AppConfig.KiCadCacheFolder, StringComparison.Ordinal);
-        Assert.False(AppConfig.KiCadCacheFolder.StartsWith(Path.GetTempPath(), StringComparison.OrdinalIgnoreCase));
+        Assert.StartsWith(ownFolder + Path.DirectorySeparatorChar, AppConfig.DefaultKiCadCacheFolder, StringComparison.Ordinal);
+        Assert.False(AppConfig.DefaultKiCadCacheFolder.StartsWith(Path.GetTempPath(), StringComparison.OrdinalIgnoreCase));
+    }
+
+    // ###########################################################################################
+    // *** THE SUITE NEVER WRITES INTO THE USER'S KiCad CACHE (2026-11-16, performance walkthrough). ***
+    // Every test showing a KiCad board left its copy in the real "KiCad cache" for good. The test
+    // processes use a folder of their own (TestKiCadCache), set before any test runs.
+    // ###########################################################################################
+    [Fact]
+    public void The_tests_copy_KiCad_files_into_a_folder_of_their_own()
+    {
+        Assert.Equal(TestKiCadCache.Folder, AppConfig.KiCadCacheFolder);
+        Assert.NotEqual(AppConfig.DefaultKiCadCacheFolder, AppConfig.KiCadCacheFolder);
+        Assert.StartsWith(Path.GetTempPath(), AppConfig.KiCadCacheFolder, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // ###########################################################################################
+    // The renderer may keep a large board's schematic image on the graphics card (2026-11-16, performance
+    // walkthrough): some 50 MB decoded, against Avalonia's own room of some 28 MB.
+    // ###########################################################################################
+    [Fact]
+    public void The_renderer_has_room_on_the_graphics_card_for_a_large_schematic_image()
+    {
+        Avalonia.SkiaOptions options = global::Main.Program.SkiaOptionsForCrt();
+
+        Assert.Equal(AppConfig.GpuPictureBytes, options.MaxGpuResourceSizeBytes);
+        Assert.True(options.MaxGpuResourceSizeBytes >= 4 * 50L * 1024 * 1024, "Too little room for a few large schematic images");
     }
 
     // A scope capture waiting for "Add this baseline" too (code review, 2026-10-26): in /tmp another

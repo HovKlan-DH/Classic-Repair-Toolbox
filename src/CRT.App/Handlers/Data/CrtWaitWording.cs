@@ -37,6 +37,9 @@ namespace Handlers.DataHandling
 
         public const string CapturingOscilloscope = "Taking the screenshot from the oscilloscope...";
 
+        // A worklog opened from the "Workbooks" tab, its schematic image not read yet (code review, 2026-11-16).
+        public const string ReadingSchematicImage = "Reading the schematic image...";
+
         // "Clone component from another board" - the board picked read for its components, and the clone.
         public const string ReadingOtherBoard = "Reading that board...";
 

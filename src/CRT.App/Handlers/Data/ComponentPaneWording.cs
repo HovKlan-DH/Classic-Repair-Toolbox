@@ -72,6 +72,12 @@ namespace Handlers.DataHandling
         public static string NotOnBoard(string label) =>
             $"[{label}] is not on the board in your draft any more. If that was not meant, \"Undo\" in the draft's header brings it back.";
 
+        // ---- a credit's date (2026-11-14) - the server's, set as the credit is published --------------
+
+        public const string CreditDateToCome = "Dated when published";
+
+        public static string CreditPublishedOn(string date) => $"Published {date}";
+
         // ---- the component as a whole (slice 3c) -----------------------------------------------------
 
         public const string NewComponentTitle = "New component";

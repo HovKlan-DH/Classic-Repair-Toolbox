@@ -107,6 +107,33 @@ public sealed class SchematicsImageFrameTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // *** A thumbnail standing in while the picture is read is framed as the picture it stands in for, a resize too (code
+    // reviews, 2026-11-16). *** It was laid out in the picture before's frame - here one with room of its own, so none - and a
+    // resize meanwhile framed it by that picture again; the picture before was still held, every pointer mapped by it.
+    // ###########################################################################################
+    [Fact]
+    public void A_thumbnail_standing_in_is_framed_by_itself_not_by_the_picture_before()
+    {
+        UiTest.Run(() =>
+        {
+            (CRT.Main main, TabSchematics tab) = Shown(blankBorder: new Thickness(120, 250, 120, 120));
+            Assert.Equal(default, tab.ImageFrameForTests);
+
+            tab.ShowStandInForTests(new WriteableBitmap(new PixelSize(160, 120), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Premul));
+            Assert.Equal(ImageFrameGeometry.Wanted, tab.ImageFrameForTests);
+
+            main.Width = 900;
+            main.Height = 500;
+            main.UpdateLayout();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(ImageFrameGeometry.Wanted, tab.ImageFrameForTests);
+
+            Close(main);
+        });
+    }
+
     // The panel resized: the room follows its new size, and the image with it.
     [Fact]
     public void The_room_follows_the_panels_size()

@@ -49,7 +49,7 @@ one entry per line, so two versions of a board compare line by line:
 | `scopeBaselines` | Oscilloscope reading of one pin | The pin, its signal name, the reading expected, the image, the scope settings it was taken with (`timeDiv`, `voltsDiv`, `triggerLevel` - any of them may be empty), and what the machine was doing |
 | `componentFiles`, `componentLinks` | File or web page about a component | A datasheet, an article - from CRT 4, with the `region` it applies to, left out for every region |
 | `boardFiles`, `boardLinks` | File or web page about the board | Service manuals, schematics, forum threads - each with a category and, from CRT 4, the `region` it applies to, left out for every region, and a `note` of one or more lines saying what it is about, which the "Resources" tab shows under it (left out when there is none) |
-| `credits` | Person thanked | What they did, their name or handle, and how to reach them |
+| `credits` | Person thanked, and a step in the board's history | What they did, their name or handle, how to reach them, the main contribution (`mainContribution` - the most important updates in a few lines, a note that can carry formatting) and the date it was published (`date`, such as `2026-November-20`, set by the server as it publishes a new credit). Credits from before CRT 4 have no date and come first, then the dated ones, oldest first; both fields are left out when there is none |
 | `importantSignals` | Signal the "Schematics" tab's panel lists | Its name (`+5VDC`) and the KiCad net it is (`+5V`) |
 | `highlights` | Rectangle marking a component on a schematic image | The schematic image, the board label, and `x`, `y`, `width`, `height` in the schematic image's own pixels |
 | `kiCadCalibrations` | Schematic image lined up with a KiCad view | Offset, scale and mirroring that put the KiCad copper on top of the schematic image |
@@ -62,7 +62,9 @@ an empty region is for every region. A board without `regions` counts as coming 
 `PAL` or `NTSC`.
 
 Some entries need fields filled in: a component its category; a board file its category, name and file; a board link its
-category, name and address; a credit what it is for and the name or handle; an important signal its
+category, name and address; a credit what it is for and the name or handle - and, for a credit that is new or changed, its main
+contribution, with what it is for (`category`) and which part of it (`subCategory`) at most 60 characters each, the name or handle 50
+and the contact 100; an important signal its
 name and its KiCad net; an oscilloscope baseline its pin, its signal name and its image. The "Contribute" tab marks an empty one where you type it, "Overview"
 lists it, and a board with one cannot be submitted until it is filled in. A link's address must be
 the whole address, starting with `http://` or `https://`. A pin - of a component's pinout or of an oscilloscope

@@ -92,15 +92,22 @@ namespace CRT
             string draftBoardFile = this.DraftBoardFile;
             Action? reading = this.ReadingKiCadForTests;
 
-            return Task.Run(() =>
+            Task<KiCadSnapshot> read = Task.Run(() =>
             {
                 reading?.Invoke();
                 return KiCadDataPanel.ReadKiCad(dataRoot, draftFolder, excelDataFile, draftBoardFile);
             });
+
+            this.LastKiCadReadForTests = read;
+            return read;
         }
 
         // Called where the KiCad read runs, just before it - for a test proving that is not the UI thread.
         internal Action? ReadingKiCadForTests { get; set; }
+
+        // The KiCad read last begun - for a test to wait for before taking its files away: Windows refuses to delete a file a
+        // read still holds open (2026-11-16: the draft's folder deleted under it failed under the full suite's load).
+        internal Task LastKiCadReadForTests { get; private set; } = Task.CompletedTask;
 
         // Called where a picked or dropped folder is walked, just before it - for a test holding it there.
         internal Action? ScanningKiCadForTests { get; set; }

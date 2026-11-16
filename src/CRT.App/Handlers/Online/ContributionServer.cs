@@ -76,23 +76,22 @@ namespace Handlers.Online
             ContributionServer.FileNameFor(fileName, AppConfig.UsesTestServer);
 
         // ###########################################################################################
-        // Whether a draft whose work reached the stable data may be deleted by itself
-        // (Main.RetirePublishedDraftsAsync): never while CRT talks to the test instance (code review,
-        // 2026-10-25). What the test instance publishes never reaches the live data - it is replaced
-        // whenever its trees are copied from the live ones again - so there the draft is the only
-        // lasting copy of the contributor's work, kept to be sent from a released CRT.
+        // *** A DRAFT IS RETIRED AGAINST THE TEST INSTANCE'S STABLE DATA TOO (owner decision, 2026-11-14: "Retire on
+        // test server too"). *** From 2026-10-25 (code review) a pre-release kept every draft whose work reached the test
+        // instance's stable data, as the only lasting copy of work the live data never gets; since 2026-11-09 a
+        // pre-release also READS the test instance's data, and a draft fully published there stayed on screen as "0
+        // rows changed" with nothing to do. Main.RetirePublishedDraftsAsync asks nothing of the service any more.
         // ###########################################################################################
-        public static bool RetiresPublishedDrafts(bool testServer) => !testServer;
 
         // Above the Maintainer tab's sign-in, while CRT talks to the test instance.
         public const string SignInNote =
             "This pre-release of CRT signs in to the test server. It has accounts of its own: " +
             "your account on the live server does not work here, and nothing done here reaches the live data.";
 
-        // In the Submit dialog, while CRT talks to the test instance.
+        // In the Submit dialog, while CRT talks to the test instance. It no longer says the draft is kept: once the work is in
+        // the test server's stable data, the draft goes as it does on a release (above).
         public const string SubmitNote =
             "This pre-release of CRT sends your changes to the test server. What is published there is " +
-            "test data: everybody else keeps the live data. Your draft is kept, so your changes can be " +
-            "sent again from a released CRT.";
+            "test data: everybody else keeps the live data.";
     }
 }

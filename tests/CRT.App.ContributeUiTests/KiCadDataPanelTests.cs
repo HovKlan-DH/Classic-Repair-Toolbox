@@ -696,7 +696,15 @@ public sealed class KiCadDataPanelTests : IDisposable
 
             await panel.RemoveKiCadFileAsync(page);
 
-            Assert.False(File.Exists(page.FullPath));
+            // Gone from the draft, and from the copy the board is drawn from now. (The copy it was read from before
+            // stays as it was: since 2026-11-16 a copy is named by what it holds, BoardKiCadFolder, and another set of
+            // files is another copy - the old one swept once nothing has used it for a while.)
+            string draftFolder = DraftManager.GetBoardFolder(KiCadDataPanelTests.BoardKey);
+            Assert.False(File.Exists(Path.Combine(draftFolder, "KiCad data", "Pages", "vic.kicad_sch")));
+            string copyNow = BoardKiCadFolder.ForBoard(DataManager.DataRoot, draftFolder, KiCadDataPanelTests.BoardKey, AppConfig.KiCadCacheFolder);
+            Assert.False(File.Exists(Path.Combine(copyNow, "Pages", "vic.kicad_sch")));
+            Assert.True(File.Exists(Path.Combine(copyNow, "Open128.kicad_pcb")));
+
             Assert.Equal(new[] { "Open128.kicad_pcb" }, panel.KiCadFiles.Select(row => row.RelativePath));
             Assert.Equal("1 KiCad file imported:", panel.GetControl<TextBlock>("KiCadStateText").Text);
             Assert.Contains("Removed [Pages/vic.kicad_sch]", panel.StatusTextForTests, StringComparison.Ordinal);

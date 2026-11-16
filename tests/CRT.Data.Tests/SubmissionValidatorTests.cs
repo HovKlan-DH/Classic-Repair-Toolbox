@@ -61,7 +61,7 @@ namespace CRT.Data.Tests
             SubmissionManifest manifest, params string[] files)
         {
             return SubmissionValidator.Validate(
-                manifest, files.Length == 0 ? SubmissionValidatorTests.ValidFiles : files);
+                manifest, files.Length == 0 ? SubmissionValidatorTests.ValidFiles : files, publishedCredits: null);
         }
 
         // -----------------------------------------------------------------------------------

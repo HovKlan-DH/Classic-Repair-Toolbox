@@ -246,31 +246,29 @@ public partial class TabSchematics
             }
 
             // Read with how much empty border it has of its own, which the room round it in the first view tops up
-            // (ApplyImageFrame) - measured here, off the UI thread, with the image just read.
-            (Bitmap? bitmap, Thickness blankBorder) = await Task.Run<(Bitmap?, Thickness)>(() =>
+            // (ApplyImageFrame) - measured off the UI thread, with the image just read. The read is the tab's picture
+            // reads' (TabSchematics.PictureReads.cs, 2026-11-16): one already made or under way is taken - a picture
+            // shown before, or the one the board load began reading as the thumbnails decoded - and while it is still
+            // being read the picture's thumbnail stands in its place, never a blank view.
+            Task<(Bitmap? Picture, Thickness Border)> reading = this.thisPictureReads.Read(selected.ImageFilePath);
+
+            if (!reading.IsCompleted && selected.BaseThumbnail is { } standIn)
             {
-                if (cts.Token.IsCancellationRequested) return (null, default);
+                this.ShowStandIn(standIn);
+            }
 
-                try
-                {
-                    var read = new Bitmap(selected.ImageFilePath);
-                    return (read, TabSchematics.BlankBorderOf(read, selected.ImageFilePath));
-                }
-                catch (Exception ex)
-                {
-                    Logger.Warning($"Cannot load image file [{selected.ImageFilePath}] - [{ex.Message}]");
-                    return (null, default);
-                }
-            }, cts.Token);
+            (Bitmap? bitmap, Thickness blankBorder) = await reading;
 
+            // Overtaken: the read stays with the picture reads, for the picture shown next or kept for later - never disposed here.
             if (cts.Token.IsCancellationRequested || !ReferenceEquals(cts, this.fullResLoadCts))
             {
-                bitmap?.Dispose();
                 return;
             }
 
-            this.currentFullResBitmap?.Dispose();
+            // The picture before is not disposed: the picture reads hold it, for going back to it, and let it go in turn.
+            this.thisStandInPixelSize = null;
             this.currentFullResBitmap = bitmap;
+            this.thisPictureReads.KeepOnly(bitmap);
             this.thisImageBlankBorder = blankBorder;
             this.ApplyImageFrame();
             this.SchematicsImage.Source = bitmap;
@@ -359,12 +357,9 @@ public partial class TabSchematics
         IImage baseThumbnail, PixelSize originalPixelSize,
         HighlightSpatialIndex index, BoardSchematicEntry schematic)
     {
-        int tw = 1, th = 1;
-        if (baseThumbnail is Bitmap bmp)
-        {
-            tw = bmp.PixelSize.Width;
-            th = bmp.PixelSize.Height;
-        }
+        // At most ThumbnailLayerGeometry.MaxWidth wide (2026-11-16): stretched over its thumbnail as the thumbnail is.
+        PixelSize layer = ThumbnailLayerGeometry.SizeFor(baseThumbnail is Bitmap bmp ? bmp.PixelSize : new PixelSize(1, 1));
+        int tw = layer.Width, th = layer.Height;
 
         var overlay = new SchematicHighlightsOverlay
         {

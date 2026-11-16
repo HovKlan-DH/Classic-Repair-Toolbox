@@ -301,8 +301,20 @@ namespace Handlers.DataHandling
                 return BoardProblemsRead.None;
             }
 
-            return DraftStatusReader.ProblemsCachedOf(status.WorkbookPath, dataRoot, draftBoardFolder, boardIdentity: null);
+            return DraftStatusReader.ProblemsCachedOf(status.WorkbookPath, dataRoot, draftBoardFolder, boardIdentity: null, publishedBoardFile: status.PublishedWorkbookPath);
         }
+
+        // ###########################################################################################
+        // The credits the board file at `publishedBoardFile` has published, which need no "Main contribution" while they stand
+        // so (2026-11-14; BoardRowRequired) - None with no such file: a new board's every credit needs one.
+        // ###########################################################################################
+        public static PublishedCredits PublishedCreditsOf(string? publishedBoardFile) =>
+            PublishedCredits.Of(DraftStatusReader.PublishedBoardOf(publishedBoardFile)?.Credits);
+
+        // The board file at `publishedBoardFile` - null with no such file, or one that cannot be read. Read once per state of the
+        // file (BoardReadsByStamp), so asking at every edit costs a look at its stamp. Shared: never changed (BoardData's rule).
+        public static BoardData? PublishedBoardOf(string? publishedBoardFile) =>
+            !string.IsNullOrWhiteSpace(publishedBoardFile) && File.Exists(publishedBoardFile) ? BoardReadsByStamp.Read(publishedBoardFile) : null;
 
         // ###########################################################################################
         // *** A PUBLISHED BOARD'S OWN ERRORS AND WARNINGS, WHERE NO DRAFT HAS ANY TO SAY (owner decision, 2026-11-07: the
@@ -341,12 +353,21 @@ namespace Handlers.DataHandling
         // Run as a published board's read is about to be kept - for a test to hold it there while another board is asked.
         internal static Action<string>? BeforePublishedReadIsKeptForTests { get; set; }
 
-        private static BoardProblemsRead ProblemsCachedOf(string boardFile, string dataRoot, string draftBoardFolder, string? boardIdentity, bool published = false)
+        // `publishedBoardFile`: a draft's published board, whose credits need no main contribution (2026-11-14) - and a change
+        // of it is a check again. A published board (`published`) is its own.
+        private static BoardProblemsRead ProblemsCachedOf(
+            string boardFile,
+            string dataRoot,
+            string draftBoardFolder,
+            string? boardIdentity,
+            bool published = false,
+            string? publishedBoardFile = null)
         {
             string stamp = string.Join(
                 "|",
                 DraftStatusReader.FileStamp(boardFile),
                 DraftStatusReader.FileStamp(BoardComponentHighlightStorage.GetJsonPath(boardFile)),
+                string.IsNullOrWhiteSpace(publishedBoardFile) ? string.Empty : DraftStatusReader.FileStamp(publishedBoardFile),
                 dataRoot,
                 draftBoardFolder,
                 boardIdentity ?? string.Empty);
@@ -359,11 +380,35 @@ namespace Handlers.DataHandling
             }
 
             BoardData? board = BoardReadsByStamp.Read(boardFile);
-            var lookup = new RememberingLookup(new DiskFileLookup(dataRoot, draftBoardFolder, boardIdentity));
 
-            IReadOnlyList<BoardDataProblem> problems = board is null
-                ? []
-                : BoardDataChecks.Check(BoardCheckRows.From(board), lookup, BoardCheckScope.Everything);
+            // ###########################################################################################
+            // *** A DRAFT'S FILE LOOKUP IS KEPT FROM ONE CHECK TO THE NEXT (2026-11-16, performance walkthrough). *** A draft's
+            // row is checked again after every save, and a new lookup asked the disk six or seven times for each cited file -
+            // some 3,000 on a large board, on the UI thread, at every autosave. Kept, it asks again only for the names its
+            // board file now lists with other bytes (DiskFileLookup.ForgetWhatTheListMoved) - as the open table's lookup,
+            // kept for the table's life, always did. A published board's is not kept: one is checked at a time, off the UI
+            // thread. Used by one check at a time.
+            // ###########################################################################################
+            DiskFileLookup disk = published
+                ? new DiskFileLookup(dataRoot, draftBoardFolder, boardIdentity)
+                : DraftStatusReader.KeptLookups.GetOrAdd(
+                    string.Join("|", boardFile, dataRoot, draftBoardFolder, boardIdentity ?? string.Empty),
+                    _ => new DiskFileLookup(dataRoot, draftBoardFolder, boardIdentity));
+
+            var lookup = new RememberingLookup(disk);
+            IReadOnlyList<BoardDataProblem> problems;
+
+            lock (disk)
+            {
+                disk.ForgetWhatTheListMoved();
+
+                problems = board is null
+                    ? []
+                    : BoardDataChecks.Check(
+                        BoardCheckRows.From(board, published ? PublishedCredits.Of(board.Credits) : DraftStatusReader.PublishedCreditsOf(publishedBoardFile)),
+                        lookup,
+                        BoardCheckScope.Everything);
+            }
 
             var read = new BoardProblemsRead(BoardProblemCounts.Of(problems), problems, board);
             var kept = new CachedProblems(stamp, read, lookup.NotFound);
@@ -408,15 +453,31 @@ namespace Handlers.DataHandling
                     DraftStatusReader.ProblemCache.TryRemove(path, out _);
                 }
             }
+
+            // The kept file lookups of the drafts gone with them - each keyed by its board file first.
+            foreach (string key in DraftStatusReader.KeptLookups.Keys)
+            {
+                if (!File.Exists(key[..Math.Max(0, key.IndexOf('|'))]))
+                {
+                    DraftStatusReader.KeptLookups.TryRemove(key, out _);
+                }
+            }
         }
+
+        // Whether a file lookup is kept for `workbookPath`'s checks - for tests.
+        internal static bool HoldsLookupForTests(string workbookPath) =>
+            DraftStatusReader.KeptLookups.Keys.Any(key => key.StartsWith(workbookPath + "|", StringComparison.OrdinalIgnoreCase));
+
+        private static readonly ConcurrentDictionary<string, DiskFileLookup> KeptLookups = new(StringComparer.OrdinalIgnoreCase);
 
         // Whether what the checks found is kept for `workbookPath` - for tests.
         internal static bool HoldsProblemsForTests(string workbookPath) => DraftStatusReader.ProblemCache.ContainsKey(workbookPath);
 
         // The problems themselves, by the very checks and lookup the row counts them with - what "Board
-        // status" says on each panel (owner request, 2026-11-01). On the draft as held in memory.
-        public static IReadOnlyList<BoardDataProblem> ProblemsOf(BoardData draft, string dataRoot, string draftBoardFolder) =>
-            BoardDataChecks.Check(BoardCheckRows.From(draft), new DiskFileLookup(dataRoot, draftBoardFolder), BoardCheckScope.Everything);
+        // status" says on each panel (owner request, 2026-11-01). On the draft as held in memory, its credits against the
+        // board's published ones (`published`, 2026-11-14).
+        public static IReadOnlyList<BoardDataProblem> ProblemsOf(BoardData draft, string dataRoot, string draftBoardFolder, PublishedCredits published) =>
+            BoardDataChecks.Check(BoardCheckRows.From(draft, published), new DiskFileLookup(dataRoot, draftBoardFolder), BoardCheckScope.Everything);
 
         // Whether every path remembered as not found (or found under other capitals) still answers
         // exactly so - the cached count is good only while it does.

@@ -12,7 +12,9 @@ Download the installer for your system from the [releases page](https://github.c
 
 The first launch sets up the data for every board - copied from the installer, then checked against the online source for anything newer - which takes a moment. Newer schematic images and other files keep downloading in the background after CRT has opened.
 
-The first time you open most tabs, a short introduction tour shows its most important parts. **Skip tour** puts it away, and **Take the introduction tours again** on the "Configuration" tab shows them again. After an update that changed a tab, it shows a short tour of what is new there.
+The first time you open most tabs, a short introduction tour shows its most important parts. **Skip tour** puts away the tours of every tab, and **Take the introduction tours again** on the "Configuration" tab brings them back - each starting the next time you open its tab, as a message there says. After an update that changed a tab, it shows a short tour of what is new there.
+
+Data is downloaded only for the hardware and boards ticked under "Visible hardware, boards and schematics" on the "Configuration" tab. Tick one again whose data is not on your computer, and a card in the bottom-right corner offers **Check for new data** to download it.
 
 ## 2. Pick your board
 
@@ -24,7 +26,7 @@ The board number is printed on the PCB itself - `250407`, `250469` and so on. Pi
 
 The list below the drop-downs is every component on the board. Type in the search box under it to narrow it - `U19`, `VIC`, `capacitor`.
 
-**Click one, and it is highlighted on the schematic image** - the one you clicked alone. Hold **Ctrl** (**Cmd** on a Mac) and click to add another, or to take one away again; hold **Shift** and click to add every component between. **Clear** under the list unhighlights them all.
+**Click one, and it is highlighted on the schematic image** - the one you clicked alone. Hold **Ctrl** (**Cmd** on a Mac) and click to add another, or to take one away again; hold **Shift** and click to add every component between. **Clear** under the list unhighlights them all. **Enter** turns **Blink selected** on and off, so the components selected are easy to spot.
 
 Two filters narrow the list:
 
@@ -58,7 +60,7 @@ If the board has [KiCad data](KiCad-folder), clicking a pin or a trace highlight
 | **[Maintainer](Maintainer-tab)** | For maintainers only: review and publish what others send in |
 | **Configuration** | Settings, and the buttons that open your data, workbooks and settings folders |
 | **Feedback** | Send an issue or a question to the developer |
-| **About** | Versions, links, and who contributed this board's data |
+| **About** | Versions, links, and who contributed this board's data - oldest first, each with what the contribution was |
 
 **Workbooks** and **Oscilloscope** can both be hidden from the "Configuration" tab if you do not use them. **Maintainer** shows only when `Enable "Maintainer" tab` is ticked there - it needs a maintainer account.
 

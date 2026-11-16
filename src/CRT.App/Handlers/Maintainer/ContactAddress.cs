@@ -43,10 +43,10 @@ namespace Handlers.MaintainerHandling
             "Your maintainer account's address, as you are signed in on the \"Maintainer\" tab. Sign out there to use another one.";
 
         // Under the Submit dialog's address while it is the account's - in place of the line saying
-        // there is no account to create, which would then be untrue.
+        // there is no account to create, which would then be untrue. It no longer tells how to send with
+        // another address (owner request, 2026-11-14: "we should strive to know the user by one address only").
         public const string SubmitNote =
             "Sent with your maintainer account, as you are signed in on the \"Maintainer\" tab, so the maintainer reviewing it " +
-            "sees a verified address. The outcome is shown in \"My submissions\" on the \"Contribute\" tab. Sign out on the " +
-            "\"Maintainer\" tab to send with another address.";
+            "sees a verified address. The outcome is shown in \"My submissions\" on the \"Contribute\" tab.";
     }
 }

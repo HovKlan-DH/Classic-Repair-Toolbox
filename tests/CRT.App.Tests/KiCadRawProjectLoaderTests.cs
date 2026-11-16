@@ -7,8 +7,8 @@ namespace ClassicRepairToolbox.Tests;
 // the interactive trace overlay renders comes out of here, so a silent regression in this
 // parser shows up as traces in the wrong place rather than as an error.
 //
-// The parser itself is a private nested class, so these drive it through the real LoadAsync
-// entry point with fixture files on disk. See KiCadFixtures.cs for the inputs.
+// These drive the parser through the real LoadAsync entry point with fixture files on disk (see
+// KiCadFixtures.cs for the inputs) - but for its cancellation, asked of the nested parser itself.
 public sealed class KiCadRawProjectLoaderTests : IDisposable
 {
     private readonly TempWorkspace thisWorkspace = new();
@@ -20,6 +20,49 @@ public sealed class KiCadRawProjectLoaderTests : IDisposable
 
     private string WritePcb(string content = null!, string name = "board.kicad_pcb") =>
         this.thisWorkspace.WriteFile(name, content ?? KiCadFixtures.Pcb);
+
+    // ###########################################################################################
+    // *** A parse nobody wants any more stops part of the way (code review, 2026-11-16). *** Read as it is parsed, a 45 MB PCB
+    // was parsed to its end for a board already left; the token is asked at every list. Here the reader cancels once part of
+    // the text is read, and the rest is never read.
+    // ###########################################################################################
+    [Fact]
+    public void A_parse_cancelled_part_of_the_way_stops_and_reads_no_further()
+    {
+        string text = "(kicad_pcb " + string.Concat(Enumerable.Repeat("(segment (start 0 0) (end 1 1) (width 0.25)) ", 20000)) + ")";
+        using var cancellation = new CancellationTokenSource();
+        var reader = new CancellingReader(text, cancelAfter: text.Length / 4, cancellation);
+
+        Assert.ThrowsAny<OperationCanceledException>(() => KiCadRawProjectLoader.SExpressionParser.Parse(reader, cancellation.Token));
+        Assert.False(reader.ReachedTheEnd);
+    }
+
+    // A reader that cancels once `cancelAfter` characters are read, and says whether it was read to its end.
+    private sealed class CancellingReader(string text, int cancelAfter, CancellationTokenSource cancellation) : TextReader
+    {
+        private int thisAt;
+
+        public bool ReachedTheEnd { get; private set; }
+
+        public override int Read(char[] buffer, int index, int count)
+        {
+            int taken = Math.Min(count, text.Length - this.thisAt);
+
+            if (taken <= 0)
+            {
+                this.ReachedTheEnd = true;
+                return 0;
+            }
+
+            text.CopyTo(this.thisAt, buffer, index, taken);
+            this.thisAt += taken;
+
+            if (this.thisAt >= cancelAfter)
+                cancellation.Cancel();
+
+            return taken;
+        }
+    }
 
     // --------------------------------------------------------------- file selection
 
@@ -83,6 +126,29 @@ public sealed class KiCadRawProjectLoaderTests : IDisposable
     {
         KiCadProjectRoot? root = await this.LoadAsync(this.WritePcb());
         Assert.True(root!.Ok);
+    }
+
+    // ###########################################################################################
+    // AN EMBEDDED PICTURE IS PASSED OVER, NOTHING ELSE (2026-11-16, performance walkthrough): a "(data ...)" list -
+    // the picture's base64, 86% of Open128's PCB - is no longer parsed into strings. What comes after it is read as
+    // before: the same nets, footprints, pads and tracks as the board without the picture. A quoted "(" and ")" in the
+    // data count as real ones, as they always did (KiCadSExpressionTokens).
+    // ###########################################################################################
+    [Fact]
+    public async Task A_pcb_with_an_embedded_picture_reads_as_the_same_pcb_without_it()
+    {
+        string withPicture = KiCadFixtures.Pcb.Insert(
+            KiCadFixtures.Pcb.IndexOf('\n') + 1,
+            "  (image (at 10 20) (layer \"F.SilkS\") (data \"iVBORw0KGgo=\" \"(\" \")\" \"AAAA\\\"BBBB\" |KLUv/QBY|) (uuid \"u\"))\n");
+
+        KiCadPcb plain = (await this.LoadAsync(this.WritePcb(name: "plain.kicad_pcb")))!.Pcb[0];
+        KiCadPcb pictured = (await this.LoadAsync(this.WritePcb(withPicture, "pictured.kicad_pcb")))!.Pcb[0];
+
+        Assert.Equal(plain.Nets.List.Select(net => net.Name), pictured.Nets.List.Select(net => net.Name));
+        Assert.Equal(plain.Footprints.Select(footprint => footprint.Reference), pictured.Footprints.Select(footprint => footprint.Reference));
+        Assert.Equal(plain.Footprints.Sum(footprint => footprint.Pads.Count), pictured.Footprints.Sum(footprint => footprint.Pads.Count));
+        Assert.Equal(plain.Routing.Segments.Count, pictured.Routing.Segments.Count);
+        Assert.NotEmpty(pictured.Footprints);
     }
 
     // ------------------------------------------------------------------------- nets

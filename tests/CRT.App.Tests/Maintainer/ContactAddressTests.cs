@@ -62,6 +62,15 @@ public sealed class ContactAddressTests
         Assert.DoesNotContain("the Maintainer tab", ContactAddress.FeedbackNote, StringComparison.Ordinal);
     }
 
+    // CRT knows a contributor by one address (owner request, 2026-11-14), so the Submit dialog no longer tells
+    // how to send with another one.
+    [Fact]
+    public void The_submit_note_does_not_offer_another_address()
+    {
+        Assert.DoesNotContain("another address", ContactAddress.SubmitNote, StringComparison.Ordinal);
+        Assert.DoesNotContain("Sign out", ContactAddress.SubmitNote, StringComparison.Ordinal);
+    }
+
     // A session without a usable address offers nothing to show - the typed one stays.
     [Fact]
     public void A_session_with_no_plausible_address_is_not_used()

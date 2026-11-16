@@ -90,75 +90,17 @@ namespace CRT
         private static readonly Cursor HandCursor = new(StandardCursorType.Hand);
 
         // ###########################################################################################
-        // Every schematic bitmap this pane has decoded, keyed by the absolute path it came from.
-        //
-        // WHO OWNS THESE: this tab, for as long as it is loaded. Nothing else may dispose one - and
-        // that is the point of caching them rather than decoding per rebuild and disposing on clear.
-        //
-        // RefreshBoardPreviews clears BoardPreviewPanel and rebuilds every preview from scratch, and
-        // it is reached from RefreshWorkbooks, SelectWorkbook, RefreshBoardPreviewsForCurrentSelection
-        // and OnPreviewBadgePointerPressed - so Main.RefreshWorklogBar drives it on every board
-        // change, entry save and workbook create/close. A fresh `new Bitmap(fullPath)` per preview
-        // per pass stranded a full-resolution decode each time (a 4220x2941 schematic is ~47 MB of
-        // BGRA), and the badge/SizeChanged closures below capture the bitmap, so the discarded
-        // subtree kept itself alive through its own event tables rather than merely waiting for a
-        // collection.
-        //
-        // Disposing on clear instead would be WORSE than the leak: ShowDialog does not block the
-        // dispatcher, so RefreshWorklogBar can re-enter while a pill's editor is up, and that editor
-        // documents that its schematic bitmap belongs to the caller. Disposing under it leaves
-        // EditorLocationPreviewImage rendering a dead Skia surface - an ObjectDisposedException on
-        // the render thread, which is fatal in Avalonia. Sharing one instance per path removes the
-        // question: the same bitmap is handed to every preview and every editor, and nothing is
-        // disposed until the tab itself goes away.
-        //
-        // Bounded by the number of distinct schematic images on the boards visited this session, not
-        // by how often the pane is rebuilt, which is the difference that matters.
+        // Drops the pane as the tab leaves the screen: it is built again as the tab comes back
+        // (OnAttachedToVisualTree), from pictures SchematicPreviewPictures still holds.
         // ###########################################################################################
-        private readonly Dictionary<string, Bitmap> thisSchematicBitmapsByPath = new(StringComparer.OrdinalIgnoreCase);
-
-        // ###########################################################################################
-        // Returns the shared decoded bitmap for a schematic image path, decoding it on first use.
-        // Null when the file is missing or cannot be decoded - one bad path drops that schematic
-        // rather than the whole pane, the same failure mode DataManager already tolerates elsewhere.
-        // ###########################################################################################
-        private Bitmap? GetOrDecodeSchematicBitmap(string fullPath)
-        {
-            if (this.thisSchematicBitmapsByPath.TryGetValue(fullPath, out var cached))
-                return cached;
-
-            try
-            {
-                if (!File.Exists(fullPath))
-                    return null;
-
-                var decoded = new Bitmap(fullPath);
-                this.thisSchematicBitmapsByPath[fullPath] = decoded;
-                return decoded;
-            }
-            catch (Exception ex)
-            {
-                Logger.Warning($"Workbooks tab: could not load schematic image [{fullPath}] - [{ex.Message}]");
-                return null;
-            }
-        }
-
-        // ###########################################################################################
-        // Drops every control that holds one of the cached bitmaps, so DisposeSchematicBitmaps can
-        // run without leaving anything on screen pointing at a freed Skia surface.
-        //
-        // MUST be called before DisposeSchematicBitmaps, and is the whole reason that pairing
-        // exists: an Image keeps its Source across a detach, so disposing first and clearing second
-        // (or not clearing at all) leaves a window in which the renderer can touch a disposed
-        // bitmap - an ObjectDisposedException on the render thread, which is fatal. See
-        // OnDetachedFromVisualTree's own comment for the tab-switch case that hit this.
-        //
-        // Only the board pane holds them. The entry list beside it draws text and pills, and the
-        // workbook list is text-only, so neither can strand a bitmap reference.
-        // ###########################################################################################
-        private void ClearBoardPreviewsBeforeDisposingBitmaps()
+        private void ClearBoardPreviews()
         {
             this.BoardPreviewPanel?.Children.Clear();
+
+            // Nothing drawn, nothing held by the pane - SchematicPreviewPictures keeps what it keeps.
+            this.thisPanePictures.Clear();
+            this.thisPanePicturesThisPass.Clear();
+            this.thisPreviewReadsFailed.Clear();
 
             // The selected schematic is a name, not a control, but it names a preview that no longer
             // exists - clearing it keeps the "keep the selection if it is still shown, else fall
@@ -166,23 +108,8 @@ namespace CRT
             this.thisSelectedSchematicName = null;
         }
 
-        // ###########################################################################################
-        // Releases every decoded schematic bitmap. Called from DetachedFromVisualTree, immediately
-        // after ClearBoardPreviewsBeforeDisposingBitmaps has removed everything that references them.
-        //
-        // Not on a board change or a workbook switch: an editor opened from a pill outlives the
-        // refresh that a save triggers, and it renders the bitmap this tab handed it. See the cache's
-        // own header.
-        // ###########################################################################################
-        private void DisposeSchematicBitmaps()
-        {
-            foreach (var bitmap in this.thisSchematicBitmapsByPath.Values)
-            {
-                bitmap.Dispose();
-            }
-
-            this.thisSchematicBitmapsByPath.Clear();
-        }
+        // (The pictures are never disposed by the tab - SchematicPreviewPictures holds them, and a picture no longer
+        // held is freed once nothing shows it.)
 
         // ###########################################################################################
         // Public entry point for Main: rebuilds JUST the board pane for whatever workbook and
@@ -289,6 +216,10 @@ namespace CRT
 
             this.BoardPreviewPanel.Children.Clear();
 
+            // A pass something else asked for asks again for the pictures that came to nothing (thisPreviewReadsFailed).
+            if (!this.thisPassFromReadsEnding)
+                this.thisPreviewReadsFailed.Clear();
+
             var boardData = this.CurrentBoardDataForPreviews;
 
             // GroupBy before ToDictionary, NOT a bare ToDictionary: board Excel files arrive from
@@ -364,6 +295,9 @@ namespace CRT
             IReadOnlyDictionary<string, string>? foundPaths = entriesBySchematic.Count > 0 ? this.ShownBoardPicturePaths() : null;
             IReadOnlyDictionary<string, string> picturePaths = foundPaths ?? NoPicturePaths;
 
+            // Set by GetOrDecodeSchematicPicture for a picture still being read - the pane says so, never "not found".
+            this.thisPreviewsBeingRead = false;
+
             foreach (var group in entriesBySchematic)
             {
                 var schematic = schematicsByName[group.Key];
@@ -375,12 +309,16 @@ namespace CRT
                 this.BoardPreviewPanel.Children.Add(preview);
             }
 
+            this.KeepPanePicturesOfThisPass();
+
             this.NoBoardPreviewsText.IsVisible = this.BoardPreviewPanel.Children.Count == 0;
 
             // Worklogs on the board's pictures, and not one drawn: said (code review, 2026-10-29).
             if (entriesBySchematic.Count > 0)
             {
-                this.NoBoardPreviewsText.Text = foundPaths is null ? FindingPicturesMessage : PicturesNotFoundMessage;
+                this.NoBoardPreviewsText.Text = foundPaths is null
+                    ? FindingPicturesMessage
+                    : this.thisPreviewsBeingRead ? ReadingPicturesMessage : PicturesNotFoundMessage;
             }
 
             // Three different reasons this pane can be empty, and they must not be described with
@@ -745,7 +683,7 @@ namespace CRT
 
             e.Handled = true;
 
-            this.OpenEntryEditor(this.thisSelectedWorkbookId, entry.Id, this.ResolveSchematicBitmapForEntry(entry));
+            this.OpenEntryEditor(this.thisSelectedWorkbookId, entry.Id, this.ReadSchematicForEntry(entry));
         }
 
         // ###########################################################################################
@@ -845,17 +783,17 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // The shared decoded bitmap for the schematic an entry sits on, or null when the board data
-        // does not name that schematic or its image file is missing from the data root.
+        // The read of the shared decoded bitmap for the schematic an entry sits on - nothing when the
+        // board data does not name that schematic or its image file is missing from the data root.
         //
         // Same lookup BuildSchematicPreview does for the pane itself, and it goes through the same
         // GetOrDecodeSchematicBitmap cache - so opening an entry from its card hands the editor the
         // very bitmap instance the pane is already drawing, not a second decode of the same file.
         // ###########################################################################################
-        private Bitmap? ResolveSchematicBitmapForEntry(WorklogEntryRecord entry)
+        private Task<SchematicPreviewPicture?> ReadSchematicForEntry(WorklogEntryRecord entry)
         {
             if (string.IsNullOrWhiteSpace(entry.SchematicName))
-                return null;
+                return TabWorkbooks.NoSchematicPicture;
 
             var schematic = this.CurrentBoardDataForPreviews?.Schematics
                 ?.FirstOrDefault(s => string.Equals(s.SchematicName, entry.SchematicName, StringComparison.OrdinalIgnoreCase));
@@ -863,10 +801,14 @@ namespace CRT
             if (string.IsNullOrWhiteSpace(schematic?.SchematicImageFile) ||
                 this.ShownBoardPicturePaths() is not { } paths ||
                 !paths.TryGetValue(schematic.SchematicName, out string? path))
-                return null;
+                return TabWorkbooks.NoSchematicPicture;
 
-            return this.GetOrDecodeSchematicBitmap(path);
+            // Awaited by OpenEntryEditor - the editor maps the area by the picture, so it opens with it, whether or not the
+            // pane has it yet - never waited for on the UI thread (code review, 2026-11-16: the window froze for the decode).
+            return SchematicPreviewPictures.Read(path);
         }
+
+        private static readonly Task<SchematicPreviewPicture?> NoSchematicPicture = Task.FromResult<SchematicPreviewPicture?>(null);
 
         // ###########################################################################################
         // Where each picture of the board shown lies, by its name - BoardPicturePaths', the Schematics
@@ -1043,13 +985,16 @@ namespace CRT
                 !picturePaths.TryGetValue(schematic.SchematicName, out string? fullPath))
                 return null;
 
-            var bitmap = this.GetOrDecodeSchematicBitmap(fullPath);
-            if (bitmap == null)
+            // Decoded small - every area below is mapped by the picture's OWN size (SchematicPreviewPicture).
+            var picture = this.GetOrDecodeSchematicPicture(fullPath);
+            if (picture == null)
                 return null;
+
+            PixelSize pictureSize = picture.OriginalPixelSize;
 
             var image = new Image
             {
-                Source = bitmap,
+                Source = picture.Bitmap,
                 Stretch = Stretch.Uniform,
                 HorizontalAlignment = HorizontalAlignment.Left,
                 VerticalAlignment = VerticalAlignment.Top,
@@ -1096,7 +1041,7 @@ namespace CRT
                 // unmanaged Skia surface - see thisSchematicBitmapsByPath, which is what actually
                 // fixed the leak.
                 int entryId = entry.Id;
-                badge.PointerPressed += (_, e) => this.OnPreviewBadgePointerPressed(workbookId, entryId, bitmap, e);
+                badge.PointerPressed += (_, e) => this.OnPreviewBadgePointerPressed(workbookId, entryId, picture, e);
 
                 // "Show marked area" ticked: a coloured bounds rectangle on the overlay, badge
                 // anchored to it. Unticked: no rectangle at all, badge parked in the corner instead
@@ -1123,7 +1068,7 @@ namespace CRT
                 IsHitTestVisible = false,
                 HorizontalAlignment = HorizontalAlignment.Left,
                 VerticalAlignment = VerticalAlignment.Top,
-                BitmapPixelSize = bitmap.PixelSize,
+                BitmapPixelSize = pictureSize,
                 ViewMatrix = Matrix.Identity,
                 Entries = overlayEntries
             };
@@ -1151,7 +1096,7 @@ namespace CRT
             // known until this preview has been through a layout pass. SizeChanged catches every
             // pass, not just the first, so a window resize that changes how large this
             // Uniform-stretched image renders keeps all three in step with it.
-            image.SizeChanged += (_, _) => PositionPreviewOverlayAndBadges(image, overlay, imageBorderOutline, badgeCanvas, bitmap.PixelSize);
+            image.SizeChanged += (_, _) => PositionPreviewOverlayAndBadges(image, overlay, imageBorderOutline, badgeCanvas, pictureSize);
 
             var imageLayer = new Grid();
             imageLayer.Children.Add(image);
@@ -1377,7 +1322,7 @@ namespace CRT
         // OnPreviewBadgePointerPressed for what it guards against.
         private bool thisIsOpeningEntryEditor;
 
-        private void OnPreviewBadgePointerPressed(int workbookId, int entryId, Bitmap schematicBitmap, PointerPressedEventArgs e)
+        private void OnPreviewBadgePointerPressed(int workbookId, int entryId, SchematicPreviewPicture schematicBitmap, PointerPressedEventArgs e)
         {
             if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
                 return;
@@ -1387,7 +1332,7 @@ namespace CRT
             // firing off one click is not what either affordance is meant to do.
             e.Handled = true;
 
-            this.OpenEntryEditor(workbookId, entryId, schematicBitmap);
+            this.OpenEntryEditor(workbookId, entryId, Task.FromResult<SchematicPreviewPicture?>(schematicBitmap));
         }
 
         // ###########################################################################################
@@ -1401,11 +1346,12 @@ namespace CRT
         // complaint over again, one level out.
         //
         // schematicBitmap is the entry's own schematic image, which the editor draws its location
-        // preview from. It belongs to this tab's shared cache and must NOT be disposed here - see
-        // thisSchematicBitmapsByPath. Null is tolerated by the editor (no preview drawn), which is
-        // what a card whose schematic image is missing from the data root passes.
+        // preview from - decoded small, so the editor is handed the picture's own size beside it, which
+        // every area is mapped by. It belongs to SchematicPreviewPictures and must NOT be disposed here.
+        // Null is tolerated by the editor (no preview drawn), which is what a card whose schematic image
+        // is missing from the data root passes.
         // ###########################################################################################
-        private async void OpenEntryEditor(int workbookId, int entryId, Bitmap? schematicBitmap)
+        private async void OpenEntryEditor(int workbookId, int entryId, Task<SchematicPreviewPicture?> schematicRead)
         {
             if (this.thisIsOpeningEntryEditor)
                 return;
@@ -1414,6 +1360,12 @@ namespace CRT
 
             try
             {
+                // Read off the UI thread, under CRT's "please wait" when it is not in yet - every wait the user watches is
+                // (code review, 2026-11-16) - the guard above holding a second press meanwhile.
+                SchematicPreviewPicture? schematicBitmap = schematicRead.IsCompleted
+                    ? await schematicRead
+                    : await BusyOverlay.RunLocalAsync(this, CrtWaitWording.ReadingSchematicImage, () => schematicRead);
+
                 var entry = WorklogManager.GetEntries(workbookId).FirstOrDefault(x => x.Id == entryId);
                 if (entry == null)
                     return;
@@ -1422,7 +1374,7 @@ namespace CRT
                     return;
 
                 var editor = new WorklogEntryEditorWindow();
-                editor.Initialize(workbookId, entry, schematicBitmap);
+                editor.Initialize(workbookId, entry, schematicBitmap?.Bitmap, schematicBitmap?.OriginalPixelSize);
 
                 var componentsInScope = this.BuildWorklogEntryComponentScope(entry);
                 if (componentsInScope != null)

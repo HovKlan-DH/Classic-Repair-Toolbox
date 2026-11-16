@@ -391,6 +391,65 @@ public sealed class BoardComponentHighlightStorageTests : IDisposable
 
     // ------------------------------------------------------------- KiCad calibration
 
+    // A CRT 4.0 board file holding one calibration for "Top", its write time set as given.
+    private string BoardFileWithCalibration(double offsetX, DateTime writtenUtc)
+    {
+        string path = Path.Combine(this.thisWorkspace.Root, "Board", DataTreeLayout.BoardFileName);
+        var calibration = new KiCadCalibrationEntry { SchematicName = "Top", CadName = "PCB Top", OffsetX = offsetX, ScaleX = 1, ScaleY = 1 };
+
+        BoardFiles.Write(path, BoardDocumentMapping.ToDocument(new BoardContent(new BoardData(), [calibration], []), name => name, []));
+        File.SetLastWriteTimeUtc(path, writtenUtc);
+        return path;
+    }
+
+    private static double OffsetXOf(string boardFile)
+    {
+        Assert.True(BoardComponentHighlightStorage.TryLoadKiCadCalibration(boardFile, "Top", out _, out double offsetX, out _, out _, out _, out _, out _));
+        return offsetX;
+    }
+
+    // The "Schematics" tab asks at every pointer move over a KiCad view: each ask read and parsed the whole board file,
+    // 13 of the 29 ms a move cost on 250407's pictures (2026-11-16).
+    [Fact]
+    public void A_settled_board_file_is_read_once_for_its_calibrations_however_often_they_are_asked_for()
+    {
+        string boardFile = this.BoardFileWithCalibration(12, DateTime.UtcNow.AddMinutes(-5));
+        int before = BoardComponentHighlightStorage.CalibrationFileReadsForTests;
+
+        for (int ask = 0; ask < 5; ask++)
+        {
+            Assert.Equal(12, OffsetXOf(boardFile));
+        }
+
+        Assert.Single(BoardComponentHighlightStorage.LoadKiCadCalibrations(boardFile, ["Top"]));
+        Assert.Equal(1, BoardComponentHighlightStorage.CalibrationFileReadsForTests - before);
+    }
+
+    [Fact]
+    public void A_board_file_written_since_its_calibrations_were_read_is_read_again()
+    {
+        string boardFile = this.BoardFileWithCalibration(12, DateTime.UtcNow.AddMinutes(-5));
+        Assert.Equal(12, OffsetXOf(boardFile));
+
+        this.BoardFileWithCalibration(34, DateTime.UtcNow.AddMinutes(-4));
+
+        Assert.Equal(34, OffsetXOf(boardFile));
+    }
+
+    // Two writes inside one clock tick can leave the same length and write time on other bytes (StampSettling), so a
+    // file written moments ago is never answered from what was read of it.
+    [Fact]
+    public void A_board_file_written_moments_ago_is_read_again_at_every_ask()
+    {
+        string boardFile = this.BoardFileWithCalibration(12, DateTime.UtcNow);
+        int before = BoardComponentHighlightStorage.CalibrationFileReadsForTests;
+
+        Assert.Equal(12, OffsetXOf(boardFile));
+        Assert.Equal(12, OffsetXOf(boardFile));
+
+        Assert.Equal(2, BoardComponentHighlightStorage.CalibrationFileReadsForTests - before);
+    }
+
     [Fact]
     public void TryLoadKiCadCalibration_returns_false_when_the_file_is_missing()
     {

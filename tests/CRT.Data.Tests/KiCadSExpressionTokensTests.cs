@@ -131,13 +131,13 @@ namespace CRT.Data.Tests
         {
             Assert.Equal(
                 ["(", "property", "Sheetfile", "pages/cpu.kicad_sch", ")"],
-                KiCadSExpressionTokens.Tokenize("(property \"Sheetfile\" pages/cpu.kicad_sch)"));
+                KiCadSExpressionTokensTests.Read("(property \"Sheetfile\" pages/cpu.kicad_sch)"));
         }
 
         [Fact]
         public void A_quoted_string_keeps_its_spaces_and_loses_its_quotes()
         {
-            Assert.Equal(["Power supply"], KiCadSExpressionTokens.Tokenize("\"Power supply\""));
+            Assert.Equal(["Power supply"], KiCadSExpressionTokensTests.Read("\"Power supply\""));
         }
 
         // "\x" reads as x - so "\\\\server" in a file is the two backslashes of a network path.
@@ -146,14 +146,14 @@ namespace CRT.Data.Tests
         {
             Assert.Equal(
                 ["Net \"quoted\"", "\\\\server\\share"],
-                KiCadSExpressionTokens.Tokenize("\"Net \\\"quoted\\\"\" \"\\\\\\\\server\\\\share\""));
+                KiCadSExpressionTokensTests.Read("\"Net \\\"quoted\\\"\" \"\\\\\\\\server\\\\share\""));
         }
 
         // A backslash with nothing after it is kept, as the loader always kept it.
         [Fact]
         public void A_backslash_that_ends_the_file_is_kept()
         {
-            Assert.Equal(["abc\\"], KiCadSExpressionTokens.Tokenize("\"abc\\"));
+            Assert.Equal(["abc\\"], KiCadSExpressionTokensTests.Read("\"abc\\"));
         }
 
         [Fact]
@@ -161,7 +161,7 @@ namespace CRT.Data.Tests
         {
             Assert.Equal(
                 ["(", "net", "1", ")", "(", "net", "2", ")"],
-                KiCadSExpressionTokens.Tokenize("; header\n(net 1) ; trailing\n(net 2)"));
+                KiCadSExpressionTokensTests.Read("; header\n(net 1) ; trailing\n(net 2)"));
         }
 
         // Only a token's first character decides what it is: a quote or semicolon inside an atom is
@@ -169,34 +169,34 @@ namespace CRT.Data.Tests
         [Fact]
         public void A_quote_or_semicolon_inside_an_atom_is_part_of_it()
         {
-            Assert.Equal(["(", "a\"b", "c;d", ")"], KiCadSExpressionTokens.Tokenize("(a\"b c;d)"));
+            Assert.Equal(["(", "a\"b", "c;d", ")"], KiCadSExpressionTokensTests.Read("(a\"b c;d)"));
         }
 
         // The loader's quirk, kept on purpose: a quoted "(" is the same token as a real one.
         [Fact]
         public void A_quoted_parenthesis_is_the_same_token_as_a_real_one()
         {
-            Assert.Equal(["(", "(", ")"], KiCadSExpressionTokens.Tokenize("\"(\" ( )"));
+            Assert.Equal(["(", "(", ")"], KiCadSExpressionTokensTests.Read("\"(\" ( )"));
         }
 
         [Fact]
         public void An_unterminated_string_ends_at_the_end_of_the_file()
         {
-            Assert.Equal(["(", "abc"], KiCadSExpressionTokens.Tokenize("( \"abc"));
+            Assert.Equal(["(", "abc"], KiCadSExpressionTokensTests.Read("( \"abc"));
         }
 
         [Fact]
         public void Empty_and_blank_text_have_no_tokens()
         {
-            Assert.Empty(KiCadSExpressionTokens.Tokenize(string.Empty));
-            Assert.Empty(KiCadSExpressionTokens.Tokenize(" \r\n\t "));
+            Assert.Empty(KiCadSExpressionTokensTests.Read(string.Empty));
+            Assert.Empty(KiCadSExpressionTokensTests.Read(" \r\n\t "));
         }
 
         // A parse of a board's PCB meets millions of parentheses (code review, 2026-10-11).
         [Fact]
         public void Every_parenthesis_is_the_same_string()
         {
-            List<string> tokens = KiCadSExpressionTokens.Tokenize("((a) (b))");
+            List<string> tokens = KiCadSExpressionTokensTests.Read("((a) (b))");
 
             Assert.All(tokens.Where(token => token == "("), token => Assert.Same(KiCadSExpressionTokens.Open, token));
             Assert.All(tokens.Where(token => token == ")"), token => Assert.Same(KiCadSExpressionTokens.Close, token));
@@ -281,7 +281,7 @@ namespace CRT.Data.Tests
             string atom = new('a', 3 * KiCadSExpressionTokensTests.BufferSize + 7);
             string quoted = new('q', 2 * KiCadSExpressionTokensTests.BufferSize + 3);
 
-            Assert.Equal(["(", atom, quoted, ")"], KiCadSExpressionTokens.Tokenize($"({atom} \"{quoted}\")"));
+            Assert.Equal(["(", atom, quoted, ")"], KiCadSExpressionTokensTests.Read($"({atom} \"{quoted}\")"));
         }
 
         // ###########################################################################################
@@ -306,14 +306,66 @@ namespace CRT.Data.Tests
             Assert.Throws<ArgumentOutOfRangeException>(() => new KiCadSExpressionTokens(new StringReader("x"), 0));
         }
 
-        // Tokenize reads the same tokens as a reader of the same text - the loader's list is the
-        // server's stream.
+        // ###########################################################################################
+        // *** THE REST OF A LIST PASSED OVER ENDS WHERE ITS TOKENS WOULD HAVE ENDED (2026-11-16, performance
+        // walkthrough). *** The loader passes over a "(data ...)" list - an embedded picture's base64 - without making
+        // its tokens; it must stop exactly where reading them would have: a nested list, a comment, an escape, and a
+        // QUOTED parenthesis counted as a real one (the quirk above). Each text below is read both ways after its
+        // first two tokens, and the tokens after the list compared.
+        // ###########################################################################################
         [Fact]
-        public void Tokenize_gives_the_same_tokens_as_a_reader()
+        public void The_rest_of_a_list_passed_over_ends_where_reading_its_tokens_would_have()
         {
-            const string Content = "(kicad_sch (version 20231120) ; note\n (sheet (property \"Sheetname\" \"CPU\")))";
+            string[] texts =
+            [
+                "(data \"aGVsbG8=\" \"d29ybGQ=\") after",
+                "(data (x (y z)) \"q\") after (more)",
+                "(data \")\" \"(\" x) after",
+                "(data \"\\)\" ; a ) comment\n y) after",
+                "(data a\"b c;d ) after",
+                "(data |KLUv/QBY| |abc|) (next 1)",
+                "(data \"((\" \"))\" z) after",
+                "(data \"unterminated",
+            ];
 
-            Assert.Equal(KiCadSExpressionTokensTests.Read(Content), KiCadSExpressionTokens.Tokenize(Content));
+            foreach (string text in texts)
+            {
+                foreach (int padding in new[] { 0, KiCadSExpressionTokensTests.BufferSize - 5, KiCadSExpressionTokensTests.BufferSize - 1 })
+                {
+                    string content = new string(' ', padding) + text;
+
+                    var skipping = new KiCadSExpressionTokens(new StringReader(content));
+                    Assert.True(skipping.TryRead(out _));
+                    Assert.True(skipping.TryRead(out _));
+                    skipping.SkipRestOfList();
+
+                    var after = new List<string>();
+                    while (skipping.TryRead(out string? token))
+                        after.Add(token);
+
+                    Assert.Equal(KiCadSExpressionTokensTests.TokensAfterList(content), after);
+                }
+            }
+        }
+
+        // The tokens after the first list of `content`, its end found by reading its tokens - "(" and ")" compared as
+        // strings, as the loader compares them.
+        private static List<string> TokensAfterList(string content)
+        {
+            List<string> tokens = KiCadSExpressionTokensTests.Read(content);
+            int depth = 0;
+
+            for (int at = 0; at < tokens.Count; at++)
+            {
+                depth += tokens[at] == "(" ? 1 : tokens[at] == ")" ? -1 : 0;
+
+                if (depth == 0 && at > 0)
+                {
+                    return tokens.Skip(at + 1).ToList();
+                }
+            }
+
+            return [];
         }
     }
 }

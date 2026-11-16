@@ -667,12 +667,20 @@ public sealed class ReviewSummaryTests
     // (any) order should also be submitted as a change"). *** Its rows are all as published, so no
     // section counts one - the summary names the lists in another order instead, says so in its one
     // line, and a maintainer is shown them (ReviewNotInTable). A new board has nothing to reorder.
+    //
+    // The credits are no such list since 2026-11-16 (code review): every publish keeps them in date order (BoardRowOrder), so
+    // their order alone is no change - this held "Credits" as its example until then.
     // ###########################################################################################
     [Fact]
     public void A_submission_that_only_moved_rows_names_the_lists_and_has_changes()
     {
         var published = new BoardData
         {
+            BoardLinks =
+            [
+                new BoardLinkEntry { Category = "Forums", Name = "Lemon64", Url = "https://lemon64.com" },
+                new BoardLinkEntry { Category = "Forums", Name = "Forum 64", Url = "https://forum64.de" },
+            ],
             Credits =
             [
                 new CreditEntry { Category = "Schematic image", NameOrHandle = "Anna" },
@@ -680,16 +688,20 @@ public sealed class ReviewSummaryTests
             ],
         };
 
-        var submitted = new BoardData { Credits = [published.Credits[1], published.Credits[0]] };
+        var submitted = new BoardData { BoardLinks = [published.BoardLinks[1], published.BoardLinks[0]], Credits = published.Credits };
 
         ReviewChangeSummary summary = ReviewSummary.Compare(published, submitted);
 
         Assert.Equal(0, summary.TotalChanges);
-        Assert.Equal([BoardWorkbookSchema.SheetCredits], summary.ReorderedSections);
+        Assert.Equal([BoardWorkbookSchema.SheetBoardLinks], summary.ReorderedSections);
         Assert.True(summary.HasChanges);
-        Assert.Equal("order of credits changed", summary.Describe());
+        Assert.Equal("order of links changed", summary.Describe());
 
         Assert.Empty(ReviewSummary.Compare(published: null, submitted).ReorderedSections);
         Assert.Empty(ReviewSummary.Compare(published, published).ReorderedSections);
+
+        // The credits in another order alone: no change.
+        var creditsMoved = new BoardData { BoardLinks = published.BoardLinks, Credits = [published.Credits[1], published.Credits[0]] };
+        Assert.False(ReviewSummary.Compare(published, creditsMoved).HasChanges);
     }
 }

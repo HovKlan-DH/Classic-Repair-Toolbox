@@ -4,6 +4,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace Handlers.DataHandling
@@ -419,22 +420,155 @@ namespace Handlers.DataHandling
             {
                 // Draft-only boards are excluded: their ExcelDataFile names a file that exists only
                 // as an identity key and is never on disk or in the manifest (see NewBoardIdentity),
-                // so asking sync to fetch it would be a guaranteed miss on every launch.
-                var boardExcelFiles = HardwareBoards
-                    .Where(entry => !entry.IsDraftOnly)
-                    .Select(entry => thisNormalizeRelativePath(entry.ExcelDataFile))
-                    .Where(path => !string.IsNullOrWhiteSpace(path))
-                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                // so asking sync to fetch it would be a guaranteed miss on every launch. So are the
+                // boards unticked under "Visible hardware and boards" (DataSyncScope, 2026-11-14).
+                DataSyncScope scope = DataManager.SyncScopeNow();
 
                 RaiseStatus("Checking board data files...");
                 await OnlineServices.SyncFilesAsync(
                     _syncManifest,
                     _dataRoot,
-                    file => boardExcelFiles.Contains(thisNormalizeRelativePath(file)),
+                    file => scope.BoardFiles.Contains(thisNormalizeRelativePath(file)),
                     RaiseStatus,
                     RaiseFileDownload,
                     label: "board data files");
             }
+        }
+
+        // ###########################################################################################
+        // What a data check downloads now - the boards the main file lists, less those unticked under "Visible hardware and
+        // boards" (DataSyncScope).
+        // ###########################################################################################
+        internal static DataSyncScope SyncScopeNow() =>
+            DataSyncScope.Of(HardwareBoards, UserSettings.CatalogueUncheckedKeysSnapshot, thisNormalizeRelativePath);
+
+        // ###########################################################################################
+        // The board files a check left out that are not as the manifest has them - not there, or behind - found as that
+        // check ran (NoteSkippedBoardsBehindAsync). A board ticked again is told by them, with its stored files
+        // (BoardsWithoutData). Every board file a check downloads is taken out again.
+        // ###########################################################################################
+        private static readonly HashSet<string> _skippedBoardFilesBehind = new(StringComparer.OrdinalIgnoreCase);
+        private static readonly object _skippedBoardFilesBehindLock = new();
+
+        // ###########################################################################################
+        // The stored files ("Files/...") the ticked boards' board files and the drafts' name - what the background part of
+        // a check downloads of the store while a board is unticked. Null - every stored file - when nothing is skipped,
+        // or when one of those board files cannot be read here: what it names is not known, so nothing is held back.
+        // ###########################################################################################
+        private static IReadOnlySet<string>? StoredFilesToSync(DataSyncScope scope, string dataRoot)
+        {
+            if (!scope.SkipsAny)
+                return null;
+
+            var wanted = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (string boardFile in scope.BoardFiles)
+            {
+                string path = Path.Combine(dataRoot, boardFile);
+
+                if (DraftFiles.ListedIn(path) is not { } listed)
+                {
+                    Logger.Info($"Every stored file is checked: the board file [{boardFile}] could not be read to tell which it names");
+                    return null;
+                }
+
+                DataManager.AddStoredFiles(wanted, listed.Values);
+            }
+
+            string draftsRoot = DraftManager.DraftsRoot;
+
+            if (!string.IsNullOrWhiteSpace(draftsRoot) && Directory.Exists(draftsRoot))
+            {
+                try
+                {
+                    foreach (string boardFile in Directory.EnumerateFiles(draftsRoot, DataTreeLayout.BoardFileName, SearchOption.AllDirectories))
+                    {
+                        if (DraftFolderLayout.IsInBookkeepingFolder(Path.GetRelativePath(draftsRoot, boardFile).Replace('\\', '/')))
+                            continue;
+
+                        if (DraftFiles.ListedIn(boardFile) is not { } listed)
+                            return null;
+
+                        DataManager.AddStoredFiles(wanted, listed.Values);
+                    }
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    Logger.Warning($"Every stored file is checked: the drafts could not be read - [{ex.Message}]");
+                    return null;
+                }
+            }
+
+            return wanted;
+        }
+
+        private static void AddStoredFiles(HashSet<string> wanted, IEnumerable<BoardDocument.StoredFileRow> files)
+        {
+            foreach (BoardDocument.StoredFileRow file in files.Where(file => DataTreeLayout.IsSha256(file.Sha256)))
+            {
+                wanted.Add(DataTreeLayout.StoredFilePath(file.Sha256, file.Name));
+            }
+        }
+
+        // ###########################################################################################
+        // Notes which board files a check left out are behind the manifest - compared, never downloaded (OnlineServices
+        // .FilesNotCurrentAsync, the very comparison a download goes by). Run as the check runs, with its manifest.
+        // ###########################################################################################
+        private static async Task NoteSkippedBoardsBehindAsync(List<DataFileEntry> manifest, DataSyncScope scope, string dataRoot)
+        {
+            HashSet<string> behind = scope.SkipsAny
+                ? await OnlineServices.FilesNotCurrentAsync(manifest, dataRoot, file => scope.SkippedBoardFiles.Contains(thisNormalizeRelativePath(file)))
+                : [];
+
+            lock (_skippedBoardFilesBehindLock)
+            {
+                _skippedBoardFilesBehind.ExceptWith(scope.BoardFiles);
+                _skippedBoardFilesBehind.ExceptWith(scope.SkippedBoardFiles);
+                _skippedBoardFilesBehind.UnionWith(behind.Select(thisNormalizeRelativePath));
+            }
+
+            if (behind.Count > 0)
+            {
+                Logger.Info($"Not downloaded, as unticked under \"Visible hardware and boards\": [{behind.Count}] board files behind the {AppConfig.GetOnlineSourceLabel()} - [{string.Join(" | ", behind)}]");
+            }
+        }
+
+        // ###########################################################################################
+        // Of `boards`, those whose data is not all on this computer as a check would leave it: the board file not there,
+        // behind the last manifest (noted as that check left it out), unreadable, or a stored file it names not there. Read
+        // from disk - call it off the UI thread. A board only a draft has has no published data, and is never one.
+        // ###########################################################################################
+        internal static List<HardwareBoardEntry> BoardsWithoutData(IEnumerable<HardwareBoardEntry> boards)
+        {
+            string dataRoot = _dataRoot;
+            var missing = new List<HardwareBoardEntry>();
+
+            if (string.IsNullOrWhiteSpace(dataRoot))
+                return missing;
+
+            foreach (HardwareBoardEntry entry in boards.Where(entry => !entry.IsDraftOnly))
+            {
+                string boardFile = thisNormalizeRelativePath(entry.ExcelDataFile);
+
+                if (boardFile.Length == 0)
+                    continue;
+
+                bool behind;
+
+                lock (_skippedBoardFilesBehindLock)
+                {
+                    behind = _skippedBoardFilesBehind.Contains(boardFile);
+                }
+
+                if (behind ||
+                    DraftFiles.ListedIn(Path.Combine(dataRoot, boardFile)) is not { } listed ||
+                    listed.Values.Any(file => DataTreeLayout.IsSha256(file.Sha256) && !File.Exists(Path.Combine(dataRoot, DataTreeLayout.StoredFilePath(file.Sha256, file.Name)))))
+                {
+                    missing.Add(entry);
+                }
+            }
+
+            return missing;
         }
 
         // Returns true when a background sync manifest is queued and ready to process.
@@ -456,10 +590,16 @@ namespace Handlers.DataHandling
             var manifest = _syncManifest;
             _syncManifest = null;
 
+            // A board unticked under "Visible hardware and boards" brings none of its stored files (DataSyncScope).
+            DataSyncScope scope = DataManager.SyncScopeNow();
+            string dataRoot = _dataRoot;
+            IReadOnlySet<string>? storedWanted = await Task.Run(() => DataManager.StoredFilesToSync(scope, dataRoot));
+            await DataManager.NoteSkippedBoardsBehindAsync(manifest, scope, dataRoot);
+
             return await OnlineServices.SyncFilesAsync(
                 manifest,
-                _dataRoot,
-                file => !DataManager.IsListFile(thisNormalizeRelativePath(file)),
+                dataRoot,
+                file => DataSyncScope.DownloadsInBackground(thisNormalizeRelativePath(file), DataManager.IsListFile, storedWanted),
                 onStatus,
                 onFile,
                 label: "remaining data files");
@@ -600,35 +740,43 @@ namespace Handlers.DataHandling
             await Task.Run(LoadMainExcel);
 
             // Draft-only boards excluded for the same reason as the startup sync above: their
-            // ExcelDataFile is an identity key, not a file the server has or will ever have.
-            var boardExcelFiles = HardwareBoards
-                .Where(entry => !entry.IsDraftOnly)
-                .Select(entry => thisNormalizeRelativePath(entry.ExcelDataFile))
-                .Where(path => !string.IsNullOrWhiteSpace(path))
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            // ExcelDataFile is an identity key, not a file the server has or will ever have. And the
+            // boards unticked under "Visible hardware and boards", with the stored files only they
+            // name (DataSyncScope, 2026-11-14) - so the board files come first: which stored files
+            // the ticked boards name is read from them.
+            DataSyncScope scope = DataManager.SyncScopeNow();
+            string dataRoot = _dataRoot;
+
+            void ReportBoardFile(string filePath)
+            {
+                if (!string.IsNullOrWhiteSpace(filePath) && DataTreeLayout.IsBoardFile(filePath))
+                {
+                    anyExcelChanged = true;
+                }
+
+                ReportFile(filePath);
+            }
 
             // Not "Checking data from the ... source - please wait...": that is the data-check card's
             // heading already, and the card said it twice (DataSyncStatusTip.Checking).
             ReportStatus("Checking board data files...");
+            changedCount += await OnlineServices.SyncFilesAsync(
+                manifest,
+                dataRoot,
+                file => scope.BoardFiles.Contains(thisNormalizeRelativePath(file)),
+                ReportStatus,
+                ReportBoardFile,
+                label: "board data files");
+
+            IReadOnlySet<string>? storedWanted = await Task.Run(() => DataManager.StoredFilesToSync(scope, dataRoot));
+            await DataManager.NoteSkippedBoardsBehindAsync(manifest, scope, dataRoot);
+
             int remainingChangedCount = await OnlineServices.SyncFilesAsync(
                 manifest,
-                _dataRoot,
-                file =>
-                {
-                    string normalizedFile = thisNormalizeRelativePath(file);
-
-                    return boardExcelFiles.Contains(normalizedFile) || !DataManager.IsListFile(normalizedFile);
-                },
+                dataRoot,
+                file => DataSyncScope.DownloadsInBackground(thisNormalizeRelativePath(file), DataManager.IsListFile, storedWanted),
                 ReportStatus,
-                filePath =>
-                {
-                    if (!string.IsNullOrWhiteSpace(filePath) && DataTreeLayout.IsBoardFile(filePath))
-                    {
-                        anyExcelChanged = true;
-                    }
-
-                    ReportFile(filePath);
-                },
+                ReportBoardFile,
                 label: "remaining data files");
 
             changedCount += remainingChangedCount;
@@ -1288,10 +1436,71 @@ namespace Handlers.DataHandling
                 : null;
 
             LastLoadedDraftSummary = publishedForComparison is not null
-                ? BoardDraftSummary.FromChanges(BoardDataDiffer.Compare(publishedForComparison, board!), BoardRowOrder.ComponentsReordered(publishedForComparison, board!))
+                ? await DataManager.DraftSummaryOfAsync(publishedForComparison, board!)
                 : BoardDraftSummary.Empty;
 
             return board;
+        }
+
+        // ###########################################################################################
+        // THE SCHEMATIC IMAGES' NAMES OF A BOARD AS IT IS VIEWED - the file LoadBoardDataAsync would read, by the same
+        // rule (DraftBoardSource.Resolve) - read off the UI thread, held by nothing, and with nothing else done
+        // (2026-11-16, performance walkthrough). The "Configuration" tab's list of every board's schematic images
+        // loaded each board through LoadBoardDataAsync: each held in BoardDataReader's cache for the run, each drafted
+        // one compared whole with its published copy, and LoadBoardDataAsync's statics - the board ON SCREEN's draft
+        // facts, which Main reads after its own load - written for another board meanwhile.
+        // ###########################################################################################
+        // Null for a board that cannot be read, as LoadBoardDataAsync's null.
+        public static Task<List<string>?> ReadSchematicNamesAsync(HardwareBoardEntry entry)
+        {
+            BoardSourceSelection source = DraftBoardSource.Resolve(
+                _dataRoot,
+                DraftManager.DraftsRoot,
+                entry.ExcelDataFile,
+                UserSettings.ViewOfficialPublishedOnly,
+                entry.IsPublished);
+
+            string path = source.WorkbookPath.Length > 0
+                ? source.WorkbookPath
+                : DraftBoardSource.PublishedPathOf(_dataRoot, entry.ExcelDataFile);
+
+            return Task.Run(() => BoardDataReader.ReadWorkbookUncached(path)?.Schematics
+                .Where(schematic => !string.IsNullOrWhiteSpace(schematic.SchematicName))
+                .Select(schematic => schematic.SchematicName)
+                .ToList());
+        }
+
+        // ###########################################################################################
+        // *** WHICH ROWS ARE DRAFTED, WORKED OUT OFF THE UI THREAD AND ONCE WHILE NEITHER BOARD CHANGES (2026-11-16,
+        // performance walkthrough). *** The whole-board comparison ran on the UI thread after the await above - its
+        // continuation's - every time a drafted board was shown, though BoardDataReader hands back the very same
+        // instances while neither file is written: 324 ms the first time on 250407, 27-64 ms each time after, measured.
+        // Kept for the last pair of boards it was worked out from, by REFERENCE - a board read again after a write is
+        // another instance, so it is worked out again.
+        // ###########################################################################################
+        private sealed record DraftSummaryWorkedOut(BoardData Published, BoardData Draft, BoardDraftSummary Summary);
+
+        private static DraftSummaryWorkedOut? LastDraftSummaryWorkedOut;
+
+        // How many times the drafted rows were worked out - for the tests.
+        private static int DraftSummariesWorkedOut;
+
+        internal static int DraftSummariesWorkedOutForTests => Volatile.Read(ref DataManager.DraftSummariesWorkedOut);
+
+        internal static async Task<BoardDraftSummary> DraftSummaryOfAsync(BoardData published, BoardData draft)
+        {
+            if (LastDraftSummaryWorkedOut is { } known && ReferenceEquals(known.Published, published) && ReferenceEquals(known.Draft, draft))
+            {
+                return known.Summary;
+            }
+
+            Interlocked.Increment(ref DataManager.DraftSummariesWorkedOut);
+
+            BoardDraftSummary summary = await Task.Run(() =>
+                BoardDraftSummary.FromChanges(BoardDataDiffer.Compare(published, draft), BoardRowOrder.ComponentsReordered(published, draft)));
+
+            LastDraftSummaryWorkedOut = new DraftSummaryWorkedOut(published, draft, summary);
+            return summary;
         }
 
         // ###########################################################################################

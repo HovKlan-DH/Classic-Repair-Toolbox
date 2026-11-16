@@ -39,15 +39,17 @@ public sealed class BoardKiCadFolderTests : IDisposable
     }
 
     // ###########################################################################################
-    // *** A REPLACED COPY NEVER KEEPS THE WRITE TIME OF THE ONE IT REPLACED (2026-10-25). *** The
-    // KiCad loader keeps its parse by path and write time (KiCadProjectLoader). File.Copy keeps the
+    // *** BYTES WRITTEN IN ONE CLOCK TICK ARE NEVER TAKEN FOR EACH OTHER (2026-10-25). *** The KiCad
+    // loader keeps its parse by path and write time (KiCadProjectLoader). File.Copy keeps the
     // source's time, so two different files written in one clock tick - a contributor's copy and the
     // published one, a few milliseconds apart - gave the copy the stamp it already had, and the
     // loader answered with the old file's parse: "Those KiCad files could not be read." after a
-    // Remove that had put a good file back (found by a test that failed in some orders only).
+    // Remove that had put a good file back (found by a test that failed in some orders only). Since
+    // 2026-11-16 other bytes are another folder (BoardKiCadFolder.FolderNameOf), so another path - and
+    // the copy the board file held before goes as it gets the new one, as no other board holds it.
     // ###########################################################################################
     [Fact]
-    public void A_replaced_copy_gets_a_later_write_time_than_the_one_it_replaced()
+    public void Bytes_stored_in_the_same_clock_tick_are_copied_to_another_path()
     {
         BoardDocument.StoredFileRow first = StoredFiles.Put(this.DataRoot, "KiCad data/Open128.kicad_pcb", "first bytes");
         BoardDocument.StoredFileRow second = StoredFiles.Put(this.DataRoot, "KiCad data/Open128.kicad_pcb", "second, other bytes");
@@ -60,14 +62,16 @@ public sealed class BoardKiCadFolderTests : IDisposable
         }
 
         StoredFiles.WriteBoard(this.PublishedBoardFile, first);
-        string folder = BoardKiCadFolder.For(this.PublishedBoardFile, this.DataRoot, this.CacheRoot);
-        DateTime before = File.GetLastWriteTimeUtc(Path.Combine(folder, "Open128.kicad_pcb"));
+        string firstFolder = BoardKiCadFolder.For(this.PublishedBoardFile, this.DataRoot, this.CacheRoot);
+
+        Assert.Equal("first bytes", Read(firstFolder, "Open128.kicad_pcb"));
 
         StoredFiles.WriteBoard(this.PublishedBoardFile, second);
-        BoardKiCadFolder.For(this.PublishedBoardFile, this.DataRoot, this.CacheRoot);
+        string secondFolder = BoardKiCadFolder.For(this.PublishedBoardFile, this.DataRoot, this.CacheRoot);
 
-        Assert.Equal("second, other bytes", Read(folder, "Open128.kicad_pcb"));
-        Assert.True(File.GetLastWriteTimeUtc(Path.Combine(folder, "Open128.kicad_pcb")) > before);
+        Assert.NotEqual(firstFolder, secondFolder);
+        Assert.Equal("second, other bytes", Read(secondFolder, "Open128.kicad_pcb"));
+        Assert.False(Directory.Exists(firstFolder));
     }
 
     [Fact]
@@ -76,7 +80,117 @@ public sealed class BoardKiCadFolderTests : IDisposable
         StoredFiles.WriteBoard(this.PublishedBoardFile, StoredFiles.Put(this.DataRoot, "Schematics/U1.png", "picture"));
 
         Assert.Equal(string.Empty, BoardKiCadFolder.For(this.PublishedBoardFile, this.DataRoot, this.CacheRoot));
-        Assert.False(Directory.Exists(Path.Combine(this.CacheRoot, BoardKiCadFolder.FolderNameFor(this.PublishedBoardFile))));
+        Assert.False(Directory.Exists(this.CacheRoot) && Directory.EnumerateFileSystemEntries(this.CacheRoot).Any());
+    }
+
+    // ###########################################################################################
+    // *** A BOARD AND ITS DRAFT SHARE ONE COPY (2026-11-16, performance walkthrough). *** A draft lists
+    // the published KiCad files as they are, so the first change on a board - which makes the draft -
+    // must not copy a 45 MB PCB again, nor have the loader parse it again under another path. The same
+    // files under the same names are the same folder, whichever board file lists them.
+    // ###########################################################################################
+    [Fact]
+    public void A_board_and_a_draft_listing_the_same_KiCad_files_share_one_copy()
+    {
+        string draftBoardFile = Path.Combine(this.DraftFolder, DataTreeLayout.BoardFileName);
+        BoardDocument.StoredFileRow pcb = StoredFiles.Put(this.DataRoot, "KiCad data/Open128.kicad_pcb", "pcb");
+        StoredFiles.WriteBoard(this.PublishedBoardFile, pcb);
+        StoredFiles.WriteBoard(draftBoardFile, pcb);
+
+        string published = BoardKiCadFolder.For(this.PublishedBoardFile, this.DataRoot, this.CacheRoot);
+        string copy = Path.Combine(published, "Open128.kicad_pcb");
+        DateTime earlier = new(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(copy, earlier);
+
+        Assert.Equal(published, BoardKiCadFolder.For(draftBoardFile, this.DataRoot, this.CacheRoot));
+        Assert.Equal(earlier, File.GetLastWriteTimeUtc(copy));
+    }
+
+    // ###########################################################################################
+    // *** A COPY GOES AS SOON AS NO BOARD'S KiCad FILES ARE WHAT IT HOLDS (owner request, 2026-11-16: "a temporary file
+    // should be deleted when it is not used anymore" - one nothing had used for 14 days went until then). *** The sweep after
+    // launch: the copy of a board shown stays, whatever its age; one no board file holds goes, and so do the copy of a board
+    // file gone, the copy of a board whose KiCad files changed since, and a folder an earlier pre-release named by board file
+    // (16 hex digits) - never anything not CRT's.
+    // ###########################################################################################
+    [Fact]
+    public void The_sweep_keeps_the_copies_boards_hold_and_takes_away_every_other()
+    {
+        StoredFiles.WriteBoard(this.PublishedBoardFile, StoredFiles.Put(this.DataRoot, "KiCad data/Open128.kicad_pcb", "in use"));
+        string held = Path.GetDirectoryName(BoardKiCadFolder.For(this.PublishedBoardFile, this.DataRoot, this.CacheRoot))!;
+        Directory.SetLastWriteTimeUtc(held, DateTime.UtcNow.AddDays(-400));
+
+        // A draft discarded with CRT closed, and another board whose KiCad files a data update changed.
+        string goneBoardFile = Path.Combine(this.DraftFolder, DataTreeLayout.BoardFileName);
+        StoredFiles.WriteBoard(goneBoardFile, StoredFiles.Put(this.DraftFolder, "KiCad data/Open128.kicad_pcb", "drafted"));
+        string ofGone = Path.GetDirectoryName(BoardKiCadFolder.For(goneBoardFile, this.DataRoot, this.CacheRoot))!;
+        Directory.Delete(this.DraftFolder, recursive: true);
+
+        string changedBoardFile = Path.Combine(this.DataRoot, "Commodore", "C64", "250407", DataTreeLayout.BoardFileName);
+        StoredFiles.WriteBoard(changedBoardFile, StoredFiles.Put(this.DataRoot, "KiCad data/C64.kicad_pcb", "before the update"));
+        string ofChanged = Path.GetDirectoryName(BoardKiCadFolder.For(changedBoardFile, this.DataRoot, this.CacheRoot))!;
+        StoredFiles.WriteBoard(changedBoardFile, StoredFiles.Put(this.DataRoot, "KiCad data/C64.kicad_pcb", "after the update"));
+
+        string unheld = Path.Combine(this.CacheRoot, BoardKiCadFolder.FolderPrefix + "0123456789abcdef");
+        Directory.CreateDirectory(Path.Combine(unheld, DataTreeUsage.KiCadFolderName));
+
+        string byBoardFile = Path.Combine(this.CacheRoot, "0123456789abcdef");
+        Directory.CreateDirectory(Path.Combine(byBoardFile, DataTreeUsage.KiCadFolderName));
+
+        string notCrts = Path.Combine(this.CacheRoot, "Someone's notes");
+        Directory.CreateDirectory(notCrts);
+
+        Assert.Equal(4, BoardKiCadFolder.Sweep(this.CacheRoot, this.DataRoot));
+
+        Assert.True(Directory.Exists(held));
+        Assert.False(Directory.Exists(ofGone));
+        Assert.False(Directory.Exists(ofChanged));
+        Assert.False(Directory.Exists(unheld));
+        Assert.False(Directory.Exists(byBoardFile));
+        Assert.True(Directory.Exists(notCrts));
+
+        // The board changed is copied anew as it is shown.
+        Assert.Equal("after the update", Read(BoardKiCadFolder.For(changedBoardFile, this.DataRoot, this.CacheRoot), "C64.kicad_pcb"));
+    }
+
+    [Fact]
+    public void The_sweep_of_a_cache_never_made_takes_nothing_away()
+    {
+        Assert.Equal(0, BoardKiCadFolder.Sweep(this.CacheRoot, this.DataRoot));
+        Assert.Equal(0, BoardKiCadFolder.Sweep(string.Empty, this.DataRoot));
+    }
+
+    // ###########################################################################################
+    // *** A board file whose KiCad files changed lets go of its copy at once - unless another board file holds it (owner
+    // request, 2026-11-16). *** A draft lists the published KiCad files as they are, so a board and its draft share one copy:
+    // the draft importing its own keeps the published board's copy, which the board still holds. A draft discarded lets go of
+    // its own copy (LetGoOf), never the one the board holds too.
+    // ###########################################################################################
+    [Fact]
+    public void A_copy_goes_as_its_board_file_lets_go_of_it_unless_another_holds_it()
+    {
+        string draftBoardFile = Path.Combine(this.DraftFolder, DataTreeLayout.BoardFileName);
+        BoardDocument.StoredFileRow pcb = StoredFiles.Put(this.DataRoot, "KiCad data/Open128.kicad_pcb", "published");
+        StoredFiles.WriteBoard(this.PublishedBoardFile, pcb);
+        StoredFiles.WriteBoard(draftBoardFile, pcb);
+
+        string shared = Path.GetDirectoryName(BoardKiCadFolder.For(this.PublishedBoardFile, this.DataRoot, this.CacheRoot))!;
+        Assert.Equal(shared, Path.GetDirectoryName(BoardKiCadFolder.For(draftBoardFile, this.DataRoot, this.CacheRoot)));
+
+        // The draft imports its own: the board still holds the shared copy.
+        StoredFiles.WriteBoard(draftBoardFile, StoredFiles.Put(this.DraftFolder, "KiCad data/Open128.kicad_pcb", "imported"));
+        string own = Path.GetDirectoryName(BoardKiCadFolder.For(draftBoardFile, this.DataRoot, this.CacheRoot))!;
+        Assert.True(Directory.Exists(shared));
+
+        // Imported again: the draft's first copy is nobody's, and goes at once.
+        StoredFiles.WriteBoard(draftBoardFile, StoredFiles.Put(this.DraftFolder, "KiCad data/Open128.kicad_pcb", "imported again"));
+        string again = Path.GetDirectoryName(BoardKiCadFolder.For(draftBoardFile, this.DataRoot, this.CacheRoot))!;
+        Assert.False(Directory.Exists(own));
+
+        // Discarded: its copy goes, the board's stays.
+        BoardKiCadFolder.LetGoOf(draftBoardFile, this.CacheRoot);
+        Assert.False(Directory.Exists(again));
+        Assert.True(Directory.Exists(shared));
     }
 
     [Fact]
@@ -120,21 +234,34 @@ public sealed class BoardKiCadFolderTests : IDisposable
     }
 
     [Fact]
-    public void A_file_no_longer_listed_is_removed_from_the_copy_and_a_changed_one_copied_again()
+    public void A_file_no_longer_listed_is_not_in_the_copy_and_a_changed_one_is_copied_again()
     {
         StoredFiles.WriteBoard(
             this.PublishedBoardFile,
             StoredFiles.Put(this.DataRoot, "KiCad data/Open128.kicad_sch", "first"),
             StoredFiles.Put(this.DataRoot, "KiCad data/Pages/old.kicad_sch", "dropped later"));
 
-        string folder = BoardKiCadFolder.For(this.PublishedBoardFile, this.DataRoot, this.CacheRoot);
+        BoardKiCadFolder.For(this.PublishedBoardFile, this.DataRoot, this.CacheRoot);
 
         StoredFiles.WriteBoard(this.PublishedBoardFile, StoredFiles.Put(this.DataRoot, "KiCad data/Open128.kicad_sch", "second"));
+        string folder = BoardKiCadFolder.For(this.PublishedBoardFile, this.DataRoot, this.CacheRoot);
 
-        Assert.Equal(folder, BoardKiCadFolder.For(this.PublishedBoardFile, this.DataRoot, this.CacheRoot));
         Assert.Equal("second", Read(folder, "Open128.kicad_sch"));
         Assert.False(File.Exists(Path.Combine(folder, "Pages", "old.kicad_sch")));
         Assert.False(Directory.Exists(Path.Combine(folder, "Pages")));
+    }
+
+    // A file a copy did not want - one half copied when CRT stopped ("<name>.crt-copying") - goes as the copy is asked for.
+    [Fact]
+    public void A_file_the_copy_does_not_want_is_taken_out_of_it()
+    {
+        StoredFiles.WriteBoard(this.PublishedBoardFile, StoredFiles.Put(this.DataRoot, "KiCad data/Open128.kicad_pcb", "pcb"));
+        string folder = BoardKiCadFolder.For(this.PublishedBoardFile, this.DataRoot, this.CacheRoot);
+        string halfCopied = Path.Combine(folder, "Open128.kicad_pcb.crt-copying");
+        File.WriteAllText(halfCopied, "half");
+
+        Assert.Equal(folder, BoardKiCadFolder.For(this.PublishedBoardFile, this.DataRoot, this.CacheRoot));
+        Assert.False(File.Exists(halfCopied));
     }
 
     // An unchanged entry is not copied again - the KiCad loaders' own cache is keyed by each
@@ -225,7 +352,10 @@ public sealed class BoardKiCadFolderTests : IDisposable
         StoredFiles.WriteBoard(this.PublishedBoardFile, StoredFiles.Put(this.DataRoot, "KiCad data/Open128.kicad_pcb", "pcb"));
 
         string theirs = this.thisWorkspace.WriteFile(Path.Combine("Someone else's", "notes.txt"), "keep me");
-        string copyFolder = Path.Combine(this.CacheRoot, BoardKiCadFolder.FolderNameFor(this.PublishedBoardFile));
+
+        // The folder the copy would be made in, found by making it once and taking its files away.
+        string copyFolder = Path.GetDirectoryName(BoardKiCadFolder.For(this.PublishedBoardFile, this.DataRoot, this.CacheRoot))!;
+        Directory.Delete(copyFolder, recursive: true);
         string link = Path.Combine(copyFolder, DataTreeUsage.KiCadFolderName);
         Directory.CreateDirectory(copyFolder);
 

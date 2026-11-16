@@ -341,8 +341,37 @@ namespace Handlers.DataHandling
         public string NameOrHandle { get; init; } = string.Empty;
         public string Contact { get; init; } = string.Empty;
 
+        // ###########################################################################################
+        // *** WHAT THE CONTRIBUTION WAS, AND WHEN IT WAS PUBLISHED (owner request, 2026-11-14: "two more columns named "Main
+        // contribution" and "Date" ... we get a cronological order and a little more details on what has been done"). ***
+        // The main contribution is a note with formatting, written by the contributor and changed by a maintainer if need be,
+        // REQUIRED on every credit not on the published board as it is (BoardRowRequired; owner decision: "New credits only"
+        // - none of the credits published before it has one). The date is the SERVER'S: empty in a draft, stamped as the
+        // credit is published (PublishMerge; owner decision: "Set by the server at publish"), and none on a credit from before
+        // the history (owner decision, 2026-11-15: "the existing credits should actually have NO date at all - but all new
+        // credits must have it set"). The credits are kept oldest first, the undated before the dated (CreditOrder).
+        // ###########################################################################################
+        [RichNoteMarkup]
+        public string MainContribution { get; init; } = string.Empty;
+
+        [SetWhenPublished]
+        public string Date { get; init; } = string.Empty;
+
         // This credit for what is now called `subCategory` - a schematic image renamed (SchematicRename).
-        public CreditEntry WithSubCategory(string subCategory) => new() { Category = this.Category, SubCategory = subCategory, NameOrHandle = this.NameOrHandle, Contact = this.Contact };
+        public CreditEntry WithSubCategory(string subCategory) => this.With(subCategory: subCategory);
+
+        // This credit published on `date` (PublishMerge).
+        public CreditEntry WithDate(string date) => this.With(date: date);
+
+        private CreditEntry With(string? subCategory = null, string? date = null) => new()
+        {
+            Category = this.Category,
+            SubCategory = subCategory ?? this.SubCategory,
+            NameOrHandle = this.NameOrHandle,
+            Contact = this.Contact,
+            MainContribution = this.MainContribution,
+            Date = date ?? this.Date,
+        };
     }
 
     public class KiCadImportantSignalEntry

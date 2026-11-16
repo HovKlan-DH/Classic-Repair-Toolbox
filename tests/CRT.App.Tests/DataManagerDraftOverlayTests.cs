@@ -150,6 +150,73 @@ public sealed class DataManagerDraftOverlayTests : IDisposable
         Assert.Contains("U1", DataManager.LastLoadedDraftSummary.DraftedComponentBoardLabels);
     }
 
+    // ###########################################################################################
+    // WORKED OUT ONCE WHILE NEITHER BOARD CHANGES (2026-11-16, performance walkthrough): the whole-board comparison ran
+    // on the UI thread every time a drafted board was shown - 27-64 ms each time on 250407, 324 ms the first. The same
+    // board shown again is the same two instances BoardDataReader read, and its summary is the one worked out; a draft
+    // written since is another instance, and is worked out again.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_drafted_board_shown_again_unchanged_is_not_compared_again_and_one_written_since_is()
+    {
+        this.WriteBoardExcel();
+        this.WriteDraft(DataManagerDraftOverlayTests.BoardWithComponent("U1", "PLA (drafted correction)"));
+
+        await DataManager.LoadBoardDataAsync(this.BoardEntry);
+        BoardDraftSummary first = DataManager.LastLoadedDraftSummary;
+        int workedOut = DataManager.DraftSummariesWorkedOutForTests;
+
+        await DataManager.LoadBoardDataAsync(this.BoardEntry);
+
+        Assert.Equal(workedOut, DataManager.DraftSummariesWorkedOutForTests);
+        Assert.Same(first, DataManager.LastLoadedDraftSummary);
+
+        this.WriteDraft(DataManagerDraftOverlayTests.BoardWithComponent("U2", "CIA"));
+        File.SetLastWriteTimeUtc(
+            DraftFolderLayout.GetWorkbookPath(this.DraftsRoot, this.thisExcelDataFile),
+            DateTime.UtcNow.AddMinutes(1));
+
+        await DataManager.LoadBoardDataAsync(this.BoardEntry);
+
+        Assert.Equal(workedOut + 1, DataManager.DraftSummariesWorkedOutForTests);
+        Assert.Contains("U2", DataManager.LastLoadedDraftSummary.DraftedComponentBoardLabels);
+    }
+
+    // ###########################################################################################
+    // THE "Configuration" TAB'S LIST READS NAMES, AND NOTHING ELSE (2026-11-16, performance walkthrough): it loaded every
+    // board through LoadBoardDataAsync - each held for the run, each drafted one compared whole, and the statics Main
+    // reads for the board ON SCREEN written for another board. The names are the file LoadBoardDataAsync reads.
+    // ###########################################################################################
+    [Fact]
+    public async Task The_schematic_names_are_read_from_the_board_as_viewed_leaving_what_the_last_load_said()
+    {
+        this.WriteBoardExcel();
+        var drafted = DataManagerDraftOverlayTests.BoardWithComponent("U1", "PLA (drafted correction)");
+        drafted = new BoardData
+        {
+            RevisionDate = drafted.RevisionDate,
+            Components = drafted.Components,
+            Schematics = [new BoardSchematicEntry { SchematicName = "Drafted top" }, new BoardSchematicEntry { SchematicName = " " }],
+        };
+        this.WriteDraft(drafted);
+
+        await DataManager.LoadBoardDataAsync(this.BoardEntry);
+        BoardDraftSummary summary = DataManager.LastLoadedDraftSummary;
+        int workedOut = DataManager.DraftSummariesWorkedOutForTests;
+
+        List<string>? names = await DataManager.ReadSchematicNamesAsync(this.BoardEntry);
+
+        Assert.Equal(["Drafted top"], names);
+        Assert.Same(summary, DataManager.LastLoadedDraftSummary);
+        Assert.Equal(workedOut, DataManager.DraftSummariesWorkedOutForTests);
+    }
+
+    [Fact]
+    public async Task A_board_that_cannot_be_read_has_no_schematic_names()
+    {
+        Assert.Null(await DataManager.ReadSchematicNamesAsync(this.BoardEntry));
+    }
+
     [Fact]
     public async Task An_UNCHANGED_drafted_row_is_NOT_reported_as_drafted()
     {

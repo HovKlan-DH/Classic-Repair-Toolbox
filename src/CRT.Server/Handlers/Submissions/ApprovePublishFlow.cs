@@ -262,7 +262,11 @@ namespace CRT.Server.Handlers.Submissions
                 .TryReadAsync(dataTreeRoot, manifest, cancellationToken)
                 .ConfigureAwait(false);
 
-            BoardData board = PublishMerge.Build(manifest, published);
+            // Its new credits dated today, every credit oldest first (2026-11-14) - the server's, as the revision date is.
+            BoardData board = PublishMerge.WithCreditsDated(
+                PublishMerge.Build(manifest, published),
+                await this.BoardToDateCreditsAgainstAsync(published, manifest, cancellationToken).ConfigureAwait(false),
+                nowUtc);
 
             // The published board FILE, read once for everything below - the plan's view of what is
             // published, the removals, the change summary, the rename log and the write (code review,
@@ -477,11 +481,46 @@ namespace CRT.Server.Handlers.Submissions
         {
             ArgumentNullException.ThrowIfNull(manifest);
 
-            string? stable = string.IsNullOrWhiteSpace(options?.ProductionDataTreeRoot)
+            string? stable = ApprovePublishFlow.StableTreeOf(options);
+
+            return !string.IsNullOrWhiteSpace(stable) && PublishedBoardLocator.Locate(stable, manifest).Exists;
+        }
+
+        // The stable tree, under either setting that names it - null with none configured.
+        private static string? StableTreeOf(ServerOptions? options) =>
+            string.IsNullOrWhiteSpace(options?.ProductionDataTreeRoot)
                 ? options?.ProductionTreeRoot
                 : options.ProductionDataTreeRoot;
 
-            return !string.IsNullOrWhiteSpace(stable) && PublishedBoardLocator.Locate(stable, manifest).Exists;
+        // ###########################################################################################
+        // *** THE CREDITS ARE DATED AGAINST STABLE'S BOARD WHEN BETA DOES NOT HOLD IT (code review, 2026-11-16). *** Dated
+        // against nothing, every credit sent undated was new - so a board in stable that BETA lacks (BETA rebuilt, or its copy
+        // deleted) had its credits from before the history dated today, against the owner's decision that those keep no date.
+        // `published` is BETA's; null with neither.
+        // ###########################################################################################
+        private async Task<BoardData?> BoardToDateCreditsAgainstAsync(BoardData? published, SubmissionManifest manifest, CancellationToken cancellationToken)
+        {
+            if (published is not null || !ApprovePublishFlow.StableHolds(this.thisOptions, manifest))
+            {
+                return published;
+            }
+
+            // A stable board that cannot be read stops no publish over its credits' dates: they are dated as with none.
+            try
+            {
+                return await this.thisPublishedBoards
+                    .TryReadAsync(ApprovePublishFlow.StableTreeOf(this.thisOptions)!, manifest, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                this.thisLogger.LogWarning(
+                    ex,
+                    "The stable board of {BoardId} could not be read to date its credits against; credits sent undated are dated today.",
+                    manifest.BoardId);
+
+                return null;
+            }
         }
 
         // One step after the tree is written: run, and if it throws, log it and go on - see step 8.

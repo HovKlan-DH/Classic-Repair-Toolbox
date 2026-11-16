@@ -739,6 +739,7 @@ public sealed class MainWindowTests : IDisposable
         "DataCheckBanner",
         "SyncBanner",
         "SourceSwitchBanner",
+        "DataNeededBanner",
         "SchematicsLabelEditorModeBanner",
     };
 
@@ -920,6 +921,50 @@ public sealed class MainWindowTests : IDisposable
 
                 main.StopDataSyncStatusIconSpin();
                 Assert.False(main.IsDataSyncStatusIconSpinning);
+            });
+        }
+        finally
+        {
+            UserSettings.CheckDataOnLaunch = saved;
+        }
+    }
+
+    // ###########################################################################################
+    // THE ICON ITSELF TURNS WHILE A CHECK RUNS (owner request, 2026-11-14): one glyph in one place, never a
+    // second drawing beside it - a dashed circle stood in for it until then, 2px right of and 4px below the
+    // icon. It turns about its own centre (sized by its glyph, which fills its em box exactly - FontAwesomeAssetTests),
+    // shows the refresh arrows even with the launch check off, and is put back upright when the check ends.
+    // ###########################################################################################
+    [Fact]
+    public void The_data_check_icon_itself_turns_while_a_check_runs_and_stands_upright_after()
+    {
+        this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
+        bool saved = UserSettings.CheckDataOnLaunch;
+
+        try
+        {
+            UserSettings.CheckDataOnLaunch = false;
+
+            UiTest.Run(() =>
+            {
+                var main = new CRT.Main();
+                TextBlock icon = main.GetControl<TextBlock>("DataSyncStatusIconTextBlock");
+
+                Assert.True(double.IsNaN(icon.Width) && double.IsNaN(icon.Height), "the icon has a box of its own size, off its glyph's centre");
+                Assert.Equal(Avalonia.RelativePoint.Center, icon.RenderTransformOrigin);
+                Assert.IsType<Avalonia.Media.RotateTransform>(icon.RenderTransform);
+                Assert.Equal("", icon.Text);
+
+                main.StartDataSyncStatusIconSpin();
+
+                Assert.True(icon.IsVisible);
+                Assert.Equal("", icon.Text);
+
+                main.StopDataSyncStatusIconSpin();
+
+                Assert.Equal(0.0, main.DataSyncStatusIconSpinAngle);
+                Assert.Equal("", icon.Text);
             });
         }
         finally

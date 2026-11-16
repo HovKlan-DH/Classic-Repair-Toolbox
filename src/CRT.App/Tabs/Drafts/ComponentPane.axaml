@@ -157,6 +157,15 @@
 			<Setter Property="Padding" Value="8,6" />
 			<Setter Property="Margin" Value="0,0,0,6" />
 		</Style>
+		<!-- THE CREDIT SENT WITH THE SUBMISSION STANDS OUT (owner request, 2026-11-15: "Make this row specifically visual, so the
+		     user can see THIS is the row being submitted for their edits done"): every credit the published board does not have,
+		     framed in green, a strip on top saying so (SubmissionCredit). One pixel less padding for the wider frame, so its boxes
+		     stay under the headings. -->
+		<Style Selector="Border.MovableRow.SentWithSubmission">
+			<Setter Property="BorderBrush" Value="{DynamicResource SubmittedCredit_Border}" />
+			<Setter Property="BorderThickness" Value="2" />
+			<Setter Property="Padding" Value="7,5" />
+		</Style>
 		<Style Selector="Grid.MovableRowHeadings">
 			<Setter Property="Margin" Value="9,0,9,0" />
 		</Style>
@@ -255,6 +264,10 @@
 			<Setter Property="Foreground" Value="{DynamicResource Schematics_Region_Own4_Fg}" />
 		</Style>
 		<Style Selector="TextBox.Missing /template/ Border#PART_BorderElement">
+			<Setter Property="BorderBrush" Value="{DynamicResource Text_Fail_Fg}" />
+		</Style>
+		<!-- A selector names an exact type: a formatted note box (a credit's main contribution, 2026-11-14) needs its own. -->
+		<Style Selector="local|RichNoteTextBox.Missing /template/ Border#PART_BorderElement">
 			<Setter Property="BorderBrush" Value="{DynamicResource Text_Fail_Fg}" />
 		</Style>
 		<Style Selector="AutoCompleteBox.Missing /template/ TextBox#PART_TextBox">
@@ -2222,8 +2235,13 @@
 
 				<!-- ==== Credits ==== -->
 				<StackPanel x:Name="CreditsPart" Spacing="4" Grid.IsSharedSizeScope="True">
+					<!-- THE CREDITS ARE THE BOARD'S CHANGES IN THE ORDER THEY CAME (owner request, 2026-11-14): each with its main
+					     contribution, a note with formatting, required on a credit not published as it stands, and the date it was
+					     published - the server's. Kept oldest first (CreditOrder), so no credit is dragged any more. THE CREDIT FOR
+					     THE CONTRIBUTOR'S OWN CHANGES IS ONE OF THEM (owner request, 2026-11-15 - the Submit dialog asked for it until
+					     then): made with the first change, framed as sent with the submission (SubmissionCredit). -->
 					<TextBlock Classes="PaneIntro"
-							   Text="Who made the board's data - the schematic images, the labelling, the measurements. The &quot;About&quot; tab shows them; a name or a handle is fine, and the contact is shown to everybody. Drag a credit by its handle to move it up or down - the &quot;About&quot; tab lists them in this order." />
+							   Text="Who made the board's data, and what each contribution was - the schematic images, the labelling, the measurements. The &quot;About&quot; tab shows them oldest first, by the date each was published; a name or a handle is fine, and the contact is shown to everybody. Your own changes are credited by a row of their own, framed in green: CRT adds it with your first change, under the name and contact you gave last - write &quot;Unknown&quot; as the name to be credited by none. Describe the main contribution in a few lines: the most important updates only, not every small detail." />
 
 					<TextBlock x:Name="NoCreditsText" Classes="EmptyLine" Text="No credits yet." />
 
@@ -2249,27 +2267,28 @@
 						<ItemsControl.ItemTemplate>
 							<DataTemplate x:DataType="local:ComponentPaneCreditRow">
 								<Grid>
-									<!-- While the row is dragged: a dashed slot its height, where a drop will land - the
-									     worklog's photos' placeholder (ListRowDrag). -->
-									<Panel IsVisible="{Binding IsDropPlaceholder}" Height="{Binding PlaceholderHeight}">
-										<Rectangle Stroke="{DynamicResource Text_Fail_Fg}"
-												StrokeThickness="2"
-												StrokeDashArray="4,3"
-												RadiusX="3"
-												RadiusY="3"
-												Margin="0,0,0,6"
-												Fill="{DynamicResource Bg}" />
-										<TextBlock Text="Move the credit up/down and release mouse button for new location"
-												FontSize="11"
-												Opacity="0.7"
-												TextAlignment="Center"
-												HorizontalAlignment="Center"
-												VerticalAlignment="Center"
-												Margin="0,0,0,6" />
-									</Panel>
-									<Border Classes="MovableRow" IsVisible="{Binding IsNotDropPlaceholder}">
+									<Border Classes="MovableRow" Classes.SentWithSubmission="{Binding IsNew}">
 										<StackPanel>
-											<Grid RowDefinitions="Auto,Auto">
+											<!-- What this credit is: the one sent with the submission, and how it will show - in sight, not only as
+											     a placeholder (owner request, 2026-11-15: "a suggestion for the credits, but that the board
+											     maintainer is allowed to modify the credits"). -->
+											<Border Classes="SentWithSubmissionStrip"
+													IsVisible="{Binding IsNew}"
+													Background="{DynamicResource SubmittedCredit_Bg}"
+													CornerRadius="3"
+													Padding="8,4"
+													Margin="0,0,0,6">
+												<StackPanel Spacing="1">
+													<TextBlock Text="Sent with your submission"
+															   FontWeight="SemiBold"
+															   Foreground="{DynamicResource SubmittedCredit_Fg}" />
+													<TextBlock TextWrapping="Wrap"
+															   FontSize="12"
+															   Foreground="{DynamicResource SubmittedCredit_Fg}"
+															   Text="This is what the board's credits on the &quot;About&quot; tab say about your work once it is published. Write the most important updates in &quot;Main contribution&quot; - not every detail. It is a suggestion for the credits: the board's maintainers may change it, if needed, before it is published." />
+												</StackPanel>
+											</Border>
+											<Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto">
 												<Grid.ColumnDefinitions>
 													<ColumnDefinition Width="*" />
 													<ColumnDefinition Width="8" />
@@ -2281,30 +2300,43 @@
 													<ColumnDefinition Width="8" />
 													<ColumnDefinition Width="Auto" SharedSizeGroup="CreditButtons" />
 												</Grid.ColumnDefinitions>
+												<!-- One short line each (owner request, 2026-11-15; CreditLimits) - the main contribution says the rest. -->
 												<AutoCompleteBox Grid.Column="0" Classes.Missing="{Binding CategoryMissing}"
 																 Text="{Binding Category, Mode=TwoWay}"
 																 ItemsSource="{Binding CategoryChoices}"
 																 FilterMode="Contains"
 																 MinimumPrefixLength="0"
 																 IsTextCompletionEnabled="False"
+																 MaxLength="{x:Static data:CreditLimits.Category}"
 																 PlaceholderText="Schematic image" />
-												<TextBox Grid.Column="2" Text="{Binding SubCategory, Mode=TwoWay}" Watermark="PAL, Top, CPU" />
-												<TextBox Grid.Column="4" Text="{Binding NameOrHandle, Mode=TwoWay}" Classes.Missing="{Binding NameOrHandleMissing}" />
+												<TextBox Grid.Column="2" Text="{Binding SubCategory, Mode=TwoWay}" MaxLength="{x:Static data:CreditLimits.SubCategory}" Watermark="PAL, Top, CPU" />
+												<TextBox Grid.Column="4" Text="{Binding NameOrHandle, Mode=TwoWay}" MaxLength="{x:Static data:CreditLimits.NameOrHandle}" Classes.Missing="{Binding NameOrHandleMissing}" />
 												<TextBlock Grid.Row="1" Grid.Column="0" Classes="Required" IsVisible="{Binding CategoryMissing}" />
 												<TextBlock Grid.Row="1" Grid.Column="4" Classes="Required" IsVisible="{Binding NameOrHandleMissing}" />
-												<TextBox Grid.Column="6" Text="{Binding Contact, Mode=TwoWay}" Watermark="A forum, a Discord, a web page" />
+												<TextBox Grid.Column="6" Text="{Binding Contact, Mode=TwoWay}" MaxLength="{x:Static data:CreditLimits.Contact}" Watermark="A forum, a Discord, a web page" />
 												<StackPanel Grid.Column="8" Orientation="Horizontal" Spacing="6">
 													<Button Classes="Danger"
 															Content="Remove"
 															Tag="{Binding}"
 															ToolTip.Tip="Remove this credit"
 															Click="OnRemoveCreditClick" />
-													<Border Classes="RowDragHandle"
-															PointerPressed="OnCreditHandlePressed"
-															ToolTip.Tip="Drag to move this credit up or down - or Alt+Up and Alt+Down in its boxes">
-														<TextBlock Text="&#xf338;" />
-													</Border>
 												</StackPanel>
+												<!-- What the contribution was - a note with formatting (RichNoteTextBox, stored as its markup) - and
+												     when it was published, the server's (owner request, 2026-11-14). -->
+												<Grid Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="9" ColumnDefinitions="*,Auto" Margin="0,4,0,0">
+													<TextBlock Grid.Column="0" Classes="FieldLabel" Text="Main contribution" />
+													<TextBlock Grid.Column="1"
+															   FontSize="11"
+															   Opacity="0.75"
+															   VerticalAlignment="Bottom"
+															   Text="{Binding DateShown}" />
+												</Grid>
+												<local:RichNoteTextBox Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="9"
+																	   Markup="{Binding MainContribution, Mode=TwoWay}" MaxLength="{x:Static data:CreditLimits.MainContribution}"
+																	   Classes.Missing="{Binding MainContributionMissing}"
+																	   MinHeight="60"
+																	   Watermark="The most important updates only - not every small detail" />
+												<TextBlock Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="9" Classes="Required" IsVisible="{Binding MainContributionMissing}" />
 											</Grid>
 										</StackPanel>
 									</Border>

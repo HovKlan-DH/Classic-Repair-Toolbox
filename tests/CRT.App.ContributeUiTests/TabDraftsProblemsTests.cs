@@ -56,7 +56,7 @@ public sealed class TabDraftsProblemsTests : IDisposable
             new ComponentLinkEntry { BoardLabel = "U8", Name = "Bad one", Url = "ftp://example.com/u8" },
             new ComponentLinkEntry { BoardLabel = "U9", Name = "Bad too", Url = "ftp://example.com/u9" },
         ],
-        Credits = [new CreditEntry { Category = "Schematic image", SubCategory = "Top" }],
+        Credits = [new CreditEntry { Category = "Schematic image", SubCategory = "Top", MainContribution = "Drew the top side" }],
         BoardLinks =
         [
             new BoardLinkEntry { Category = "Web", Name = "Same", Url = "https://example.com/a" },
@@ -597,7 +597,7 @@ public sealed class TabDraftsProblemsTests : IDisposable
 
             session.Apply("Credits", content => content with
             {
-                Board = content.Board.WithBoardSections(credits: [new CreditEntry { Category = "Schematic image", SubCategory = "Top", NameOrHandle = "Anna" }]),
+                Board = content.Board.WithBoardSections(credits: [new CreditEntry { Category = "Schematic image", SubCategory = "Top", NameOrHandle = "Anna", MainContribution = "Drew the top side" }]),
             });
 
             Assert.Equal(DraftWorkbookEditOutcome.Saved, await session.SaveAsync());
@@ -769,7 +769,7 @@ public sealed class TabDraftsProblemsTests : IDisposable
             List<string> creditTexts = credit.Children.OfType<TextBlock>().Select(text => text.Text ?? string.Empty).ToList();
 
             // Its row named, and its field in quotes as a field is.
-            Assert.Contains(creditTexts, text => text.StartsWith("[Schematic image / Top] This credit has no \"Name or handle\".", StringComparison.Ordinal));
+            Assert.Contains(creditTexts, text => text.StartsWith("[Schematic image / Top / Drew the top side] This credit has no \"Name or handle\".", StringComparison.Ordinal));
             Assert.Empty(credit.Children.OfType<Button>());
 
             // Right under the headline and what it explains, above what the panel counts.

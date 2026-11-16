@@ -60,6 +60,29 @@ public sealed class WorklogPhotoViewerWindowTests
         });
     }
 
+    // ###########################################################################################
+    // *** The whole photo taking the small read's place keeps the zoom made on it (code review, 2026-11-16). *** The viewer
+    // shows the small read at once; a zoom made before the whole photo was decoded was undone the moment it came. Another
+    // photo still starts whole.
+    // ###########################################################################################
+    [Fact]
+    public void The_sharper_photo_keeps_the_zoom_and_another_photo_starts_whole()
+    {
+        WithViewer((viewer, view) =>
+        {
+            viewer.MouseWheel(Middle(viewer, view), new Vector(0, 2));
+            double zoom = view.ZoomForTests;
+            Point centre = view.CentreForTests;
+            Assert.True(zoom > 1.0);
+
+            view.ShowSharper(new WriteableBitmap(new PixelSize(4000, 3000), new Vector(96, 96)));
+            Assert.Equal((zoom, centre), (view.ZoomForTests, view.CentreForTests));
+
+            view.Source = new WriteableBitmap(new PixelSize(300, 300), new Vector(96, 96));
+            Assert.Equal(1.0, view.ZoomForTests);
+        });
+    }
+
     [Fact]
     public void A_double_click_shows_the_photo_whole_again()
     {
@@ -152,6 +175,56 @@ public sealed class WorklogPhotoViewerWindowTests
             Assert.True(comment.IsVisible);
             Assert.Equal("dead SID", Handlers.Theming.BoldRuns.TextOf(comment));
             Assert.Equal(["dead"], Handlers.Theming.BoldRuns.BoldPiecesOf(comment));
+        });
+    }
+
+    // ###########################################################################################
+    // THE WINDOW DOES NOT WAIT FOR THE WHOLE PHOTO (2026-11-16, performance walkthrough): it decoded the photo on the UI
+    // thread before it appeared - 100-200 ms for a phone photo. The whole photo is decoded on the pool and takes its
+    // place once in.
+    // ###########################################################################################
+    [Fact]
+    public void The_whole_photo_is_decoded_off_the_UI_thread_and_shown_once_in()
+    {
+        UiTest.Run(() =>
+        {
+            string path = Path.Combine(Path.GetTempPath(), "crt-viewer-" + Guid.NewGuid().ToString("N") + ".png");
+
+            using (var renderTarget = new RenderTargetBitmap(new PixelSize(1200, 900), new Vector(96, 96)))
+            {
+                using (var context = renderTarget.CreateDrawingContext())
+                {
+                    context.DrawRectangle(Avalonia.Media.Brushes.White, null, new Rect(0, 0, 1200, 900));
+                }
+
+                using var stream = File.Create(path);
+                renderTarget.Save(stream, PngBitmapEncoderOptions.Default);
+            }
+
+            var viewer = new WorklogPhotoViewerWindow { Width = 900, Height = 700 };
+
+            try
+            {
+                viewer.Initialize("board.png", string.Empty, path);
+                viewer.Show();
+
+                PhotoZoomView view = viewer.GetControl<PhotoZoomView>("PhotoImage");
+
+                for (int wait = 0; wait < 500 && viewer.WholePhotoForTests is null; wait++)
+                {
+                    Dispatcher.UIThread.RunJobs();
+                    Thread.Sleep(10);
+                }
+
+                Assert.NotNull(viewer.WholePhotoForTests);
+                Assert.Same(viewer.WholePhotoForTests, view.Source);
+                Assert.False(viewer.GetControl<TextBlock>("PhotoUnavailableText").IsVisible);
+            }
+            finally
+            {
+                viewer.Close();
+                File.Delete(path);
+            }
         });
     }
 

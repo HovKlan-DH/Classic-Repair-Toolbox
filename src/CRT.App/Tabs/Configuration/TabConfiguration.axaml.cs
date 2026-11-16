@@ -177,17 +177,17 @@ namespace CRT
                     continue;
                 }
 
-                var boardData = await DataManager.LoadBoardDataAsync(entry);
-                if (boardData == null)
+                // Its schematic images' names alone, off the UI thread (DataManager.ReadSchematicNamesAsync, 2026-11-16) -
+                // not the whole board through LoadBoardDataAsync, which kept every board read, compared each drafted
+                // one with its published copy, and wrote the board on screen's draft facts for another board.
+                List<string>? schematicNames = await DataManager.ReadSchematicNamesAsync(entry);
+                if (schematicNames == null)
                 {
                     continue;
                 }
 
                 string boardKey = $"{entry.HardwareName}|{entry.BoardName}";
-                schematicsByBoardKey[boardKey] = boardData.Schematics
-                    .Where(schematic => !string.IsNullOrWhiteSpace(schematic.SchematicName))
-                    .Select(schematic => schematic.SchematicName)
-                    .ToList();
+                schematicsByBoardKey[boardKey] = schematicNames;
             }
 
             var result = ConfigurationCatalogueTree.Build(

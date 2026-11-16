@@ -834,7 +834,11 @@
 					</StackPanel>
 				</Border>
 
-				<!-- KICAD NET CONNECTIONS PANEL -->
+				<!-- KICAD NET CONNECTIONS PANEL - AS WIDE AS ITS WIDEST LINE (owner report, 2026-11-14: "the text gets
+				     cropped because the text is too long for the panel. Please make sure that the panel is wide enough to
+				     visualize all texts in one-liners inside it"): no MaxWidth, which was 250 and cut "[C19 | Electrolytic
+				     Axial | 2200uF 16V] pin 2 [Earth]" off after "pin 2". The schematic image's area is all that holds it;
+				     the image's viewport steps aside for whatever width it takes (Viewport's reserveRight). -->
 				<Border x:Name="KiCadNetConnectionsPanel"
 						IsVisible="False"
 						HorizontalAlignment="Right"
@@ -846,8 +850,7 @@
 						BorderThickness="1"
 						CornerRadius="4"
 						Padding="8,8"
-						MinWidth="120"
-						MaxWidth="250">
+						MinWidth="120">
 
 					<StackPanel Spacing="6">
 						<Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
@@ -888,9 +891,10 @@
 								<ItemsControl x:Name="KiCadNetConnectionsList">
 									<ItemsControl.ItemTemplate>
 										<DataTemplate x:DataType="data:KiCadNetConnectionLine">
+											<!-- A right margin the scroll bar's width, which stands over the lines' ends. -->
 											<TextBlock FontSize="11"
 													   Foreground="{DynamicResource Schematics_Panels_Fg}"
-													   Margin="8,2,0,0"><Run Text="[" /><Run Text="{Binding Label}" FontWeight="Bold" /><Run Text="{Binding AfterLabel}" /><Run Text="{Binding Pin}" FontWeight="Bold" /><Run Text="{Binding AfterPin}" /></TextBlock>
+													   Margin="8,2,10,0"><Run Text="[" /><Run Text="{Binding Label}" FontWeight="Bold" /><Run Text="{Binding AfterLabel}" /><Run Text="{Binding Pin}" FontWeight="Bold" /><Run Text="{Binding AfterPin}" /></TextBlock>
 										</DataTemplate>
 									</ItemsControl.ItemTemplate>
 								</ItemsControl>

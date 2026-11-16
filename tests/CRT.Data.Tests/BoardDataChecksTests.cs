@@ -441,13 +441,13 @@ public sealed class BoardDataChecksTests
             Files = carried.Select(path => new SubmissionFile { Path = path, Sha256 = new string('a', 64), SizeBytes = 1 }).ToList()
         };
 
-        HashSet<string> serverErrors = SubmissionValidator.Validate(manifest, carried)
+        HashSet<string> serverErrors = SubmissionValidator.Validate(manifest, carried, publishedCredits: null)
             .Concat(SubmissionFileRules.ValidateManifestFiles(manifest, board: null))
             .Where(finding => finding.Severity == ValidationSeverity.Error)
             .Select(finding => finding.Code)
             .ToHashSet(StringComparer.Ordinal);
 
-        List<string> tableErrors = BoardDataChecks.Check(BoardCheckRows.From(rows), new SuppliedFileLookup(carried), BoardCheckScope.Everything)
+        List<string> tableErrors = BoardDataChecks.Check(BoardCheckRows.From(rows, published: null), new SuppliedFileLookup(carried), BoardCheckScope.Everything)
             .Where(problem => problem.Level == BoardProblemLevel.Error)
             .Select(problem => problem.Code)
             .Distinct()
@@ -475,7 +475,7 @@ public sealed class BoardDataChecksTests
         };
 
         BoardDataProblem marked = Assert.Single(
-            BoardDataChecks.Check(BoardCheckRows.From(rows), new DiskFileLookup(workspace.Path_("Data"), draftFolder), BoardCheckScope.Everything),
+            BoardDataChecks.Check(BoardCheckRows.From(rows, published: null), new DiskFileLookup(workspace.Path_("Data"), draftFolder), BoardCheckScope.Everything),
             problem => problem.Level == BoardProblemLevel.Error);
 
         Assert.Equal(BoardWorkbookSchema.SheetBoardLocalFiles, marked.Sheet);
@@ -617,7 +617,7 @@ public sealed class BoardDataChecksTests
             ],
         };
 
-        List<BoardDataProblem> logged = Duplicates(Everything(BoardCheckRows.From(board), $"{Board}/a.png", $"{Board}/b.png"));
+        List<BoardDataProblem> logged = Duplicates(Everything(BoardCheckRows.From(board, published: null), $"{Board}/a.png", $"{Board}/b.png"));
 
         Assert.Equal(
             [BoardWorkbookSchema.SheetComponentImages, BoardWorkbookSchema.SheetComponentImages,
@@ -625,7 +625,7 @@ public sealed class BoardDataChecksTests
              BoardWorkbookSchema.SheetKiCadImportantSignals, BoardWorkbookSchema.SheetKiCadImportantSignals],
             logged.Select(problem => problem.Sheet));
 
-        Assert.Empty(Duplicates(BoardDataChecks.Check(BoardCheckRows.From(board), null, BoardCheckScope.Submission)));
+        Assert.Empty(Duplicates(BoardDataChecks.Check(BoardCheckRows.From(board, published: null), null, BoardCheckScope.Submission)));
     }
 
     // Not a case of its own: every sheet the server does not already refuse a duplicate on warns,
@@ -635,7 +635,7 @@ public sealed class BoardDataChecksTests
     [InlineData(BoardWorkbookSchema.SheetComponentLinks, BoardWorkbookSchema.ColBoardLabel, "Board label, Name and Region")]
     [InlineData(BoardWorkbookSchema.SheetBoardLocalFiles, BoardWorkbookSchema.ColCategory, "Category, Name and Region")]
     [InlineData(BoardWorkbookSchema.SheetBoardLinks, BoardWorkbookSchema.ColCategory, "Category, Name and Region")]
-    [InlineData(BoardWorkbookSchema.SheetCredits, BoardWorkbookSchema.ColCategory, "Category, Sub-category and Name or handle")]
+    [InlineData(BoardWorkbookSchema.SheetCredits, BoardWorkbookSchema.ColCategory, "Category, Sub-category, Name or handle and Main contribution")]
     [InlineData(BoardWorkbookSchema.SheetKiCadImportantSignals, BoardWorkbookSchema.ColDisplayName, "Display name and KiCad net name")]
     public void Each_sheet_names_its_own_identity_columns_in_the_warning(string sheet, string column, string columns)
     {
@@ -652,7 +652,7 @@ public sealed class BoardDataChecksTests
         };
 
         List<BoardDataProblem> onSheet = Duplicates(Everything(
-                BoardCheckRows.From(board),
+                BoardCheckRows.From(board, published: null),
                 $"{Board}/u1.pdf", $"{Board}/u1b.pdf", $"{Board}/s.pdf", $"{Board}/s2.pdf"))
             .Where(problem => problem.Sheet == sheet)
             .ToList();
@@ -734,7 +734,7 @@ public sealed class BoardDataChecksTests
             BoardLinks = [.. rows.BoardLinks],
             Credits = [.. rows.Credits!],
             KiCadImportantSignals = [.. rows.ImportantSignals!],
-        });
+        }, null);
 
         Assert.Equal(new BoardRowsIncomplete(Files: 1, Links: 1, Credits: 1, Signals: 1, Errors: 6), incomplete);
     }
@@ -790,7 +790,7 @@ public sealed class BoardDataChecksTests
             },
         };
 
-        ValidationFinding finding = Assert.Single(SubmissionValidator.Validate(manifest, [$"{Board}/main.png"]), finding => finding.Code == "row.required_empty");
+        ValidationFinding finding = Assert.Single(SubmissionValidator.Validate(manifest, [$"{Board}/main.png"], publishedCredits: null), finding => finding.Code == "row.required_empty");
 
         Assert.Equal(ValidationSeverity.Error, finding.Severity);
         Assert.Equal(BoardWorkbookSchema.ColNameOrHandle, finding.Subject);
@@ -875,7 +875,7 @@ public sealed class BoardDataChecksTests
         };
 
         Assert.Contains(
-            BoardDataChecks.Check(BoardCheckRows.From(submitted), null, BoardCheckScope.Submission),
+            BoardDataChecks.Check(BoardCheckRows.From(submitted, published: null), null, BoardCheckScope.Submission),
             problem => problem.Code == "pin.outside_package");
     }
 
@@ -930,13 +930,13 @@ public sealed class BoardDataChecksTests
         var submitted = new SubmissionRows { Regions = ["PAL", region!] };
 
         BoardDataProblem problem = Assert.Single(
-            BoardDataChecks.Check(BoardCheckRows.From(submitted), null, BoardCheckScope.Submission),
+            BoardDataChecks.Check(BoardCheckRows.From(submitted, published: null), null, BoardCheckScope.Submission),
             found => found.Code == "regions.unknown");
 
         Assert.Equal(BoardProblemLevel.Error, problem.Level);
 
         Assert.Contains(
-            BoardDataChecks.Check(BoardCheckRows.From(new BoardData { Regions = ["PAL", region!] }), null, BoardCheckScope.Everything),
+            BoardDataChecks.Check(BoardCheckRows.From(new BoardData { Regions = ["PAL", region!] }, published: null), null, BoardCheckScope.Everything),
             found => found.Code == "regions.unknown");
     }
 
@@ -948,18 +948,18 @@ public sealed class BoardDataChecksTests
     public void A_board_of_one_region_alone_is_refused()
     {
         BoardDataProblem problem = Assert.Single(
-            BoardDataChecks.Check(BoardCheckRows.From(new SubmissionRows { Regions = ["EU"] }), null, BoardCheckScope.Submission),
+            BoardDataChecks.Check(BoardCheckRows.From(new SubmissionRows { Regions = ["EU"] }, published: null), null, BoardCheckScope.Submission),
             found => found.Code == "regions.unknown");
 
         Assert.Equal(BoardProblemLevel.Error, problem.Level);
         Assert.Contains("[EU] alone", problem.Message, StringComparison.Ordinal);
 
         Assert.Contains(
-            BoardDataChecks.Check(BoardCheckRows.From(new BoardData { Regions = ["EU"] }), null, BoardCheckScope.Everything),
+            BoardDataChecks.Check(BoardCheckRows.From(new BoardData { Regions = ["EU"] }, published: null), null, BoardCheckScope.Everything),
             found => found.Code == "regions.unknown");
 
         Assert.DoesNotContain(
-            BoardDataChecks.Check(BoardCheckRows.From(new SubmissionRows { Regions = ["EU", "US"] }), null, BoardCheckScope.Submission),
+            BoardDataChecks.Check(BoardCheckRows.From(new SubmissionRows { Regions = ["EU", "US"] }, published: null), null, BoardCheckScope.Submission),
             found => found.Code == "regions.unknown");
     }
 
@@ -970,7 +970,7 @@ public sealed class BoardDataChecksTests
         foreach (List<string>? regions in new List<string>?[] { null, [], ["PAL", "NTSC"] })
         {
             Assert.DoesNotContain(
-                BoardDataChecks.Check(BoardCheckRows.From(new SubmissionRows { Regions = regions }), null, BoardCheckScope.Submission),
+                BoardDataChecks.Check(BoardCheckRows.From(new SubmissionRows { Regions = regions }, published: null), null, BoardCheckScope.Submission),
                 found => found.Code == "regions.unknown");
         }
     }
@@ -1097,7 +1097,7 @@ public sealed class BoardDataChecksTests
             ],
         };
 
-        List<BoardDataProblem> problems = BoardDataChecks.Check(BoardCheckRows.From(board), null, BoardCheckScope.Submission)
+        List<BoardDataProblem> problems = BoardDataChecks.Check(BoardCheckRows.From(board, published: null), null, BoardCheckScope.Submission)
             .Where(problem => problem.Code == "baseline.required_empty")
             .ToList();
 
@@ -1128,7 +1128,7 @@ public sealed class BoardDataChecksTests
         };
 
         Assert.DoesNotContain(
-            BoardDataChecks.Check(BoardCheckRows.From(board), null, BoardCheckScope.Everything),
+            BoardDataChecks.Check(BoardCheckRows.From(board, published: null), null, BoardCheckScope.Everything),
             problem => problem.Message.Contains("Name and Region", StringComparison.Ordinal));
     }
 
@@ -1152,7 +1152,7 @@ public sealed class BoardDataChecksTests
         };
 
         List<BoardDataProblem> unmarked = BoardDataChecks
-            .Check(BoardCheckRows.From(board), files: null, BoardCheckScope.Everything)
+            .Check(BoardCheckRows.From(board, published: null), files: null, BoardCheckScope.Everything)
             .Where(problem => problem.Code == "component.no_highlight")
             .ToList();
 
@@ -1167,7 +1167,7 @@ public sealed class BoardDataChecksTests
     {
         BoardDataProblem problem = Assert.Single(
             BoardDataChecks.Check(
-                BoardCheckRows.From(new BoardData { Credits = [new CreditEntry { Category = "Schematic image", SubCategory = "Top" }] }),
+                BoardCheckRows.From(new BoardData { Credits = [new CreditEntry { Category = "Schematic image", SubCategory = "Top" }] }, published: null),
                 files: null,
                 BoardCheckScope.Everything),
             found => found.Code == "row.required_empty");

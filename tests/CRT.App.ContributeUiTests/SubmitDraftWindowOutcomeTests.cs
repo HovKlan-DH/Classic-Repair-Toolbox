@@ -18,7 +18,7 @@ namespace ClassicRepairToolbox.Tests.Ui;
 // that cannot be used stops the real one before its first request.
 //
 // COLLECTION NOTE: "HeadlessUi" because it builds a Window; UserSettings points at a temp file (the
-// dialog reads the address and the credit name there).
+// dialog reads and remembers the address there).
 // ###########################################################################################
 [Collection("HeadlessUi")]
 public sealed class SubmitDraftWindowOutcomeTests : IDisposable
@@ -36,10 +36,7 @@ public sealed class SubmitDraftWindowOutcomeTests : IDisposable
         this.thisWorkspace.Dispose();
     }
 
-    private SubmitDraftWindow BuildWindow(
-        BoardData? board = null,
-        IReadOnlyList<CreditSuggestion>? suggestions = null,
-        Func<IReadOnlyList<CreditEntry>, Task<(BoardData Board, string Fingerprint)?>>? addCredits = null)
+    private SubmitDraftWindow BuildWindow(BoardData? board = null)
     {
         var window = new SubmitDraftWindow();
 
@@ -49,9 +46,7 @@ public sealed class SubmitDraftWindowOutcomeTests : IDisposable
             new SubmissionIdentity { BoardId = "Commodore/C64/250407", Manufacturer = "Commodore", Hardware = "C64", Board = "250407" },
             Directory.CreateDirectory(Path.Combine(this.thisWorkspace.Root, "draft")).FullName,
             Directory.CreateDirectory(Path.Combine(this.thisWorkspace.Root, "Data")).FullName,
-            draftFingerprint: "before",
-            creditSuggestions: suggestions,
-            addCredits: addCredits);
+            draftFingerprint: "before");
 
         return window;
     }
@@ -73,7 +68,7 @@ public sealed class SubmitDraftWindowOutcomeTests : IDisposable
 
             await window.SubmitNowAsync();
 
-            Assert.Equal(SubmitDraftWindow.NoConnectionMessage(credited: false), Said(window));
+            Assert.Equal(SubmitDraftWindow.NoConnectionMessage, Said(window));
             Assert.Empty(Findings(window));
         });
     }
@@ -88,7 +83,7 @@ public sealed class SubmitDraftWindowOutcomeTests : IDisposable
 
             await window.SubmitNowAsync();
 
-            Assert.Equal(SubmitDraftWindow.UnexpectedMessage(credited: false), Said(window));
+            Assert.Equal(SubmitDraftWindow.UnexpectedMessage, Said(window));
             Assert.Empty(Findings(window));
         });
     }
@@ -107,24 +102,6 @@ public sealed class SubmitDraftWindowOutcomeTests : IDisposable
             await window.SubmitNowAsync();
 
             Assert.Equal(sentence, Said(window));
-            Assert.Empty(Findings(window));
-        });
-    }
-
-    [Fact]
-    public async Task A_credit_the_draft_could_not_take_says_only_that()
-    {
-        await UiTest.RunAsync(async () =>
-        {
-            SubmitDraftWindow window = this.BuildWindow(
-                suggestions: [new CreditSuggestion("Board data", "")],
-                addCredits: _ => Task.FromResult<(BoardData, string)?>(null));
-
-            window.GetControl<TextBox>("CreditNameTextBox").Text = "Bo";
-
-            await window.SubmitNowAsync();
-
-            Assert.Equal(SubmitDraftWindow.CreditsNotAdded, Said(window));
             Assert.Empty(Findings(window));
         });
     }

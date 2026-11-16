@@ -261,12 +261,19 @@ namespace Handlers.DataHandling
         // Deleted ghosts are re-placed after every move (Refresh), so they keep following the
         // published row before them.
         // ###########################################################################################
+        // ###########################################################################################
+        // Whether its rows can be moved - never the credits', which the server keeps in date order at every publish
+        // (CreditOrder.Sorted; code review, 2026-11-16): moved in the table, the order was a change of the draft that the
+        // publish undid, and the draft never retired. "Board: Credits" has no drag handle for the same reason.
+        // ###########################################################################################
+        public bool RowsCanBeMoved => !string.Equals(this.Name, BoardWorkbookSchema.SheetCredits, StringComparison.Ordinal);
+
         public bool MoveRow(BoardTableRow row, int insertIndex)
         {
             ArgumentNullException.ThrowIfNull(row);
 
             int from = this.Rows.IndexOf(row);
-            if (row.IsDeleted || from < 0)
+            if (!this.RowsCanBeMoved || row.IsDeleted || from < 0)
             {
                 return false;
             }
@@ -309,10 +316,10 @@ namespace Handlers.DataHandling
 
         // Whether MoveRowUp / MoveRowDown would do anything - for enabling the UI's buttons.
         public bool CanMoveRowUp(BoardTableRow? row) =>
-            row is { IsDeleted: false } && this.Rows.Take(Math.Max(0, this.Rows.IndexOf(row))).Any(other => !other.IsDeleted);
+            this.RowsCanBeMoved && row is { IsDeleted: false } && this.Rows.Take(Math.Max(0, this.Rows.IndexOf(row))).Any(other => !other.IsDeleted);
 
         public bool CanMoveRowDown(BoardTableRow? row) =>
-            row is { IsDeleted: false } && this.Rows.IndexOf(row) >= 0 &&
+            this.RowsCanBeMoved && row is { IsDeleted: false } && this.Rows.IndexOf(row) >= 0 &&
             this.Rows.Skip(this.Rows.IndexOf(row) + 1).Any(other => !other.IsDeleted);
 
         public bool MoveRowDown(BoardTableRow row)
@@ -1022,10 +1029,13 @@ namespace Handlers.DataHandling
 
                 cell.PublishedText = publishedText;
 
-                // BoardDataDiffer.DifferingFields' rule exactly: trimmed, a note with formatting as notes are, ordinal.
+                // BoardDataDiffer.DifferingFields' rule exactly: trimmed, a note with formatting as notes are, ordinal - and a
+                // value the server sets as it publishes (a credit's date), empty here, no change.
                 bool isNote = i < this.Columns.Count && this.Definition.IsNoteColumn(this.Columns[i]);
-                bool modified = !string.Equals(
-                    BoardDataDiffer.ComparableText(cell.Text, isNote),
+                bool setWhenPublished = i < this.Columns.Count && this.Definition.IsSetWhenPublished(this.Columns[i]);
+                string text = BoardDataDiffer.ComparableText(cell.Text, isNote);
+                bool modified = !(setWhenPublished && text.Length == 0) && !string.Equals(
+                    text,
                     BoardDataDiffer.ComparableText(publishedText, isNote),
                     StringComparison.Ordinal);
                 cell.State = modified ? BoardTableCellState.Modified : BoardTableCellState.Unchanged;

@@ -24,14 +24,29 @@ namespace CRT.Server.Handlers.Submissions
         // as "what is published could not be consulted" - the safe answer: nothing is admitted on
         // the strength of being published already. A board the tree does not hold is an empty list.
         // ###########################################################################################
-        public static PublishedTreeView? For(string? dataTreeRoot, string? boardId) =>
-            PublishedTreeProbe.For(
-                dataTreeRoot,
-                string.IsNullOrWhiteSpace(dataTreeRoot) || !Directory.Exists(dataTreeRoot) ? null : PublishedBoardFiles.ByName(dataTreeRoot, boardId));
+        public static PublishedTreeView? For(string? dataTreeRoot, string? boardId)
+        {
+            if (string.IsNullOrWhiteSpace(dataTreeRoot) || !Directory.Exists(dataTreeRoot))
+                return null;
+
+            // The board file read ONCE, for its files and its credits (2026-11-14).
+            PublishedBoardLocation location = PublishedBoardLocator.LocateBoard(dataTreeRoot, boardId);
+
+            if (!location.Exists)
+                return PublishedTreeProbe.For(dataTreeRoot, new Dictionary<string, BoardDocument.StoredFileRow>(StringComparer.OrdinalIgnoreCase));
+
+            BoardDocument? document = BoardFiles.ReadDocument(location.WorkbookPath);
+
+            return PublishedTreeProbe.For(dataTreeRoot, PublishedBoardFiles.ByName(document), PublishedBoardFiles.CreditsOf(document));
+        }
 
         // The same from the board's files already read (PublishedBoardRead.Files - an approval reads
-        // the board file once); null `files` is a board file that could not be read.
-        public static PublishedTreeView? For(string? dataTreeRoot, IReadOnlyDictionary<string, BoardDocument.StoredFileRow>? files)
+        // the board file once); null `files` is a board file that could not be read. `credits` the
+        // board's published credits (2026-11-14), none when not given.
+        public static PublishedTreeView? For(
+            string? dataTreeRoot,
+            IReadOnlyDictionary<string, BoardDocument.StoredFileRow>? files,
+            PublishedCredits? credits = null)
         {
             if (string.IsNullOrWhiteSpace(dataTreeRoot) || !Directory.Exists(dataTreeRoot) || files is null)
                 return null;
@@ -39,7 +54,10 @@ namespace CRT.Server.Handlers.Submissions
             return new PublishedTreeView(
                 name => PublishedTreeProbe.HashOf(files, name),
                 relativeFolder => PublishedTreeProbe.List(dataTreeRoot, relativeFolder),
-                name => files.TryGetValue(name.Trim(), out BoardDocument.StoredFileRow? file) ? file.Size : null);
+                name => files.TryGetValue(name.Trim(), out BoardDocument.StoredFileRow? file) ? file.Size : null)
+            {
+                Credits = credits ?? PublishedCredits.None,
+            };
         }
 
         // The checksum the board lists under this name, lower-case, or null.

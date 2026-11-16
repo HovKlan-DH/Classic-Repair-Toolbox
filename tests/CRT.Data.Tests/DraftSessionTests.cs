@@ -694,6 +694,77 @@ public sealed class DraftSessionTests : IDisposable
         Assert.Equal(2, calibration.ScaleX);
     }
 
+    // ------------------------------------------------------------------ The credit for the work (2026-11-15)
+
+    // The draft's base - the published board it was started from - holding `board`.
+    private void WriteBase(BoardData board) =>
+        DraftBaseStore.SaveDocument(this.DraftsRoot, DraftSessionTests.BoardKey, BoardDocumentMapping.ToDocument(new BoardContent(board, [], []), name => name, []));
+
+    // An edit renaming component `label`'s friendly name that keeps every other section - its credits too.
+    private static Func<BoardContent, BoardContent?> Rename(string label, string friendlyName) =>
+        content => content with
+        {
+            Board = content.Board.WithComponentSections(components: content.Board.Components
+                .Select(component => component.BoardLabel == label ? DraftSessionTests.Component(label, friendlyName) : component)
+                .ToList()),
+        };
+
+    // ###########################################################################################
+    // *** THE FIRST CHANGE OF A PUBLISHED BOARD'S DRAFT BRINGS ITS CREDIT, IN THE SAME STEP (owner request, 2026-11-15: "as soon
+    // as the user does a modification for an existing board, then it will populate a new entry in the "Board: Credits""). ***
+    // One undo takes the change and its credit back together, and the change says it did more than its editor asked, so an
+    // editor that shows its own edits as they are made (the table) reads the draft again.
+    // ###########################################################################################
+    [Fact]
+    public void A_change_of_a_published_boards_draft_brings_its_credit_in_the_same_step()
+    {
+        BoardData published = DraftSessionTests.Board(DraftSessionTests.Component("U1", "CPU"));
+        this.WriteDraft(published);
+        this.WriteBase(published);
+
+        var sessions = new DraftSessions(() => this.thisNow) { CreditIdentity = () => ("Anna", "RHD") };
+        DraftSession session = sessions.Get(this.DraftsRoot, DraftSessionTests.BoardKey)!;
+        var changes = new List<DraftSessionChange>();
+        session.Changed += (_, change) => changes.Add(change);
+
+        Assert.True(session.Apply("Name", DraftSessionTests.Rename("U1", "ULA")));
+
+        CreditEntry credit = Assert.Single(session.Content.Board.Credits);
+        Assert.Equal((CreditSuggestions.BoardData, "Anna", "RHD"), (credit.Category, credit.NameOrHandle, credit.Contact));
+        Assert.True(Assert.Single(changes).FollowedUp);
+
+        // A change that brings nothing more says so too.
+        session.Apply("Name again", DraftSessionTests.Rename("U1", "PLA"));
+        Assert.False(changes[^1].FollowedUp);
+        Assert.Single(session.Content.Board.Credits);
+
+        session.Undo();
+        session.Undo();
+
+        Assert.Empty(session.Content.Board.Credits);
+        Assert.Equal("CPU", DraftSessionTests.NameOf(session.Content, "U1"));
+    }
+
+    // Not told whom to credit (the sessions' own tests), or a draft with no base (a new board, whose starting rows are its
+    // credits): an edit is the edit alone.
+    [Fact]
+    public void Without_whom_to_credit_or_a_base_an_edit_brings_no_credit()
+    {
+        BoardData published = DraftSessionTests.Board(DraftSessionTests.Component("U1", "CPU"));
+        this.WriteDraft(published);
+        this.WriteBase(published);
+
+        DraftSession untold = new DraftSessions(() => this.thisNow).Get(this.DraftsRoot, DraftSessionTests.BoardKey)!;
+        untold.Apply("Name", DraftSessionTests.Rename("U1", "ULA"));
+        Assert.Empty(untold.Content.Board.Credits);
+
+        File.Delete(DraftFolderLayout.GetBasePath(this.DraftsRoot, DraftSessionTests.BoardKey));
+
+        DraftSession noBase = new DraftSessions(() => this.thisNow) { CreditIdentity = () => ("Anna", "RHD") }.Get(this.DraftsRoot, DraftSessionTests.BoardKey)!;
+        noBase.Apply("Name", DraftSessionTests.Rename("U1", "PLA"));
+        Assert.Empty(noBase.Content.Board.Credits);
+    }
+
     // ------------------------------------------------------------------ DraftSessions
 
     // A draft made before 4.0 still names a workbook; it is the same draft, so the same session.
@@ -916,6 +987,39 @@ public sealed class DraftSessionTests : IDisposable
         // The file the session wrote is its own: the next change saves without a word about it.
         session.Apply("one", DraftSessionTests.Name("U1", "one"));
         Assert.Equal(DraftWorkbookEditOutcome.Saved, session.Save());
+    }
+
+    // ###########################################################################################
+    // *** A base rewritten by a write that is more than the content is read again, whatever its stamp (code review,
+    // 2026-11-16). *** The base is kept by its length and write time, which two writes in one clock tick can share
+    // (StampSettling): "Bring my draft up to date" rewrote it, and the credit went on judging the work against the old one.
+    // Here the new base is written at the very same stamp.
+    // ###########################################################################################
+    [Fact]
+    public void A_base_rewritten_by_a_direct_write_is_read_again_whatever_its_stamp()
+    {
+        this.WriteBase(DraftSessionTests.Board(DraftSessionTests.Component("U1", "CPU")));
+        DraftSession session = this.OpenWith(DraftSessionTests.Component("U1", "CPU"));
+        string basePath = DraftFolderLayout.GetBasePath(this.DraftsRoot, DraftSessionTests.BoardKey);
+
+        Assert.Equal("CPU", Assert.Single(session.BaseBoard()!.Components).FriendlyName);
+
+        DateTime written = File.GetLastWriteTimeUtc(basePath);
+        long length = new FileInfo(basePath).Length;
+
+        session.WriteFileDirectly(
+            () =>
+            {
+                this.WriteBase(DraftSessionTests.Board(DraftSessionTests.Component("U1", "PLA")));
+                File.SetLastWriteTimeUtc(basePath, written);
+                return true;
+            },
+            succeeded => succeeded,
+            "Brought up to date",
+            clearHistory: true);
+
+        Assert.Equal(length, new FileInfo(basePath).Length);
+        Assert.Equal("PLA", Assert.Single(session.BaseBoard()!.Components).FriendlyName);
     }
 
     // ###########################################################################################

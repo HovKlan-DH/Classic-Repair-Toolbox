@@ -52,6 +52,24 @@ namespace CRT.Server.Handlers.Submissions
             return files;
         }
 
+        // ###########################################################################################
+        // The board's credits as published (2026-11-14), from its board file as read, which need no "Main contribution" while
+        // they stand so (BoardRowRequired). None for no board file - one the tree does not hold, or one that cannot be read:
+        // nothing is admitted on the strength of being published when what is published is not known.
+        // ###########################################################################################
+        public static PublishedCredits CreditsOf(BoardDocument? document) =>
+            document is null
+                ? PublishedCredits.None
+                : PublishedCredits.Of(document.Credits.Select(row => new CreditEntry
+                {
+                    Category = row.Category,
+                    SubCategory = row.SubCategory,
+                    NameOrHandle = row.NameOrHandle,
+                    Contact = row.Contact,
+                    MainContribution = row.MainContribution ?? string.Empty,
+                    Date = row.Date ?? string.Empty,
+                }));
+
         // "Files/3f/3f7a...e1.png" for a listed file, or "" when its checksum is not a usable one.
         public static string StoredRelative(BoardDocument.StoredFileRow file)
         {

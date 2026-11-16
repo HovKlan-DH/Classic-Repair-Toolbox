@@ -15,10 +15,10 @@ namespace CRT;
 //
 // With "Remember thumbnail window settings per board" also on, layout is read from and saved to
 // UserSettings' per-board ThumbnailWindowSettingsByBoard tier instead of that single global set of
-// fields - see Initialize's boardKey parameter. That decision is resolved once, at Initialize time
-// (from Main.OpenSchematicsThumbnailsWindow, which only opens this window for the CURRENTLY
-// selected board), not re-read afterwards - a window, once open, keeps saving to the board it was
-// opened for even if both settings change while it is still showing.
+// fields - see Initialize's boardKey parameter, set from Main.OpenSchematicsThumbnailsWindow for the
+// CURRENTLY selected board. Another board shown moves the open window to that board's key and layout
+// (MoveToBoard, 2026-11-16 - it was closed and opened again until then), the layout of the board
+// left saved under its own key first: the key is the board shown, never fixed at Initialize.
 // ###########################################################################################
 public partial class SchematicsThumbnailsWindow : Window
 {
@@ -124,21 +124,74 @@ public partial class SchematicsThumbnailsWindow : Window
             }
         };
 
-        this.Closing += (_, _) =>
-        {
-            string state = this.WindowState == WindowState.Maximized ? "Maximized" : "Normal";
+        this.Closing += (_, _) => this.SaveLayout();
+    }
 
-            if (this.thisPerBoardKey != null)
-            {
-                UserSettings.SaveThumbnailWindowLayoutForBoard(
-                    this.thisPerBoardKey, state, this.thisNormalWidth, this.thisNormalHeight, this.thisNormalX, this.thisNormalY);
-            }
-            else
-            {
-                UserSettings.SaveSchematicsThumbnailsWindowLayout(
-                    state, this.thisNormalWidth, this.thisNormalHeight, this.thisNormalX, this.thisNormalY);
-            }
-        };
+    // This window's layout, saved under the board it is open for (or the one layout for every board).
+    private void SaveLayout()
+    {
+        string state = this.WindowState == WindowState.Maximized ? "Maximized" : "Normal";
+
+        if (this.thisPerBoardKey != null)
+        {
+            UserSettings.SaveThumbnailWindowLayoutForBoard(
+                this.thisPerBoardKey, state, this.thisNormalWidth, this.thisNormalHeight, this.thisNormalX, this.thisNormalY);
+        }
+        else
+        {
+            UserSettings.SaveSchematicsThumbnailsWindowLayout(
+                state, this.thisNormalWidth, this.thisNormalHeight, this.thisNormalX, this.thisNormalY);
+        }
+    }
+
+    // The board key this window saves its layout under - null for the one layout of every board.
+    internal string? PerBoardKey => this.thisPerBoardKey;
+
+    // ###########################################################################################
+    // *** ANOTHER BOARD SHOWN, THE SAME WINDOW TAKES ITS LAYOUT (2026-11-16, performance walkthrough). *** Main closed
+    // this window and opened a new one at every board switch while thumbnails are remembered per board - a new window,
+    // its gallery and its first layout, and a flicker, every time. The layout of the board left is saved under its key
+    // (as Closing does), then the next board's saved size, position and state put on this window - a maximized one
+    // made Normal first, so the size set is the window's own, and maximized again last, where the position put it.
+    // A board with no layout of its own keeps the window where it is.
+    // ###########################################################################################
+    internal void MoveToBoard(string? boardKey)
+    {
+        this.SaveLayout();
+        this.thisPerBoardKey = boardKey;
+
+        var perBoard = boardKey != null ? UserSettings.GetThumbnailWindowSettingsForBoard(boardKey) : null;
+        bool hasLayout = boardKey != null ? perBoard?.HasWindowLayout == true : UserSettings.HasSchematicsThumbnailsWindowLayout;
+
+        if (!hasLayout)
+        {
+            return;
+        }
+
+        string savedState = boardKey != null ? perBoard?.WindowState ?? "Normal" : UserSettings.SchematicsThumbnailsWindowState;
+        double savedWidth = boardKey != null ? perBoard?.WindowWidth ?? 420.0 : UserSettings.SchematicsThumbnailsWindowWidth;
+        double savedHeight = boardKey != null ? perBoard?.WindowHeight ?? 600.0 : UserSettings.SchematicsThumbnailsWindowHeight;
+        int savedX = boardKey != null ? perBoard?.WindowX ?? 0 : UserSettings.SchematicsThumbnailsWindowX;
+        int savedY = boardKey != null ? perBoard?.WindowY ?? 0 : UserSettings.SchematicsThumbnailsWindowY;
+
+        if (this.WindowState != WindowState.Normal)
+        {
+            this.WindowState = WindowState.Normal;
+        }
+
+        this.thisNormalWidth = savedWidth;
+        this.thisNormalHeight = savedHeight;
+        this.thisNormalX = savedX;
+        this.thisNormalY = savedY;
+
+        this.Width = savedWidth;
+        this.Height = savedHeight;
+        this.Position = new Avalonia.PixelPoint(savedX, savedY);
+
+        if (string.Equals(savedState, "Maximized", StringComparison.OrdinalIgnoreCase))
+        {
+            this.WindowState = WindowState.Maximized;
+        }
     }
 
     // ###########################################################################################

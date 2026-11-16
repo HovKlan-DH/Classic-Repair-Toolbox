@@ -746,6 +746,9 @@ namespace CRT
             this.ComponentListsShown?.Invoke(this, EventArgs.Empty);
         }
 
+        // A component row's key for InPlaceList.Sync - two rows the list pairs always have the same one.
+        private static string ComponentKeyOf(ComponentListItem item) => item.BoardLabel + "\u001F" + item.SelectionKey;
+
         private void ReadComponentLists()
         {
             BoardData? board = this.BoardForList();
@@ -779,11 +782,15 @@ namespace CRT
 
             try
             {
+                // Keyed (2026-11-16): another board's lists share nothing, and are replaced in one go rather than
+                // every row looked for in every row (InPlaceList.Sync).
                 InPlaceList.Sync(
                     this.thisCategoryItems,
                     board is null ? [] : ComponentListBuilder.BuildDistinctCategories(board),
                     (shown, wanted) => string.Equals(shown, wanted, StringComparison.Ordinal),
-                    wanted => wanted);
+                    wanted => wanted,
+                    itemKey: shown => shown,
+                    wantedKey: wanted => wanted);
 
                 InPlaceList.Sync(
                     this.thisComponentItems,
@@ -793,7 +800,9 @@ namespace CRT
                                        string.Equals(shown.SelectionKey, wanted.SelectionKey, StringComparison.Ordinal) &&
                                        shown.IsDrafted == wanted.IsDrafted,
                     wanted => wanted,
-                    keep: this.thisComponentList?.SelectedItem as ComponentListItem);
+                    keep: this.thisComponentList?.SelectedItem as ComponentListItem,
+                    itemKey: TabDrafts.ComponentKeyOf,
+                    wantedKey: TabDrafts.ComponentKeyOf);
             }
             finally
             {

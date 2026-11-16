@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
+using System.Threading;
 
 namespace Handlers.DataHandling
 {
@@ -64,6 +65,75 @@ namespace Handlers.DataHandling
                 return null;
 
             return BoardFiles.ReadContent(jsonPath) ?? new BoardContent(new BoardData(), [], []);
+        }
+
+        // ###########################################################################################
+        // *** A 4.0 BOARD FILE'S CALIBRATIONS ARE READ ONCE WHILE THE FILE STAYS AS IT IS (2026-11-16). ***
+        // The "Schematics" tab asks for the shown picture's calibration at every pointer move over a
+        // KiCad view and at every overlay refresh, and each ask read and parsed the whole board.json -
+        // 8-30 ms on the UI thread, measured: 13 ms of the 29 ms a pointer move cost over 250407's
+        // pictures. Kept by the file's length and write time, and only once that stamp is SETTLED
+        // (StampSettling): a file written in the last two seconds is read again at every ask, as two
+        // writes in one clock tick can share a stamp. Null for anything but a 4.0 board file - the
+        // caller then reads the Excel-era sidecar as before. A board.json not there has none.
+        // ###########################################################################################
+        private static readonly object CalibrationReadsGate = new();
+
+        private static readonly Dictionary<string, (string Stamp, IReadOnlyList<KiCadCalibrationEntry> Calibrations)> CalibrationReads =
+            new(StringComparer.OrdinalIgnoreCase);
+
+        // How many times a board file was actually read for its calibrations - for tests.
+        internal static int CalibrationFileReadsForTests;
+
+        private static IReadOnlyList<KiCadCalibrationEntry>? BoardFileCalibrations(string excelPath)
+        {
+            string jsonPath = GetJsonPath(excelPath);
+
+            if (!DataTreeLayout.IsBoardFile(jsonPath))
+                return null;
+
+            // The one stamp rule (BoardDataReader.FileStamp; code review, 2026-11-16 - a copy of it stood here).
+            string stamp = BoardDataReader.FileStamp(jsonPath);
+
+            if (stamp == BoardDataReader.NoFileStamp)
+                return [];
+
+            bool settled;
+
+            try
+            {
+                settled = StampSettling.IsSettled(File.GetLastWriteTimeUtc(jsonPath));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+            {
+                settled = false;
+            }
+
+            if (settled)
+            {
+                lock (BoardComponentHighlightStorage.CalibrationReadsGate)
+                {
+                    if (BoardComponentHighlightStorage.CalibrationReads.TryGetValue(jsonPath, out var known) && known.Stamp == stamp)
+                        return known.Calibrations;
+                }
+            }
+
+            Interlocked.Increment(ref BoardComponentHighlightStorage.CalibrationFileReadsForTests);
+            IReadOnlyList<KiCadCalibrationEntry> calibrations = BoardFiles.ReadContent(jsonPath)?.Calibrations ?? [];
+
+            // Kept only when the file is still the one stamped - one written meanwhile is read again next time.
+            if (settled && BoardDataReader.FileStamp(jsonPath) == stamp)
+            {
+                lock (BoardComponentHighlightStorage.CalibrationReadsGate)
+                {
+                    if (BoardComponentHighlightStorage.CalibrationReads.Count >= 16)
+                        BoardComponentHighlightStorage.CalibrationReads.Clear();
+
+                    BoardComponentHighlightStorage.CalibrationReads[jsonPath] = (stamp, calibrations);
+                }
+            }
+
+            return calibrations;
         }
 
         public static List<ComponentHighlightEntry> LoadComponentHighlights(string excelPath)
@@ -247,12 +317,12 @@ namespace Handlers.DataHandling
             mirrorX = false;
             mirrorY = false;
 
-            if (BoardComponentHighlightStorage.FromBoardFile(excelPath) is BoardContent boardFile)
+            if (BoardComponentHighlightStorage.BoardFileCalibrations(excelPath) is IReadOnlyList<KiCadCalibrationEntry> boardFileCalibrations)
             {
                 string wanted = schematicName?.Trim() ?? string.Empty;
 
                 if (wanted.Length == 0 ||
-                    BoardComponentHighlightStorage.CalibrationNamed(boardFile.Calibrations, wanted) is not KiCadCalibrationEntry found)
+                    BoardComponentHighlightStorage.CalibrationNamed(boardFileCalibrations, wanted) is not KiCadCalibrationEntry found)
                 {
                     return false;
                 }
@@ -321,9 +391,9 @@ namespace Handlers.DataHandling
         {
             var result = new List<KiCadCalibrationEntry>();
 
-            if (BoardComponentHighlightStorage.FromBoardFile(excelPath) is BoardContent boardFile)
+            if (BoardComponentHighlightStorage.BoardFileCalibrations(excelPath) is IReadOnlyList<KiCadCalibrationEntry> boardFileCalibrations)
             {
-                return BoardComponentHighlightStorage.CalibrationsNamed(boardFile.Calibrations, schematicNames);
+                return BoardComponentHighlightStorage.CalibrationsNamed(boardFileCalibrations, schematicNames);
             }
 
             string jsonPath = GetJsonPath(excelPath);

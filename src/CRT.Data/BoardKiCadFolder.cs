@@ -36,12 +36,39 @@ namespace Handlers.DataHandling
     // through DraftFiles.ListedIn (parsed once while the file stays as it is) and the record written
     // only when it changed, so asking again with nothing changed touches no file. The first copy of
     // a large board can take seconds: callers ask off the UI thread.
+    //
+    // *** A COPY IS NAMED BY WHAT IT HOLDS, NEVER BY THE BOARD FILE (2026-11-16, performance
+    // walkthrough). *** One folder per set of names and bytes (FolderNameOf): a draft lists the
+    // published KiCad files as they are, so a board and its draft - the first change on a board
+    // makes one - share ONE copy, and KiCadProjectLoader, which keeps its parse by path and write
+    // time, ONE parse; named by the board file's path, the first change copied Open128's 45 MB PCB
+    // again and parsed it for seconds. Other bytes are another folder.
+    //
+    // *** A COPY GOES AS SOON AS NO BOARD'S KiCad FILES ARE WHAT IT HOLDS (owner request, 2026-11-16:
+    // "a temporary file should be deleted when it is not used anymore" - one nothing had used for 14
+    // days went until then). *** Which board file each copy holds the KiCad files of is kept beside
+    // them (OwnersFileName): a board file whose KiCad files change gets its new copy and lets go of
+    // the old one, which goes at once unless another board file still holds it; a discarded draft lets
+    // go of its own (LetGoOf); and the sweep CRT runs after launch lets go of every board file gone or
+    // changed since, and takes away every copy no board file holds - and the folders named by path
+    // that CRT 4.0's earlier pre-releases left. So the cache holds one copy of the KiCad files of each
+    // board looked at, as they now are - kept between runs, as copying a large board's again at every
+    // launch takes seconds. A copy that cannot be taken away now (a file of it open) goes at the next.
     // ###########################################################################################
     public static class BoardKiCadFolder
     {
         public const string RecordFileName = ".crt-kicad.json";
 
+        // Which board file holds which copy: its full path, and its copy's folder name.
+        public const string OwnersFileName = ".crt-kicad-owners.json";
+
+        // Every folder named by content starts so.
+        public const string FolderPrefix = "v2-";
+
         private static readonly ConcurrentDictionary<string, object> Locks = new(StringComparer.OrdinalIgnoreCase);
+
+        // Around every read and write of the owners file - taken inside a copy's lock, never the other way round.
+        private static readonly object OwnersGate = new();
 
         // ###########################################################################################
         // The folder holding the board's KiCad files under their names - "<copy>/KiCad data" - or ""
@@ -55,35 +82,301 @@ namespace Handlers.DataHandling
             if (string.IsNullOrWhiteSpace(boardFile) || string.IsNullOrWhiteSpace(cacheRoot))
                 return string.Empty;
 
-            string boardFolder = Path.GetDirectoryName(Path.GetFullPath(boardFile)) ?? string.Empty;
+            string fullBoardFile = Path.GetFullPath(boardFile);
+            string boardFolder = Path.GetDirectoryName(fullBoardFile) ?? string.Empty;
             string cache = Path.GetFullPath(cacheRoot);
-            string copyFolder = Path.Combine(cache, BoardKiCadFolder.FolderNameFor(boardFile));
+            string copyFolder = cache;
 
-            lock (BoardKiCadFolder.Locks.GetOrAdd(copyFolder, _ => new object()))
+            try
             {
-                try
-                {
-                    Dictionary<string, (string Source, string Token)> wanted = BoardKiCadFolder.Wanted(boardFile, boardFolder, dataRoot);
+                Dictionary<string, (string Source, string Token)> wanted = BoardKiCadFolder.Wanted(boardFile, boardFolder, dataRoot);
 
+                if (wanted.Count == 0)
+                {
+                    BoardKiCadFolder.LetGoOf(fullBoardFile, cache);
+                    return string.Empty;
+                }
+
+                string folderName = BoardKiCadFolder.FolderNameOf(wanted);
+                copyFolder = Path.Combine(cache, folderName);
+
+                // Held by this board file from now on - the copy it held before let go of (below).
+                string? letGo = BoardKiCadFolder.Hold(cache, fullBoardFile, folderName);
+                string kiCadFolder;
+
+                lock (BoardKiCadFolder.Locks.GetOrAdd(copyFolder, _ => new object()))
+                {
                     if (FolderLinks.AnyBetween(cache, Path.Combine(copyFolder, DataTreeUsage.KiCadFolderName, "x")))
                         throw new IOException("the copy's folder links elsewhere, so nothing is written or deleted there");
 
-                    if (wanted.Count == 0)
-                    {
-                        if (Directory.Exists(copyFolder))
-                            Directory.Delete(copyFolder, recursive: true);
+                    BoardKiCadFolder.Copy(cache, copyFolder, wanted);
+                    kiCadFolder = Path.Combine(copyFolder, DataTreeUsage.KiCadFolderName);
+                }
 
-                        return string.Empty;
+                // The board file's KiCad files changed: its copy before goes, unless another board file holds it.
+                if (letGo is not null)
+                    BoardKiCadFolder.TakeAwayUnheld(cache, letGo);
+
+                return kiCadFolder;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+            {
+                CrtLog.Warning($"The KiCad files of [{boardFile}] could not be copied to [{copyFolder}] - [{ex.Message}]");
+                return string.Empty;
+            }
+        }
+
+        // ###########################################################################################
+        // A board file's copy let go of - a draft discarded - and taken away at once unless another board file holds it
+        // (the class header). Nothing when the board file holds none. Never throws.
+        // ###########################################################################################
+        public static void LetGoOf(string boardFile, string cacheRoot)
+        {
+            if (string.IsNullOrWhiteSpace(boardFile) || string.IsNullOrWhiteSpace(cacheRoot))
+                return;
+
+            try
+            {
+                string cache = Path.GetFullPath(cacheRoot);
+                string? letGo = null;
+
+                lock (BoardKiCadFolder.OwnersGate)
+                {
+                    Dictionary<string, string> owners = BoardKiCadFolder.ReadOwners(cache);
+
+                    if (owners.Remove(Path.GetFullPath(boardFile), out string? held))
+                    {
+                        BoardKiCadFolder.WriteOwners(cache, owners);
+                        letGo = held;
+                    }
+                }
+
+                if (letGo is not null)
+                    BoardKiCadFolder.TakeAwayUnheld(cache, letGo);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+            {
+                CrtLog.Warning($"The KiCad copy of [{boardFile}] could not be let go of - [{ex.Message}]");
+            }
+        }
+
+        // ###########################################################################################
+        // `boardFile` holds `folderName` from now on - written only when that is news. Answers the copy it held before when no
+        // board file holds that any more, for the caller to take away; null otherwise.
+        // ###########################################################################################
+        private static string? Hold(string cache, string boardFile, string folderName)
+        {
+            lock (BoardKiCadFolder.OwnersGate)
+            {
+                Dictionary<string, string> owners = BoardKiCadFolder.ReadOwners(cache);
+
+                if (owners.TryGetValue(boardFile, out string? before) && string.Equals(before, folderName, StringComparison.OrdinalIgnoreCase))
+                    return null;
+
+                owners[boardFile] = folderName;
+
+                // Not written, the copy is still made and drawn from: the next launch's sweep finds it held by nobody and takes
+                // it away, to be made again as its board is shown.
+                try
+                {
+                    BoardKiCadFolder.WriteOwners(cache, owners);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    CrtLog.Info($"Which board holds a KiCad copy could not be written: [{cache}] - [{ex.Message}]");
+                    return null;
+                }
+
+                return before is not null && !owners.Values.Contains(before, StringComparer.OrdinalIgnoreCase) ? before : null;
+            }
+        }
+
+        // ###########################################################################################
+        // The copy `folderName` taken away - unless a board file holds it by now (asked again under its own lock, so a board
+        // asking for it meanwhile makes it again after), it links elsewhere, or a file of it is open (left for the next
+        // launch's sweep). Whether it went.
+        // ###########################################################################################
+        private static bool TakeAwayUnheld(string cache, string folderName)
+        {
+            string folder = Path.Combine(cache, folderName);
+
+            lock (BoardKiCadFolder.Locks.GetOrAdd(folder, _ => new object()))
+            {
+                lock (BoardKiCadFolder.OwnersGate)
+                {
+                    if (BoardKiCadFolder.ReadOwners(cache).Values.Contains(folderName, StringComparer.OrdinalIgnoreCase))
+                        return false;
+                }
+
+                try
+                {
+                    if (!Directory.Exists(folder) || FolderLinks.AnyBetween(cache, Path.Combine(folder, DataTreeUsage.KiCadFolderName, "x")))
+                        return false;
+
+                    Directory.Delete(folder, recursive: true);
+                    return true;
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    CrtLog.Info($"A KiCad copy nothing uses could not be taken away now, so the next launch will: [{folder}] - [{ex.Message}]");
+                    return false;
+                }
+            }
+        }
+
+        // The owners file: each board file's full path and the folder name of its copy - empty when there is none, or it cannot
+        // be read (the sweep then takes away every copy, each made again as its board is shown).
+        private static Dictionary<string, string> ReadOwners(string cache)
+        {
+            string path = Path.Combine(cache, BoardKiCadFolder.OwnersFileName);
+
+            try
+            {
+                if (File.Exists(path) &&
+                    JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(path)) is { } stored)
+                {
+                    return new Dictionary<string, string>(stored, StringComparer.OrdinalIgnoreCase);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
+            {
+                CrtLog.Info($"The KiCad copies' owners could not be read: [{path}] - [{ex.Message}]");
+            }
+
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        }
+
+        // Written whole, swapped into place.
+        private static void WriteOwners(string cache, Dictionary<string, string> owners)
+        {
+            Directory.CreateDirectory(cache);
+
+            string path = Path.Combine(cache, BoardKiCadFolder.OwnersFileName);
+            string temporary = path + ".crt-writing";
+
+            File.WriteAllText(temporary, JsonSerializer.Serialize(owners));
+            File.Move(temporary, path, overwrite: true);
+        }
+
+        // ###########################################################################################
+        // THE SWEEP, after launch (the class header): every board file that is gone, or whose KiCad files are no longer what
+        // its copy holds (a data update, a draft's import while CRT was closed), lets go of its copy; then every copy no board
+        // file holds is taken away, and every folder named by a board file's path (an earlier pre-release's, 16 hex digits) -
+        // never through a folder that links elsewhere, and nothing at the cache's top but CRT's folders. `dataRoot` is the
+        // tree whose store holds the published bytes, as For takes it. Never throws: a copy that cannot be taken away now (a
+        // file of it open) goes at the next launch. Answers how many went.
+        // ###########################################################################################
+        public static int Sweep(string cacheRoot, string dataRoot)
+        {
+            if (string.IsNullOrWhiteSpace(cacheRoot))
+                return 0;
+
+            int removed = 0;
+
+            try
+            {
+                string cache = Path.GetFullPath(cacheRoot);
+
+                if (!Directory.Exists(cache))
+                    return 0;
+
+                BoardKiCadFolder.LetGoOfWhatChanged(cache, dataRoot);
+
+                foreach (string folder in Directory.EnumerateDirectories(cache).ToList())
+                {
+                    string name = Path.GetFileName(folder);
+
+                    // Named by a board file's path: nothing copies into those any more.
+                    if (BoardKiCadFolder.IsNamedByPath(name))
+                    {
+                        try
+                        {
+                            if (!FolderLinks.AnyBetween(cache, Path.Combine(folder, DataTreeUsage.KiCadFolderName, "x")))
+                            {
+                                Directory.Delete(folder, recursive: true);
+                                removed++;
+                            }
+                        }
+                        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                        {
+                            CrtLog.Info($"An earlier KiCad copy could not be taken away now, so the next launch will: [{folder}] - [{ex.Message}]");
+                        }
+
+                        continue;
                     }
 
-                    BoardKiCadFolder.Copy(cache, copyFolder, wanted);
+                    if (name.StartsWith(BoardKiCadFolder.FolderPrefix, StringComparison.Ordinal) && BoardKiCadFolder.TakeAwayUnheld(cache, name))
+                        removed++;
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                CrtLog.Warning($"The KiCad copies in [{cacheRoot}] could not be looked through - [{ex.Message}]");
+            }
 
-                    return Path.Combine(copyFolder, DataTreeUsage.KiCadFolderName);
+            return removed;
+        }
+
+        // ###########################################################################################
+        // Every board file that is gone, or whose KiCad files are no longer what its copy holds, lets go of its copy. Worked
+        // out OUTSIDE the owners' lock - each board file read - and let go of under it only while it still holds that copy
+        // (a board shown meanwhile has its new copy already). A board file that cannot be read keeps its copy.
+        // ###########################################################################################
+        private static void LetGoOfWhatChanged(string cache, string dataRoot)
+        {
+            Dictionary<string, string> owners;
+
+            lock (BoardKiCadFolder.OwnersGate)
+                owners = BoardKiCadFolder.ReadOwners(cache);
+
+            var stale = new List<(string BoardFile, string Folder)>();
+
+            foreach ((string boardFile, string folder) in owners)
+            {
+                try
+                {
+                    if (!File.Exists(boardFile))
+                    {
+                        stale.Add((boardFile, folder));
+                        continue;
+                    }
+
+                    Dictionary<string, (string Source, string Token)> wanted =
+                        BoardKiCadFolder.Wanted(boardFile, Path.GetDirectoryName(boardFile) ?? string.Empty, dataRoot);
+
+                    if (wanted.Count == 0 || !string.Equals(BoardKiCadFolder.FolderNameOf(wanted), folder, StringComparison.OrdinalIgnoreCase))
+                        stale.Add((boardFile, folder));
                 }
                 catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or JsonException)
                 {
-                    CrtLog.Warning($"The KiCad files of [{boardFile}] could not be copied to [{copyFolder}] - [{ex.Message}]");
-                    return string.Empty;
+                    CrtLog.Info($"Whether the KiCad copy of [{boardFile}] is still its own could not be told - [{ex.Message}]");
+                }
+            }
+
+            if (stale.Count == 0)
+                return;
+
+            lock (BoardKiCadFolder.OwnersGate)
+            {
+                Dictionary<string, string> now = BoardKiCadFolder.ReadOwners(cache);
+                bool changed = false;
+
+                foreach ((string boardFile, string folder) in stale)
+                {
+                    if (now.TryGetValue(boardFile, out string? held) && string.Equals(held, folder, StringComparison.OrdinalIgnoreCase))
+                        changed |= now.Remove(boardFile);
+                }
+
+                if (changed)
+                {
+                    try
+                    {
+                        BoardKiCadFolder.WriteOwners(cache, now);
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                        CrtLog.Info($"Which board holds a KiCad copy could not be written: [{cache}] - [{ex.Message}]");
+                    }
                 }
             }
         }
@@ -153,12 +446,24 @@ namespace Handlers.DataHandling
         private static bool IsRead(BoardDocument.StoredFileRow file) =>
             DraftFiles.IsKiCad(file) && ComponentListBuilder.IsSupportedKiCadRawFile(file.Name);
 
-        // One folder per board file, named after its full path - stable across launches.
-        internal static string FolderNameFor(string boardFile)
+        // ###########################################################################################
+        // One folder per set of names and bytes: the same files under the same names - whichever
+        // board file lists them - are the same folder, in any order and any capitals of a name.
+        // ###########################################################################################
+        internal static string FolderNameOf(IReadOnlyDictionary<string, (string Source, string Token)> wanted)
         {
-            byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(Path.GetFullPath(boardFile).ToUpperInvariant()));
-            return Convert.ToHexString(hash, 0, 8).ToLowerInvariant();
+            var lines = new StringBuilder();
+
+            foreach ((string name, (string _, string token)) in wanted.OrderBy(pair => pair.Key.ToUpperInvariant(), StringComparer.Ordinal))
+                lines.Append(name.ToUpperInvariant()).Append('\u001F').Append(token).Append('\n');
+
+            byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(lines.ToString()));
+            return BoardKiCadFolder.FolderPrefix + Convert.ToHexString(hash, 0, 8).ToLowerInvariant();
         }
+
+        // An earlier pre-release's folder, named after a board file's path: 16 hex digits.
+        private static bool IsNamedByPath(string name) =>
+            name.Length == 16 && name.All(Uri.IsHexDigit);
 
         // ###########################################################################################
         // Every KiCad file the board has, by name: where its bytes are and a token that changes
@@ -224,10 +529,12 @@ namespace Handlers.DataHandling
                     File.Copy(source, temporary, overwrite: true);
 
                     // ###########################################################################################
-                    // *** NEW BYTES, A LATER WRITE TIME (2026-10-25). *** File.Copy keeps the source's time,
-                    // and two sources written in one clock tick (a contributor's file and the published
-                    // one) gave the copy the very stamp it had - so KiCadProjectLoader, which keeps its
-                    // parse by path and write time, answered with the replaced file's parse.
+                    // *** A COPY MADE AGAIN, A LATER WRITE TIME (2026-10-25). *** File.Copy keeps the source's
+                    // time, and two sources written in one clock tick (a contributor's file and the published
+                    // one) gave the copy the very stamp it had - so KiCadProjectLoader, which keeps its parse
+                    // by path and write time, answered with the replaced file's parse. Since folders are named
+                    // by what they hold, other bytes go to another folder; this stays for a copy made again
+                    // over one whose record was lost, which a stamp of its own costs nothing.
                     // ###########################################################################################
                     if (replaced is { } previous && File.GetLastWriteTimeUtc(temporary) <= previous)
                         File.SetLastWriteTimeUtc(temporary, previous.AddTicks(1));

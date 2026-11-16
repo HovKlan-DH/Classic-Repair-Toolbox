@@ -144,16 +144,40 @@ public partial class TabSchematics
         this.SchematicsHighlightsOverlay.BitmapPixelSize = bitmap.PixelSize;
     }
 
+    // ###########################################################################################
+    // The size of a picture's thumbnail standing in for it while the picture is read - null while none does (code reviews,
+    // 2026-11-16). It is framed by its OWN proportions - a thumbnail is the picture made small - its empty border of its own
+    // not known yet: laid out in the picture before's frame, it jumped as the picture came. And no picture is held meanwhile
+    // (currentFullResBitmap null, as before any picture): hovering or clicking it mapped the pointer by the picture before
+    // onto this picture's rectangles. ApplyImageFrame frames it - a resize meanwhile too.
+    // ###########################################################################################
+    private PixelSize? thisStandInPixelSize;
+
+    // A picture's thumbnail standing in for it while it is read (above): no picture held meanwhile, framed by its own size.
+    private void ShowStandIn(IImage standIn)
+    {
+        this.currentFullResBitmap = null;
+        this.thisStandInPixelSize = PixelSize.FromSize(standIn.Size, 1.0);
+        this.ApplyImageFrame();
+        this.SchematicsImage.Source = standIn;
+    }
+
+    internal void ShowStandInForTests(IImage standIn) => this.ShowStandIn(standIn);
+
+    // In whole pixels of the screen, as layout rounds the image's Margin: a frame of 35.62 put the image at 36, and
+    // every overlay - fitted at 35.62 - drew beside it, further the more it was zoomed.
+    private Thickness RoundedToScreen(Thickness frame) =>
+        Avalonia.Layout.LayoutHelper.RoundLayoutThickness(frame, TopLevel.GetTopLevel(this)?.RenderScaling ?? 1.0);
+
     private void ApplyImageFrame()
     {
         Thickness frame = this.currentFullResBitmap is { } bitmap
             ? ImageFrameGeometry.Frame(this.LayerSize(), bitmap.PixelSize, this.thisImageBlankBorder, ImageFrameGeometry.Wanted)
-            : default;
+            : this.thisStandInPixelSize is { } standIn
+                ? ImageFrameGeometry.Frame(this.LayerSize(), standIn, default, ImageFrameGeometry.Wanted)
+                : default;
 
-        // In whole pixels of the screen, as layout rounds the image's Margin: a frame of 35.62 put the image at 36, and
-        // every overlay - fitted at 35.62 - drew beside it, further the more it was zoomed.
-        double scaling = TopLevel.GetTopLevel(this)?.RenderScaling ?? 1.0;
-        frame = Avalonia.Layout.LayoutHelper.RoundLayoutThickness(frame, scaling);
+        frame = this.RoundedToScreen(frame);
 
         if (frame == this.thisImageFrame && this.SchematicsImage.Margin == frame)
         {

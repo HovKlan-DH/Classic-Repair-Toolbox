@@ -206,6 +206,14 @@ namespace Handlers.DataHandling
             IReadOnlyList<T>? draftRows)
             where T : class
         {
+            // The very same list is the very same rows - nothing to compare (2026-11-16, performance walkthrough): an edit
+            // replaces only the sections it changes, and nothing changes a board it was given (BoardData), so a draft
+            // compared with itself a step back, or with one component put back as published, shares every other section.
+            if (ReferenceEquals(publishedRows, draftRows))
+            {
+                return;
+            }
+
             (Dictionary<ComparedRow, T> publishedByKey, Dictionary<ComparedRow, T> draftByKey) = BoardDraftNaturalKeys.MayRepeat(typeof(T))
                 ? BoardDataDiffer.LineUpRepeatedRows(publishedRows, draftRows)
                 : (BoardDataDiffer.IndexByKey(publishedRows), BoardDataDiffer.IndexByKey(draftRows));
@@ -545,13 +553,17 @@ namespace Handlers.DataHandling
         // Whether two rows of one type hold the same values - every property, trimmed, ordinal, blank
         // and null alike: exactly "no differing field" (DifferingFields). DraftRebase decides "the
         // contributor left this row alone" with it, so the merge and the count agree.
+        //
+        // *** THE ORDER MATTERS: `published` FIRST, `drafted` SECOND (code review, 2026-11-16). *** A value the server sets
+        // as it publishes, empty on the DRAFTED side, is no change ([SetWhenPublished] - a credit's date): the draft's row
+        // passed first, a date typed on an undated credit read as left alone, and "Bring my draft up to date" dropped it.
         // ###########################################################################################
-        internal static bool SameValues(object first, object second)
+        internal static bool SameValues(object published, object drafted)
         {
-            ArgumentNullException.ThrowIfNull(first);
-            ArgumentNullException.ThrowIfNull(second);
+            ArgumentNullException.ThrowIfNull(published);
+            ArgumentNullException.ThrowIfNull(drafted);
 
-            return first.GetType() == second.GetType() && BoardDataDiffer.DifferingFields(first, second).Count == 0;
+            return published.GetType() == drafted.GetType() && BoardDataDiffer.DifferingFields(published, drafted).Count == 0;
         }
 
         // ###########################################################################################
@@ -614,6 +626,12 @@ namespace Handlers.DataHandling
                 string publishedValue = BoardDataDiffer.ReadValue(property, published);
                 string draftedValue = BoardDataDiffer.ReadValue(property, drafted);
 
+                // A value the server sets as it publishes, empty in the draft, is no change ([SetWhenPublished] - a credit's date).
+                if (draftedValue.Length == 0 && BoardDataDiffer.IsSetWhenPublished(property))
+                {
+                    continue;
+                }
+
                 if (!string.Equals(publishedValue, draftedValue, StringComparison.Ordinal))
                 {
                     differing.Add(property.Name);
@@ -622,6 +640,11 @@ namespace Handlers.DataHandling
 
             return differing;
         }
+
+        private static bool IsSetWhenPublished(PropertyInfo property) =>
+            BoardDataDiffer.SetWhenPublishedProperties.GetOrAdd(property, each => each.IsDefined(typeof(SetWhenPublishedAttribute), inherit: false));
+
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<PropertyInfo, bool> SetWhenPublishedProperties = new();
 
         // ###########################################################################################
         // The properties worth comparing on a row type: every readable public one.

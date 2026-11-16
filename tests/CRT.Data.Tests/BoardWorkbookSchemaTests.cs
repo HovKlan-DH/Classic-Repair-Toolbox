@@ -123,11 +123,18 @@ public sealed class BoardWorkbookSchemaTests
 
                 Assert.True(isNote == sheet.IsNoteColumn(column), $"[{sheet.SheetName}] [{column}]: a note with formatting is [{isNote}], a note column [{sheet.IsNoteColumn(column)}]");
                 noteColumns += isNote ? 1 : 0;
+
+                // And a value the server sets as it publishes (a credit's date, 2026-11-14) is one in the table too.
+                bool setWhenPublished = from?.IsDefined(typeof(SetWhenPublishedAttribute), inherit: false) == true;
+                Assert.True(
+                    setWhenPublished == sheet.IsSetWhenPublished(column),
+                    $"[{sheet.SheetName}] [{column}]: set when published is [{setWhenPublished}], a set-when-published column [{sheet.IsSetWhenPublished(column)}]");
             }
         }
 
-        // The pictures' and baselines' note, so the walk above met one.
-        Assert.Equal(2, noteColumns);
+        // The pictures' and baselines' note, a component's "Purpose or note" and a credit's main contribution (2026-11-14), so
+        // the walk above met each.
+        Assert.Equal(3, noteColumns);
     }
 
     [Fact]

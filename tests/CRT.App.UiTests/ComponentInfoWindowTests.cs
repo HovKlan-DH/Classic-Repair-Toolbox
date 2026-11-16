@@ -37,6 +37,13 @@ namespace ClassicRepairToolbox.Tests.Ui;
 public class ComponentInfoWindowTests : IDisposable
 {
     private const string BoardLabel = "U8";
+
+    // A component's images are decoded several at once (2026-11-16, performance walkthrough) - one after another, U19's
+    // 81 baselines waited each in turn before any showed - and never more than four, as the thumbnails.
+    [Fact]
+    public void At_least_one_and_at_most_four_images_are_decoded_at_once() =>
+        Assert.InRange(ComponentInfoWindow.ImagesDecodedAtOnce, 1, 4);
+
     // A root nothing is ever written under, built for THIS machine - never a literal @"C:\..."
     // (see TestPathLiteralTests).
     private static readonly string DataRoot = Path.Combine(Path.GetTempPath(), "crt-no-such-data-root-" + Guid.NewGuid().ToString("N"));
@@ -46,8 +53,10 @@ public class ComponentInfoWindowTests : IDisposable
     public ComponentInfoWindowTests()
     {
         // A fresh, empty settings file per test: the window's constructor reads window size,
-        // splitter ratio and the two switch states from UserSettings.
-        UserSettings.LoadFrom(this.thisWorkspace.Path_(Guid.NewGuid().ToString("N") + ".json"));
+        // splitter ratio and the two switch states from UserSettings. WRITTEN, "{}" - a missing file
+        // keeps the settings loaded before (2026-11-16: a popup closed 900 wide by one test opened the
+        // next test's 900 wide, and forty pins fitted beside the drawing - those tests failed in some orders).
+        UserSettings.LoadFrom(this.thisWorkspace.WriteFile(Guid.NewGuid().ToString("N") + ".json", "{}"));
     }
 
     public void Dispose()

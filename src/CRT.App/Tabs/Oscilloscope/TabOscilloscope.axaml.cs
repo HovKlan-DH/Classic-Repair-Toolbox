@@ -646,10 +646,8 @@ namespace CRT
                     return;
                 }
 
-                string existingText = this.OutputTextBox.Text ?? string.Empty;
-                string appendedText = string.Join(Environment.NewLine, linesToAppend) + Environment.NewLine;
-
-                this.OutputTextBox.Text = existingText + appendedText;
+                // Its last lines only (ScopeOutputText - the box lays all of its text out at every change; 2026-11-16).
+                this.OutputTextBox.Text = Handlers.Oscilloscope.ScopeOutputText.Appended(this.OutputTextBox.Text, linesToAppend, Environment.NewLine);
                 this.OutputTextBox.CaretIndex = this.OutputTextBox.Text.Length;
 
                 bool shouldScheduleFlush = false;

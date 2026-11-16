@@ -165,6 +165,8 @@ namespace Handlers.DataHandling
                     SubCategory = row.SubCategory,
                     NameOrHandle = row.NameOrHandle,
                     Contact = row.Contact,
+                    MainContribution = BoardDocumentMapping.WhenGiven(row.MainContribution),
+                    Date = BoardDocumentMapping.WhenGiven(row.Date),
                 }).ToList(),
                 ImportantSignals = board.KiCadImportantSignals.Select(row => new BoardDocument.ImportantSignalRow
                 {
@@ -319,6 +321,8 @@ namespace Handlers.DataHandling
                     SubCategory = row.SubCategory,
                     NameOrHandle = row.NameOrHandle,
                     Contact = row.Contact,
+                    MainContribution = row.MainContribution ?? string.Empty,
+                    Date = row.Date ?? string.Empty,
                 }).ToList(),
                 KiCadImportantSignals = document.ImportantSignals.Select(row => new KiCadImportantSignalEntry
                 {

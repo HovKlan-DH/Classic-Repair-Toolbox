@@ -63,6 +63,12 @@ namespace CRT
         private WorklogEntryRecord thisEntry = new();
         private Bitmap? thisSchematicBitmap;
 
+        // The picture's own size when the bitmap was decoded smaller (Initialize) - null when it is the picture whole.
+        private PixelSize? thisSchematicPixelSize;
+
+        // What every area is mapped by: the picture's own size, never a smaller decode's.
+        private PixelSize SchematicPixelSize => this.thisSchematicPixelSize ?? this.thisSchematicBitmap?.PixelSize ?? default;
+
         private string thisSelectedCategory = "Note";
         private string thisSelectedState = "Open";
 
@@ -262,16 +268,11 @@ namespace CRT
             // above describes and what the release handler's early-return assumes.
             this.AddHandler(PointerReleasedEvent, this.OnPhotoRowDragHandlePointerReleased, RoutingStrategies.Bubble);
 
-            // The thumbnails this window decoded hold unmanaged surfaces; without this the last set
-            // survives the window itself. thisSchematicBitmap belongs to the caller and is not
-            // touched here.
+            // The photos' thumbnails are DevicePhotoThumbnails' (2026-11-16) and are never disposed by hand: the
+            // device's page and form show the same ones, and one let go of is freed once nothing shows it.
+            // thisSchematicBitmap belongs to the caller and is not touched here.
             this.Closed += (_, _) =>
             {
-                foreach (var row in this.thisPhotoRows)
-                {
-                    row.Thumbnail?.Dispose();
-                }
-
                 // Teardown matches construction. A gesture still in flight when the window closes
                 // (released outside it, so no release handler ever ran) leaves thisActiveDragContext
                 // holding the entry's live lists and two bound delegates; clearing the collections
@@ -597,13 +598,17 @@ namespace CRT
         // loads the schematic bitmap for the location preview. workbookId is needed separately since
         // WorklogEntryRecord itself does not know which workbook it belongs to.
         // ###########################################################################################
-        public void Initialize(int workbookId, WorklogEntryRecord entry, Bitmap? schematicBitmap)
+        // `schematicPixelSize`: the picture's OWN size when `schematicBitmap` was decoded smaller (the "Workbooks" tab's
+        // pane, SchematicPreviewPicture - 2026-11-16) - every area is kept in the picture's own pixels, so it is mapped,
+        // and a default one placed, by that size; null when the bitmap is the picture whole.
+        public void Initialize(int workbookId, WorklogEntryRecord entry, Bitmap? schematicBitmap, PixelSize? schematicPixelSize = null)
         {
             this.thisIsInitializing = true;
 
             this.thisWorkbookId = workbookId;
             this.thisEntry = CloneEntry(entry);
             this.thisSchematicBitmap = schematicBitmap;
+            this.thisSchematicPixelSize = schematicPixelSize;
 
             // "Update worklog" for a saved entry; InitializeForNewEntry overrides this to "Add
             // worklog" straight afterwards for a draft. Set here rather than left as the markup's
@@ -919,7 +924,7 @@ namespace CRT
             // the single decision point while the editor quietly kept its own copy of the rule.
             var area = WorklogDefaultAreaGeometry.ResolveAreaForShowing(
                 existing,
-                new Size(this.thisSchematicBitmap.PixelSize.Width, this.thisSchematicBitmap.PixelSize.Height));
+                new Size(this.SchematicPixelSize.Width, this.SchematicPixelSize.Height));
 
             // Unchanged means the entry already had a real area, and it is never replaced. Still
             // unusable means the image has no size to place one on, so the entry stays parked.

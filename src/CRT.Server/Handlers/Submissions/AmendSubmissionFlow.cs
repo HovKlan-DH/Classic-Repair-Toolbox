@@ -49,7 +49,8 @@ namespace CRT.Server.Handlers.Submissions
             BlobStore blobs,
             PublishLock publishLock,
             DateTimeOffset nowUtc,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            string? stableTreeRoot = null)
         {
             ArgumentNullException.ThrowIfNull(store);
             ArgumentNullException.ThrowIfNull(accounts);
@@ -179,7 +180,13 @@ namespace CRT.Server.Handlers.Submissions
             // ---- 6. Validate -------------------------------------------------------------------
             findings.AddRange(SubmissionPathRules.ValidateManifestPaths(amended, dataTreeRoot));
             findings.AddRange(SubmissionFileRules.ValidateManifestFiles(amended, tree));
-            findings.AddRange(SubmissionValidator.Validate(amended, amended.Files.Select(file => file.Path).ToList()));
+            // Its credits against the board's published ones, BETA's AND stable's - as the create judged them (code review,
+            // 2026-11-16): a credit stable has, which a maintainer has since corrected in BETA alone, passed the create and was
+            // refused at the amendment, "Main contribution" required of a credit nobody touched. `stableTreeRoot` null: BETA's.
+            findings.AddRange(SubmissionValidator.Validate(
+                amended,
+                amended.Files.Select(file => file.Path).ToList(),
+                SubmissionFlows.PublishedCreditsOf(tree, PublishedTreeProbe.For(stableTreeRoot, current))));
 
             if (!SubmissionValidator.CanBeQueued(findings))
                 return AmendOutcome.Refused("The change cannot be saved:", findings);

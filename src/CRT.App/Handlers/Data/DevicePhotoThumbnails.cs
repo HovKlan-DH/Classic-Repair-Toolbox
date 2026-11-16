@@ -41,19 +41,7 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         public static Task<Bitmap?> Read(string? path, Action? whileRead = null)
         {
-            if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
-            {
-                return DevicePhotoThumbnails.NoPhoto;
-            }
-
-            string stamp;
-
-            try
-            {
-                var file = new FileInfo(path);
-                stamp = $"{file.Length}|{file.LastWriteTimeUtc.Ticks}";
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            if (string.IsNullOrWhiteSpace(path) || DevicePhotoThumbnails.StampOf(path) is not { } stamp)
             {
                 return DevicePhotoThumbnails.NoPhoto;
             }
@@ -76,6 +64,29 @@ namespace Handlers.DataHandling
                 return reading;
             }
         }
+
+        // ###########################################################################################
+        // The photo's read when one is made already or under way, while its file stays as it is - none begun: false. What the
+        // photo viewer stands in with until the whole photo is decoded (WorklogPhotoViewerWindow; code review, 2026-11-16: a
+        // read begun there came after the whole photo, never shown).
+        // ###########################################################################################
+        public static bool TryGetReadMadeAlready(string? path, out Task<Bitmap?> reading)
+        {
+            reading = DevicePhotoThumbnails.NoPhoto;
+
+            if (string.IsNullOrWhiteSpace(path) || DevicePhotoThumbnails.StampOf(path) is not { } stamp)
+            {
+                return false;
+            }
+
+            lock (DevicePhotoThumbnails.Lock)
+            {
+                return DevicePhotoThumbnails.Reads.TryGet(path, stamp, out reading);
+            }
+        }
+
+        // A photo's length and write time by the one stamp rule - null for no file there.
+        private static string? StampOf(string path) => BoardDataReader.FileStampIfThere(path);
 
         // How many photos are held now - for the tests.
         internal static int HeldForTests => DevicePhotoThumbnails.Reads.Count;

@@ -322,7 +322,8 @@ namespace Handlers.DataHandling
 
                 if (baseByKey.TryGetValue(key, out T? basedRow))
                 {
-                    if (BoardDataDiffer.SameValues(row, basedRow))
+                    // The base first, the draft second - a value the server sets, empty on the draft's side, is no change.
+                    if (BoardDataDiffer.SameValues(basedRow, row))
                         continue; // Left alone: the published update's version (or removal) stands.
 
                     state.ChangesKept++;

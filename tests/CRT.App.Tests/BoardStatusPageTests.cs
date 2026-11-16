@@ -18,7 +18,7 @@ public sealed class BoardStatusPageTests
         IReadOnlyList<BoardDataProblem>? problems = null) =>
         BoardStatusPage.Panels(
             board,
-            BoardReadiness.Missing(board, files is { Count: > 0 }, kiCad),
+            BoardReadiness.Missing(board, null, files is { Count: > 0 }, kiCad),
             calibrations,
             files,
             kiCad,
@@ -194,7 +194,7 @@ public sealed class BoardStatusPageTests
         var board = new BoardData { Components = [new ComponentEntry { BoardLabel = "U1", Category = "IC" }, new ComponentEntry { BoardLabel = "U2" }] };
         BoardDataProblem[] problems = [new BoardDataProblem(BoardProblemLevel.Error, "component.no_category", "U2", "[U2] has no category.", BoardWorkbookSchema.SheetComponents, 1, BoardWorkbookSchema.ColCategory)];
 
-        List<BoardStatusPanel> panels = BoardStatusPage.Panels(board, BoardReadiness.Missing(board, hasKiCadFiles: false, null), null, [], null, problems);
+        List<BoardStatusPanel> panels = BoardStatusPage.Panels(board, BoardReadiness.Missing(board, null, hasKiCadFiles: false, null), null, [], null, problems);
         BoardStatusPanel categories = Part(panels, BoardStatusPart.Categories);
 
         Assert.Equal(BoardStatusState.Error, categories.State);

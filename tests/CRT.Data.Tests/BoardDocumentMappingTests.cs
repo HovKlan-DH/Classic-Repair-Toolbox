@@ -153,7 +153,8 @@ public sealed class BoardDocumentMappingTests
             // 5 each since 2026-11-06: a note saying what the board's file or link is about.
             [typeof(BoardLocalFileEntry)] = 5,
             [typeof(BoardLinkEntry)] = 5,
-            [typeof(CreditEntry)] = 4,
+            // 6 since 2026-11-14: its main contribution and the date it was published.
+            [typeof(CreditEntry)] = 6,
             [typeof(KiCadImportantSignalEntry)] = 2,
             [typeof(KiCadCalibrationEntry)] = 8,
             // 16 since 2026-11-01: the regions it says it comes in (BoardRegions); 17 since 2026-11-11: their colors

@@ -28,8 +28,13 @@ public sealed class NewBoardCreditsTests
             ["Schematic image|Top", "Schematic image|Bottom", "Board data|", "Oscilloscope baseline|PAL", "Oscilloscope baseline|NTSC"],
             Rows(offer.Board));
 
-        // Nobody has been named: an error of the draft's, until filled in or deleted.
-        Assert.All(offer.Board.Credits, row => Assert.Equal([BoardWorkbookSchema.ColNameOrHandle], BoardRowRequired.EmptyColumns(row)));
+        // Nobody has been named, nor what each did (2026-11-14 - nothing of a new board is published): errors of the draft's,
+        // until filled in or deleted.
+        IReadOnlySet<CreditEntry> judged = PublishedCredits.Judged(offer.Board.Credits, PublishedCredits.None);
+
+        Assert.All(offer.Board.Credits, row => Assert.Equal(
+            [BoardWorkbookSchema.ColNameOrHandle, BoardWorkbookSchema.ColMainContribution],
+            BoardRowRequired.EmptyColumns(row, judged.Contains(row))));
     }
 
     [Fact]

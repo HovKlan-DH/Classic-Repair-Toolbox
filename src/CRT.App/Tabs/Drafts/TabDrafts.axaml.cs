@@ -60,8 +60,6 @@ namespace CRT
     //                         comes back to the front, so a draft edited in Excel shows its new numbers
     //   TabDrafts.UpdateRequired.cs - "CRT has to be updated" over the whole tab, when the server
     //                         turns this version of CRT away from submissions
-    //   TabDrafts.SubmitOthers.cs - the other drafts the Submit dialog offers to send with one, and
-    //                         making each ready once Submit is pressed
     //   TabDrafts.Readiness.cs - "Board status", the start panel: a panel per part of the board, its
     //                         rules and words BoardStatusPage's
     //   TabDrafts.NewBoardCredits.cs - the rows a new board's credits start with (NewBoardCredits)
@@ -196,6 +194,38 @@ namespace CRT
 
             DraftStatusReader.ForgetProblemsOfVanishedDrafts();
 
+            // Each board file read once while the rows are read, however many counts ask for it (2026-11-16, performance
+            // walkthrough): right after a save its stamp is not trusted yet, and the change count, the problem count and
+            // the other changes each parsed the draft just written. Only the rows' reading - nothing shown or saved in it.
+            IDisposable onePass = DraftStatusReader.OnePass();
+
+            try
+            {
+                this.ReadDraftRows(draftedBoards, receipts, fresh, problemsRead);
+            }
+            finally
+            {
+                onePass.Dispose();
+            }
+
+            this.ForgetHeadersExcept(this.thisDraftedBoards);
+            this.thisProblemsRead = problemsRead;
+
+            TabDrafts.KeepUnchangedRows(this.Drafts, fresh);
+
+            this.ApplyTableMode();
+
+            // The header, the left column and "My drafts" follow (TabDrafts.Workspace.cs).
+            this.ShowWorkspace();
+        }
+
+        // Every drafted board's row as its files say now - RefreshDrafts' reading half.
+        private void ReadDraftRows(
+            IEnumerable<HardwareBoardEntry> draftedBoards,
+            IReadOnlyList<SubmissionReceipt> receipts,
+            List<DraftListItem> fresh,
+            Dictionary<string, BoardProblemsRead> problemsRead)
+        {
             foreach (var entry in draftedBoards.OrderBy(e => e.ShortHardwareBoardLabel, StringComparer.OrdinalIgnoreCase))
             {
                 DraftStatus? status = DraftStatusReader.Resolve(
@@ -266,16 +296,6 @@ namespace CRT
                     header: this.HeaderFor(entry),
                     headerActions: this.HeaderActions));
             }
-
-            this.ForgetHeadersExcept(this.thisDraftedBoards);
-            this.thisProblemsRead = problemsRead;
-
-            TabDrafts.KeepUnchangedRows(this.Drafts, fresh);
-
-            this.ApplyTableMode();
-
-            // The header, the left column and "My drafts" follow (TabDrafts.Workspace.cs).
-            this.ShowWorkspace();
         }
 
         // ###########################################################################################
@@ -573,8 +593,11 @@ namespace CRT
             }
 
             // A new board goes with its credits' rows, even with "Board: Credits" never opened - and saved
-            // with the rest, just below (TabDrafts.NewBoardCredits.cs).
+            // with the rest, just below (TabDrafts.NewBoardCredits.cs). A published board's draft with its
+            // credit for the work, put back if it was taken away (2026-11-15) - its checks then say what it
+            // still needs.
             this.OfferNewBoardCredits(entry);
+            await this.EnsureCreditForChangesAsync(entry);
 
             // What is sent is the draft FILE, so edits still sitting unsaved in the table would
             // silently be left out of the submission.
@@ -629,8 +652,15 @@ namespace CRT
             // What the draft changes, in words - "Review changes"' summary, shown before anything is sent.
             DraftChangeSummary changes = await BusyOverlay.RunLocalAsync(this, CrtWaitWording.ReadingChanges, () => this.SummaryForAsync(entry));
 
-            // The credits that work deserves, against the board as published (CreditSuggestions).
-            List<CreditSuggestion> credits = CreditSuggestions.For(await this.PublishedBoardForCreditsAsync(entry, status), mergedData);
+            // ###########################################################################################
+            // *** WHAT THE SUBMISSION SAYS IT CHANGED IS MADE OF THE CREDIT SENT WITH IT (owner requests, 2026-11-15). *** The
+            // credits the published board does not have - the rows "Board: Credits" frames as sent - their main contributions,
+            // else the changes in words (SubmissionSummaryText); a new board's every credit. And the name and contact given
+            // there are remembered for the next draft's credit, as the dialog remembered them until then - never "Unknown".
+            // ###########################################################################################
+            BoardData? published = entry.IsDraftOnly ? null : await this.PublishedBoardForCreditsAsync(entry, status);
+            IReadOnlyList<CreditEntry> sentCredits = SubmissionCredit.KnownSent(entry.IsDraftOnly, mergedData, published);
+            string summary = SubmissionSummaryText.For(SubmissionCredit.MainContributionsOf(sentCredits), changes);
 
             var window = this.SubmitWindowFactoryForTests?.Invoke() ?? new SubmitDraftWindow();
 
@@ -646,13 +676,19 @@ namespace CRT
                 this.thisMaintainerAccount,
                 draftFingerprint,
                 changes,
-                credits,
-                added => this.AddCreditsToDraftAsync(entry, status, added));
+                summary);
 
-            // The other drafts, to send with this one under the same message (TabDrafts.SubmitOthers.cs).
-            window.OfferOtherDrafts(this.OtherDraftOffers(entry), this.PrepareOtherDraftAsync);
-
+            // One board per submit (owner request, 2026-11-15: "only do allow to send ONE contribution/board per submit" - its
+            // main contribution is that one board's); the other drafts were offered to go with it until then.
             await window.ShowDialog(ownerWindow);
+
+            // ###########################################################################################
+            // *** WHO IS CREDITED IS REMEMBERED ONCE SENT, AND ONLY OF THE CREDITS SENT (code review, 2026-11-16). *** It was
+            // remembered as the dialog opened - a cancelled send too - and with the published board unreadable every credit
+            // of the board counted as sent, so another person's name and contact became the next draft's credit. Only credits
+            // naming one person teach CRT who the contributor is (SubmissionCredit.ToRemember).
+            // ###########################################################################################
+            TabDrafts.RememberWhoIsCredited(SubmissionCredit.ToRemember(window.Result, entry.IsDraftOnly, sentCredits));
 
             // The draft is untouched either way, but the row is rebuilt regardless: a submission
             // that failed on a missing file is very often followed by the user fixing it, and a
@@ -662,7 +698,7 @@ namespace CRT
 
         // ###########################################################################################
         // Who a draft's submission is about - built from its board identity and, for a new board, its
-        // registration. Shared by the board Submit was pressed on and every other draft sent with it.
+        // registration.
         // ###########################################################################################
         private static SubmissionIdentity IdentityFor(HardwareBoardEntry entry, DraftStatus status)
         {
@@ -744,9 +780,9 @@ namespace CRT
                 DraftBoardSource.ResolveWritablePath(DataManager.DataRoot, DraftManager.DraftsRoot, entry.ExcelDataFile),
                 board);
 
-        // The same, read for Submit's credit suggestions - under CRT's "please wait", since Submit was
-        // pressed for it (code review, 2026-10-26: a large board not read yet was read with nothing on
-        // screen, between the "reading your changes" wait and the dialog).
+        // The board as published, read for Submit's summary - which of the draft's credits are sent with it - under CRT's
+        // "please wait", since Submit was pressed for it (code review, 2026-10-26: a large board not read yet was read with
+        // nothing on screen, between the "reading your changes" wait and the dialog).
         internal Task<BoardData?> PublishedBoardForCreditsAsync(HardwareBoardEntry entry, DraftStatus status) =>
             BusyOverlay.RunLocalAsync(this, CrtWaitWording.ReadingPublishedBoard, () => this.PublishedBoardForAsync(entry, status));
 
@@ -781,25 +817,59 @@ namespace CRT
             Task.Run(() => DraftWorkbookStore.LoadDraftBoard(DraftManager.DraftsRoot, entry.ExcelDataFile));
 
         // ###########################################################################################
-        // The credits ticked in the Submit dialog into the draft, as ONE step ("Credits") saved at
-        // once - each in its category's group (BoardPartEdits) - then the board a submit sends and its
-        // fingerprint read again, so what goes out and what the receipt remembers carry them. Null
-        // when the draft could not take them; the draft's header says why.
+        // *** THE CREDIT FOR THE WORK IS BACK BEFORE SUBMIT (owner request, 2026-11-15: "have it mandatory, that the contributor
+        // has created a new line in the "Board: Credits" with the changes done by the user"). *** The draft's first change made
+        // it (SubmissionCredit.Follow); one taken away since is put back here as ONE step, under the name and contact CRT
+        // remembers - the checks that follow then hold it to its main contribution, and Submit goes to it. Nothing for a new
+        // board (no base: its starting rows are its credits), for work that deserves no credit, or with a credit sent already.
+        // Saved with the rest by SettleTableEditsAsync.
         // ###########################################################################################
-        internal async Task<(BoardData Board, string Fingerprint)?> AddCreditsToDraftAsync(HardwareBoardEntry entry, DraftStatus status, IReadOnlyList<CreditEntry> credits)
+        internal async Task EnsureCreditForChangesAsync(HardwareBoardEntry entry)
         {
-            DraftWorkbookEditOutcome outcome = await DraftEdits.ApplyAndSaveAsync(
-                entry.ExcelDataFile,
-                DraftStepWording.Credits,
-                board => BoardPartEdits.WithCredits(board, [.. board.Credits, .. credits]));
-
-            if (outcome != DraftWorkbookEditOutcome.Saved || await TabDrafts.BoardToSendAsync(status) is not { } board)
+            if (entry.IsDraftOnly)
             {
-                Logger.Warning($"Could not put the credits into the draft of [{entry.ExcelDataFile}] before submitting - [{outcome}]");
-                return null;
+                return;
             }
 
-            return (board, TabDrafts.FingerprintOf(entry, status));
+            // ###########################################################################################
+            // The draft's session and the board it is judged against read OFF the UI thread, under CRT's "please wait" (code
+            // review, 2026-11-16: a large board's draft no editor had opened yet was read and parsed with nothing on screen,
+            // before "Reading what your draft changes..." appeared) - the board as published now, as the Submit that follows
+            // judges it; the draft's base when that cannot be read (DraftSessions.BoardToJudgeAgainst).
+            // ###########################################################################################
+            (DraftSession? session, BoardData? published) = await BusyOverlay.RunLocalAsync(
+                this,
+                CrtWaitWording.ReadingChanges,
+                () => Task.Run(() =>
+                {
+                    DraftSession? found = DraftManager.Sessions.Find(DraftManager.DraftsRoot, entry.ExcelDataFile)
+                        ?? DraftManager.Sessions.Get(DraftManager.DraftsRoot, entry.ExcelDataFile);
+
+                    return (found, found is null ? null : DraftManager.Sessions.BoardToJudgeAgainst(found));
+                }));
+
+            if (session is null || published is null)
+            {
+                return;
+            }
+
+            session.Apply(
+                DraftStepWording.CreditForYourChanges,
+                content => SubmissionCredit.Ensure(published, content.Board, UserSettings.CreditName, UserSettings.CreditContact) is { } board &&
+                           !ReferenceEquals(board, content.Board)
+                    ? content with { Board = board }
+                    : null);
+        }
+
+        // The name and contact of the first credit sent - remembered for the next draft's credit (UserSettings.CreditName). Not
+        // "Unknown", the name of a credit given to nobody.
+        internal static void RememberWhoIsCredited(IReadOnlyList<CreditEntry> sent)
+        {
+            if (sent.FirstOrDefault(credit => !string.IsNullOrWhiteSpace(credit.NameOrHandle)) is { } credit &&
+                !string.Equals(credit.NameOrHandle.Trim(), CreditSuggestions.UnknownName, StringComparison.OrdinalIgnoreCase))
+            {
+                UserSettings.RememberCreditIdentity(credit.NameOrHandle, credit.Contact);
+            }
         }
 
         // ###########################################################################################
@@ -812,6 +882,13 @@ namespace CRT
                 status.WorkbookPath,
                 DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, entry.ExcelDataFile),
                 status.NewBoard?.NotesForSubmission());
+
+        // The fingerprint a submit of `entry`'s draft would record now - for a test holding the receipt's and the row's to one
+        // rule. Null for a draft that cannot be read.
+        internal static string? FingerprintToSendForTests(HardwareBoardEntry entry) =>
+            DraftStatusReader.Resolve(DataManager.DataRoot, DraftManager.DraftsRoot, entry.ExcelDataFile, entry.IsPublished) is { } status
+                ? TabDrafts.FingerprintOf(entry, status)
+                : null;
 
         // Whether the row's Submit is greyed out because the draft was already sent as it is. The
         // draft is only read when its latest submission remembers what it sent, so a draft never
@@ -836,6 +913,7 @@ namespace CRT
         internal async Task<bool> StopForErrorsAsync(HardwareBoardEntry entry, BoardData board)
         {
             Task? hold = this.HoldErrorCheckForTests;
+            string publishedFile = entry.IsDraftOnly ? string.Empty : this.PublishedBoardFileOf(entry);
             IReadOnlyList<BoardDataProblem> problems = await BusyOverlay.RunLocalAsync(this, CrtWaitWording.CheckingBoard, () => Task.Run(async () =>
             {
                 if (hold != null)
@@ -843,7 +921,7 @@ namespace CRT
                     await hold;
                 }
 
-                return TabDrafts.ProblemsToSend(entry, board);
+                return TabDrafts.ProblemsToSend(entry, board, publishedFile);
             }));
 
             if (!problems.Any(problem => problem.Level == BoardProblemLevel.Error))
@@ -860,10 +938,11 @@ namespace CRT
         // (a check of a small board on a free pool thread could end before the test looked; CI, 2026-11-09).
         internal Task? HoldErrorCheckForTests { get; set; }
 
-        // The problems of the board a submit of this draft would send - the table's own checks.
-        private static IReadOnlyList<BoardDataProblem> ProblemsToSend(HardwareBoardEntry entry, BoardData board) =>
+        // The problems of the board a submit of this draft would send - the table's own checks, its credits against the
+        // board's published ones (`publishedFile`, "" for a new board - 2026-11-14), as the server judges them.
+        private static IReadOnlyList<BoardDataProblem> ProblemsToSend(HardwareBoardEntry entry, BoardData board, string publishedFile) =>
             BoardDataChecks.Check(
-                BoardCheckRows.From(board),
+                BoardCheckRows.From(board, DraftStatusReader.PublishedCreditsOf(publishedFile)),
                 new DiskFileLookup(DataManager.DataRoot, DraftFolderLayout.GetBoardFolder(DraftManager.DraftsRoot, entry.ExcelDataFile), entry.ExcelDataFile),
                 BoardCheckScope.Everything);
 
@@ -1171,10 +1250,6 @@ namespace CRT
         public bool CanSubmit { get; }
         public string SubmitTooltip { get; }
 
-        // Why the Submit dialog cannot send this draft along with another's, in its short words - or
-        // null when it can (slice 5). Errors count here: no table opens on another board's.
-        internal string? NotOfferedWithOthers { get; }
-
         // Whether to show the drift line and the "What changed" button (the "Updated officially"
         // chip beside the name was removed, owner request 2026-09-28). Only a real
         // difference counts - an unrecorded base revision is not evidence of drift, so it stays
@@ -1314,7 +1389,6 @@ namespace CRT
                     : "See what your draft changes, component by component - and put a component back as it is published";
 
             this.CanSubmit = hasSomething && !alreadySent;
-            this.NotOfferedWithOthers = SubmitDraftsWording.NotOffered(hasSomething, alreadySent, problems.Errors);
 
             this.SubmitTooltip = !hasSomething
                 ? (status.IsNewBoard

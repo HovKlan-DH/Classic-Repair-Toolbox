@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 
 namespace Handlers.DataHandling
 {
@@ -28,6 +29,15 @@ namespace Handlers.DataHandling
         private static readonly ConcurrentDictionary<string, (string Stamp, BoardData Board)> Boards =
             new(StringComparer.OrdinalIgnoreCase);
 
+        // What this thread's pass has read (OnePass) - null outside one.
+        [ThreadStatic]
+        private static Dictionary<string, (string Stamp, BoardData? Board)>? ThisPass;
+
+        private static int ReadsMade;
+
+        // How many boards were actually parsed - for tests.
+        internal static int ReadsMadeForTests => Volatile.Read(ref BoardReadsByStamp.ReadsMade);
+
         public static BoardData? Read(string? workbookPath)
         {
             BoardReadsByStamp.ForgetVanished();
@@ -36,6 +46,10 @@ namespace Handlers.DataHandling
                 return null;
 
             string stamp = BoardDataReader.StampOf(workbookPath);
+
+            // Within one pass a file whose stamp has not moved is the board already read in it.
+            if (BoardReadsByStamp.ThisPass is { } pass && pass.TryGetValue(workbookPath, out var inPass) && inPass.Stamp == stamp)
+                return inPass.Board;
 
             // Trusted only once the files' writes have settled (StampSettling): two saves inside one
             // clock tick can leave one stamp on two contents.
@@ -47,12 +61,48 @@ namespace Handlers.DataHandling
             }
 
             BoardData? board = BoardDataReader.ReadWorkbookUncached(workbookPath);
+            Interlocked.Increment(ref BoardReadsByStamp.ReadsMade);
 
             // Remembered only when nothing moved WHILE it was read.
             if (board is not null && BoardDataReader.StampOf(workbookPath) == stamp)
                 BoardReadsByStamp.Boards[workbookPath] = (stamp, board);
 
+            BoardReadsByStamp.ThisPass?.TryAdd(workbookPath, (stamp, board));
+
             return board;
+        }
+
+        // ###########################################################################################
+        // *** ONE PASS READS A BOARD ONCE (2026-11-16, performance walkthrough). *** The drafts' list is
+        // read again right after every save - exactly when a stamp is not trusted yet (StampSettling) -
+        // and its change count, problem count and other changes each parsed the board just written: three
+        // or four parses of the same file, on the UI thread, at every autosave. Within a pass, begun on
+        // this thread and ended by disposing it, a file whose stamp is the one read is that read: what the
+        // pass says is the board as it began, and a write after it raises the next pass. A pass inside
+        // a pass is the outer one.
+        // ###########################################################################################
+        public static IDisposable OnePass()
+        {
+            if (BoardReadsByStamp.ThisPass is not null)
+                return NoPass.Instance;
+
+            BoardReadsByStamp.ThisPass = new Dictionary<string, (string Stamp, BoardData? Board)>(StringComparer.OrdinalIgnoreCase);
+            return new PassEnd();
+        }
+
+        private sealed class PassEnd : IDisposable
+        {
+            public void Dispose() => BoardReadsByStamp.ThisPass = null;
+        }
+
+        private sealed class NoPass : IDisposable
+        {
+            public static readonly NoPass Instance = new();
+
+            public void Dispose()
+            {
+                // The outer pass ends it.
+            }
         }
 
         // ###########################################################################################
@@ -135,6 +185,12 @@ namespace Handlers.DataHandling
     {
         private static readonly ConcurrentDictionary<string, (string Stamp, DraftOtherChanges Changes)> OtherChangesCache =
             new(StringComparer.OrdinalIgnoreCase);
+
+        // ###########################################################################################
+        // Everything this thread reads about the drafts until the pass is disposed reads each board
+        // file once (BoardReadsByStamp.OnePass) - what the drafts' list wraps its read in.
+        // ###########################################################################################
+        public static IDisposable OnePass() => BoardReadsByStamp.OnePass();
 
         // ###########################################################################################
         // The non-row changes of one draft, remembered until the draft folder (every file's length

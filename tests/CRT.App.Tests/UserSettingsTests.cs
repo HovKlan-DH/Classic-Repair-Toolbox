@@ -25,17 +25,25 @@ public sealed class UserSettingsTests : IDisposable
         this.thisWorkspace.Dispose();
     }
 
-    /// <summary>Writes a settings file with the given JSON and loads it.</summary>
+    /// <summary>Writes a settings file with the given JSON and loads it - and what loading saves, written.</summary>
     private string LoadSettings(string json)
     {
         string path = this.thisWorkspace.Path_(Guid.NewGuid().ToString("N") + ".json");
         File.WriteAllText(path, json);
         UserSettings.LoadFrom(path);
+        UserSettings.Flush();
         return path;
     }
 
+    // The file as saved - what waits to be written written first (UserSettings.Flush, 2026-11-16).
     private static JsonNode ReadJson(string path) =>
-        JsonNode.Parse(File.ReadAllText(path))!;
+        JsonNode.Parse(ReadSaved(path))!;
+
+    private static string ReadSaved(string path)
+    {
+        UserSettings.Flush();
+        return File.ReadAllText(path);
+    }
 
     // Whether a catalogue key is ticked / collapsed, by the rule the app itself reads the
     // settings with (CatalogueVisibility over the snapshots) - UserSettings has no key-by-key
@@ -187,7 +195,7 @@ public sealed class UserSettingsTests : IDisposable
         UserSettings.Region = "NTSC";
         UserSettings.SetLastHardware("Commodore 64");
 
-        Assert.Equal("{ broken", File.ReadAllText(path));
+        Assert.Equal("{ broken", ReadSaved(path));
         Assert.Empty(CorruptCopiesOf(path));
         Assert.Null(UserSettings.UnreadableSettings!.KeptAs);
         Assert.Contains($"[{path}]", UserSettings.UnreadableSettings.NoticeText, StringComparison.Ordinal);
@@ -217,7 +225,7 @@ public sealed class UserSettingsTests : IDisposable
         UserSettings.Region = "NTSC";
         UserSettings.SetLastHardware("Commodore 64");
 
-        Assert.Equal("""{"region": "NTSC"}""", File.ReadAllText(path));
+        Assert.Equal("""{"region": "NTSC"}""", ReadSaved(path));
         Assert.Empty(CorruptCopiesOf(path));
         Assert.Null(UserSettings.UnreadableSettings!.KeptAs);
     }
@@ -684,24 +692,86 @@ public sealed class UserSettingsTests : IDisposable
         DateTime before = MarkFileAsOld(path);
 
         UserSettings.InteractiveCadTraceHoverMode = "Always";
+        UserSettings.Flush();
 
         Assert.Equal(before, File.GetLastWriteTimeUtc(path));
     }
 
+    // ###########################################################################################
+    // InteractiveCadTraceHoverMode and SetLastHardware return early when the value has not changed, while
+    // BlinkSelected (and several like it) save regardless - and wrote the whole file again until 2026-11-16.
+    // Since the settings are written a moment later (DeferredTextFile), a save whose text is the one written
+    // last writes nothing, whichever setter it came from: re-applying UI state does no disk I/O. (It still
+    // logs a "Setting changed" line that changed nothing.)
+    // ###########################################################################################
     [Fact]
-    public void Not_every_setter_short_circuits_an_unchanged_value()
+    public void An_unchanged_value_never_rewrites_the_file_whichever_setter_saves_it()
     {
-        // CURRENT BEHAVIOUR, and inconsistent: InteractiveCadTraceHoverMode
-        // and SetLastHardware all return early when the value has not changed, but
-        // BlinkSelected (and several like it) write the whole file again regardless. Harmless,
-        // but it means re-applying UI state does real disk I/O and logs a "Setting changed"
-        // line that did not change anything.
         string path = this.LoadSettings("""{"blinkSelected": true}""");
         DateTime before = MarkFileAsOld(path);
 
         UserSettings.BlinkSelected = true;
+        UserSettings.Flush();
+
+        Assert.Equal(before, File.GetLastWriteTimeUtc(path));
+
+        // A change is written.
+        UserSettings.BlinkSelected = false;
+        UserSettings.Flush();
 
         Assert.NotEqual(before, File.GetLastWriteTimeUtc(path));
+    }
+
+    // ###########################################################################################
+    // *** THE SETTINGS ARE WRITTEN A MOMENT LATER, OFF THE UI THREAD (2026-11-16, performance walkthrough). *** A board
+    // switch wrote the whole file one to four times on the UI thread. A change is serialized at once and written
+    // AppConfig.SettingsWriteDelay later - several changes in that moment as one write - and Flush writes it at once,
+    // as CRT ends, and before another file is loaded.
+    // ###########################################################################################
+    // (How the writes wait and join is DeferredTextFileTests' - with a delay no slow machine can outlast.)
+    [Fact]
+    public void Changes_waiting_to_be_written_are_written_at_once_when_flushed()
+    {
+        string path = this.LoadSettings("{}");
+
+        UserSettings.Region = "NTSC";
+        UserSettings.SetLastHardware("Commodore 64");
+        UserSettings.Flush();
+
+        Assert.False(UserSettings.IsWritePendingForTests);
+        Assert.Equal("NTSC", JsonNode.Parse(File.ReadAllText(path))!["region"]!.GetValue<string>());
+        Assert.Equal("Commodore 64", JsonNode.Parse(File.ReadAllText(path))!["lastHardware"]!.GetValue<string>());
+    }
+
+    [Fact]
+    public void A_change_is_written_by_itself_once_the_moment_has_passed()
+    {
+        string path = this.LoadSettings("{}");
+
+        UserSettings.Region = "NTSC";
+
+        DateTime giveUp = DateTime.UtcNow.AddSeconds(10);
+
+        while (UserSettings.IsWritePendingForTests && DateTime.UtcNow < giveUp)
+        {
+            Thread.Sleep(20);
+        }
+
+        Assert.False(UserSettings.IsWritePendingForTests, "The settings were not written within ten seconds");
+        Assert.Equal("NTSC", ReadJson(path)["region"]!.GetValue<string>());
+    }
+
+    // What waits for one file is written to it before another is loaded - never into the next one.
+    [Fact]
+    public void Loading_another_file_writes_what_waits_for_the_one_before()
+    {
+        string first = this.LoadSettings("{}");
+        UserSettings.Region = "NTSC";
+
+        string second = this.LoadSettings("{}");
+
+        Assert.Equal("NTSC", JsonNode.Parse(File.ReadAllText(first))!["region"]!.GetValue<string>());
+        Assert.Equal("PAL", ReadJson(second)["region"]!.GetValue<string>());
     }
 
     /// <summary>Backdates the file so a rewrite is unambiguous rather than a timer-resolution race.</summary>
@@ -718,7 +788,7 @@ public sealed class UserSettingsTests : IDisposable
 
         UserSettings.Region = "NTSC";
 
-        string json = File.ReadAllText(path);
+        string json = ReadSaved(path);
         Assert.Contains("\n", json);
         Exception? thrown = Record.Exception(() => JsonDocument.Parse(json));
         Assert.True(thrown is null, "the settings file must stay parseable");
@@ -776,6 +846,7 @@ public sealed class UserSettingsTests : IDisposable
         Assert.Equal("NTSC", UserSettings.Region);
 
         UserSettings.OscilloscopePort = 4242;
+        UserSettings.Flush();
 
         Assert.False(File.Exists(tempPath), "a successful save must leave no .tmp file behind");
         Assert.Equal(4242, ReadJson(path)["oscilloscopePort"]!.GetValue<int>());
@@ -1189,7 +1260,7 @@ public sealed class UserSettingsTests : IDisposable
         Assert.Equal("#BC5454", UserSettings.GetUserThemeColors()["Button_Cancel_Bg"]);
 
         // The file as saved, the old default typed back in by hand - then launched again, and "Reload" pressed.
-        string saved = File.ReadAllText(path);
+        string saved = ReadSaved(path);
         Assert.Contains("\"userThemeDefaultsRevision\"", saved);
         File.WriteAllText(path, saved.Replace("\"#BC5454\"", "\"IndianRed\"", StringComparison.Ordinal));
 
@@ -1219,6 +1290,28 @@ public sealed class UserSettingsTests : IDisposable
         UserSettings.ReloadUserThemeColors();
 
         Assert.Equal("Black", UserSettings.GetUserThemeColors()["Form_Selected_Fg"]);
+    }
+
+    // ###########################################################################################
+    // *** A color typed into the file by hand and reloaded is what is written next (code review, 2026-11-16). *** The settings
+    // are written a moment after a change: a change made just before the hand edit queued a text with the colors from before,
+    // which replaced the file after "Reload" read it - the hand edit gone at the next launch.
+    // ###########################################################################################
+    [Fact]
+    public void A_color_reloaded_from_the_file_is_not_written_over_by_a_change_queued_before_it()
+    {
+        string path = this.LoadSettings("""{"userThemeColors": {"Button_Ok_Bg": "#497F54"}}""");
+        string saved = ReadSaved(path);
+
+        // A change queued, not written yet - then the color typed into the file by hand, and "Reload" pressed.
+        UserSettings.CheckDataOnLaunch = !UserSettings.CheckDataOnLaunch;
+        Assert.True(UserSettings.IsWritePendingForTests);
+        File.WriteAllText(path, saved.Replace("\"#497F54\"", "\"#123456\"", StringComparison.Ordinal));
+
+        UserSettings.ReloadUserThemeColors();
+
+        Assert.Contains("\"#123456\"", ReadSaved(path), StringComparison.Ordinal);
+        Assert.Equal("#123456", UserSettings.GetUserThemeColors()["Button_Ok_Bg"]);
     }
 
     // ###########################################################################################

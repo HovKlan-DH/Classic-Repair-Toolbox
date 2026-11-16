@@ -108,6 +108,7 @@ namespace Handlers.DataHandling
             {
                 BaselineLabel = string.IsNullOrWhiteSpace(baselineLabel) ? DefaultBaselineLabel : baselineLabel,
                 thisFiles = files,
+                thisPublishedCredits = published is null ? PublishedCredits.None : PublishedCredits.Of(published.Credits),
                 thisHighlights = draft.ComponentHighlights.ToList(),
                 thisCreating = true,
             };
@@ -264,6 +265,10 @@ namespace Handlers.DataHandling
         // by the lookup, and a cell is only told when its own problems changed.
         // ###########################################################################################
         private IBoardFileLookup? thisFiles;
+
+        // The credits the table's baseline has, which need no "Main contribution" while they stand so (2026-11-14) - none
+        // with no baseline: a new board's every credit needs one.
+        private PublishedCredits thisPublishedCredits = PublishedCredits.None;
         private IReadOnlyList<ComponentHighlightEntry> thisHighlights = [];
 
         internal IReadOnlyList<ComponentHighlightEntry> HighlightsHeldForTests => this.thisHighlights;
@@ -403,7 +408,8 @@ namespace Handlers.DataHandling
                 BoardTableDocument.EntriesOf<CreditEntry>(entriesBySheet, BoardWorkbookSchema.SheetCredits),
                 BoardTableDocument.EntriesOf<KiCadImportantSignalEntry>(entriesBySheet, BoardWorkbookSchema.SheetKiCadImportantSignals),
                 BoardTableDocument.EntriesOf<ComponentPinEntry>(entriesBySheet, BoardWorkbookSchema.SheetComponentPins),
-                BoardTableDocument.EntriesOf<ComponentReplacementEntry>(entriesBySheet, BoardWorkbookSchema.SheetComponentReplacements));
+                BoardTableDocument.EntriesOf<ComponentReplacementEntry>(entriesBySheet, BoardWorkbookSchema.SheetComponentReplacements),
+                PublishedCredits: this.thisPublishedCredits);
 
             IReadOnlyList<BoardDataProblem> problems = BoardDataChecks.Check(checkRows, this.thisFiles, BoardCheckScope.Everything);
 
@@ -635,11 +641,18 @@ namespace Handlers.DataHandling
         }
 
         // Whether two boards hold the same rows on `sheets` and the same highlights - a table's
-        // change can only drop highlights (a deleted component's), so their number says it.
+        // change can only drop highlights (a deleted component's), so their number says it. A sheet
+        // whose section is the very same list on both is the same rows, never built to be compared
+        // (2026-11-16, performance walkthrough: "Clone component" compared all eleven, row by row).
         internal static bool HasSameRows(BoardData before, BoardData after, IEnumerable<BoardWorkbookSchema.SheetDefinition> sheets) =>
             before.ComponentHighlights.Count == after.ComponentHighlights.Count &&
             sheets.All(sheet =>
             {
+                if (ReferenceEquals(BoardWorkbookSchema.EntriesOf(sheet, before), BoardWorkbookSchema.EntriesOf(sheet, after)))
+                {
+                    return true;
+                }
+
                 IReadOnlyList<IReadOnlyDictionary<string, string>> was = BoardWorkbookSchema.BuildRows(sheet, before);
                 IReadOnlyList<IReadOnlyDictionary<string, string>> now = BoardWorkbookSchema.BuildRows(sheet, after);
 

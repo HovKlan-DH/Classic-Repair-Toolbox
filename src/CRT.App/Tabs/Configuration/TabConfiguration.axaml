@@ -416,8 +416,8 @@
                        Opacity="0.7"
                        Margin="0,2,0,0" />
 
-			<!-- The introduction tours (owner request, 2026-11-11; Main.Tours.cs): every tab's tour as never seen, and the
-			     "Schematics" tab's started at once - the others come as their tabs are shown. -->
+			<!-- The introduction tours (owner request, 2026-11-11; Main.Tours.cs): every tab's tour as never seen, each coming
+			     the next time its tab is opened - this tab stays shown (owner request, 2026-11-14). -->
 			<Border Classes="SectionHeading">
 				<TextBlock Text="Introduction tours" />
 			</Border>
@@ -429,7 +429,7 @@
                     HorizontalContentAlignment="Center"
                     Click="OnTakeToursAgainClick" />
 
-			<TextBlock Text="A short tour of the most important things on most tabs. The &quot;Schematics&quot; tab's starts at once, the others the next time their tab is opened."
+			<TextBlock Text="A short tour of the most important things on most tabs, each starting the next time its tab is opened. &quot;Skip tour&quot; skips them all."
                        TextWrapping="Wrap"
                        Opacity="0.7"
                        Margin="0,2,0,0" />
@@ -532,7 +532,7 @@
                            FontWeight="SemiBold" />
 
 				<TextBlock Grid.Row="1"
-                           Text="Uncheck anything you want hidden from the hardware, board and schematic selections."
+                           Text="Uncheck anything you want hidden from the hardware, board and schematic selections. Data is downloaded only for the hardware and boards checked here."
                            TextWrapping="Wrap"
                            Opacity="0.75"
                            FontSize="11"

@@ -113,7 +113,7 @@ public sealed class TourCatalogueTests
         Assert.Contains("<b>PAL</b>", withRegions, StringComparison.Ordinal);
         Assert.DoesNotContain("PAL", withoutRegions, StringComparison.Ordinal);
         Assert.StartsWith("<b>Clear</b>", withoutRegions, StringComparison.Ordinal);
-        Assert.EndsWith("easy to spot.", withoutRegions, StringComparison.Ordinal);
+        Assert.EndsWith("<b>Enter</b> turns it on and off.", withoutRegions, StringComparison.Ordinal);
         Assert.DoesNotContain("\n\n\n", withoutRegions, StringComparison.Ordinal);
     }
 

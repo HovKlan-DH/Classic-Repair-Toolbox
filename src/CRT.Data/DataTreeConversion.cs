@@ -89,7 +89,9 @@ namespace Handlers.DataHandling
     //
     // *** IT ADDS ONE THING: EACH BOARD'S PINOUTS (owner decision, 2026-11-06). *** An Excel tree has
     // none; the converted board gets the pins its scope baselines and its KiCad data say (WithPinouts,
-    // ConversionPinouts), so every conversion - release day's too - makes them again.
+    // ConversionPinouts), so every conversion - release day's too - makes them again. Its credits stay
+    // undated (owner decision, 2026-11-15: "the existing credits should actually have NO date at all"):
+    // the history begins with the first credit a publish dates (CreditOrder).
     //
     // *** IT ONLY READS THE SOURCE, AND WRITES ONLY INTO ITS OWN KIND OF FOLDER. *** Write refuses
     // a target inside the source (or the source inside it), and a non-empty target that is not a

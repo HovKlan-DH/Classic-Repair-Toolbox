@@ -16,6 +16,8 @@
 //                                             detached window and the fullscreen stand-in) and
 //                                             its drag-to-reorder is SchematicsThumbnailGallery/
 //                                             ThumbnailGalleryPanel
+//   TabSchematics.PictureReads.cs             The pictures shown, read once and the last few kept
+//                                             (PictureReads), the board load's read begun early
 //   TabSchematics.ThumbnailsDetach.cs         Detach-to-window mode: collapses/restores the
 //                                             inline thumbnail column, mirroring
 //                                             EnterFullscreenMode/ExitFullscreenMode; the
@@ -127,6 +129,9 @@ public partial class TabSchematics : UserControl
     public TabSchematics()
     {
         InitializeComponent();
+
+        // The pictures read for the view (TabSchematics.PictureReads.cs).
+        this.thisPictureReads = this.NewPictureReads();
 
         this.ClearImportantSignalsButton.Click += (_, _) => this.ClearImportantSignalsSelection();
 
@@ -916,8 +921,10 @@ public partial class TabSchematics : UserControl
         this.fullResLoadCts?.Cancel();
         this.fullResLoadCts = null;
 
-        this.currentFullResBitmap?.Dispose();
+        // Not disposed: the picture reads hold it for going back to the board (TabSchematics.PictureReads.cs, 2026-11-16).
         this.currentFullResBitmap = null;
+        this.thisStandInPixelSize = null;
+        this.thisPictureReads.KeepOnly(null);
         this.thisImageBlankBorder = default;
         this.ApplyImageFrame();
 

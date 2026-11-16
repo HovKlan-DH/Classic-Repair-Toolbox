@@ -895,6 +895,32 @@ public sealed class BoardTableEditorTests : IDisposable
         session.Content.Board.Components.Single(component => component.BoardLabel == label).FriendlyName;
 
     // ###########################################################################################
+    // *** A CHANGE THAT BRINGS ITS CREDIT ALONG IS SHOWN WHOLE (2026-11-15). *** The table takes its own edits as on screen
+    // already, but the first change of a published board's draft brings the credit for the work in the very same step
+    // (SubmissionCredit, DraftSession.FollowUp - DraftSessionChange.FollowedUp): the table is built again, so its "Credits"
+    // sheet shows the row it did not push itself.
+    // ###########################################################################################
+    [Fact]
+    public void A_change_that_brings_its_credit_along_shows_the_credit_in_the_table()
+    {
+        UiTest.Run(() =>
+        {
+            BoardData published = Board(Component("U1", "CPU"));
+            (BoardTableEditor editor, DraftSession session) = this.OpenOnSession(published, published);
+            session.FollowUp = (before, after) => SubmissionCredit.Follow(published, before, after, "Anna", "RHD");
+
+            Row(editor, "U1").Cells[NameColumn].Text = "CPU 6510";
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal("Anna", Assert.Single(session.Content.Board.Credits).NameOrHandle);
+
+            BoardTableSheet credits = editor.DocumentForTests!.FindSheet(BoardWorkbookSchema.SheetCredits)!;
+            Assert.Contains(credits.Rows, row => row.Cells.Any(cell => cell.Text == "Anna"));
+            Assert.Equal("CPU 6510", NameOf(Row(editor, "U1")));
+        });
+    }
+
+    // ###########################################################################################
     // *** EVERY CHANGE IS SAVED WITHIN A SECOND (the plan, step 1). *** In the draft at once, in its
     // file a second later - off the UI thread - and the table says so where "Save changes" was.
     // ###########################################################################################

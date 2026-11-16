@@ -34,6 +34,42 @@ namespace Handlers.DataHandling
         internal Action? AfterReadForTests { get; set; }
 
         // ###########################################################################################
+        // WHOM A DRAFT'S CREDIT FOR ITS WORK NAMES - the name and contact CRT remembers, handed in by the app (2026-11-15). Set, the
+        // sessions opened here follow their work with that credit (SubmissionCredit.Follow, against the draft's base -
+        // DraftSession.BaseBoard), in the same step as each edit; null, none does - a test of the sessions themselves. Asked at each
+        // edit, on the thread the edit is worked out on.
+        // ###########################################################################################
+        public Func<(string Name, string Contact)>? CreditIdentity { get; set; }
+
+        // ###########################################################################################
+        // A session's board AS PUBLISHED NOW - what the draft's work and the credits it sends are judged against, as Submit and
+        // the server judge them (SubmissionCredit.Follow; code reviews, 2026-11-16). Null, or an answer of null (a board not
+        // published, or its file unreadable), the draft's base. Asked at each edit, on the thread the edit is worked out on.
+        // ###########################################################################################
+        public Func<DraftSession, BoardData?>? PublishedBoard { get; set; }
+
+        // The board a session's draft is judged against (above) - null for a new board.
+        public BoardData? BoardToJudgeAgainst(DraftSession session)
+        {
+            ArgumentNullException.ThrowIfNull(session);
+
+            return this.PublishedBoard?.Invoke(session) ?? session.BaseBoard();
+        }
+
+        private void FollowWorkWithCredit(DraftSession session) =>
+            session.FollowUp = (before, after) =>
+            {
+                if (this.CreditIdentity is not { } who || this.BoardToJudgeAgainst(session) is not { } published)
+                {
+                    return after;
+                }
+
+                (string name, string contact) = who();
+
+                return SubmissionCredit.Follow(published, before, after, name, contact);
+            };
+
+        // ###########################################################################################
         // The session of the draft of `excelDataFile` - the one already open, or a new one read from
         // its board file. Null when there is no such draft.
         //
@@ -83,14 +119,36 @@ namespace Handlers.DataHandling
                         continue;
                     }
 
-                    if (session is not null)
+                    if (session is null)
                     {
-                        this.thisOpen[key] = session;
+                        return null;
                     }
 
-                    return session;
+                    this.FollowWorkWithCredit(session);
+                    this.thisOpen[key] = session;
                 }
+
+                this.ReadWhatTheCreditFollowsBy(session);
+
+                return session;
             }
+        }
+
+        // ###########################################################################################
+        // *** WHAT THE CREDIT FOLLOWS THE WORK BY IS READ AS THE SESSION OPENS (code review, 2026-11-16). *** The follow-up runs
+        // inside every edit, some of them applied on the UI thread: the first edit of a draft parsed its base and the board as
+        // published there, a visible hitch on a large board. A session is opened where its board file is read - off the UI
+        // thread wherever an editor opens one - so both are read here, outside the sessions' lock, and an edit finds them kept.
+        // ###########################################################################################
+        private void ReadWhatTheCreditFollowsBy(DraftSession session)
+        {
+            if (this.CreditIdentity is null)
+            {
+                return;
+            }
+
+            _ = session.BaseBoard();
+            _ = this.PublishedBoard?.Invoke(session);
         }
 
         // The session of that draft when one is open - opening none.

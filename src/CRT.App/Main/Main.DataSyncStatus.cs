@@ -18,8 +18,8 @@ namespace CRT
     // Data-sync settings reactions (check-on-launch, workbooks scope, worklog currency), the
     // "local edit disables launch sync" notice and its confirmation dialog, the sync status
     // icon (spin, hover, click-to-sync, and a running check's progress in its tooltip), and the
-    // startup background data validation / orphan file cleanup passes. See Main.axaml.cs for the
-    // file map of the whole partial class.
+    // startup background data validation / orphan file cleanup passes, and the sweep of the KiCad
+    // copies nothing uses. See Main.axaml.cs for the file map of the whole partial class.
     // ###########################################################################################
     public partial class Main
     {
@@ -259,27 +259,23 @@ namespace CRT
             bool allowManualRefreshWhileDisabled = !isEnabled && this._isHoveringDataSyncStatusIcon;
             bool isClickable = !isCheckingOnline;
 
-            this.DataSyncStatusIconTextBlock.IsVisible = !isCheckingOnline;
-            this.DataSyncStatusSpinnerCanvas.IsVisible = isCheckingOnline;
+            // The refresh arrows while a check runs, whatever the launch setting: it is that icon that turns.
+            bool showsRefresh = isEnabled || allowManualRefreshWhileDisabled || isCheckingOnline;
 
-            this.DataSyncStatusIconTextBlock.Text = isEnabled || allowManualRefreshWhileDisabled
+            this.DataSyncStatusIconTextBlock.Text = showsRefresh
                 ? "\uf021"
                 : "\uf05e";
 
-            if (this.TryFindResource(isEnabled || allowManualRefreshWhileDisabled ? "Text_Success_Fg" : "Text_Fail_Fg", out var brushResource) &&
+            if (this.TryFindResource(showsRefresh ? "Text_Success_Fg" : "Text_Fail_Fg", out var brushResource) &&
                 brushResource is IBrush brush)
             {
                 this.DataSyncStatusIconTextBlock.Foreground = brush;
-                this.DataSyncStatusSpinnerEllipse.Stroke = brush;
             }
             else
             {
-                IBrush fallbackBrush = isEnabled || allowManualRefreshWhileDisabled
+                this.DataSyncStatusIconTextBlock.Foreground = showsRefresh
                     ? Brushes.ForestGreen
                     : Brushes.IndianRed;
-
-                this.DataSyncStatusIconTextBlock.Foreground = fallbackBrush;
-                this.DataSyncStatusSpinnerEllipse.Stroke = fallbackBrush;
             }
 
             this.DataSyncStatusIconBorder.Cursor = new Cursor(
@@ -505,15 +501,11 @@ namespace CRT
                 };
 
                 this._dataSyncStatusIconSpinTimer.Tick += (_, _) =>
-                {
-                    this._dataSyncStatusIconSpinAngle = (this._dataSyncStatusIconSpinAngle + 1.5) % 52.0;
-                    this.DataSyncStatusSpinnerEllipse.StrokeDashOffset = -this._dataSyncStatusIconSpinAngle;
-                };
+                    this.DataSyncStatusIconSpinAngle = (this.DataSyncStatusIconSpinAngle + DataSyncIconDegreesPerTick) % 360.0;
             }
 
             if (!this._dataSyncStatusIconSpinTimer.IsEnabled)
             {
-                this.DataSyncStatusSpinnerEllipse.StrokeDashOffset = -this._dataSyncStatusIconSpinAngle;
                 this._dataSyncStatusIconSpinTimer.Start();
             }
 
@@ -535,15 +527,36 @@ namespace CRT
                 return;
             }
 
-            this._dataSyncStatusIconSpinAngle = 0.0;
             this._dataSyncStatusIconSpinTimer?.Stop();
-            this.DataSyncStatusSpinnerEllipse.StrokeDashOffset = 0.0;
+            this.DataSyncStatusIconSpinAngle = 0.0;
 
             this.UpdateDataSyncStatusIcon();
+
+            // A check asked for while this one ran comes now (Main.DataNeededNotice.cs).
+            this.FollowDataCheckAskedFor();
         }
 
         // Whether a check is running by the spinner's count - for tests (and what the icon's click asks).
         internal bool IsDataSyncStatusIconSpinning => this._dataSyncStatusIconSpinRequestCount > 0;
+
+        // A full turn a second and a half: 25 ms ticks of 6 degrees.
+        private const double DataSyncIconDegreesPerTick = 6.0;
+
+        // ###########################################################################################
+        // How far the refresh icon is turned about its own centre - 0 whenever no check runs. The transform is the
+        // TextBlock's own (Main.axaml), so the icon at rest and the icon turning are one glyph in one place.
+        // ###########################################################################################
+        internal double DataSyncStatusIconSpinAngle
+        {
+            get => this.DataSyncStatusIconTextBlock.RenderTransform is RotateTransform rotation ? rotation.Angle : 0.0;
+            private set
+            {
+                if (this.DataSyncStatusIconTextBlock.RenderTransform is RotateTransform rotation)
+                {
+                    rotation.Angle = value;
+                }
+            }
+        }
 
         // ###########################################################################################
         // Schedules orphan/non-used file cleanup once per application session when both launch-time
@@ -588,6 +601,38 @@ namespace CRT
             catch (Exception ex)
             {
                 Logger.Warning($"Background orphan/non-used file cleanup failed - [{ex.Message}]");
+            }
+        }
+
+        // ###########################################################################################
+        // The KiCad copies no board's KiCad files are any more go, once a run, in the background after the launch's own work
+        // (BoardKiCadFolder.Sweep - owner request, 2026-11-16: "a temporary file should be deleted when it is not used
+        // anymore"; one nothing had used for 14 days until then): a board gone or changed since lets go of its copy, every
+        // copy nothing holds goes, and so do the folders an earlier pre-release named by board file. After the launch's data
+        // check, so a board file it updated is judged as it now is.
+        // ###########################################################################################
+        private void SweepKiCadCopiesSoon() => _ = this.SweepKiCadCopiesAfterStartupAsync();
+
+        private async Task SweepKiCadCopiesAfterStartupAsync()
+        {
+            try
+            {
+                await this.thisWindowOpenedCompletionSource.Task;
+                await this.thisBackgroundStartupSyncCompletionSource.Task;
+                await Task.Delay(TimeSpan.FromSeconds(20));
+
+                string cache = AppConfig.KiCadCacheFolder;
+                string dataRoot = DataManager.DataRoot;
+                int removed = await Task.Run(() => BoardKiCadFolder.Sweep(cache, dataRoot));
+
+                if (removed > 0)
+                {
+                    Logger.Info($"[{removed}] KiCad copies no board uses any more were taken away from [{cache}]");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"The KiCad copies could not be swept - [{ex.Message}]");
             }
         }
 

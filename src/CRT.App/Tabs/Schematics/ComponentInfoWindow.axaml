@@ -41,9 +41,9 @@
 		</Style>
 
 		<!-- "Circle-question" (fa-regular fa-circle-question) help icon that links to an external help page.
-		     Sized/clipped the same way as DataSyncStatusIconTextBlock in Main.axaml (fixed box noticeably
-		     larger than the font size, explicit ClipToBounds) since that is the proven-working icon-font
-		     recipe already used elsewhere in this app. -->
+		     Sized/clipped the same way as the data check's icon in Main.axaml (a 22px box noticeably larger
+		     than the font size, explicit ClipToBounds) since that is the proven-working icon-font recipe
+		     already used elsewhere in this app. -->
 		<Style Selector="Button.HelpIconButton">
 			<Setter Property="Width" Value="22" />
 			<Setter Property="Height" Value="22" />

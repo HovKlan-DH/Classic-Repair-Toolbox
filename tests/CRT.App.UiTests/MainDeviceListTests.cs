@@ -601,6 +601,8 @@ public sealed class MainDeviceListTests : IDisposable
 
         WithMain(main =>
         {
+            // The cards stand on the "Workbooks" tab - built only while it is shown (TabWorkbooks.RefreshWorkbooksIfShown).
+            OnTab(main, "WorkbooksTabItem");
             main.RefreshWorklogBar();
 
             // The card's rows: its lines on the left, its badges on the right, a row each (2026-11-07).

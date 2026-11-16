@@ -228,6 +228,72 @@ public sealed class BoardFileLookupTests
         Assert.Equal(BoardFileState.Found, lookup.Check($"{Board}/U8.png").State);
     }
 
+    // ###########################################################################################
+    // *** A LOOKUP KEPT FROM ONE CHECK TO THE NEXT LETS GO OF ONLY WHAT ITS BOARD FILE MOVED (2026-11-16,
+    // performance walkthrough). *** A draft's row is checked again after every save; asking the disk again
+    // for every cited file cost thousands of stat calls on the UI thread. A name its board file still lists
+    // with the same bytes stays found without asking - its bytes taken away by hand here prove nothing
+    // looked - and a name listed with other bytes, or not at all, is looked for afresh.
+    // ###########################################################################################
+    [Fact]
+    public void A_kept_lookup_asks_again_only_for_the_names_its_board_file_lists_otherwise()
+    {
+        using var workspace = new TempWorkspace();
+        string draftFolder = workspace.Path_("Drafts", "Commodore", "C64", "250407");
+        string dataRoot = workspace.Path_("Data");
+        Directory.CreateDirectory(dataRoot);
+
+        BoardDocument.StoredFileRow kept = StoredFiles.Put(draftFolder, "Images/kept.png", "kept");
+        BoardDocument.StoredFileRow replaced = StoredFiles.Put(draftFolder, "Images/replaced.png", "first bytes");
+        BoardDocument.StoredFileRow dropped = StoredFiles.Put(draftFolder, "Images/dropped.png", "dropped");
+        string boardFile = StoredFiles.WriteBoard(Path.Combine(draftFolder, DataTreeLayout.BoardFileName), kept, replaced, dropped);
+
+        var lookup = new DiskFileLookup(dataRoot, draftFolder);
+        lookup.ForgetWhatTheListMoved();
+
+        Assert.All(new[] { kept, replaced, dropped }, file => Assert.Equal(BoardFileState.Found, lookup.Check(file.Name).State));
+
+        // The kept file's bytes go, unseen: nothing asks the disk for a name listed as it was.
+        File.Delete(StoredFiles.PathOf(draftFolder, kept));
+
+        // The save: one name with other bytes, not stored anywhere; one no longer listed.
+        StoredFiles.WriteBoard(boardFile, kept, StoredFiles.EntryFor("Images/replaced.png", "second bytes, never stored"));
+        File.SetLastWriteTimeUtc(boardFile, DateTime.UtcNow.AddMinutes(1));
+
+        // Nothing let go of until asked to.
+        Assert.Equal(BoardFileState.Found, lookup.Check(replaced.Name).State);
+
+        lookup.ForgetWhatTheListMoved();
+
+        Assert.Equal(BoardFileState.Found, lookup.Check(kept.Name).State);
+        Assert.Equal(BoardFileState.Missing, lookup.Check(replaced.Name).State);
+        Assert.Equal(BoardFileState.Missing, lookup.Check(dropped.Name).State);
+    }
+
+    // With the board file's list as it was compared last, nothing is let go of - nor read again.
+    [Fact]
+    public void A_kept_lookup_whose_board_file_did_not_move_keeps_every_name_found()
+    {
+        using var workspace = new TempWorkspace();
+        string draftFolder = workspace.Path_("Drafts", "Commodore", "C64", "250407");
+        string dataRoot = workspace.Path_("Data");
+        Directory.CreateDirectory(dataRoot);
+
+        BoardDocument.StoredFileRow file = StoredFiles.Put(draftFolder, "Images/sheet.png", "sheet");
+        string boardFile = StoredFiles.WriteBoard(Path.Combine(draftFolder, DataTreeLayout.BoardFileName), file);
+        File.SetLastWriteTimeUtc(boardFile, DateTime.UtcNow.AddMinutes(-5));
+
+        var lookup = new DiskFileLookup(dataRoot, draftFolder);
+        lookup.ForgetWhatTheListMoved();
+        Assert.Equal(BoardFileState.Found, lookup.Check(file.Name).State);
+        int reads = lookup.BoardFilesForTests.ReadsForTests;
+
+        lookup.ForgetWhatTheListMoved();
+
+        Assert.Equal(BoardFileState.Found, lookup.Check(file.Name).State);
+        Assert.Equal(reads, lookup.BoardFilesForTests.ReadsForTests);
+    }
+
     // A FOUND answer is kept for the lookup's life - re-asking thousands of found files after every
     // edit is what the cache exists to avoid - so a file that vanishes is only seen by a new lookup.
     [Fact]

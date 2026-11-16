@@ -60,6 +60,22 @@ namespace Handlers.DataHandling
             }
         }
 
+        // Lets go of `key` while it holds this very `value` - one stored since is left alone. Whether it went.
+        internal bool Forget(string key, TValue value)
+        {
+            lock (this.thisSync)
+            {
+                if (!this.thisByKey.TryGetValue(key, out var node) || !EqualityComparer<TValue>.Default.Equals(node.Value.Value, value))
+                {
+                    return false;
+                }
+
+                this.thisByKey.Remove(key);
+                this.thisOrder.Remove(node);
+                return true;
+            }
+        }
+
         // Stores `value` for `key` at `stamp`, replacing whatever the key held; the least recently
         // used key goes when there are more than the capacity. Returns the values that left - the
         // one replaced and any evicted - for a caller whose values need disposing, once nothing

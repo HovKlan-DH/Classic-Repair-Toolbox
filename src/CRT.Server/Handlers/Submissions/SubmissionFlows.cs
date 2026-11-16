@@ -57,6 +57,16 @@ namespace CRT.Server.Handlers.Submissions
         // is the data-tree root every submitted path is contained to, and the same root the tree
         // was read from; the endpoint passes DataTreeRoot for both.
         // ###########################################################################################
+        // ###########################################################################################
+        // The credits a submission's board has published - in BETA or in stable - which need no "Main contribution" while
+        // they stand so (2026-11-14). None when neither tree could be consulted: nothing is admitted on the strength of being
+        // published then.
+        // ###########################################################################################
+        internal static PublishedCredits PublishedCreditsOf(PublishedTreeView? tree, PublishedTreeView? stableTree = null) =>
+            tree is null && stableTree is null
+                ? PublishedCredits.None
+                : PublishedCredits.Union(tree?.Credits, stableTree?.Credits);
+
         public static async Task<SubmissionCreationOutcome> CreateAsync(
             SubmissionManifest manifest,
             Submitter submitter,
@@ -126,9 +136,12 @@ namespace CRT.Server.Handlers.Submissions
             // another board unless it is left exactly as published. See SubmissionFileRules.
             findings.AddRange(SubmissionFileRules.ValidateManifestFiles(manifest, tree));
 
-            // Then the rows, against the paths the manifest itself supplies.
+            // Then the rows, against the paths the manifest itself supplies - its credits against the board's published
+            // ones, BETA's and stable's (a draft is a copy of stable by default), which need no main contribution (2026-11-14).
             findings.AddRange(SubmissionValidator.Validate(
-                manifest, manifest.Files.Select(file => file.Path).ToList()));
+                manifest,
+                manifest.Files.Select(file => file.Path).ToList(),
+                SubmissionFlows.PublishedCreditsOf(tree, stableTree)));
 
             if (!SubmissionValidator.CanBeQueued(findings))
                 return SubmissionCreationOutcome.Refused(findings);
@@ -593,8 +606,10 @@ namespace CRT.Server.Handlers.Submissions
                 });
             }
 
+            // The credits' main contribution is not judged again (null): the rows are the ones judged as the submission was
+            // created, against the published board this call has no view of.
             var findings = SubmissionValidator.Validate(
-                manifest, files.Select(file => file.Path).ToList()).ToList();
+                manifest, files.Select(file => file.Path).ToList(), publishedCredits: null).ToList();
 
             // ###########################################################################################
             // *** THE BYTES ARE CHECKED AGAINST THEIR NAMES (security review, 2026-09-25). ***

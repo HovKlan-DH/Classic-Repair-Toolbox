@@ -203,7 +203,7 @@ public sealed class RegionColorsTests
     public void The_checks_refuse_a_color_that_is_not_RRGGBB_or_not_of_a_region_the_board_says()
     {
         static List<BoardDataProblem> Found(params RegionColorEntry[] colors) =>
-            BoardDataChecks.Check(BoardCheckRows.From(new SubmissionRows { Regions = ["PAL", "NTSC"], RegionColors = [.. colors] }), files: null, BoardCheckScope.Submission)
+            BoardDataChecks.Check(BoardCheckRows.From(new SubmissionRows { Regions = ["PAL", "NTSC"], RegionColors = [.. colors] }, published: null), files: null, BoardCheckScope.Submission)
                 .Where(problem => problem.Code == "regions.color")
                 .ToList();
 
@@ -217,7 +217,7 @@ public sealed class RegionColorsTests
 
         // Not sent, nothing to check.
         Assert.DoesNotContain(
-            BoardDataChecks.Check(BoardCheckRows.From(new SubmissionRows { Regions = ["PAL", "NTSC"] }), files: null, BoardCheckScope.Submission),
+            BoardDataChecks.Check(BoardCheckRows.From(new SubmissionRows { Regions = ["PAL", "NTSC"] }, published: null), files: null, BoardCheckScope.Submission),
             problem => problem.Code == "regions.color");
     }
 
@@ -227,7 +227,7 @@ public sealed class RegionColorsTests
     public void Colors_sent_without_regions_name_regions_by_the_rule_every_region_name_follows()
     {
         static List<BoardDataProblem> Found(params RegionColorEntry[] colors) =>
-            BoardDataChecks.Check(BoardCheckRows.From(new SubmissionRows { RegionColors = [.. colors] }), files: null, BoardCheckScope.Submission)
+            BoardDataChecks.Check(BoardCheckRows.From(new SubmissionRows { RegionColors = [.. colors] }, published: null), files: null, BoardCheckScope.Submission)
                 .Where(problem => problem.Code == "regions.color")
                 .ToList();
 
@@ -296,7 +296,7 @@ public sealed class RegionColorsTests
         Assert.Equal(["PAL", "NTSC"], merged.Regions);
         Assert.Equal(("#000080", "#FFFFFF"), RegionColors.Of(merged, "PAL"));
         Assert.DoesNotContain(
-            BoardDataChecks.Check(BoardCheckRows.From(merged), files: null, BoardCheckScope.Submission),
+            BoardDataChecks.Check(BoardCheckRows.From(merged, published: null), files: null, BoardCheckScope.Submission),
             problem => problem.Code == "regions.color");
     }
 

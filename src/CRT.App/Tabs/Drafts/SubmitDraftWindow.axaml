@@ -1,5 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:CRT"
         x:Class="CRT.SubmitDraftWindow"
         Title="Submit contribution"
         Width="520"
@@ -111,64 +112,12 @@
 					   Margin="0,2,0,10"
 					   Text="You get an email when your contribution has been reviewed, and a maintainer can write to you if they need to ask something. The outcome is also shown in &quot;My submissions&quot; on the &quot;Contribute&quot; tab. There is no account to create and no password to choose." />
 
-			<TextBlock Text="What did you change?"
-					   FontWeight="Bold"
-					   Margin="0,0,0,2" />
-
-			<TextBox x:Name="SummaryTextBox"
-					 AcceptsReturn="True"
-					 TextWrapping="Wrap"
-					 Height="70"
-					 Watermark="Corrected the value of R12 and added a scope capture for U8 pin 3."
-					 TextChanged="OnFormChanged" />
-
-			<TextBlock TextWrapping="Wrap"
-					   Opacity="0.75"
-					   FontSize="12"
-					   Margin="0,2,0,0"
-					   Text="A sentence is enough. It is the first thing whoever reviews this will read." />
-
-			<!-- THE OTHER DRAFTS (CRT 4.0 step 2, slice 5 - the plan: "Submit offers to send all the drafts
-			     at once, with one message"). Each one ticked is sent after this one, as a submission of its
-			     own with the same address and message; unticked to start with, and greyed out with the
-			     reason when it cannot go (OfferOtherDrafts). Hidden with no other draft. -->
-			<StackPanel x:Name="OtherDraftsSection" IsVisible="False" Spacing="2" Margin="0,12,0,0">
-				<TextBlock x:Name="OtherDraftsHeadingText" FontWeight="Bold" />
-				<TextBlock x:Name="OtherDraftsIntroText"
-						   TextWrapping="Wrap"
-						   Opacity="0.75"
-						   FontSize="12" />
-				<ScrollViewer MaxHeight="140" Margin="0,4,0,0">
-					<StackPanel x:Name="OtherDraftsPanel" Spacing="2" />
-				</ScrollViewer>
-			</StackPanel>
-
-			<!-- CREDIT FOR THE WORK SENT (CRT 4.0 step 2, 2026-10-26 - the plan: "After a submission, CRT
-			     suggests a credit for what you sent"). Offered BEFORE sending, so the credit travels with
-			     the work it credits; ticked ones go into the draft first (ShowCreditOffer). Hidden when
-			     the draft's changes deserve none. -->
-			<StackPanel x:Name="CreditOfferPanel" IsVisible="False" Spacing="2" Margin="0,12,0,0">
-				<TextBlock Text="Your name in the board's credits"
-						   FontWeight="Bold" />
-				<TextBlock TextWrapping="Wrap"
-						   Opacity="0.75"
-						   FontSize="12"
-						   Text="For the work you are sending - the &quot;About&quot; tab shows the credits to everybody once it is published. Untick what you do not want, or leave the name empty for no credit." />
-				<StackPanel x:Name="CreditChoicesPanel" Spacing="2" Margin="0,4,0,4" />
-				<Grid ColumnDefinitions="*,8,*" RowDefinitions="Auto,Auto">
-					<TextBlock Grid.Row="0" Grid.Column="0" Text="Name or handle" FontSize="12" />
-					<TextBlock Grid.Row="0" Grid.Column="2" Text="Contact (shown to everybody)" FontSize="12" />
-					<TextBox Grid.Row="1" Grid.Column="0" x:Name="CreditNameTextBox" />
-					<TextBox Grid.Row="1" Grid.Column="2" x:Name="CreditContactTextBox" Watermark="A forum, a Discord, a web page" />
-				</Grid>
-				<!-- While another draft is ticked: its credit goes under the same name (slice 5). -->
-				<CheckBox x:Name="CreditOthersCheckBox"
-						  IsChecked="True"
-						  Margin="0,4,0,0"
-						  IsVisible="False">
-					<TextBlock x:Name="CreditOthersText" TextWrapping="Wrap" />
-				</CheckBox>
-			</StackPanel>
+			<!-- NO CREDIT AND NO "WHAT DID YOU CHANGE?" HERE (owner requests, 2026-11-15: "remove it from this modal, and have
+			     this directly done in the "Board: Credits" data, so the user can see how it will show", and of the box: "there is
+			     no need to ALSO specify the detailed changes in this field"). The credit for the work is a row of "Board: Credits",
+			     made with the draft's first change (SubmissionCredit); what the submission says it changed is that credit's main
+			     contribution, else the changes above in words (SubmissionSummaryText - worked out by the Contribute tab, handed in
+			     to Initialize). -->
 
 			<!-- Local problems - a referenced file that is missing, for instance. Hidden unless
 			     there are any. -->

@@ -495,10 +495,68 @@ namespace Handlers.DataHandling
                 context, context.Rows.BoardLocalFiles, BoardRowRequired.EmptyColumns, "board file", BoardWorkbookSchema.SheetBoardLocalFiles,
                 skip: BoardWorkbookSchema.ColFile);
             BoardDataChecks.ErrorOnEmpty(context, context.Rows.BoardLinks, BoardRowRequired.EmptyColumns, "board link", BoardWorkbookSchema.SheetBoardLinks);
-            BoardDataChecks.ErrorOnEmpty(context, context.Rows.Credits ?? [], BoardRowRequired.EmptyColumns, "credit", BoardWorkbookSchema.SheetCredits);
+            // Which credits do not stand as published is said of the list - each published credit stands for ONE row
+            // (PublishedCredits.Judged; owner report, 2026-11-15).
+            IReadOnlySet<CreditEntry> judged = PublishedCredits.Judged(context.Rows.Credits, context.Rows.PublishedCredits);
+
+            BoardDataChecks.ErrorOnEmpty(
+                context, context.Rows.Credits ?? [], row => BoardRowRequired.EmptyColumns(row, judged.Contains(row)), "credit", BoardWorkbookSchema.SheetCredits);
             BoardDataChecks.ErrorOnEmpty(
                 context, context.Rows.ImportantSignals ?? [], BoardRowRequired.EmptyColumns, "important signal", BoardWorkbookSchema.SheetKiCadImportantSignals);
             BoardDataChecks.CheckBaselinesComplete(context);
+            BoardDataChecks.CheckCreditDates(context);
+            BoardDataChecks.CheckCreditLengths(context, judged);
+        }
+
+        // ###########################################################################################
+        // *** A CREDIT'S SHORT FIELDS ARE ONE SHORT LINE (owner request, 2026-11-15: "this should be a one-liner only"). *** "What"
+        // and "Which part of it" at most 60 characters, the name or handle 50, the contact 100 (CreditLimits) - on a credit the
+        // board has not published as it stands, so what is published stays as it is. An error on the very cell, in both scopes.
+        // `judged`: the credits that do not stand as published, worked out once for the checks (code review, 2026-11-16).
+        // ###########################################################################################
+        private static void CheckCreditLengths(Context context, IReadOnlySet<CreditEntry> judged)
+        {
+            IReadOnlyList<CreditEntry> credits = context.Rows.Credits ?? [];
+
+            for (int i = 0; i < credits.Count; i++)
+            {
+                foreach ((string column, int limit, int length) in CreditLimits.TooLong(credits[i], judged.Contains(credits[i])))
+                {
+                    // The main contribution is the most important updates, not every detail (owner decision, 2026-11-16).
+                    string keep = column == BoardWorkbookSchema.ColMainContribution
+                        ? "Keep it to the most important updates, not every small detail."
+                        : "Keep it to one short line; the main contribution says the rest.";
+
+                    context.Error(
+                        "credit.too_long",
+                        column,
+                        $"This credit's \"{column}\" is {length} characters long - at most {limit}. {keep}",
+                        BoardWorkbookSchema.SheetCredits, i, column);
+                }
+            }
+        }
+
+        // ###########################################################################################
+        // *** A CREDIT'S DATE IS EMPTY OR A DATE (2026-11-14). *** It is when the credit was published, set by the server
+        // (PublishMerge) and changed only by a maintainer in the table - and the credits are kept in its order
+        // (CreditOrder), which a date that cannot be read would put out of place for good. Read by the board's own rule
+        // (DraftRevisionComparer), "2026-November-14" its shape.
+        // ###########################################################################################
+        private static void CheckCreditDates(Context context)
+        {
+            IReadOnlyList<CreditEntry> credits = context.Rows.Credits ?? [];
+
+            for (int i = 0; i < credits.Count; i++)
+            {
+                if (CreditOrder.IsUnreadable(credits[i].Date))
+                {
+                    context.Error(
+                        "credit.date_unreadable",
+                        credits[i].Date.Trim(),
+                        $"This credit's date [{credits[i].Date.Trim()}] cannot be read as a date - write it as 2026-November-14, or leave it empty for the day it is published.",
+                        BoardWorkbookSchema.SheetCredits, i, BoardWorkbookSchema.ColDate);
+                }
+            }
         }
 
         // ###########################################################################################
@@ -1267,26 +1325,38 @@ namespace Handlers.DataHandling
         IReadOnlyList<ComponentPinEntry>? ComponentPins = null,
         IReadOnlyList<ComponentReplacementEntry>? ComponentReplacements = null,
         IReadOnlyList<string>? Regions = null,
-        IReadOnlyList<RegionColorEntry>? RegionColors = null)
+        IReadOnlyList<RegionColorEntry>? RegionColors = null,
+        PublishedCredits? PublishedCredits = null)
     {
-        public static BoardCheckRows From(BoardData board)
+        // ###########################################################################################
+        // `PublishedCredits` (2026-11-14): the credits the board has published, which need no "Main contribution" while they
+        // stand as published (BoardRowRequired). PublishedCredits.None for a board nothing is published of. NULL leaves the
+        // main contribution unjudged - only a submission's finalise, whose rows were judged as it was created; every other
+        // caller hands it over (From's `published`).
+        // ###########################################################################################
+
+        // `published` - the board's published credits, never left out by accident: null only where the main contribution is
+        // not to be judged (above).
+        public static BoardCheckRows From(BoardData board, PublishedCredits? published)
         {
             ArgumentNullException.ThrowIfNull(board);
 
             return new BoardCheckRows(
                 board.Schematics, board.Components, board.ComponentImages, board.ComponentHighlights,
                 board.ComponentLocalFiles, board.BoardLocalFiles, board.ComponentLinks, board.BoardLinks,
-                board.Credits, board.KiCadImportantSignals, board.ComponentPins, board.ComponentReplacements, board.Regions, board.RegionColors);
+                board.Credits, board.KiCadImportantSignals, board.ComponentPins, board.ComponentReplacements, board.Regions, board.RegionColors,
+                published);
         }
 
-        public static BoardCheckRows From(SubmissionRows rows)
+        public static BoardCheckRows From(SubmissionRows rows, PublishedCredits? published)
         {
             ArgumentNullException.ThrowIfNull(rows);
 
             return new BoardCheckRows(
                 rows.Schematics, rows.Components, rows.ComponentImages, rows.ComponentHighlights,
                 rows.ComponentLocalFiles, rows.BoardLocalFiles, rows.ComponentLinks, rows.BoardLinks,
-                rows.Credits, rows.KiCadImportantSignals, rows.ComponentPins, rows.ComponentReplacements, rows.Regions, rows.RegionColors);
+                rows.Credits, rows.KiCadImportantSignals, rows.ComponentPins, rows.ComponentReplacements, rows.Regions, rows.RegionColors,
+                published);
         }
     }
 }

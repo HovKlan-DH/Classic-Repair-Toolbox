@@ -65,6 +65,10 @@ public class FontAwesomeAssetTests
         new object[] { SolidPath, 0xF071, "triangle-exclamation (Warning)" },
         new object[] { SolidPath, 0xF06A, "circle-exclamation (Caution)" },
 
+        // The data check's icon over the tabs (Main.axaml) - the arrows turn while a check runs (2026-11-14)
+        new object[] { SolidPath, 0xF021, "arrows-rotate (data check)" },
+        new object[] { SolidPath, 0xF05E, "ban (no data check at launch)" },
+
         // The format row of a formatted note box (RichNoteTheme.axaml, 2026-11-07)
         new object[] { SolidPath, 0xF032, "bold" },
         new object[] { SolidPath, 0xF033, "italic" },
@@ -253,6 +257,9 @@ public class FontAwesomeAssetTests
             [0xF0CD] = 448, // underline           (reaches 64 below the baseline, inside the descent)
             [0xF0CC] = 416, // strikethrough
             [0xF0CA] = 400, // list-ul
+            [0xF021] = 448, // arrows-rotate       x 0..512, y -64..448: exactly the em box, so it turns about the
+                            //                     centre of a TextBlock sized to it (Main.axaml) with no wobble
+            [0xF05E] = 448, // ban                 the same box
 
             // Regular
             [0xF15C] = 448, // file-lines

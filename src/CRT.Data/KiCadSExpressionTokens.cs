@@ -26,8 +26,9 @@ namespace Handlers.DataHandling
     // READ FROM A TextReader, a buffer at a time (code review, 2026-10-11): the server checks a
     // submitted schematic of up to the blob store's size limit, and holding all of it as one string
     // took twice its size in memory. A reader that sets `maximumTokenLength` holds no more than that
-    // of any one token either. The loader reads its strings through here too (Tokenize), so there is
-    // still one tokenizer. Both parentheses are always the same two strings, never a new one each.
+    // of any one token either. The loader parses its files from a reader too, as they are read
+    // (2026-11-16), so there is still one tokenizer. Both parentheses are always the same two strings,
+    // never a new one each.
     // ###########################################################################################
     public sealed class KiCadSExpressionTokens
     {
@@ -62,27 +63,6 @@ namespace Handlers.DataHandling
 
             this.thisText = text;
             this.thisKept = maximumTokenLength == int.MaxValue ? int.MaxValue : maximumTokenLength + 1;
-        }
-
-        // ###########################################################################################
-        // Every token of the file, in order - what the loader parses its trees from.
-        //
-        // The list starts at a size for a typical board: the shipped boards' files run 4 to 6
-        // characters per token, apart from one PCB of mostly long zone outlines at 40.
-        // ###########################################################################################
-        public static List<string> Tokenize(string input)
-        {
-            ArgumentNullException.ThrowIfNull(input);
-
-            var tokens = new List<string>(input.Length / 6);
-            var reader = new KiCadSExpressionTokens(new StringReader(input));
-
-            while (reader.TryRead(out string? token))
-            {
-                tokens.Add(token);
-            }
-
-            return tokens;
         }
 
         // ###########################################################################################
@@ -128,6 +108,86 @@ namespace Handlers.DataHandling
 
             token = null;
             return false;
+        }
+
+        // ###########################################################################################
+        // *** THE REST OF A LIST, READ PAST WITHOUT ITS TOKENS (2026-11-16, performance walkthrough). ***
+        // Inside a list - its "(" read, and whatever of it the caller took - every token up to the ")"
+        // closing it is passed over, none made into a string: a board's embedded picture is tens of
+        // megabytes of base64 in one "(data ...)" list (38 of Open128's 44.5 MB PCB), which CRT never
+        // reads, and making half a million strings of it was most of the parse. Counted as TryRead
+        // would read them, the rule in this class's header included: a quoted "(" or ")" opens or
+        // closes a list as a real one does. Ends at the end of the text for a list never closed.
+        // ###########################################################################################
+        public void SkipRestOfList()
+        {
+            int depth = 1;
+
+            while (this.TryPeek(out char ch))
+            {
+                this.thisPosition++;
+
+                if (ch == '(')
+                {
+                    depth++;
+                }
+                else if (ch == ')')
+                {
+                    if (--depth == 0)
+                    {
+                        return;
+                    }
+                }
+                else if (ch == ';')
+                {
+                    while (this.TryPeek(out char inComment) && inComment != '\n')
+                    {
+                        this.thisPosition++;
+                    }
+                }
+                else if (ch == '"')
+                {
+                    // As ReadQuoted reads it - its length and its one character kept, nothing else.
+                    int length = 0;
+                    char only = default;
+
+                    while (this.TryPeek(out char inQuote))
+                    {
+                        this.thisPosition++;
+
+                        if (inQuote == '"')
+                        {
+                            break;
+                        }
+
+                        if (inQuote == '\\' && this.TryPeek(out char escaped))
+                        {
+                            this.thisPosition++;
+                            inQuote = escaped;
+                        }
+
+                        only = length == 0 ? inQuote : only;
+                        length++;
+                    }
+
+                    if (length == 1 && only == '(')
+                    {
+                        depth++;
+                    }
+                    else if (length == 1 && only == ')' && --depth == 0)
+                    {
+                        return;
+                    }
+                }
+                else if (!char.IsWhiteSpace(ch))
+                {
+                    // An atom: up to whitespace or a parenthesis, which the next turn reads.
+                    while (this.TryPeek(out char inAtom) && !KiCadSExpressionTokens.EndsAtom(inAtom))
+                    {
+                        this.thisPosition++;
+                    }
+                }
+            }
         }
 
         // ###########################################################################################

@@ -44,10 +44,16 @@ namespace Handlers.DataHandling
         // Validates the rows of a submission.
         //
         // suppliedPaths is every file path the submission provides, compared CASE-SENSITIVELY.
+        //
+        // publishedCredits (2026-11-14): the board's credits as published, which need no "Main contribution" while they stand
+        // as published - PublishedCredits.None for a new board, or when what is published could not be read (nothing is
+        // admitted on the strength of being published then). Null leaves the main contribution unjudged: the finalise,
+        // whose rows were judged as the submission was created and have not changed since.
         // ###########################################################################################
         public static IReadOnlyList<ValidationFinding> Validate(
             SubmissionManifest manifest,
-            IReadOnlyCollection<string> suppliedPaths)
+            IReadOnlyCollection<string> suppliedPaths,
+            PublishedCredits? publishedCredits)
         {
             ArgumentNullException.ThrowIfNull(manifest);
             ArgumentNullException.ThrowIfNull(suppliedPaths);
@@ -67,7 +73,7 @@ namespace Handlers.DataHandling
             // the better message (SuppliedFileLookup) - see the header for why.
             // ###########################################################################################
             foreach (BoardDataProblem problem in BoardDataChecks.Check(
-                         BoardCheckRows.From(manifest.Rows),
+                         BoardCheckRows.From(manifest.Rows, publishedCredits),
                          new SuppliedFileLookup(suppliedPaths),
                          BoardCheckScope.Submission))
             {

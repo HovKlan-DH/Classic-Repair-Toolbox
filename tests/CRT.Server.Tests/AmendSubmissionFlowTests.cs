@@ -141,6 +141,39 @@ namespace CRT.Server.Tests
             Assert.Contains(after.Files, file => file.Path == KiCadPath);
         }
 
+        // ###########################################################################################
+        // *** AN AMENDMENT JUDGES THE CREDITS AGAINST BETA'S AND STABLE'S PUBLISHED CREDITS, AS THE CREATE DOES (code review,
+        // 2026-11-16). *** A submission from a stable-based draft carries stable's credit as it stands - no main contribution, as
+        // none published before has one. A maintainer has since corrected that credit straight in BETA. Judged against BETA's
+        // alone, the maintainer's Save of the submission was refused, "Main contribution" required of a credit nobody touched.
+        // ###########################################################################################
+        [Fact]
+        public async Task An_amendment_takes_a_credit_stable_has_as_it_stands_though_BETA_corrected_it()
+        {
+            var stableCredit = new CreditEntry { Category = "Board data", NameOrHandle = "Bo" };
+            var corrected = new CreditEntry { Category = "Board data", NameOrHandle = "Bo B." };
+            string stable = Path.Combine(this.thisRoot, "Stable");
+            Directory.CreateDirectory(stable);
+
+            DataTreeBuilder.Board(this.thisData, AmendSubmissionFlowTests.BoardId, new BoardData { Credits = [corrected] }, []);
+            DataTreeBuilder.Board(stable, AmendSubmissionFlowTests.BoardId, new BoardData { Credits = [stableCredit] }, []);
+
+            (FakeSubmissionStore store, long id) = await AmendSubmissionFlowTests.PendingAsync();
+            SubmissionRows rows = await AmendSubmissionFlowTests.EditedRowsAsync(
+                store, id, edited => edited.Credits.Add(new CreditEntry { Category = "Board data", NameOrHandle = "Bo" }));
+
+            AmendOutcome betaOnly = await this.AmendAsync(store, id, rows);
+            Assert.False(betaOnly.IsAmended);
+            Assert.Contains(betaOnly.Findings, finding => finding.Code == "row.required_empty");
+
+            AmendOutcome withStable = await AmendSubmissionFlow.AmendAsync(
+                AmendSubmissionFlowTests.MaintainerOf(AmendSubmissionFlowTests.BoardId),
+                id, 0, rows, this.thisData, store, new FakeAccountStore(), this.Blobs(),
+                new PublishLock(), AmendSubmissionFlowTests.Now, CancellationToken.None, stable);
+
+            Assert.True(withStable.IsAmended, withStable.FullError);
+        }
+
         // ---- who, and when --------------------------------------------------------------------
 
         [Fact]

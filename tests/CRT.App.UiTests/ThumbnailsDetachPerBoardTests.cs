@@ -359,6 +359,47 @@ public sealed class ThumbnailsDetachPerBoardTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // ANOTHER BOARD SHOWN KEEPS THE WINDOW (2026-11-16, performance walkthrough): it was closed and a new one opened at
+    // every board load - the same board read again after an edit too - a new window, its gallery, its first layout and a
+    // flicker each time. The same board leaves it alone; another detached board gives it that board's saved layout,
+    // the board left's saved first; a board showing its thumbnails in the tab closes it, as before.
+    // ###########################################################################################
+    [Fact]
+    public void Another_board_shown_keeps_the_window_open_and_gives_it_that_boards_layout()
+    {
+        UserSettings.RememberThumbnailWindowSettingsPerBoard = true;
+        UserSettings.SetThumbnailWindowDetachedForBoard(BoardA, true);
+        UserSettings.SetThumbnailWindowDetachedForBoard(BoardB, true);
+        UserSettings.SaveThumbnailWindowLayoutForBoard(BoardB, "Normal", 512, 640, 40, 50);
+
+        this.WithMainOnBoard(BoardA, main =>
+        {
+            main.ApplyThumbnailsDetachedState();
+            SchematicsThumbnailsWindow window = Assert.IsType<SchematicsThumbnailsWindow>(main.ThumbnailsWindowForTests);
+
+            // The same board read again.
+            main.ApplyThumbnailsDetachedStateForBoardChangeForTests();
+            Assert.Same(window, main.ThumbnailsWindowForTests);
+
+            main.BoardKeyOverrideForTests = BoardB;
+            main.ApplyThumbnailsDetachedStateForBoardChangeForTests();
+
+            Assert.Same(window, main.ThumbnailsWindowForTests);
+            Assert.Equal(BoardB, window.PerBoardKey);
+            Assert.Equal(512, window.Width);
+            Assert.Equal(640, window.Height);
+            Assert.True(UserSettings.GetThumbnailWindowSettingsForBoard(BoardA)?.HasWindowLayout);
+
+            // A board showing its thumbnails in the tab closes it.
+            UserSettings.SetThumbnailWindowDetachedForBoard(BoardA, false);
+            main.BoardKeyOverrideForTests = BoardA;
+            main.ApplyThumbnailsDetachedStateForBoardChangeForTests();
+
+            Assert.False(main.IsThumbnailsWindowOpenForTests);
+        });
+    }
+
     // -----------------------------------------------------------------------------------------
     // Fullscreen owning the detached thumbnails window
     // -----------------------------------------------------------------------------------------

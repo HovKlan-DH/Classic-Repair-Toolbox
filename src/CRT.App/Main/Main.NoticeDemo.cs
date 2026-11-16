@@ -28,7 +28,7 @@ namespace CRT
         // Waits between the demo's steps. Tests run it without waiting.
         internal Func<TimeSpan, Task>? NoticeDemoDelayOverrideForTests { get; set; }
 
-        private const int NoticeDemoSteps = 12;
+        private const int NoticeDemoSteps = 13;
 
         internal async Task PlayNoticeDemoAsync()
         {
@@ -97,6 +97,17 @@ namespace CRT
                 await wait(TimeSpan.FromSeconds(5));
 
                 this.NarrateNoticeDemo(7,
+                    "A board checked again on the \"Configuration\" tab whose data was left out while it was unchecked. " +
+                    "It stays until you close it or press \"Check for new data\".");
+                if (!this.DataNeededBanner.IsVisible)
+                {
+                    NoticeEmphasis.Show(this.DataNeededBannerText, DataNeededWording.Of(
+                        [new HardwareBoardEntry { HardwareName = "Commodore 64", BoardName = "250407 (long board)" }]));
+                    this.DataNeededBanner.IsVisible = true;
+                }
+                await wait(TimeSpan.FromSeconds(5));
+
+                this.NarrateNoticeDemo(8,
                     "The label editor holds the board. Its card has no close button - it goes when the editor " +
                     "closes; here, after 8 seconds.");
                 if (!this.SchematicsLabelEditorModeBanner.IsVisible)
@@ -106,7 +117,7 @@ namespace CRT
                     this.SetSchematicsLabelEditorModeBannerVisible(false);
                 }
 
-                this.NarrateNoticeDemo(8,
+                this.NarrateNoticeDemo(9,
                     "The settings file could not be read, so CRT started with default settings - and kept the file. " +
                     "This card stays until you close it.");
                 if (!this.SettingsUnreadableBanner.IsVisible)
@@ -117,7 +128,7 @@ namespace CRT
                 }
                 await wait(TimeSpan.FromSeconds(5));
 
-                this.NarrateNoticeDemo(9,
+                this.NarrateNoticeDemo(10,
                     "The list of what was sent could not be read, so \"My submissions\" may look empty - and the file " +
                     "is kept. This card stays until you close it too.");
                 if (!this.ReceiptsUnreadableBanner.IsVisible)
@@ -126,7 +137,7 @@ namespace CRT
                 }
                 await wait(TimeSpan.FromSeconds(5));
 
-                this.NarrateNoticeDemo(10,
+                this.NarrateNoticeDemo(11,
                     "Something CRT did went wrong - a button's work, a file that could not be read or saved. It says " +
                     "what, and how many times since it was closed, and stays until you close it.");
                 if (!this.ProblemBanner.IsVisible)
@@ -135,7 +146,7 @@ namespace CRT
                 }
                 await wait(TimeSpan.FromSeconds(5));
 
-                this.NarrateNoticeDemo(11,
+                this.NarrateNoticeDemo(12,
                     "CRT closed unexpectedly the last time it ran - said once, at the next launch. This card stays " +
                     "until you close it.");
                 if (!this.LastCrashBanner.IsVisible)
@@ -147,7 +158,7 @@ namespace CRT
                 }
                 await wait(TimeSpan.FromSeconds(5));
 
-                this.NarrateNoticeDemo(12,
+                this.NarrateNoticeDemo(13,
                     "That is all of them. A card that has just appeared lets clicks through for half a second, " +
                     "so a click meant for what was under it is not lost. In a small window the cards keep to the " +
                     "right half. Close the rest with their X.");

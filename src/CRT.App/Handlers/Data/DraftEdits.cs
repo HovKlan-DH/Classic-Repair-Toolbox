@@ -202,7 +202,7 @@ namespace Handlers.DataHandling
 
             BoardContent before = session.Content;
 
-            if (await Task.Run(() => DraftSession.Prepare(before, edit)) is not DraftPreparedEdit prepared)
+            if (await Task.Run(() => session.PrepareEdit(before, edit)) is not DraftPreparedEdit prepared)
                 return null;
 
             bool applied = session.ApplyPrepared(description, prepared, origin) ||

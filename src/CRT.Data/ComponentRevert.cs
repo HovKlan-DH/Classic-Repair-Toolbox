@@ -207,6 +207,10 @@ namespace Handlers.DataHandling
             List<ComponentImageEntry> publishedRows,
             Func<ComponentImageEntry, bool> ofComponent)
         {
+            // Nothing of the component on either side: the draft's very list (Restore says why).
+            if (!draftRows.Exists(row => ofComponent(row)) && !publishedRows.Exists(row => ofComponent(row)))
+                return draftRows;
+
             List<ComponentImageEntry> Kind(List<ComponentImageEntry> rows, bool baselines) =>
                 rows.Where(row => ComponentImageKinds.IsScopeBaseline(row) == baselines).ToList();
 
@@ -231,10 +235,19 @@ namespace Handlers.DataHandling
         // row put back, from the keys of the whole section: 98 rows on the C128's U21 were a good 150 ms, on
         // the UI thread, several times per typing pause. Each insert only moves what stands after it.
         // ###########################################################################################
+        //
+        // *** A SECTION WITH NOTHING OF THE COMPONENT ON EITHER SIDE IS THE DRAFT'S VERY LIST (2026-11-16, performance
+        // walkthrough). *** "Is this component changed?" puts it back and compares the boards after every change in the
+        // pane; a copy of every section made the differ compare them all, row by row. The same list is no change to it
+        // (BoardDataDiffer), and nothing changes a board it was given (BoardData).
         private static List<T> Restore<T>(List<T> draftRows, List<T> publishedRows, Func<T, bool> ofComponent)
             where T : class
         {
             int firstOwn = draftRows.FindIndex(row => ofComponent(row));
+
+            if (firstOwn < 0 && !publishedRows.Exists(row => ofComponent(row)))
+                return draftRows;
+
             int keptInFront = firstOwn < 0 ? 0 : draftRows.Take(firstOwn).Count(row => !ofComponent(row));
 
             List<T> rows = draftRows.Where(row => !ofComponent(row)).ToList();

@@ -106,7 +106,10 @@ public sealed class DataTreeConversionShippedDataTests
             DataTreeConversionShippedDataTests.SameRows(before.ComponentLinks, after.Board.ComponentLinks, who, null, SameFile);
             DataTreeConversionShippedDataTests.SameRows(before.BoardLocalFiles, after.Board.BoardLocalFiles, who, nameof(BoardLocalFileEntry.File), SameFile);
             DataTreeConversionShippedDataTests.SameRows(before.BoardLinks, after.Board.BoardLinks, who, null, SameFile);
+            // The credits exactly as the workbook has them - undated, as credits from before the history are (owner decision,
+            // 2026-11-15: "the existing credits should actually have NO date at all").
             DataTreeConversionShippedDataTests.SameRows(before.Credits, after.Board.Credits, who, null, SameFile);
+            Assert.All(after.Board.Credits, credit => Assert.True(string.IsNullOrEmpty(credit.Date), $"{who}: a converted credit is dated [{credit.Date}]"));
             DataTreeConversionShippedDataTests.SameRows(before.KiCadImportantSignals, after.Board.KiCadImportantSignals, who, null, SameFile);
 
             // The one deliberate change: pictures first, then the baselines, each in its own order.

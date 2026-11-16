@@ -157,6 +157,8 @@ namespace CRT
         // ###########################################################################################
         internal async Task CheckForDataUpdatesNowAsync()
         {
+            // The boards a card says have no data here come with this check (Main.DataNeededNotice.cs).
+            this.HideDataNeededNotice();
             this.BeginDataSyncProgress();
             this.StartDataSyncStatusIconSpin();
 
@@ -316,10 +318,10 @@ namespace CRT
                     this.TabDrafts.CheckPublishedBoardAgain();
                 }
 
-                if (UserSettings.AllowDeletionOfOrphanAndNonUsedFiles)
-                {
-                    _ = DataManager.DeleteOrphanAndUnusedFilesAsync();
-                }
+                // No orphan clean-up here (2026-11-16, performance walkthrough): the one scheduled as
+                // the window opens (ScheduleOrphanAndUnusedFileCleanupIfEnabled) waits for this very
+                // sync and runs on the same settings - started here too, every launch walked the whole
+                // data tree twice.
             }
             catch (Exception ex)
             {

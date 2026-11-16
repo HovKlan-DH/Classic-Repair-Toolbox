@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -94,8 +95,60 @@ namespace Handlers.DataHandling
         // *** THE NAME IS PART OF IT, because one item can credit several people. *** Changing only
         // the name is still ONE row edited, not a removal plus an addition - see
         // BoardDataDiffer.PairRenamedRows (owner decision, 2026-10-04).
-        public static string ForCredit(string category, string subCategory, string nameOrHandle) =>
-            Join(category, subCategory, nameOrHandle);
+        //
+        // *** AND ITS MAIN CONTRIBUTION, WHEN IT HAS ONE (2026-11-15). *** The credits are the board's
+        // history (CreditOrder): the same person - or "Unknown" - credited for the same kind of work
+        // twice is two contributions, two rows, told apart by what each was. Keyed on who and what
+        // alone, the second was the first's duplicate, which every comparison but the first leaves
+        // out: a maintainer was never shown it added. With no main contribution the key is as it
+        // always was, so no credit from before has another key; a contribution written or changed
+        // alone is still ONE row edited (PairRenamedRows). A key is also how a row is NAMED (Describe:
+        // a problem's line, the duplicate warning, the board's history), so the contribution is in it
+        // as one line of its words, its formatting and line breaks gone, cut at ContributionInKey.
+        public static string ForCredit(string category, string subCategory, string nameOrHandle, string? mainContribution = null)
+        {
+            string contribution = BoardDraftNaturalKeys.OneLineOf(RichNote.PlainOf(mainContribution));
+
+            return contribution.Length == 0
+                ? Join(category, subCategory, nameOrHandle)
+                : Join(category, subCategory, nameOrHandle, contribution);
+        }
+
+        // How much of a main contribution a credit's key holds - enough to tell two apart, short enough to name the row.
+        internal const int ContributionInKey = 60;
+
+        private static string OneLineOf(string text)
+        {
+            string line = string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+            if (line.Length <= BoardDraftNaturalKeys.ContributionInKey)
+            {
+                return line;
+            }
+
+            // ###########################################################################################
+            // *** A CONTRIBUTION CUT SHORT ENDS IN A CHECKSUM OF THE WHOLE OF IT (code review, 2026-11-16). *** Cut alone, two
+            // credits of one person for the same kind of work whose contributions began alike had one key - "Measured the
+            // baselines of ... U1, U2" and "... U7, U8" - and every comparison left the second out. The checksum is of the
+            // words in capitals, as keys are compared without regard to them.
+            // ###########################################################################################
+            string checksum = " #" + Convert.ToHexString(
+                System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(line.ToUpperInvariant())))[..ContributionChecksumLength].ToLowerInvariant();
+
+            // Never between the two halves of one character (code review, 2026-11-16: an emoji there left half of it, which
+            // names the row in problem lines and the board's history), as SubmissionSummaryText cuts.
+            int cut = BoardDraftNaturalKeys.ContributionInKey - 3 - checksum.Length;
+
+            if (char.IsHighSurrogate(line[cut - 1]))
+            {
+                cut--;
+            }
+
+            return line[..cut].TrimEnd() + "..." + checksum;
+        }
+
+        // How many hex digits of the checksum a contribution cut short ends in.
+        private const int ContributionChecksumLength = 6;
 
         // ###########################################################################################
         // An important signal is its display name PLUS ITS KICAD NET (changed 2026-09-26).
@@ -145,7 +198,7 @@ namespace Handlers.DataHandling
             ComponentLinkEntry componentLink => ForComponentLink(componentLink.BoardLabel, componentLink.Name, componentLink.Region),
             BoardLocalFileEntry boardFile => ForBoardLocalFile(boardFile.Category, boardFile.Name, boardFile.Region),
             BoardLinkEntry boardLink => ForBoardLink(boardLink.Category, boardLink.Name, boardLink.Region),
-            CreditEntry credit => ForCredit(credit.Category, credit.SubCategory, credit.NameOrHandle),
+            CreditEntry credit => ForCredit(credit.Category, credit.SubCategory, credit.NameOrHandle, credit.MainContribution),
             KiCadImportantSignalEntry signal => ForKiCadImportantSignal(signal.DisplayName, signal.KiCadNetName),
             ComponentPinEntry pin => ForComponentPin(pin.BoardLabel, pin.Region, pin.Pin),
             ComponentReplacementEntry replacement => ForComponentReplacement(replacement.BoardLabel, replacement.Region, replacement.PartNumber),
@@ -177,7 +230,7 @@ namespace Handlers.DataHandling
             BoardWorkbookSchema.SheetBoardLocalFiles => [BoardWorkbookSchema.ColCategory, BoardWorkbookSchema.ColName, BoardWorkbookSchema.ColRegion],
             BoardWorkbookSchema.SheetBoardLinks => [BoardWorkbookSchema.ColCategory, BoardWorkbookSchema.ColName, BoardWorkbookSchema.ColRegion],
             BoardWorkbookSchema.SheetCredits =>
-                [BoardWorkbookSchema.ColCategory, BoardWorkbookSchema.ColSubCategory, BoardWorkbookSchema.ColNameOrHandle],
+                [BoardWorkbookSchema.ColCategory, BoardWorkbookSchema.ColSubCategory, BoardWorkbookSchema.ColNameOrHandle, BoardWorkbookSchema.ColMainContribution],
             BoardWorkbookSchema.SheetKiCadImportantSignals => [BoardWorkbookSchema.ColDisplayName, BoardWorkbookSchema.ColKiCadNetName],
             BoardWorkbookSchema.SheetComponentPins =>
                 [BoardWorkbookSchema.ColBoardLabel, BoardWorkbookSchema.ColRegion, BoardWorkbookSchema.ColPin],
@@ -213,7 +266,7 @@ namespace Handlers.DataHandling
             [typeof(ComponentLinkEntry)] = [nameof(ComponentLinkEntry.BoardLabel), nameof(ComponentLinkEntry.Name), nameof(ComponentLinkEntry.Region)],
             [typeof(BoardLocalFileEntry)] = [nameof(BoardLocalFileEntry.Category), nameof(BoardLocalFileEntry.Name), nameof(BoardLocalFileEntry.Region)],
             [typeof(BoardLinkEntry)] = [nameof(BoardLinkEntry.Category), nameof(BoardLinkEntry.Name), nameof(BoardLinkEntry.Region)],
-            [typeof(CreditEntry)] = [nameof(CreditEntry.Category), nameof(CreditEntry.SubCategory), nameof(CreditEntry.NameOrHandle)],
+            [typeof(CreditEntry)] = [nameof(CreditEntry.Category), nameof(CreditEntry.SubCategory), nameof(CreditEntry.NameOrHandle), nameof(CreditEntry.MainContribution)],
             [typeof(KiCadImportantSignalEntry)] = [nameof(KiCadImportantSignalEntry.DisplayName), nameof(KiCadImportantSignalEntry.KiCadNetName)],
             [typeof(ComponentPinEntry)] = [nameof(ComponentPinEntry.BoardLabel), nameof(ComponentPinEntry.Region), nameof(ComponentPinEntry.Pin)],
             [typeof(ComponentReplacementEntry)] =

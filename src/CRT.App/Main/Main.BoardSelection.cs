@@ -139,11 +139,38 @@ namespace CRT
             var boards = this.BuildVisibleBoardNamesForSelectedHardware(
                 UserSettings.CatalogueUncheckedKeysSnapshot);
 
-            this.BoardComboBox.ItemsSource = boards;
+            // ###########################################################################################
+            // *** THE NEW BOARD LIST IS PUT IN WITHOUT A "NO BOARD" LOAD (2026-11-16, performance walkthrough). ***
+            // Replacing ItemsSource lets go of the selection, and that SelectionChanged ran a whole load with no
+            // board - the worklog bar, the "Workbooks" tab, the "Contribute" tab emptied, the "Schematics" tab
+            // reset - before the board picked below loaded the real one. That pick raises its own SelectionChanged
+            // (the selection is -1 by then), which is the load; with no board to pick, it is started here.
+            // ###########################################################################################
+            bool suppressedBefore = this._suppressBoardHardwareSelectionReload;
+            this._suppressBoardHardwareSelectionReload = true;
+
+            try
+            {
+                this.BoardComboBox.ItemsSource = boards;
+
+                // ###########################################################################################
+                // *** AND NOTHING LEFT SELECTED, SO THE PICK BELOW IS ALWAYS A CHANGE (code review, 2026-11-16). *** Avalonia
+                // restores the selection when the new list holds the item selected before - a board of the same name on the
+                // new hardware - unheard here; the pick of that very board then changed nothing, and no board was loaded.
+                // ###########################################################################################
+                this.BoardComboBox.SelectedIndex = -1;
+            }
+            finally
+            {
+                this._suppressBoardHardwareSelectionReload = suppressedBefore;
+            }
 
             if (string.IsNullOrWhiteSpace(selectedHardware) || boards.Count == 0)
             {
                 this.BoardComboBox.SelectedIndex = -1;
+
+                // The board shown before goes - the load the emptied selection used to raise.
+                this.LoadSelectedBoardGuarded(clearComponentSearch: true);
 
                 // No board to show: the splash waits for none (Main.FirstBoard.cs).
                 this.FirstBoardDone();
@@ -169,11 +196,17 @@ namespace CRT
         // Handles board selection changes and loads the visible board UI first, then starts heavier
         // schematic/KiCad work in the background so the window can remain responsive immediately.
         // ###########################################################################################
-        private async void OnBoardSelectionChanged(object? sender, SelectionChangedEventArgs e)
+        private void OnBoardSelectionChanged(object? sender, SelectionChangedEventArgs e)
         {
             if (this._suppressBoardHardwareSelectionReload)
                 return;
 
+            this.LoadSelectedBoardGuarded(clearComponentSearch: ReferenceEquals(sender, this.BoardComboBox));
+        }
+
+        // The board selected loaded, as a pick in the drop-downs loads it - every failure caught (below).
+        private async void LoadSelectedBoardGuarded(bool clearComponentSearch)
+        {
             // Wrapped for the reason TabWorkbooks.OpenEntryEditor documents: this is an "async void"
             // handler, so anything thrown - including by the long SYNCHRONOUS prologue in
             // LoadSelectedBoardAsync, which disposes every thumbnail bitmap and reaches into
@@ -186,7 +219,7 @@ namespace CRT
             // single most-used action in the app - is the outcome being prevented.
             try
             {
-                await this.LoadSelectedBoardAsync(clearComponentSearch: ReferenceEquals(sender, this.BoardComboBox));
+                await this.LoadSelectedBoardAsync(clearComponentSearch);
             }
             catch (Exception ex)
             {
@@ -448,6 +481,7 @@ namespace CRT
             string dataRoot = DataManager.DataRoot;
             string excelDataFile = entry.ExcelDataFile;
             string thumbnailSetKey = $"{boardKey}\u001F{draftBoardFolder}";
+            string? lastSchematicShown = UserSettings.GetLastSchematicForBoard(boardKey);
 
             _ = Task.Run(async () =>
             {
@@ -489,7 +523,7 @@ namespace CRT
                             // comes back (ApplyWorklogBarVisibility).
                             if (UserSettings.EnableWorklog)
                             {
-                                this.TabWorkbooks?.RefreshBoardPreviewsForCurrentSelection();
+                                this.TabWorkbooks?.RefreshBoardPreviewsIfShown();
                             }
                         }
                     });
@@ -512,6 +546,14 @@ namespace CRT
                         .Where(picture => IsSchematicVisible(picture.Name))
                         .Select(picture => (Name: picture.Name, FullPath: picture.Path))
                         .ToList();
+
+                    // The picture to be shown - the one last shown on this board - begun reading NOW, beside the thumbnails
+                    // (2026-11-16, performance walkthrough: it was read only after every thumbnail was decoded). The
+                    // selection takes this very read (TabSchematics.PictureReads.cs).
+                    if (images.FirstOrDefault(image => string.Equals(image.Name, lastSchematicShown, StringComparison.OrdinalIgnoreCase)) is { FullPath.Length: > 0 } toShow)
+                    {
+                        this.TabSchematicsControl.StartReadingPicture(toShow.FullPath);
+                    }
 
                     // The board shown before, unchanged on disk: its thumbnails as they were. Otherwise
                     // decoded now, straight to thumbnail size, stopping if another board is chosen.
@@ -689,6 +731,9 @@ namespace CRT
             this.TabSchematicsControl.SetKiCadInitializingIndicatorVisible(false);
             this.TabSchematicsControl.KiCadSettled(hasProject: this.TabSchematicsControl.HasKiCadProjectLoaded);
         }
+
+        // How many board loads have started - for a test (a hardware change starts one, never a board-less one before it).
+        internal int BoardLoadsStartedForTests => this._boardSelectionLoadVersion;
 
         // For a test: a step of the board load that throws - right after the viewer's reset, on the UI thread, and in the
         // background half as its thumbnails are put on screen.
@@ -956,8 +1001,33 @@ namespace CRT
         // each can be of one region) - as the board is shown, and when the region is switched. A file is
         // found by name in the board's file list, with the root it was found under - the launcher opens
         // nothing outside it.
+        //
+        // *** FILLED WHILE THE TAB IS SHOWN (2026-11-16, performance walkthrough). *** Every board load and region switch
+        // resolved the board's files on the UI thread for a tab nobody was looking at; what it is to show is kept, and
+        // filled as the tab is shown (ShowResourcesWanted, from its AttachedToVisualTree).
         // ###########################################################################################
+        private Action? thisResourcesWanted;
+
         private void ShowResources(BoardData boardData, HardwareBoardEntry entry, string dataRoot, string draftBoardFolder)
+        {
+            if (TopLevel.GetTopLevel(this.TabResources) is null)
+            {
+                this.thisResourcesWanted = () => this.ShowResourcesNow(boardData, entry, dataRoot, draftBoardFolder);
+                return;
+            }
+
+            this.thisResourcesWanted = null;
+            this.ShowResourcesNow(boardData, entry, dataRoot, draftBoardFolder);
+        }
+
+        private void ShowResourcesWanted()
+        {
+            Action? wanted = this.thisResourcesWanted;
+            this.thisResourcesWanted = null;
+            wanted?.Invoke();
+        }
+
+        private void ShowResourcesNow(BoardData boardData, HardwareBoardEntry entry, string dataRoot, string draftBoardFolder)
         {
             var webLinks = boardData.BoardLinks
                 .Where(link => ComponentPaneEdits.InRegion(link.Region, this._localRegion))
@@ -1105,6 +1175,10 @@ namespace CRT
 
                 return;
             }
+
+            // A board checked again whose data a check left out is said on a card (Main.DataNeededNotice.cs) - whatever the
+            // drop-downs do below, which may be nothing.
+            this.FollowCatalogueChangeInDataNeeded(changedKey);
 
             var previousHardwareNames = this.HardwareComboBox.ItemsSource?
                 .Cast<string>()

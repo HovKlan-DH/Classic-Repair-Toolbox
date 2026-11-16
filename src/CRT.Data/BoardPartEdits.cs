@@ -84,9 +84,11 @@ namespace Handlers.DataHandling
             string.IsNullOrWhiteSpace(row.Category) && string.IsNullOrWhiteSpace(row.Name) && string.IsNullOrWhiteSpace(row.Url) &&
             string.IsNullOrWhiteSpace(row.Note);
 
+        // A credit's date is the server's, so no row is made of it alone.
         public static bool IsBlank(CreditEntry row) =>
             string.IsNullOrWhiteSpace(row.Category) && string.IsNullOrWhiteSpace(row.SubCategory) &&
-            string.IsNullOrWhiteSpace(row.NameOrHandle) && string.IsNullOrWhiteSpace(row.Contact);
+            string.IsNullOrWhiteSpace(row.NameOrHandle) && string.IsNullOrWhiteSpace(row.Contact) &&
+            string.IsNullOrWhiteSpace(RichNote.NormalisedMarkup(row.MainContribution));
 
         public static bool IsBlank(KiCadImportantSignalEntry row) =>
             string.IsNullOrWhiteSpace(row.DisplayName) && string.IsNullOrWhiteSpace(row.KiCadNetName);
@@ -142,6 +144,13 @@ namespace Handlers.DataHandling
 
         // ---- credits ------------------------------------------------------------------------------
 
+        // ###########################################################################################
+        // The credits as "Board: Credits" holds them, in the board's order - which a publish keeps oldest first (CreditOrder),
+        // a credit added standing last as the newest: no credit is dragged any more (2026-11-14). Not sorted here: in a draft
+        // a new credit has no date, as one from before the history has none, and only the publish tells them apart. Its main
+        // contribution is a note with formatting, kept as notes are (RichNote.NormalisedMarkup); its date is carried as it was -
+        // the server's.
+        // ###########################################################################################
         public static BoardData WithCredits(BoardData board, IReadOnlyList<CreditEntry> credits)
         {
             ArgumentNullException.ThrowIfNull(board);
@@ -154,11 +163,13 @@ namespace Handlers.DataHandling
                     SubCategory = row.SubCategory?.Trim() ?? string.Empty,
                     NameOrHandle = row.NameOrHandle?.Trim() ?? string.Empty,
                     Contact = row.Contact?.Trim() ?? string.Empty,
+                    MainContribution = RichNote.NormalisedMarkup(row.MainContribution),
+                    Date = row.Date?.Trim() ?? string.Empty,
                 })
                 .Where(row => !BoardPartEdits.IsBlank(row))
                 .ToList();
 
-            return BoardPartEdits.SameRows(board.Credits, rows, row => string.Join('\u001F', row.Category, row.SubCategory, row.NameOrHandle, row.Contact))
+            return BoardPartEdits.SameRows(board.Credits, rows, row => string.Join('\u001F', row.Category, row.SubCategory, row.NameOrHandle, row.Contact, row.MainContribution, row.Date))
                 ? board
                 : board.WithBoardSections(credits: rows);
         }

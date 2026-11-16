@@ -58,7 +58,15 @@ public partial class TabSchematics
         if (string.Equals(this.thisHoveredKiCadNetName, netName, StringComparison.OrdinalIgnoreCase))
             return;
 
+        string? shownBefore = this.GetActiveHoveredKiCadNetName();
         this.thisHoveredKiCadNetName = netName;
+
+        // The overlay draws a hovered net only while hovering highlights traces (GetActiveHoveredKiCadNetName - the
+        // "Disabled" mode, or "HoldShift" with Shift up, shows none): a change it does not show is no rebuild
+        // (2026-11-16, performance walkthrough - each rebuild re-did the whole overlay at every net the pointer crossed).
+        // Shift pressed later rebuilds it itself (UpdateInteractiveCadTraceHoverShiftState).
+        if (string.Equals(shownBefore, this.GetActiveHoveredKiCadNetName(), StringComparison.OrdinalIgnoreCase))
+            return;
 
         // Immediate on purpose. This was briefly debounced while a hover rebuild cost ~262 ms, but
         // the per-net primitive cache brought that down to ~32 ms, and the delay was worse than the

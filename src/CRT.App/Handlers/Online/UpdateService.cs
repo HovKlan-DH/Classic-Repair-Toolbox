@@ -119,7 +119,9 @@ namespace Handlers.OnlineHandling
 
                 Logger.Info("Update downloaded - restarting into new version");
 
-                // The restart ends this process without the usual way out - the log's last lines first.
+                // The restart ends this process without the usual way out - the settings waiting to be
+                // written and the log's last lines first.
+                UserSettings.Flush();
                 Logger.Flush();
                 _manager.ApplyUpdatesAndRestart(_pendingUpdate);
                 return true; // Execution technically halts on the line above if restart succeeds

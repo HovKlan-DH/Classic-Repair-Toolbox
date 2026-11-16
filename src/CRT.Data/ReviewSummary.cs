@@ -483,7 +483,9 @@ namespace Handlers.DataHandling
                 new(BoardWorkbookSchema.ColCategory, entry.Category),
                 new(BoardWorkbookSchema.ColSubCategory, entry.SubCategory),
                 new(BoardWorkbookSchema.ColNameOrHandle, entry.NameOrHandle),
-                new(BoardWorkbookSchema.ColContact, entry.Contact)
+                new(BoardWorkbookSchema.ColContact, entry.Contact),
+                new(BoardWorkbookSchema.ColMainContribution, entry.MainContribution),
+                new(BoardWorkbookSchema.ColDate, entry.Date)
             ],
             KiCadImportantSignalEntry entry =>
             [

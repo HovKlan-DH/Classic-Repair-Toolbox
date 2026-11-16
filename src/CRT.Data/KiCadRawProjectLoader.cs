@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -40,9 +41,9 @@ namespace Handlers.DataHandling
 
                 if (string.Equals(extension, ".kicad_pcb", StringComparison.OrdinalIgnoreCase))
                 {
-                    string content = await File.ReadAllTextAsync(path, cancellationToken).ConfigureAwait(false);
+                    // Read as it is parsed, on the pool whoever asks (SExpressionParser - 2026-11-16).
+                    var forms = await Task.Run(() => SExpressionParser.ParseFile(path, cancellationToken), cancellationToken).ConfigureAwait(false);
                     cancellationToken.ThrowIfCancellationRequested();
-                    var forms = SExpressionParser.Parse(content);
                     var root = forms.FirstOrDefault(node =>
                         string.Equals(Head(node), "kicad_pcb", StringComparison.OrdinalIgnoreCase));
 
@@ -1365,8 +1366,8 @@ namespace Handlers.DataHandling
                 return null;
             }
 
-            string content = await File.ReadAllTextAsync(fullPath).ConfigureAwait(false);
-            var forms = SExpressionParser.Parse(content);
+            // Read as it is parsed, on the pool whoever asks (SExpressionParser - 2026-11-16).
+            var forms = await Task.Run(() => SExpressionParser.ParseFile(fullPath)).ConfigureAwait(false);
             var root = forms.FirstOrDefault(node =>
                 string.Equals(Head(node), "kicad_sch", StringComparison.OrdinalIgnoreCase));
 
@@ -1783,65 +1784,94 @@ namespace Handlers.DataHandling
                 : null;
         }
 
-        private sealed class SExpressionNode
+        internal sealed class SExpressionNode
         {
+            // An atom's items: none, the ONE empty list every atom shares - a list per atom was a million on a large
+            // PCB (2026-11-16). Nothing changes a node's items once parsed.
+            internal static readonly List<SExpressionNode> NoItems = new(0);
+
             public string? Atom { get; init; }
-            public List<SExpressionNode> Items { get; init; } = new();
+            public List<SExpressionNode> Items { get; init; } = NoItems;
         }
 
-        private static class SExpressionParser
+        // Internal for its tests (KiCadRawProjectLoaderTests); the loader alone parses with it.
+        internal static class SExpressionParser
         {
             // ###########################################################################################
             // Parses KiCad S-expression content into root expression nodes. The tokens are CRT.Data's
             // KiCadSExpressionTokens, which the server's KiCad sheet rule reads too - so the two
             // cannot disagree about what a file says.
+            //
+            // *** READ AS IT GOES, AND A "(data ...)" LIST PASSED OVER (2026-11-16, performance walkthrough). ***
+            // The whole file was read into one string - 89 MB for a 44.5 MB PCB - tokenized into one list, and only
+            // then parsed. Now each node is made as its tokens are read. And the contents of every list headed
+            // "data" are passed over unread (KiCadSExpressionTokens.SkipRestOfList): an embedded picture's base64 -
+            // 86% of Open128's PCB - or an embedded file's bytes, which CRT never reads; such a node keeps only its
+            // head, so Head() still names it.
             // ###########################################################################################
-            public static List<SExpressionNode> Parse(string content)
+            //
+            // *** AND STOPPED WHEN NOBODY WANTS IT ANY MORE (code review, 2026-11-16). *** `cancellation` is asked at every list:
+            // read as one string, the file read honoured it; read as it is parsed, a 45 MB PCB was parsed to its end for a
+            // board already left - several, as boards were picked one after another.
+            // ###########################################################################################
+            public static List<SExpressionNode> Parse(TextReader text, CancellationToken cancellation = default)
             {
-                var tokens = KiCadSExpressionTokens.Tokenize(content);
-                int index = 0;
+                var reader = new KiCadSExpressionTokens(text);
                 var result = new List<SExpressionNode>();
 
-                while (index < tokens.Count)
+                while (reader.TryRead(out string? token))
                 {
-                    result.Add(ParseNode(tokens, ref index));
+                    result.Add(SExpressionParser.ParseNode(reader, token, cancellation));
                 }
 
                 return result;
             }
 
-            // ###########################################################################################
-            // Parses one S-expression node from the token stream.
-            // ###########################################################################################
-            private static SExpressionNode ParseNode(IReadOnlyList<string> tokens, ref int index)
+            // One whole file, read a buffer at a time.
+            public static List<SExpressionNode> ParseFile(string path, CancellationToken cancellation = default)
             {
-                if (tokens[index] == "(")
+                using var text = new StreamReader(path, Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+                return SExpressionParser.Parse(text, cancellation);
+            }
+
+            // ###########################################################################################
+            // One node, its first token read: an atom, or a list up to its ")" - "(" and ")" compared as STRINGS,
+            // so a quoted "(" opens a list as it always has (KiCadSExpressionTokens' header).
+            // ###########################################################################################
+            private static SExpressionNode ParseNode(KiCadSExpressionTokens reader, string token, CancellationToken cancellation)
+            {
+                if (token != "(")
                 {
-                    index++;
-                    var items = new List<SExpressionNode>();
-
-                    while (index < tokens.Count && tokens[index] != ")")
-                    {
-                        items.Add(ParseNode(tokens, ref index));
-                    }
-
-                    if (index < tokens.Count && tokens[index] == ")")
-                    {
-                        index++;
-                    }
-
                     return new SExpressionNode
                     {
-                        Items = items
+                        Atom = token
                     };
                 }
 
-                string atom = tokens[index];
-                index++;
+                cancellation.ThrowIfCancellationRequested();
+
+                var items = new List<SExpressionNode>();
+
+                while (reader.TryRead(out string? next))
+                {
+                    if (next == ")")
+                    {
+                        break;
+                    }
+
+                    SExpressionNode item = SExpressionParser.ParseNode(reader, next, cancellation);
+                    items.Add(item);
+
+                    if (items.Count == 1 && item.Atom == "data")
+                    {
+                        reader.SkipRestOfList();
+                        break;
+                    }
+                }
 
                 return new SExpressionNode
                 {
-                    Atom = atom
+                    Items = items
                 };
             }
         }

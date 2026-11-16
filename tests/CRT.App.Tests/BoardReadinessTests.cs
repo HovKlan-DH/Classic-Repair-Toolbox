@@ -36,7 +36,7 @@ public sealed class BoardReadinessTests
             ],
         };
 
-        BoardMissing missing = BoardReadiness.Missing(board);
+        BoardMissing missing = BoardReadiness.Missing(board, null);
 
         Assert.Equal(["U3"], missing.WithoutDescription);
         Assert.Equal(["U1", "U2"], missing.Unmarked);
@@ -50,7 +50,7 @@ public sealed class BoardReadinessTests
             Credits = [new CreditEntry { Category = "Schematic image", NameOrHandle = "Anna" }],
         };
 
-        BoardMissing none = BoardReadiness.Missing(whole);
+        BoardMissing none = BoardReadiness.Missing(whole, null);
 
         Assert.Empty(none.BoardGaps);
         Assert.Empty(none.WithoutDescription);
@@ -74,14 +74,14 @@ public sealed class BoardReadinessTests
         };
 
         var facts = new BoardKiCadFacts(["U1", "U17", "C5"], ["PCB top", "PCB bottom"]);
-        BoardMissing missing = BoardReadiness.Missing(board, true, facts);
+        BoardMissing missing = BoardReadiness.Missing(board, null, true, facts);
 
         Assert.Equal([BoardGapKind.IncompleteLinks, BoardGapKind.IncompleteCredits], missing.BoardGaps.Select(gap => gap.Kind));
         Assert.Equal(BoardReadiness.IncompleteGap(2, "link", "links"), missing.BoardGaps[0].Text);
         Assert.Equal(["PLA/U17"], missing.NotInKiCadLabels);
 
-        Assert.Empty(BoardReadiness.Missing(board, true, new BoardKiCadFacts([], [], Read: false)).NotInKiCadLabels);
-        Assert.Empty(BoardReadiness.Missing(board).NotInKiCadLabels);
+        Assert.Empty(BoardReadiness.Missing(board, null, true, new BoardKiCadFacts([], [], Read: false)).NotInKiCadLabels);
+        Assert.Empty(BoardReadiness.Missing(board, null).NotInKiCadLabels);
     }
 
     // A group naming its first eight says how many more there are - nothing for eight or fewer.

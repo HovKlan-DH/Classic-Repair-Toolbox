@@ -271,7 +271,10 @@ namespace CRT
                 return;
             }
 
-            if (change.Kind == DraftSessionChangeKind.Edit && change.Origin is BoardTableSessionEdit own && ReferenceEquals(own.Editor, this))
+            // The table's own edit is on screen already - unless more came with it (the credit for the work, 2026-11-15:
+            // DraftSessionChange.FollowedUp), which is shown by building the table again from the draft.
+            if (change.Kind == DraftSessionChangeKind.Edit && change.Origin is BoardTableSessionEdit own && ReferenceEquals(own.Editor, this) &&
+                !change.FollowedUp)
             {
                 return;
             }

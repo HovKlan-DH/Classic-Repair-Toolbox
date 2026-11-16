@@ -570,9 +570,9 @@ public sealed class TabDraftsBoardNameTests : IDisposable
     // ###########################################################################################
     // *** A NEW BOARD'S NOTES ARE PART OF WHAT IT SENDS (code review, 2026-11-02). *** They live in the
     // marker, which the fingerprint skips as bookkeeping - so notes changed after a rejection said
-    // "Saved." and Submit stayed grey with "Change something to send it again". Taken from
-    // PrepareOtherDraftAsync (what a receipt remembers) and read back through the row, so the two
-    // places a fingerprint is taken must agree: changed back, the row greys out again.
+    // "Saved." and Submit stayed grey with "Change something to send it again". Taken as a submit
+    // records it (what a receipt remembers) and read back through the row, so the two places a
+    // fingerprint is taken must agree: changed back, the row greys out again.
     // ###########################################################################################
     [Fact]
     public async Task Notes_changed_after_a_rejection_bring_Submit_back()
@@ -588,8 +588,8 @@ public sealed class TabDraftsBoardNameTests : IDisposable
             Components = [new ComponentEntry { BoardLabel = "U1", Category = "IC" }],
             Credits =
             [
-                new CreditEntry { Category = NewBoardCredits.BoardData, NameOrHandle = "Anna" },
-                new CreditEntry { Category = NewBoardCredits.OscilloscopeBaseline, NameOrHandle = "Anna" },
+                new CreditEntry { Category = NewBoardCredits.BoardData, NameOrHandle = "Anna", MainContribution = "Typed in the components" },
+                new CreditEntry { Category = NewBoardCredits.OscilloscopeBaseline, NameOrHandle = "Anna", MainContribution = "Measured the baselines" },
             ],
         });
 
@@ -600,8 +600,8 @@ public sealed class TabDraftsBoardNameTests : IDisposable
             tab.ShowBoard(entry, new BoardData(), "PAL", null);
             tab.BoardRenamedOverrideForTests = (_, _) => tab.RefreshDrafts();
 
-            OtherDraftReady ready = await tab.PrepareOtherDraftAsync(entry, string.Empty, string.Empty);
-            SubmitDraftTarget target = Assert.IsType<SubmitDraftTarget>(ready.Target);
+            string fingerprint = Assert.IsType<string>(TabDrafts.FingerprintToSendForTests(entry));
+            Assert.NotEmpty(fingerprint);
 
             tab.ReceiptsOverrideForTests =
             [
@@ -611,7 +611,7 @@ public sealed class TabDraftsBoardNameTests : IDisposable
                     BoardId = "Comodore/C64/999001",
                     SentUtc = DateTimeOffset.UtcNow.AddMinutes(1),
                     LastKnownState = "rejected",
-                    DraftFingerprint = target.Fingerprint,
+                    DraftFingerprint = fingerprint,
                 }
             ];
 

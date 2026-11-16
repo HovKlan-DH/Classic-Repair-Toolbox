@@ -100,7 +100,8 @@ namespace CRT
                 ? set
                 : new HashSet<string>(this._currentBoardDraftSummary.DraftedHighlightKeys, StringComparer.OrdinalIgnoreCase);
 
-            this.TabWorkbooks?.RefreshBoardPreviewsForCurrentSelection();
+            // Only while the tab is shown - attaching builds it again (TabWorkbooks.RefreshWorkbooksIfShown, 2026-11-16).
+            this.TabWorkbooks?.RefreshBoardPreviewsIfShown();
         }
 
         public void ActivateWorkbook(string boardKey, int workbookId)
@@ -398,9 +399,9 @@ namespace CRT
             // ApplyWorklogBarVisibility rebuilds the tab on the enable side before revealing it, so
             // it cannot come back showing what was last rendered.
             //
-            // Deliberately NOT also gated on "is the Workbooks tab currently selected". Clicking a
-            // card in that tab goes ActivateWorkbook -> RefreshWorklogBar -> RefreshWorkbooks, so an
-            // early-out on tab selection would make card clicks silently do nothing.
+            // And only while the tab is SHOWN (2026-11-16, performance walkthrough: hidden, it was rebuilt
+            // at every board switch for nobody): attaching builds it again from disk, and a card clicked
+            // in it - ActivateWorkbook -> RefreshWorklogBar - finds it shown (TabWorkbooks.RefreshWorkbooksIfShown).
             if (UserSettings.EnableWorklog)
             {
                 // The tab's own list shows the device picked's workbooks, on any board, as the bar's
@@ -420,7 +421,7 @@ namespace CRT
 
                 // Every workbook too, for a device's page, and the devices - read here already, never
                 // a second time there (code review, 2026-10-28).
-                this.TabWorkbooks?.RefreshWorkbooks(listed, allWorkbooks, devices);
+                this.TabWorkbooks?.RefreshWorkbooksIfShown(listed, allWorkbooks, devices);
             }
 
             // These follow the ACTIVE workbook: there are no entries to draw and nothing to add an entry

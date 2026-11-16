@@ -69,6 +69,30 @@ namespace CRT.Server.Tests
             Assert.Null(board.FindCaseVariant("../secret.txt"));
         }
 
+        // ###########################################################################################
+        // The board's published credits come with the view (2026-11-14) - read in the same read of its board file - so a
+        // submission's credits are judged against them: one published as it stands needs no main contribution, a new one
+        // does. A board the tree does not hold has none, so every credit of a new board needs one - and so does every
+        // credit when neither BETA nor stable could be consulted.
+        // ###########################################################################################
+        [Fact]
+        public void The_view_carries_the_boards_published_credits()
+        {
+            var anna = new CreditEntry { Category = "Board data", NameOrHandle = "Anna" };
+            DataTreeBuilder.Board(this.thisTree, "Commodore/C64/250425", new BoardData { Credits = [anna] }, []);
+
+            PublishedTreeView board = PublishedTreeProbe.For(this.thisTree, "Commodore/C64/250425")!;
+            var bo = new CreditEntry { Category = "Board data", NameOrHandle = "Bo" };
+
+            Assert.True(board.Credits.Has(anna));
+            Assert.False(board.Credits.Has(bo));
+
+            Assert.False(PublishedTreeProbe.For(this.thisTree, "Commodore/C64/250469")!.Credits.Has(anna));
+
+            Assert.True(SubmissionFlows.PublishedCreditsOf(null, board).Has(anna));
+            Assert.False(SubmissionFlows.PublishedCreditsOf(null, null).Has(anna));
+        }
+
         // A board the tree does not hold is an EMPTY list - a new board has no files yet.
         [Fact]
         public void A_board_the_tree_does_not_hold_lists_nothing()

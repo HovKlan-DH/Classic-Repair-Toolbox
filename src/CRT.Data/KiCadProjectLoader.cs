@@ -64,6 +64,104 @@ namespace Handlers.DataHandling
                 return cached;
             }
 
+            // ###########################################################################################
+            // *** TWO ASKING AT ONCE SHARE ONE PARSE (2026-11-16, performance walkthrough). *** The "Schematics" tab and
+            // the "Contribute" tab's readers (Board status, a component's pins, the pictures' views) each parsed the
+            // whole project when they asked before the first parse was cached - a board shown on the "Contribute" tab
+            // parsed it twice. A load under way is joined; each asker stops waiting for itself alone, and the load
+            // itself is stopped only once nobody waits for it any more - a board switch still stops a parse nobody
+            // wants (SharedLoad).
+            // ###########################################################################################
+            string loadKey = cacheKey + "\u001F" + cacheStamp;
+            SharedLoad load;
+
+            lock (KiCadProjectLoader.thisLoadingGate)
+            {
+                if (!KiCadProjectLoader.thisLoading.TryGetValue(loadKey, out load!))
+                {
+                    var stop = new CancellationTokenSource();
+                    load = new SharedLoad(stop, Task.Run(() => KiCadProjectLoader.LoadAndCacheAsync(existingPaths, hardwareName, boardName, cacheKey, cacheStamp, stop.Token)));
+                    KiCadProjectLoader.thisLoading[loadKey] = load;
+                    KiCadProjectLoader.thisLoadsStarted++;
+
+                    SharedLoad started = load;
+                    _ = load.Task.ContinueWith(_ => KiCadProjectLoader.Forget(loadKey, started), TaskScheduler.Default);
+                }
+
+                load.Waiting++;
+            }
+
+            try
+            {
+                return await load.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                CrtLog.Info($"KiCad load stopped - another board was chosen: [{string.Join("], [", existingPaths)}]");
+                return null;
+            }
+            finally
+            {
+                lock (KiCadProjectLoader.thisLoadingGate)
+                {
+                    if (--load.Waiting == 0 && !load.Task.IsCompleted)
+                    {
+                        load.Stop.Cancel();
+                        KiCadProjectLoader.Forget(loadKey, load);
+                    }
+                }
+            }
+        }
+
+        // A load under way, how many wait for it, and how it is stopped.
+        private sealed class SharedLoad(CancellationTokenSource stop, Task<KiCadProjectBundle?> task)
+        {
+            public CancellationTokenSource Stop { get; } = stop;
+
+            public Task<KiCadProjectBundle?> Task { get; } = task;
+
+            public int Waiting { get; set; }
+        }
+
+        private static readonly object thisLoadingGate = new();
+
+        private static readonly Dictionary<string, SharedLoad> thisLoading = new(StringComparer.OrdinalIgnoreCase);
+
+        private static int thisLoadsStarted;
+
+        // How many parses have been started - for the tests.
+        internal static int LoadsStartedForTests
+        {
+            get
+            {
+                lock (KiCadProjectLoader.thisLoadingGate)
+                {
+                    return KiCadProjectLoader.thisLoadsStarted;
+                }
+            }
+        }
+
+        // A load no longer to be joined - only while it is still the one under `key`.
+        private static void Forget(string key, SharedLoad load)
+        {
+            lock (KiCadProjectLoader.thisLoadingGate)
+            {
+                if (KiCadProjectLoader.thisLoading.TryGetValue(key, out SharedLoad? known) && ReferenceEquals(known, load))
+                {
+                    KiCadProjectLoader.thisLoading.Remove(key);
+                }
+            }
+        }
+
+        // The parse itself, its result cached - none when it is stopped.
+        private static async Task<KiCadProjectBundle?> LoadAndCacheAsync(
+            List<string> existingPaths,
+            string hardwareName,
+            string boardName,
+            string cacheKey,
+            string cacheStamp,
+            CancellationToken cancellationToken)
+        {
             try
             {
                 var root = await KiCadRawProjectLoader.LoadAsync(existingPaths, hardwareName, boardName, cancellationToken).ConfigureAwait(false);
@@ -93,7 +191,7 @@ namespace Handlers.DataHandling
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                CrtLog.Info($"KiCad load stopped - another board was chosen: [{string.Join("], [", existingPaths)}]");
+                // Nobody waits for it any more - each who did said so as they stopped.
                 return null;
             }
             catch (Exception ex)
