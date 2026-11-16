@@ -692,6 +692,23 @@ public sealed class WorkbooksDevicesTests : IDisposable
                 window.UpdateLayout();
 
                 Image photo = tab.GetControl<WrapPanel>("DevicePhotosPanel").GetVisualDescendants().OfType<Image>().Single();
+
+                // ###########################################################################################
+                // The photo shown first: it is decoded small off the UI thread and shown once read, and an image with nothing
+                // in it yet draws nothing - the press went to the frame behind it (2026-11-16: the full suite's load). And a
+                // press is hit-tested against the last frame DRAWN, so a frame is drawn before it.
+                // ###########################################################################################
+                for (int attempt = 0; attempt < 500 && photo.Source is null; attempt++)
+                {
+                    Dispatcher.UIThread.RunJobs();
+                    Thread.Sleep(10);
+                }
+
+                Assert.NotNull(photo.Source);
+                window.UpdateLayout();
+                AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+                Dispatcher.UIThread.RunJobs();
+
                 Point at = photo.TranslatePoint(new Point(photo.Bounds.Width / 2, photo.Bounds.Height / 2), window)!.Value;
                 window.MouseDown(at, Avalonia.Input.MouseButton.Left);
                 window.MouseUp(at, Avalonia.Input.MouseButton.Left);
