@@ -107,6 +107,41 @@ public sealed class BoardSchematicEntryTests
     }
 
     [Fact]
+    public void A_baseline_with_its_reading_in_plain_words_keeps_everything_else()
+    {
+        AssertCopiesEverythingBut<ComponentImageEntry>(
+            image => image.WithExpectedReading("High"),
+            nameof(ComponentImageEntry.ExpectedOscilloscopeReading),
+            "High");
+    }
+
+    // A pin with another direction, or another name and direction, keeps everything else (code review, 2026-11-17: the
+    // conversion and "Fill from KiCad" copied a pin's fields by hand, outside the class).
+    [Fact]
+    public void A_pin_with_another_direction_keeps_everything_else()
+    {
+        AssertCopiesEverythingBut<ComponentPinEntry>(
+            pin => pin.WithDirection("Output"),
+            nameof(ComponentPinEntry.Direction),
+            "Output");
+    }
+
+    [Fact]
+    public void A_pin_with_another_name_and_direction_keeps_everything_else()
+    {
+        var original = new ComponentPinEntry { BoardLabel = "U8", Region = "PAL", Pin = "7", Name = "A0", Direction = "Input" };
+        ComponentPinEntry result = original.WithNameAndDirection("A1", "Output");
+
+        foreach (PropertyInfo property in typeof(ComponentPinEntry).GetProperties(BindingFlags.Public | BindingFlags.Instance)
+                     .Where(property => property.Name is not (nameof(ComponentPinEntry.Name) or nameof(ComponentPinEntry.Direction))))
+        {
+            Assert.Equal(property.GetValue(original), property.GetValue(result));
+        }
+
+        Assert.Equal(("A1", "Output"), (result.Name, result.Direction));
+    }
+
+    [Fact]
     public void A_highlight_of_a_relabelled_component_keeps_its_rectangle_and_schematic()
     {
         AssertCopiesEverythingBut<ComponentHighlightEntry>(

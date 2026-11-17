@@ -131,7 +131,8 @@ public sealed class ImportantSignalSuggestionsTests
 
         Assert.Equal("RESET", ImportantSignalSuggestions.StartingNameOf("~{RESET}"));
         Assert.Equal("Net-(U8-Pad3)", ImportantSignalSuggestions.StartingNameOf("Net-(U8-Pad3)"));
-        Assert.Equal("~SYNC", ImportantSignalSuggestions.StartingNameOf("~{SYNC}"));
+        // An active-low net's name is written with "/" before it (owner decision, 2026-11-17).
+        Assert.Equal("/SYNC", ImportantSignalSuggestions.StartingNameOf("~{SYNC}"));
     }
 
     [Fact]

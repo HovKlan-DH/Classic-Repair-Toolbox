@@ -2,9 +2,11 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Threading;
 using Avalonia.Layout;
+using Avalonia.Platform;
 using Avalonia.VisualTree;
 using System.Linq;
 using Handlers.DataHandling;
+using Handlers.Geometry;
 using System;
 using System.Collections.Generic;
 
@@ -18,11 +20,14 @@ namespace CRT
     // The popup's own pinout section - the case drawn and every pin beside it, its clicks going to the pin's images as
     // they do in the popup - is MOVED into the window while "Show pinout in its own window when the component info window
     // would scroll" ("Detach pinout image in component info popup" until 2026-11-09) is ticked, the
-    // component has pins and the popup has no room for them (below, PinoutFitsInPopup), and put back where it stood
+    // section shows something - pins, or a chip, a part or a resistor drawn with none listed (code review, 2026-11-17: a chip CRT
+    // knows was drawn there with no pins, and made the popup scroll) - and the popup has no room for it (below,
+    // PinoutFitsInPopup), and put back where it stood
     // otherwise: one section, never a copy kept in step. The window
     // goes with its popup, shows the popup's title, and takes no focus as it opens. Closed by the person, the pinout comes
-    // back into that popup for as long as it is open. Its size and place are one for every popup (UserSettings
-    // .SavePinoutWindowLayout); a place no screen shows any more is given up for one beside the popup.
+    // back into that popup for as long as it is open. Its place is one for every popup (UserSettings.SavePinoutWindowPlace);
+    // a place no screen shows any more is given up for one beside the popup. Its size is what each pinout takes
+    // (ComponentPinoutWindow.FitToContent).
     //
     // A popup that closes as it loses the front (CloseOnDeactivate) stays while its pinout window has the front.
     //
@@ -89,14 +94,14 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // The pinout where it belongs now - in its own window while the setting is on, the component has pins, the popup
-        // is open and has no room for them, in the popup otherwise. Its window follows the popup's title.
+        // The pinout where it belongs now - in its own window while the setting is on, the section shows something, the
+        // popup is open and has no room for it, in the popup otherwise. Its window follows the popup's title.
         // ###########################################################################################
         private void FollowPinoutDetachment()
         {
             bool wanted = UserSettings.DetachPinoutInComponentPopup &&
                           !this.thisPinoutWindowDismissed &&
-                          this._pinRows.Count > 0 &&
+                          this.PinoutSection.IsVisible &&
                           this.IsVisible;
 
             // On its way between the windows it can be measured in neither: decided once it stands somewhere - the move's
@@ -130,9 +135,13 @@ namespace CRT
                 }
 
                 TopLevel? from = TopLevel.GetTopLevel(this.PinoutSection);
+                var window = new ComponentPinoutWindow(this, this.PinoutSizeWithin);
+
+                // Sized before it is shown, the pinout measured where it still stands (code review, 2026-11-17: shown empty, the
+                // window opened at the platform's own size and jumped to its own once the pinout came in).
+                window.FitBeforeShown();
                 this.thisPinoutHome.Children.Remove(this.PinoutSection);
 
-                var window = new ComponentPinoutWindow(this);
                 window.Closed += (_, _) =>
                 {
                     // Closed by its person (CRT closing it lets go of it first).
@@ -148,8 +157,32 @@ namespace CRT
                 window.Show(this);
                 this.PlaceSectionAfterLayoutOf(from);
             }
+            else if (this.PinoutSection.Parent is not null)
+            {
+                // Another component or region in the window it stands in: the window fits it (owner request, 2026-11-17).
+                this.thisPinoutWindow.FitToContent();
+            }
 
             this.thisPinoutWindow.Title = ComponentPinoutWindow.TitleFor(this.TitleText.Text);
+        }
+
+        // ###########################################################################################
+        // The pinout's size standing in its own window at most `width` wide: its pin list beside the drawing when it fits there
+        // whole (PlacePinList, which the window's own layout then keeps), and at least as wide as the drawing, the gap and the
+        // list take - a pixel to spare, so the layout's rounding never puts the list under it again.
+        // ###########################################################################################
+        internal Size PinoutSizeWithin(double width)
+        {
+            bool beside = this.PlacePinList(width);
+            double height = ComponentInfoWindow.MeasuredAfresh(this.PinoutSection, width);
+            double wide = this.PinoutSection.DesiredSize.Width;
+
+            if (beside && this.DrawingWidth() is > 0 and double drawing)
+            {
+                wide = Math.Max(wide, drawing + PinoutGeometry.ListGap + PinTableGeometry.WidthOf(this._pinColumns));
+            }
+
+            return new Size(Math.Ceiling(wide) + 1, Math.Ceiling(height));
         }
 
         // ###########################################################################################
@@ -402,25 +435,34 @@ namespace CRT
     }
 
     // ###########################################################################################
-    // The window the popup's pinout stands in while detached (ComponentInfoWindow.Pinout.cs) - its size and place one for
-    // all, saved as it closes.
+    // The window the popup's pinout stands in while detached (ComponentInfoWindow.Pinout.cs) - its place one for all, saved as
+    // it closes.
+    //
+    // *** IT IS AS LARGE AS WHAT IT SHOWS (owner request, 2026-11-17: "can we make it auto-size, so it will show all the info,
+    // and not being way too big or small in size ... It should always start the window in the last top-left X/Y position").
+    // *** Each time a pinout comes into it - a component or a region shown, the window opened - it fits it (FitToContent):
+    // the pin list beside the drawing when the screen has the room, every column whole, and the window as wide and tall as
+    // that, no more - within what its screen has right and below its place, where it then scrolls. Its top left corner stays
+    // where it was last left; with no such place on a screen, it opens beside the popup, moved left as far as the pinout
+    // needs (FitBeforeShown). A size dragged by hand holds until the next pinout comes in. The 870x960 it opened at the
+    // first time and the size it was left at, saved until then, went.
     // ###########################################################################################
     internal sealed class ComponentPinoutWindow : Window
     {
         private readonly Border thisHost;
 
-        private double thisNormalWidth;
-        private double thisNormalHeight;
+        // The pinout's size standing in this window at most so wide (the popup's PinoutSizeWithin).
+        private readonly Func<double, Size> thisContentSizeWithin;
+
         private PixelPoint thisNormalPosition;
 
-        // Its size the first time (owner request, 2026-11-07: "have the default size be aprox 870x960px"), no larger than
-        // the screen it opens on.
-        internal const double DefaultWidth = 870;
-        internal const double DefaultHeight = 960;
+        // Whether it opens where it was last left - else beside the popup, which is CRT's own choice of place.
+        private readonly bool thisPlaceIsKept;
 
         // Made empty: the section comes in once the popup has had its layout (TakeSection).
-        public ComponentPinoutWindow(Window popup)
+        public ComponentPinoutWindow(Window popup, Func<double, Size> contentSizeWithin)
         {
+            this.thisContentSizeWithin = contentSizeWithin;
             this.thisHost = new Border { Padding = new Thickness(12) };
             this.Content = new ScrollViewer { HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled, Content = this.thisHost };
 
@@ -432,14 +474,12 @@ namespace CRT
             this.Bind(BackgroundProperty, this.GetResourceObservable("Bg"));
             this.Bind(ForegroundProperty, this.GetResourceObservable("Fg"));
 
-            this.Width = UserSettings.HasPinoutWindowLayout ? UserSettings.PinoutWindowWidth : ComponentPinoutWindow.DefaultWidth;
-            this.Height = UserSettings.HasPinoutWindowLayout ? UserSettings.PinoutWindowHeight : ComponentPinoutWindow.DefaultHeight;
-            this.Position = UserSettings.HasPinoutWindowLayout
-                ? new PixelPoint(UserSettings.PinoutWindowX, UserSettings.PinoutWindowY)
-                : ComponentPinoutWindow.BesidePopup(popup);
+            // The place it was last left at - decided here, before it is sized for it (code review, 2026-11-17: a place on a
+            // screen taken away was given up only once shown, after it had been sized for that place, at its least size).
+            var saved = new PixelPoint(UserSettings.PinoutWindowX, UserSettings.PinoutWindowY);
+            this.thisPlaceIsKept = UserSettings.HasPinoutWindowPlace && this.Screens.ScreenFromPoint(saved) is not null;
+            this.Position = this.thisPlaceIsKept ? saved : ComponentPinoutWindow.BesidePopup(popup);
 
-            this.thisNormalWidth = this.Width;
-            this.thisNormalHeight = this.Height;
             this.thisNormalPosition = this.Position;
 
             // A place no screen shows any more - a screen taken away - is given up for one beside the popup.
@@ -448,25 +488,6 @@ namespace CRT
                 if (this.Screens.ScreenFromPoint(this.Position) is null)
                 {
                     this.Position = ComponentPinoutWindow.BesidePopup(popup);
-                }
-
-                // 960 high is more than a laptop's screen has: kept within the screen it opened on.
-                if ((this.Screens.ScreenFromPoint(this.Position) ?? this.Screens.Primary) is { } screen && screen.Scaling > 0)
-                {
-                    double screenWidth = screen.WorkingArea.Width / screen.Scaling;
-                    double screenHeight = screen.WorkingArea.Height / screen.Scaling;
-
-                    this.Width = Math.Min(this.Width, screenWidth);
-                    this.Height = Math.Min(this.Height, screenHeight);
-                }
-            };
-
-            this.SizeChanged += (_, _) =>
-            {
-                if (this.WindowState == WindowState.Normal)
-                {
-                    this.thisNormalWidth = this.Width;
-                    this.thisNormalHeight = this.Height;
                 }
             };
 
@@ -478,14 +499,137 @@ namespace CRT
                 }
             };
 
-            this.Closing += (_, _) => UserSettings.SavePinoutWindowLayout(this.thisNormalWidth, this.thisNormalHeight, this.thisNormalPosition.X, this.thisNormalPosition.Y);
+            this.Closing += (_, _) => UserSettings.SavePinoutWindowPlace(this.thisNormalPosition.X, this.thisNormalPosition.Y);
         }
 
         // "Pinout - U8 | CPU | 6510": the popup's title after the word.
         internal static string TitleFor(string? popupTitle) =>
             string.IsNullOrWhiteSpace(popupTitle) ? "Pinout" : "Pinout - " + popupTitle.Trim();
 
-        internal void TakeSection(Control section) => this.thisHost.Child = section;
+        internal void TakeSection(Control section)
+        {
+            this.thisHost.Child = section;
+
+            if (!this.thisPlaceIsKept)
+            {
+                this.KeepWholeOnScreen();
+            }
+
+            this.FitToContent();
+        }
+
+        // ###########################################################################################
+        // A place of CRT's own moved left until the window, frame and all, stands whole on its screen - once shown, when its
+        // frame is known (code review, 2026-11-17: moved before it was shown, with no frame known, it came a frame's width
+        // short, and the fit after it put the pin list under the drawing again). Nothing measured: the size it opened at says.
+        // ###########################################################################################
+        private void KeepWholeOnScreen()
+        {
+            if (this.ScreenOfPlace() is not { } screen || !double.IsFinite(this.Width))
+            {
+                return;
+            }
+
+            PixelRect area = screen.WorkingArea;
+            int outer = (int)Math.Ceiling((this.Width + this.FrameOf().Width) * screen.Scaling);
+            int x = Math.Max(area.X, Math.Min(this.Position.X, area.Right - outer));
+
+            if (x != this.Position.X)
+            {
+                this.Position = new PixelPoint(x, this.Position.Y);
+            }
+        }
+
+        // ###########################################################################################
+        // As large as the pinout in it: as wide as it is in the room its screen has - so its pin list stands beside the
+        // drawing when it can - and as tall, within the room under the window's place; never under its least size. With no
+        // screen to go by (none known), as large as the pinout alone.
+        // ###########################################################################################
+        internal void FitToContent()
+        {
+            if (this.thisHost.Child is null)
+            {
+                return;
+            }
+
+            this.Fit();
+        }
+
+        // ###########################################################################################
+        // Its size before it is shown and the pinout comes in - the pinout measured in the popup it still stands in. A place
+        // beside the popup - CRT's choice, not the person's - is first moved left as far as the pinout needs, never past its
+        // screen's left edge (code review, 2026-11-17: beside a popup near the screen's right edge, the window opened some
+        // 260 wide, its drawing scaled down and its list under it - or wholly off the screen).
+        // ###########################################################################################
+        internal void FitBeforeShown()
+        {
+            if (!this.thisPlaceIsKept)
+            {
+                this.MakeRoomLeftward();
+            }
+
+            this.Fit();
+        }
+
+        private void Fit()
+        {
+            Size room = this.Room();
+            Thickness padding = this.thisHost.Padding;
+            double across = padding.Left + padding.Right;
+            double down = padding.Top + padding.Bottom;
+            Size content = this.thisContentSizeWithin(Math.Max(0, room.Width - across));
+
+            this.Width = Math.Max(this.MinWidth, Math.Min(room.Width, content.Width + across));
+            this.Height = Math.Max(this.MinHeight, Math.Min(room.Height, content.Height + down));
+        }
+
+        // The window moved left on its screen - the primary one when its place is on none - until the pinout, as wide as the
+        // whole screen lets it be, fits right of it.
+        private void MakeRoomLeftward()
+        {
+            if (this.ScreenOfPlace() is not { } screen)
+            {
+                return;
+            }
+
+            PixelRect area = screen.WorkingArea;
+            double across = this.thisHost.Padding.Left + this.thisHost.Padding.Right;
+            double whole = (area.Width / screen.Scaling) - this.FrameOf().Width;
+            Size content = this.thisContentSizeWithin(Math.Max(0, whole - across));
+            int needed = (int)Math.Ceiling((Math.Max(this.MinWidth, content.Width + across) + this.FrameOf().Width) * screen.Scaling);
+            int x = Math.Max(area.X, Math.Min(this.Position.X, area.Right - needed));
+
+            if (x != this.Position.X)
+            {
+                this.Position = new PixelPoint(x, this.Position.Y);
+            }
+        }
+
+        // What the window's screen has right of and under its place, less its frame.
+        private Size Room()
+        {
+            if (this.ScreenOfPlace() is not { } screen)
+            {
+                return new Size(double.PositiveInfinity, double.PositiveInfinity);
+            }
+
+            PixelRect area = screen.WorkingArea;
+            Size frame = this.FrameOf();
+
+            return new Size(
+                Math.Max(this.MinWidth, ((area.Right - this.Position.X) / screen.Scaling) - frame.Width),
+                Math.Max(this.MinHeight, ((area.Bottom - this.Position.Y) / screen.Scaling) - frame.Height));
+        }
+
+        // The screen its place is on, else the primary one - null with none known.
+        private Screen? ScreenOfPlace() =>
+            (this.Screens.ScreenFromPoint(this.Position) ?? this.Screens.Primary) is { Scaling: > 0 } screen ? screen : null;
+
+        // What its frame takes round its client area - nothing known before it is shown.
+        private Size FrameOf() =>
+            this.FrameSize is { } outer
+                ? new Size(Math.Max(0, outer.Width - this.ClientSize.Width), Math.Max(0, outer.Height - this.ClientSize.Height))
+                : default;
 
         // The section handed back - the window keeps nothing of the popup's.
         internal void LetGoOfSection() => this.thisHost.Child = null;

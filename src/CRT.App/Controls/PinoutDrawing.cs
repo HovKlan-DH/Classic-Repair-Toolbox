@@ -25,8 +25,18 @@ namespace CRT
     // raises PinHovered, so the host lights its row in the list too (owner request, 2026-11-09: "hovering the IC
     // image pin will not highlight the table pin ... do highlight both places") - never for HoverPin, which is
     // the host's own say and would only come back to it.
+    //
+    // A CHIP CRT KNOWS IS DRAWN WITH ITS INSIDES (owner request, 2026-11-16; LogicChips decides, LogicChipGeometry places):
+    // its gates, blocks, switches and wires in a case as a real chip's, each pin a square in the color of its direction, and
+    // under it what the colors mean - painted by PinoutDrawing.Inside.cs. AND EVERY OTHER DIP IN THE SAME CASE, EMPTY (owner
+    // request, 2026-11-17: "unify ALL pinout IC's so they look the same"; LogicChipGeometry.EmptyCaseFor). It is drawn
+    // smaller, never cut, where its place is narrower than it, as a part's picture is (PartPictureDrawing). Only a single
+    // row of pins - a SIP, a TO-92 or TO-220 - keeps the plain case (RenderCase).
+    //
+    // The parts: PinoutDrawing.cs (this - showing, the pointer, the single row's case), PinoutDrawing.Inside.cs (a DIP's
+    // case, pins, wires and badges, and the legend under them), PinoutDrawing.Symbols.cs (the gates, blocks and switches inside it).
     // ###########################################################################################
-    public sealed class PinoutDrawing : Control
+    public sealed partial class PinoutDrawing : Control
     {
         private const double TextSize = 11;
 
@@ -63,8 +73,15 @@ namespace CRT
 
         internal int? MarkedPinForTests => this.thisMarkedPin;
 
-        // The case and its pins, drawn again.
-        public void Show(string? package, IReadOnlyList<ComponentPinEntry> pins)
+        // How much smaller than its own size it is drawn, for the place it has.
+        private double thisScale = 1;
+
+        // ###########################################################################################
+        // The case and its pins, drawn again - with the insides of `chip` when CRT knows the chip (LogicChips.For), any other
+        // DIP in the same case with nothing in it, each pin in the color of its direction (PinDirectionKinds.ByPin: the one
+        // `pins` gives it, else the datasheet's).
+        // ###########################################################################################
+        public void Show(string? package, IReadOnlyList<ComponentPinEntry> pins, LogicChip? chip = null)
         {
             ArgumentNullException.ThrowIfNull(pins);
 
@@ -72,12 +89,26 @@ namespace CRT
             this.thisHoveredPin = null;
             this.thisMarkedPin = null;
 
+            // A pin by its number as every other reading of it goes (ComponentVocabulary.PinNumberOf - "2 [64K]" is pin 2), as
+            // its color is (code review, 2026-11-17: by int.TryParse here, such a pin was colored and left unnamed).
             foreach (ComponentPinEntry pin in pins)
             {
-                if (int.TryParse(pin.Pin?.Trim(), NumberStyles.None, CultureInfo.InvariantCulture, out int number) &&
-                    !this.thisNames.ContainsKey(number))
+                if (ComponentVocabulary.PinNumberOf(pin.Pin) is int number && !this.thisNames.ContainsKey(number))
                 {
                     this.thisNames[number] = pin.Name?.Trim() ?? string.Empty;
+                }
+            }
+
+            // A chip drawn with its insides names every pin outside - the datasheet's name where the board has none - as nothing
+            // is written at the pins inside it (owner request, 2026-11-16: "there will always be a text for the pin itself").
+            if (chip is not null)
+            {
+                for (int number = 1; number <= chip.PinCount; number++)
+                {
+                    if (!this.thisNames.TryGetValue(number, out string? name) || name.Length == 0)
+                    {
+                        this.thisNames[number] = chip.NameOf(number);
+                    }
                 }
             }
 
@@ -89,14 +120,37 @@ namespace CRT
                     .DefaultIfEmpty(0)
                     .Max());
 
-            this.thisLayout = PinoutGeometry.For(package, pins.Select(pin => pin.Pin), this.thisNameWidth);
+            this.ShowInside(chip, package, pins);
+            this.thisLayout = this.thisInside?.Case ?? PinoutGeometry.For(package, pins.Select(pin => pin.Pin));
+            this.thisNaturalSize = this.thisLayout is not { } layout ? default : this.WithCaption(layout.Size);
             this.IsVisible = this.thisLayout is not null;
             this.InvalidateMeasure();
             this.InvalidateVisual();
         }
 
-        // Whether there is anything to draw - for the tests, and how wide for the popup's list beside it.
+        // Whether there is anything to draw - for the tests.
         internal PinoutLayout? LayoutForTests => this.thisLayout;
+
+        // Each pin's name as written beside it.
+        internal IReadOnlyDictionary<int, string> NamesForTests => this.thisNames;
+
+        // Its own size: the case, and under it what the colors mean - the popup's list stands beside it when there is room for
+        // both. Worked out by Show, as nothing else changes it.
+        private Size thisNaturalSize;
+
+        internal Size NaturalSize => this.thisNaturalSize;
+
+        protected override Size MeasureOverride(Size availableSize)
+        {
+            Size natural = this.NaturalSize;
+
+            this.thisScale = natural.Width > 0 && availableSize.Width < natural.Width ? Math.Max(0.4, availableSize.Width / natural.Width) : 1;
+
+            return new Size(natural.Width * this.thisScale, natural.Height * this.thisScale);
+        }
+
+        // Where the pointer is on the case as laid out, however small it is drawn.
+        private Point Unscaled(PointerEventArgs e) => e.GetPosition(this) / this.thisScale;
 
         // The pin of what the host shows - null for none. It stays lit until the host says otherwise.
         public void MarkPin(int? number)
@@ -124,7 +178,7 @@ namespace CRT
 
             if (this.PinsCanBePicked && this.thisLayout is { } layout)
             {
-                this.HoverOver(PinoutGeometry.PinAt(layout, e.GetPosition(this))?.Number);
+                this.HoverOver(PinoutGeometry.PinAt(layout, this.Unscaled(e))?.Number);
             }
         }
 
@@ -141,7 +195,7 @@ namespace CRT
             if (this.PinsCanBePicked &&
                 this.thisLayout is { } layout &&
                 e.GetCurrentPoint(this).Properties.IsLeftButtonPressed &&
-                PinoutGeometry.PinAt(layout, e.GetPosition(this)) is { } pin)
+                PinoutGeometry.PinAt(layout, this.Unscaled(e)) is { } pin)
             {
                 this.RaiseEvent(new PinPickedEventArgs(PinoutDrawing.PinPickedEvent, pin.Number));
                 e.Handled = true;
@@ -159,8 +213,6 @@ namespace CRT
             }
         }
 
-        protected override Size MeasureOverride(Size availableSize) => this.thisLayout?.Size ?? default;
-
         public override void Render(DrawingContext context)
         {
             if (this.thisLayout is not { } layout)
@@ -168,30 +220,35 @@ namespace CRT
                 return;
             }
 
+            using (context.PushTransform(Matrix.CreateScale(this.thisScale, this.thisScale)))
+            {
+                if (this.thisInside is { } inside)
+                {
+                    this.RenderInside(context, inside);
+                }
+                else
+                {
+                    this.RenderCase(context, layout);
+                }
+            }
+        }
+
+        // A single row of pins (a DIP is drawn by RenderInside): a box with its leads under it, each lead's number under it.
+        private void RenderCase(DrawingContext context, PinoutLayout layout)
+        {
             IBrush foreground = this.Brush("Fg", Brushes.Black);
             IBrush body = this.Brush("Card_Bg", Brushes.White);
             IBrush firstPin = this.Brush("Schematics_FirstPin", Brushes.IndianRed);
             var outline = new Pen(foreground, 1);
 
-            // Clear, not nothing: only what is drawn takes the pointer, and the gaps between the pins' names
-            // would otherwise let it through.
+            // Clear, not nothing: only what is drawn takes the pointer, and the gaps between the leads would
+            // otherwise let it through.
             if (this.PinsCanBePicked)
             {
                 context.FillRectangle(Brushes.Transparent, new Rect(layout.Size));
             }
 
             context.DrawRectangle(body, outline, layout.Body, 3, 3);
-
-            if (layout.IsDualInLine)
-            {
-                // The notch - half a circle cut into the top edge.
-                var notch = new EllipseGeometry(new Rect(layout.Notch.X - 7, layout.Notch.Y - 7, 14, 14));
-                using (context.PushClip(layout.Body))
-                {
-                    context.DrawGeometry(this.Brush("Bg", Brushes.White), outline, notch);
-                }
-            }
-
             context.DrawEllipse(firstPin, null, layout.FirstPinDot, 3, 3);
 
             // The pin shown and the pin under the pointer, each in its own - as a list's selected row and
@@ -212,30 +269,7 @@ namespace CRT
 
                 string number = pin.Number.ToString(CultureInfo.InvariantCulture);
                 FormattedText numberText = PinoutDrawing.Text(number, foreground, maxWidth: double.PositiveInfinity, bold: pin.Number == 1);
-
-                Point numberAt = pin.Side switch
-                {
-                    PinSide.Left => new Point(pin.NumberAnchor.X, pin.NumberAnchor.Y - (numberText.Height / 2)),
-                    PinSide.Right => new Point(pin.NumberAnchor.X - numberText.Width, pin.NumberAnchor.Y - (numberText.Height / 2)),
-                    _ => new Point(pin.NumberAnchor.X - (numberText.Width / 2), pin.NumberAnchor.Y),
-                };
-
-                context.DrawText(numberText, numberAt);
-
-                if (pin.Side == PinSide.Bottom ||
-                    !this.thisNames.TryGetValue(pin.Number, out string? name) ||
-                    name.Length == 0)
-                {
-                    continue;
-                }
-
-                FormattedText nameText = PinoutDrawing.Text(name, foreground, this.thisNameWidth - PinoutGeometry.NameGaps, bold: false);
-
-                Point nameAt = pin.Side == PinSide.Left
-                    ? new Point(pin.NameAnchor.X - nameText.Width, pin.NameAnchor.Y - (nameText.Height / 2))
-                    : new Point(pin.NameAnchor.X, pin.NameAnchor.Y - (nameText.Height / 2));
-
-                context.DrawText(nameText, nameAt);
+                context.DrawText(numberText, new Point(pin.NumberAnchor.X - (numberText.Width / 2), pin.NumberAnchor.Y));
             }
         }
 

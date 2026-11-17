@@ -1411,15 +1411,20 @@ namespace CRT
         // A LEADED PART IS DRAWN AS IT LOOKS (owner request, 2026-11-09; PartPicture decides, PartPictureDrawing paints):
         // in the place of its case drawn as a box - a TO-92, a TO-220, a resistor pack - and for a part with no pins
         // listed too, its leads numbered as the case numbers them.
+        //
+        // A LOGIC CHIP CRT KNOWS IS DRAWN WITH ITS INSIDES (owner request, 2026-11-16; LogicChips decides), each pin in the
+        // color of its direction as the pin list says it, else as the datasheet does (owner request, 2026-11-17) - with no
+        // pins listed too, as the datasheet numbers them.
         // ###########################################################################################
         private void RefreshCrt4Data(ComponentEntry? entry)
         {
             List<ComponentPinEntry> pins = ComponentPopupContent.PinEntriesOf(this._allPins, this._boardLabel, this._localRegion);
             PartPicture.Picture? part = entry is null ? null : PartPicture.Of(entry, pins, this._pinNets);
+            LogicChip? chip = entry is null ? null : LogicChips.For(entry, pins);
 
             // Drawn again, the drawings point at no pin until the pointer moves - and neither does the list.
             this._pinPointedAtInDrawing = null;
-            this.InfoPinoutDrawing.Show(entry?.Package, pins);
+            this.InfoPinoutDrawing.Show(entry?.Package, pins, chip);
             this.InfoPartDrawing.Show(part);
 
             // A single resistor, or an axial ceramic capacitor, is its color bands, in the same place (owner requests, 2026-11-09;
@@ -1432,7 +1437,7 @@ namespace CRT
             }
 
             this.ShowViewedPin(this.ThumbnailList.SelectedItem as ComponentImageItem);
-            this.PinoutSection.IsVisible = this._pinRows.Count > 0 || part is not null || resistor;
+            this.PinoutSection.IsVisible = this._pinRows.Count > 0 || part is not null || resistor || (chip is not null && this.InfoPinoutDrawing.IsVisible);
             this.InfoPinsPanel.IsVisible = this._pinRows.Count > 0;
             this.MeasurePinColumns();
             this.PlacePinList(this.PinoutGrid.Bounds.Width);

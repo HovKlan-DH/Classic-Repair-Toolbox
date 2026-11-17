@@ -43,14 +43,13 @@ namespace Handlers.DataHandling
         public bool? MultipleInstancesForComponentPopup { get; set; }
 
         // The pinout in a window of its own beside the component popup (owner request, 2026-11-07), and that window's
-        // size and place - one for every popup, board and component.
+        // place - one for every popup, board and component. Its size is no setting: it fits what it shows (owner request,
+        // 2026-11-17); the "pinoutWindowWidth" and "pinoutWindowHeight" pre-releases wrote are dropped at the next save.
         [JsonPropertyName("detachPinoutInComponentPopup")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public bool? DetachPinoutInComponentPopup { get; set; }
 
-        [JsonPropertyName("hasPinoutWindowLayout")] public bool HasPinoutWindowLayout { get; set; } = false;
-        [JsonPropertyName("pinoutWindowWidth")] public double PinoutWindowWidth { get; set; } = 870.0;
-        [JsonPropertyName("pinoutWindowHeight")] public double PinoutWindowHeight { get; set; } = 960.0;
+        [JsonPropertyName("hasPinoutWindowLayout")] public bool HasPinoutWindowPlace { get; set; } = false;
         [JsonPropertyName("pinoutWindowX")] public int PinoutWindowX { get; set; } = 0;
         [JsonPropertyName("pinoutWindowY")] public int PinoutWindowY { get; set; } = 0;
 
@@ -950,21 +949,17 @@ namespace Handlers.DataHandling
             }
         }
 
-        // The pinout window's size and place, one for all - read-only; written by SavePinoutWindowLayout.
-        public static bool HasPinoutWindowLayout => _data.HasPinoutWindowLayout;
-        public static double PinoutWindowWidth => _data.PinoutWindowWidth;
-        public static double PinoutWindowHeight => _data.PinoutWindowHeight;
+        // The pinout window's place, one for all - read-only; written by SavePinoutWindowPlace.
+        public static bool HasPinoutWindowPlace => _data.HasPinoutWindowPlace;
         public static int PinoutWindowX => _data.PinoutWindowX;
         public static int PinoutWindowY => _data.PinoutWindowY;
 
-        public static void SavePinoutWindowLayout(double width, double height, int x, int y)
+        public static void SavePinoutWindowPlace(int x, int y)
         {
-            _data.HasPinoutWindowLayout = true;
-            _data.PinoutWindowWidth = width;
-            _data.PinoutWindowHeight = height;
+            _data.HasPinoutWindowPlace = true;
             _data.PinoutWindowX = x;
             _data.PinoutWindowY = y;
-            Logger.Info($"Setting changed: [PinoutWindowLayout] [{width:F0}x{height:F0}] [Position: {x},{y}]");
+            Logger.Info($"Setting changed: [PinoutWindowPlace] [Position: {x},{y}]");
             Save();
         }
 
@@ -2132,7 +2127,7 @@ namespace Handlers.DataHandling
                 Logger.Info($"        [BlinkSelected] [{BlinkSelected}]");
                 Logger.Info($"        [ComponentInfoWindowLayout] [{_data.ComponentInfoWindowState}] [{_data.ComponentInfoWindowWidth:F0}x{_data.ComponentInfoWindowHeight:F0}] [LeftRatio: {_data.ComponentInfoWindowLeftColumnRatio:F3}] [ThumbnailHeight: {_data.ComponentInfoWindowThumbnailRowHeight:F1}] [Position: {_data.ComponentInfoWindowX},{_data.ComponentInfoWindowY}]");
                 Logger.Info($"        [DetachPinoutInComponentPopup] [{DetachPinoutInComponentPopup}]");
-                Logger.Info($"        [PinoutWindowLayout] [{_data.PinoutWindowWidth:F0}x{_data.PinoutWindowHeight:F0}] [Position: {_data.PinoutWindowX},{_data.PinoutWindowY}]");
+                Logger.Info($"        [PinoutWindowPlace] [Position: {_data.PinoutWindowX},{_data.PinoutWindowY}]");
                 Logger.Info($"        [SchematicsThumbnailsWindowLayout] [{_data.SchematicsThumbnailsWindowState}] [{_data.SchematicsThumbnailsWindowWidth:F0}x{_data.SchematicsThumbnailsWindowHeight:F0}] [Position: {_data.SchematicsThumbnailsWindowX},{_data.SchematicsThumbnailsWindowY}]");
                 Logger.Info($"        [ComponentInfoKeyboardHandling] [{ComponentInfoKeyboardHandling}]");
                 Logger.Info($"        [ComponentInfoScrollAction] [{ComponentInfoScrollAction}]");

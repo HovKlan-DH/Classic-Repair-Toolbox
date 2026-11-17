@@ -93,6 +93,16 @@ public class ThemeContrastTests
         foreach (var pair in On("Mode_Selected_Border", Edge, "Bg")) yield return pair;
         foreach (var pair in On("BoardTable_CurrentCell_Border", Edge, "Table_Bg")) yield return pair;
         foreach (var pair in On("SubmittedCredit_Border", Edge, "Bg")) yield return pair;
+
+        // A chip drawn with its insides (2026-11-16), per pin direction (2026-11-17): its ink - the edge of a pin's square on the
+        // window's ground and of its badge on the case's card - its wires on that card, and the number on the square's tint.
+        // Its gates are in Fg and a multiplexer's "0" and "1" in Text_Muted_Fg (above), on the same card.
+        foreach (string level in new[] { "Input", "Output", "InputOutput", "Other" })
+        {
+            foreach (var pair in On($"PinoutChip_{level}", Edge, "Card_Bg", "Bg")) yield return pair;
+            yield return ($"PinoutChip_{level}_Wire", "Card_Bg", Edge);
+            yield return ($"PinoutChip_{level}_Fg", $"PinoutChip_{level}_Bg", Text);
+        }
     }
 
     // The fills a word is written on in white or black, whichever reads better (ThemeResources.TextOn).

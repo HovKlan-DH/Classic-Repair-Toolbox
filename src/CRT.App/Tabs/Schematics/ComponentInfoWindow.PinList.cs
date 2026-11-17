@@ -108,13 +108,19 @@ namespace CRT
         // The pin list beside the drawing when it fits there with every text whole (PinoutGeometry.ListFitsBeside), else
         // under it - and a RESISTOR'S LIST FIRST, its picture under it (owner request, 2026-11-09: "I want the pinout table
         // to be shown first and then the image and explanation afterwards"): the list across the top row, the picture in the
-        // second (its place in the markup). Its columns then fit the room it has (FitPinColumns).
+        // second (its place in the markup). Its columns then fit the room it has (FitPinColumns). True when it stands beside.
         // ###########################################################################################
-        private void PlacePinList(double width)
+        private bool PlacePinList(double width)
         {
-            double drawing = this.InfoPinoutDrawing.IsVisible ? this.InfoPinoutDrawing.LayoutForTests?.Size.Width ?? 0
-                : this.InfoPartDrawing.IsVisible ? this.InfoPartDrawing.NaturalSize.Width
-                : 0;
+            // The drawing no wider than the grid gives it (code review, 2026-11-17): its column is Auto, which Avalonia measures
+            // with no limit, so it was never drawn smaller and the popup - which does not scroll sideways - cut it off.
+            if (width > 0 && double.IsFinite(width))
+            {
+                this.InfoPinoutDrawing.MaxWidth = Math.Max(0, width - this.InfoPinoutDrawing.Margin.Left - this.InfoPinoutDrawing.Margin.Right);
+                this.InfoPartDrawing.MaxWidth = Math.Max(0, width - this.InfoPartDrawing.Margin.Left - this.InfoPartDrawing.Margin.Right);
+            }
+
+            double drawing = this.DrawingWidth();
             bool first = this.InfoResistorPicture.IsVisible;
             bool beside = !first && PinoutGeometry.ListFitsBeside(width, drawing, PinTableGeometry.WidthOf(this._pinColumns));
 
@@ -123,7 +129,14 @@ namespace CRT
             Grid.SetRow(this.InfoPinsPanel, beside || first ? 0 : 1);
 
             this.FitPinColumns(beside && drawing > 0 ? width - drawing - PinoutGeometry.ListGap : width);
+            return beside;
         }
+
+        // How wide the drawing beside the pin list is - the chip's case or a leaded part, 0 for none.
+        private double DrawingWidth() =>
+            this.InfoPinoutDrawing.IsVisible ? this.InfoPinoutDrawing.NaturalSize.Width
+            : this.InfoPartDrawing.IsVisible ? this.InfoPartDrawing.NaturalSize.Width
+            : 0;
 
         // ###########################################################################################
         // EVERY COLUMN AS WIDE AS ITS LONGEST TEXT, THE SAME SPACE BETWEEN EACH TWO (owner request, 2026-11-09: "align on

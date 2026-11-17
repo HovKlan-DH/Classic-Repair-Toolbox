@@ -1164,7 +1164,8 @@ there, and `await` on a finished task looped for ever on the UI thread. A tool f
   so renaming goes for every region and `LabelInEveryRegion` says so under the box while ticked - two labels are two components, one per
   region, by "Add component"'s "Applies to". Then Pinout (the pins,
   "Add the N pins of DIP-40" from `ComponentVocabulary.PinCountOf`, the case drawn from above -
-  `PinoutDrawing` in `Controls/`, the popup draws it too; every position `PinoutGeometry`), oscilloscope baselines, pictures, replacement parts,
+  `PinoutDrawing` in `Controls/`, the popup draws it too; every position `LogicChipGeometry`'s for a DIP, `PinoutGeometry`'s for a single
+  row), oscilloscope baselines, pictures, replacement parts,
   files and links. **Every change is a
   transform of the draft held in memory** (`ComponentPaneEdits` - the component AS SHOWN, the region
   CRT shows by the component list's rule; the other region's rows and every other component's are
@@ -1260,7 +1261,10 @@ there, and `await` on a finished task looped for ever on the UI thread. A tool f
   a baseline's machine state (`ComponentPopupContent`); the Overview has a Package column and
   its Notes are the first image's note (`OverviewHtmlBuilder.BuildRows`). **"Show pinout in its own window when the component info window would scroll"** (owner's choice of words, 2026-11-09 - "Detach pinout image in component info popup", then "... window", until then; right under "Open multiple component info windows" since)
   (owner request, 2026-11-07; `ComponentInfoWindow.Pinout.cs`) moves the popup's pinout section into a window of its own,
-  870x960 the first time, its size and place one for all - **only when the popup has no room for it** (owner request,
+  its place one for all and **its size what the pinout takes** (owner request, 2026-11-17: "auto-size, so it will show all the info, and not
+  being way too big or small ... always start the window in the last top-left X/Y position"; `ComponentPinoutWindow.FitToContent`, measured by
+  the popup's `PinoutSizeWithin` - the pin list beside the drawing when the screen has the room, the window fitted again at every component or
+  region shown, within the room right of and under its place; 870x960 the first time and the size left, saved, until then) - **only when the popup has no room for it** (owner request,
   2026-11-09: "if no vertical scrolling will be implied with this info inside of component info popup, then you will not open
   a new window"; `PinoutFitsInPopup`): measured before a window opens, the popup's other sections, the pinout at the popup's
   width and the TALLEST image note and baseline section among the component's images (so the pins stay in sight on every
@@ -1336,6 +1340,74 @@ there, and `await` on a finished task looped for ever on the UI thread. A tool f
   one, the cathode's, and every diode there to ground has pad 2 on it); a doubt, a contradiction or a pin with no lead draws nothing - a trimmer too (Open128's C20,
   "Trimmer" 4pF-40pF, is no disc). Measured on the converted boards: 750 of 2,906 components drawn; the rest have no package - setting one
   draws them.
+  **A logic chip CRT knows is drawn WITH ITS INSIDES, in the case's place** (owner request, 2026-11-16: "visualize its internals for e.g. its
+  logic cirquits ... the very simple chips like AND, OR, XOR, NAND etc."; "OK, do it" to: the gates and the 157/257 family first, always in place
+  of the plain case, each pin colored by its expected reading): **the case is the plain case's, the theme's `Card_Bg` and `Fg`** (owner
+  request, the same day: "it should have the same color as the normal drawn pinout IC" - a black, then a charcoal case went), the gates outlined
+  in `Fg` as the datasheets draw them, **each pin a square in the color of its DIRECTION** (owner request, 2026-11-17: "instead of coloring the
+  pins depending on its expected oscilloscope reading, then I would like to color it for its pin direction, as seen in the pinout ... Not
+  connected + Power + Other + Unknown can all have the same lightgrey'ish color ... the Input/output one needs a new color" - by the expected
+  reading until then): green an input, red an output, blue an input/output (owner request, the same day: "change the "Input" color to a nice
+  green'ish color, and then have the "Input/output" as the blue'ish color" - blue, red and purple until then), grey anything else
+  (`PinDirectionKinds`) - **exactly the direction the pin list gives it, "Unknown" grey**, the datasheet's (`LogicChip.DirectionOf`) only for a
+  pin the list gives none, as its name is (`PinDirectionKinds.ByPin`). **THE DATA SAYS IT, NOT THE DRAWING** (owner request, the same day: "I
+  would rather then convert the data, so it also will show correctly in the text part of it ... make sure it also gets done when we go-live"):
+  the conversion gives every pin of these chips its datasheet's direction, and of other ICs too (`DatasheetPins`, `ConversionPinouts` below) -
+  three of four listed pins said "Unknown". **AND EVERY OTHER DIP IS THE SAME CASE, EMPTY** (owner request, the same day: "unify ALL pinout IC's so they look the same,
+  meaning that IC's where it has no data (like e.g. the CPU or VIC-II etc) will look like the new ones ... so we can get the same directions
+  applied to it"; `LogicChipGeometry.EmptyCaseFor`): its pins colored the same way, its body a real one's proportion - three pitches (300 mil),
+  six (600 mil) for a package named "wide" or of 24 pins or more; only a single row (SIP, TO-92, TO-220) keeps `PinoutGeometry`'s plain case.
+  **All of it discreet** ("I do think this is 'too much color'"): per direction and theme a muted
+  ink for its square's edge, a pale (dark, on the dark theme) tint for the square and a number on it, and its wires' own color
+  (`PinoutChip_<Kind>`, `_Bg`, `_Fg`, `_Wire`; `PinDirectionColors`; in `ThemeContrastTests`) - **the color only in the squares and badges: every
+  number near-black (white on the dark theme) and every wire one quiet grey** (the owner's pick of seven variations drawn from the 250407's U8 and
+  U27: "A for the pin-background colors + D for the pin text color + E for the grey wires"), and under it a legend, "Pin direction:", of those drawn -
+  **not what the chip is** ("the name is already given elsewhere (e.g. in header line)"; the catalogue keeps no description since). The pin
+  lit has no ring round its square, only the strip behind it; the numbers are not bold (owner requests, the same day). **NOTHING IS WRITTEN AT THE PINS INSIDE THE CASE** ("I do not think
+  this text inside the IC is needed (e.g. "GND" and "VCC") as there will always be a text for the pin itself"): no stub and no name at the supply
+  or a pin not connected, and every pin named OUTSIDE - the board's name, else the datasheet's (`PinoutDrawing.Show`). **AND THE REST OF THE
+  BOARDS' LOGIC CHIPS THE SAME DAY** (owner request: "OK, now go ahead and make the rest"), each family laid out its own way (`LogicChip.Layout`,
+  a part of `LogicChipGeometry` each): the 125/126's buffers with their enable from the pin above; the 153's 4-to-1 selectors (a multiplexer's
+  select or enable comes from its pin when that is just above it on its side - since then the 257's first takes S and its last G by wire);
+  the 4066's switches (contacts, an open blade, a dashed link from the control's wire); the 7474 as a flip-flop symbol (D and the clock's
+  wedge on its back, R and S from the pins above and below, Q-bar and Q turning back to their pins); the 175, 273 and 373 as the datasheets'
+  arrays - a column per side, an element per flip-flop or latch, and a COMMON CONTROL SECTION at each column's ends with the shared clock,
+  clear or enable, joined across to the other column's; the decoders and the 193 as blocks, every terminal at its pin, a weighted input
+  written by its BIT ("A0", "D3" - its weight "1", "2" read as more outputs beside a decoder's "0" to "3"); the 240/244 and 245 down the
+  middle, each halfway between its two pins' rows (the 244's group enables by badge, the 245's DIR and enable through a section on top); and
+  the 555/556 as their functional diagrams - two comparators (THRES against CONT, TRIG against "1/3" written outside its back), the flip-flop,
+  the output stage and the inverted open-collector discharge, the wires between them inside the timer (pin 0, never lit). Not drawn: the
+  74629, 74123 and 4044 (oscillators, monostables, and a pin-out not checked against a datasheet). **THE INSIDES KEEP ROOM FROM THE CASE**
+  (owner request, the same day: "a little vertical/empty spacing between the top/bottom gate borders and the frame of the IC ... I want to stand
+  out for these pinout IC's, so I will appreciate some extra good quality in these"): a symbol `FrameClear` (8) from every edge, a badge
+  `BadgeFrameClear` (6), nothing near the notch or pin 1's dot (`NotchRadius`, `FirstPinDot`, `DotRadius` - the painter's own numbers) - a
+  column's control section is over its control's row, as an element is over its own, and a layout short of room asks the case for more end
+  padding (`Case(..., endPadding)` - the 556's). `LogicChipGeometryTests` holds every chip to it, judging a gate by its outline - a timer's
+  comparator and output stage are triangles that nest - 4 pixels from any other symbol. **AND EVERY MARK INSIDE A GATE KEEPS CLEAR OF ITS OUTLINE**
+  (owner request, 2026-11-17: "the +/- is too close to its borders ... this "1/3" text could have same text size as the other texts inside this
+  IC ... we need a high quality with a lot of details. There could be others with same issue"; `LogicChipGeometry.Marks.cs`): a comparator's
+  "+" and "-" are strokes, a multiplexer's numbers, a stage or Schmitt mark each in an area `MarksOf` places `MarkClear` from the outline's ink
+  (the strokes' widths counted), and a gate is as large as its marks need - a comparator by `ComparatorHalfHeight`, a multiplexer by
+  `MuxHeightFor`, a buffer 30 by `BufferHeight` with its mark as large as fits, down to half; the 240's and 244's buffers, too small for any, are
+  drawn without it (`LogicChipGeometryTests` lists them, so another is a decision). A timer's "1/3" is plain ASCII at the marks' size, in an
+  area of its own (`TagArea`) on a stub of wire. Pure parts: the catalogue
+  `LogicChips` (CRT.Data since 2026-11-17 - the server's conversion asks it for directions), the placing `LogicChipGeometry` (and its `.Blocks`, `.Arrays`, `.Switches`, `.Timers`, `.Marks` parts), the colors
+  `PinDirectionColors`; painted by `PinoutDrawing.Inside.cs` and `.Symbols.cs`, so the popup and the "Pinout" page light and pick its pins as on
+  any case (the layout's `Pitch` is 24 there - `AreaOf` goes by it). **The catalogue is typed from the datasheets in the MiniPro models' own
+  pin-out strings, and `LogicChipsTests` holds every chip with a model (`LogicIcReferenceModels`) against it** - a combinational chip for EVERY
+  input combination, the 4066's switches both ways, a sequential one (7474, 373, 193, 556) through thousands of pin changes, by the TEST's own
+  reading of what each terminal role does (a unit's behaviour is in no app code: it would be code only tests call) - a gate chip with no
+  model must have a modelled one's pin-out, and the 175, 273, 245 and 555 are spelt out pin by pin (the test lists them, so one added without a
+  model is a decision). **The drawing's connections are read back off it** (`LogicChipGeometryTests`, over every symbol: wire ends on pins,
+  terminals and badges, a symbol passing a pin's net between its own terminals of it; every unit's every pin reached through the symbols
+  standing for it; no wire crossing another or a symbol, no badge on a wire or a symbol) - so what no wire can reach (the 7410's 1C, the
+  74133's H-M, a multiplexer's shared select and enable from elsewhere, the 153's select from the other side, each 244 buffer's group enable) is
+  a stub ending on a BADGE with the pin's number in its color (`LogicPinBadge`), never a crossing wire. **A component is matched by its number** (technical name, then part number; any maker's prefix, family and suffix; the first word)
+  **and drawn only when nothing the board says contradicts the datasheet** (`LogicChips.For`: a category no chip has, a package of another pin
+  count or kind, a pin past the case, a ground or supply NAMED elsewhere - whole names only, `ChipNames`, so "CE - GND" is no ground; a
+  direction TYPED is no judgement, as KiCad types inputs strapped to a rail "Power" or "Ground" - code review, 2026-11-17, measured on the
+  shipped boards; `IcPinouts.For` the same) - with no package too, and with no pins listed (the popup shows its pinout
+  section for it). Measured 2026-11-16 on the 14 converted boards: 198 components drawn (107 before the rest), none turned down.
   **The board's own lists open in the pane too** (slice 4a, 2026-10-26; `ComponentPane.Board.cs`,
   `TabDrafts.OpenBoardPartAsync`): the left column's "Files", "Links", "Credits" and "Important
   signals" show one of them in place of a component (`PaneBoardPart`) - Schematic images too since
@@ -1546,14 +1618,20 @@ there, and `await` on a finished task looped for ever on the UI thread. A tool f
   FIRST PCB file's pads give the pin numbers and nets (`KiCadReferenceMatcher`'s rule), the schematic's
   symbol pins - every unit, from the sheet's own `lib_symbols` (`KiCadSchematicSymbol.Pins`) - name a pin
   before the pad's own `pinfunction`/`pintype` (KiCad 6+; all a board without a schematic has). Names
-  in CRT's spelling ("~{RESET}" is "~RESET", "~" none; a pad number EVERY pad's name ends in is taken
+  in CRT's spelling ("~{RESET}" is "/RESET" - **an active-low pin is written with "/" before it, everywhere** (owner decision,
+  2026-11-17: "use "/" everywhere" - as 11 published boards write 687 names, "~RESET" until then; `KiCadNetNames.Readable`, a
+  logic chip's datasheet names by `LogicChip.NameOf`, the pane's hints; a net's name as an important signal stores it is the
+  loader's, untouched), "R/~{W}" "R//W", "~" none; a pad number EVERY pad's name ends in is taken
   off - a real name may hold "_"), directions in `ComponentVocabulary`'s words, a supply pin told by its
   NAME too (the live 250469's library types every pin "input"). **The net is never stored** - it is the
   board's, read when shown: beside each pin in the pane (the host reads the pins whenever a component
   is shown - `ComponentPane.ComponentShown`, `TabDrafts.LoadKiCadPinsAsync`) and in the popup
   (`TabSchematics.KiCadPinNetsOf`, the KiCad data loaded for the board on screen). "Fill from KiCad"
   adds the pins missing and fills in EMPTY names and directions only - never what was typed - as ONE
-  step. The pins are asked for again when the draft's KiCad files change while the component is shown
+  step, a direction the datasheet's where CRT holds one (`DatasheetPins`). **"Fill pins from datasheet"** (owner request, 2026-11-17)
+  does the same from the datasheet CRT holds of the chip (`DatasheetPins.PinoutOf` - `LogicChips` and `IcPinouts`, names and
+  directions, by the very `KiCadComponentPins.Fill`), offered while it would add or fill in something, and then IN PLACE OF "Add the N
+  pins of DIP-40", which adds bare pins. The pins are asked for again when the draft's KiCad files change while the component is shown
   (`ComponentPane.FollowKiCadFiles`, after every change and save), and a read answers only the ask it
   was started for (`KiCadPinsAsk` - an older read ending last never wins); an older file's pad on
   KiCad's "no net", (net 0 ""), is on no net (the loader marks it `IsNoNet` - its name reads "0").
@@ -3275,7 +3353,25 @@ service to the 4.0 trees"). CRT reads a main file only at or below its own versi
   `KiCadRawProjectLoader`, `KiCadProjectData`, `KiCadComponentTable`, `KiCadPinTable`, `KiCadSheetNetAliases`, `KiCadSymbolPlacement`,
   `StampedLruCache`; their tests stay in CRT.App.Tests) - how many components a VIEW shows needs the app's marking geometry, so that is
   `BoardKiCadFacts.CountsByView`. **The proof allows only that addition** (`DataTreeConversionShippedDataTests`: a package filled where it
-  was empty, every pin the workbook had kept). **A user's Excel-era draft takes the pinouts its published board was converted with, in the
+  was empty, every pin the workbook had kept). **A PIN'S DIRECTION: WHAT A CONTRIBUTOR TYPED, THEN THE DATASHEET, THEN KiCad, THEN
+  "Unknown"** (owner request, 2026-11-17: "convert the data, so it also will show correctly in the text part of it ... make sure it also
+  gets done when we go-live"; and, the same day, "OK to what you suggest for 1-4" - CRT.Data's `DatasheetPins`, the ONE order, which the
+  conversion, "Fill pins from KiCad" and the KiCad import all go by; server 11.1.0): **a direction is the CHIP's, and KiCad's pin type is no
+  measurement of the board** - it is typed by whoever drew the symbol, for KiCad's wiring check, and the boards' projects type the same chips
+  three ways (the 250407's 6510 and ROMs all "input", the Open128's 6526 exactly its datasheet, the 250469's every chip "input"). So a chip
+  CRT holds the datasheet of - a logic chip (`LogicChips`) or another IC (`IcPinouts`: the CPUs, CIAs and VIAs, video and sound chips, ROMs,
+  RAMs and PLAs of the published boards, directions only, checked against the pin names the boards give them) - takes the datasheet's
+  direction for every pin, keeping only a "Not connected" the board says (an unused output) and what it says of a pin the datasheet leaves
+  unconnected or unsettled ("?" in `IcPinouts`). **A KiCad symbol typing every signal pin "input" gives no direction at all**
+  (`KiCadComponentPins.WithoutUntypedSignals` - no chip has no outputs). Typed directions are never changed: every writer fills only an
+  empty one, the conversion its own "Unknown" too. For one afternoon KiCad came first (the owner's earlier decision, reversed once shown
+  that table). **AND THE EXPECTED READINGS IN PLAIN WORDS** (owner request, 2026-11-17: "I would actually like to convert this in to
+  normal words like "Low" and "High" ... make sure it is also done on go-live day"; asked, "FLOAT" and "VIDEO" too; CRT.Data's
+  `ReadingWords`): a scope baseline's "HIGH" is "High", "LOW" "Low", "FLOAT" "Floating" and "VIDEO" "Video", each wherever it stands
+  as a word ("LOW (or floating?)", "LOW/FLOAT" - FLOAT and VIDEO only as the whole reading until the owner's "yes, reword those also"
+  the same day) - 2,830 of 13,862 readings; the shipped-data proof allows exactly that, and a 3.x draft converted gets it
+  in the draft and its base. A reading typed in CRT stays as typed. All four 4.0 trees were converted again that day over Z: (the test
+  trees' 250407 lost the test publishes of 2026-11-14 - the owner's choice). **A user's Excel-era draft takes the pinouts its published board was converted with, in the
   draft and its base** (`ConversionPinouts.FromPublished`, `DraftConversion`): a draft sends its whole pin list, and without them it read as
   every pin removed.
 - **Not done yet**: the release day itself (convert once more, work the queue empty, switch the service - a submission CRT 3.x sent names its

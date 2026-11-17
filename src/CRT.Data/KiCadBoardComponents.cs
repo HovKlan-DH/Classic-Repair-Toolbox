@@ -190,21 +190,25 @@ namespace Handlers.DataHandling
 
             foreach (KiCadBoardComponent component in missing)
             {
-                rows.Insert(
-                    KiCadBoardComponents.IndexFor(rows, component),
-                    new ComponentEntry
-                    {
-                        BoardLabel = component.Label,
-                        TechnicalNameOrValue = component.Value,
-                        Category = component.Category,
-                        Package = component.Package,
-                    });
+                var newRow = new ComponentEntry
+                {
+                    BoardLabel = component.Label,
+                    TechnicalNameOrValue = component.Value,
+                    Category = component.Category,
+                    Package = component.Package,
+                };
+
+                rows.Insert(KiCadBoardComponents.IndexFor(rows, component), newRow);
 
                 // A label nothing else lists yet - pin and link rows left over under it are kept as
                 // they are, never doubled.
                 if (component.Package.Length > 0 && !pins.Any(row => KiCadBoardComponents.Same(row.BoardLabel, component.Label)))
                 {
-                    List<ComponentPinEntry> componentPins = pinsOf(component.Label)
+                    IReadOnlyList<KiCadPin> kiCadPins = pinsOf(component.Label);
+
+                    // A chip CRT has the datasheet of takes its directions from that, KiCad's only where it says none (owner
+                    // decision, 2026-11-17 - DatasheetPins.OverKiCad, "Fill pins from KiCad"'s rule too).
+                    List<ComponentPinEntry> componentPins = DatasheetPins.OverKiCad(newRow, [], kiCadPins)
                         .Select(pin => new ComponentPinEntry { BoardLabel = component.Label, Pin = pin.Pin, Name = pin.Name, Direction = pin.Direction })
                         .ToList();
 

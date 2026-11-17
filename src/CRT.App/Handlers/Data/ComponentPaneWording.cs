@@ -630,8 +630,23 @@ namespace Handlers.DataHandling
         public const string NothingToFillFromKiCad =
             "The pins already have everything the board's KiCad data has for this component.";
 
-        // What "Fill from KiCad" did: "Filled from KiCad: 38 pins added, 2 named."
-        public static string FilledFromKiCad(int added, int filled)
+        // What "Fill from KiCad" did: "Filled from KiCad: 38 pins added, 2 pins filled in."
+        public static string FilledFromKiCad(int added, int filled) => ComponentPaneWording.Filled("KiCad", added, filled);
+
+        // ---- fill from the datasheet (owner request, 2026-11-17 - DatasheetPins.PinoutOf) ---------------
+
+        public static string FillFromDatasheetTip(string label, string chip) =>
+            $"Add every pin of the {chip}'s datasheet that [{label.Trim()}] lacks, with its name and direction, and fill in the names and directions still empty - nothing you typed is changed. \"Undo\" takes it back.";
+
+        // What "Fill pins from datasheet" did: "Filled from the datasheet: 40 pins added."
+        public static string FilledFromDatasheet(int added, int filled) => ComponentPaneWording.Filled("the datasheet", added, filled);
+
+        // A press with nothing left to fill in - the last empty box filled as the press committed it (code review, 2026-11-17:
+        // the press said nothing at all).
+        public const string NothingToFillFromDatasheet =
+            "The pins already have everything the datasheet has for this component.";
+
+        private static string Filled(string source, int added, int filled)
         {
             var parts = new List<string>();
 
@@ -641,7 +656,7 @@ namespace Handlers.DataHandling
             if (filled > 0)
                 parts.Add(filled == 1 ? "1 pin filled in" : $"{filled.ToString(CultureInfo.InvariantCulture)} pins filled in");
 
-            return $"Filled from KiCad: {string.Join(", ", parts)}.";
+            return $"Filled from {source}: {string.Join(", ", parts)}.";
         }
 
         // Above the nets ("Net name" - "Net on this board" until 2026-11-02, owner request): what they

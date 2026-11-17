@@ -67,6 +67,8 @@ namespace Handlers.DataHandling
         // "Fill from KiCad" - the pins the board's KiCad data has, added and named.
         public static string ComponentPinsFromKiCad(string label) => $"Pins of [{label}] from KiCad";
 
+        public static string ComponentPinsFromDatasheet(string label) => $"Pins of [{label}] from the datasheet";
+
         public static string ComponentReplacements(string label) => $"Replacement parts of [{label}]";
 
         public static string ComponentLinks(string label) => $"Links of [{label}]";

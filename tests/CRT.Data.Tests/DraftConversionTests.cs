@@ -124,6 +124,29 @@ public sealed class DraftConversionTests
         Assert.Equal(Pins(situation.Published()), Pins(baseDocument));
     }
 
+    // ###########################################################################################
+    // THE EXPECTED READINGS IN THE PUBLISHED BOARD'S PLAIN WORDS (owner request, 2026-11-17 - ReadingWords): the workbook says
+    // "HIGH", the tree's conversion wrote "High", and the draft and its base say it as the published board does - else each
+    // baseline would read as changed.
+    // ###########################################################################################
+    [Fact]
+    public void The_draft_and_its_base_take_the_expected_readings_in_plain_words()
+    {
+        using var situation = new Situation();
+        situation.Seed();
+
+        situation.Convert();
+
+        string Readings(BoardDocument document) =>
+            string.Join(" ", BoardDocumentMapping.ToContent(document).Board.ComponentImages.Select(image => image.ExpectedOscilloscopeReading));
+
+        BoardDocument baseDocument = DataTreeJson.ReadBoard(File.ReadAllText(Path.Combine(situation.DraftFolder, DraftFolderLayout.DraftBaseFileName)));
+
+        Assert.Contains("High", Readings(situation.Published()), StringComparison.Ordinal);
+        Assert.Equal(Readings(situation.Published()), Readings(situation.Draft()));
+        Assert.Equal(Readings(situation.Published()), Readings(baseDocument));
+    }
+
     // Nothing the 4.0 tree holds is copied into the draft.
     [Fact]
     public void Bytes_the_tree_holds_are_not_stored_in_the_draft()

@@ -3953,6 +3953,122 @@ public sealed class ComponentPaneTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // A CHIP CRT HOLDS THE DATASHEET OF FILLS ITS DIRECTIONS FROM IT (owner decision, 2026-11-17 - DatasheetPins): the 6510's
+    // address line and data pin come in as an output and an input/output, though the board's KiCad symbol types them as
+    // inputs; a direction a pin already has stays. (The draft's own pin 1 is named VSS, which no 6510 has there - so it is
+    // named as a 6510's first, or the board would be saying something against the datasheet.)
+    // ###########################################################################################
+    [Fact]
+    public void Fill_from_KiCad_takes_the_datasheets_directions_for_a_chip_CRT_holds_it_of()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+
+            pane.PinsForTests[0].Name = "PHI0";
+            pane.CommitHeld();
+
+            pane.UseKiCadPins(session, "U8", [new KiCadPin("1", "PHI0", "Input", "PHI0"), new KiCadPin("7", "A0", "Input", "A0"), new KiCadPin("30", "D0", "Input", "D0")]);
+            Assert.True(pane.FillFromKiCad());
+
+            Assert.Equal(
+                ["1:PHI0:Ground", "7:A0:Output", "30:D0:Input/output"],
+                ComponentPaneEdits.PinsOf(session.Content.Board, "U8", "PAL").Select(pin => $"{pin.Pin}:{pin.Name}:{pin.Direction}"));
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // *** THE DATASHEET IS JUDGED ON THE PINS AS KiCad WOULD FILL THEM (code review, 2026-11-17), as the KiCad import and the
+    // conversion judge it. *** A symbol naming the 6510's pin 9 - the datasheet's A2, an output - "VCC" says something against
+    // the datasheet, so KiCad's own directions go in, its "Power" kept; judged on the pins held alone (pin 1), the datasheet's
+    // "Output" went onto the pin named VCC.
+    // ###########################################################################################
+    [Fact]
+    public void Fill_from_KiCad_judges_the_datasheet_on_the_pins_KiCad_brings_too()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+
+            pane.PinsForTests[0].Name = "PHI0";
+            pane.PinsForTests[0].Direction = "Input";
+            pane.CommitHeld();
+
+            pane.UseKiCadPins(session, "U8", [new KiCadPin("7", "A0", "Input", "A0"), new KiCadPin("9", "VCC", "Power", "+5V")]);
+            Assert.True(pane.FillFromKiCad());
+
+            Assert.Equal(
+                ["1:PHI0:Input", "7:A0:Input", "9:VCC:Power"],
+                ComponentPaneEdits.PinsOf(session.Content.Board, "U8", "PAL").Select(pin => $"{pin.Pin}:{pin.Name}:{pin.Direction}"));
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // "FILL PINS FROM DATASHEET" (owner request, 2026-11-17): offered while CRT holds the chip's datasheet and it would add or
+    // fill in something - and then in place of the case's bare pins; one press adds the 6510's other 39 pins with their names
+    // and directions as ONE step, pin 1 as typed; then nothing is left to offer. The draft's own pin 1 is named VSS, which no
+    // 6510 has there, so until it is named as a 6510's the board says something against the datasheet and none is offered.
+    // ###########################################################################################
+    [Fact]
+    public void Fill_pins_from_datasheet_adds_the_chips_pins_with_their_names_and_directions_as_one_step()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+            Button datasheet = Get<Button>(pane, "FillFromDatasheetButton");
+            Button casePins = Get<Button>(pane, "AddCasePinsButton");
+
+            Get<AutoCompleteBox>(pane, "PackageBox").Text = "DIP-40";
+            pane.CommitHeld();
+            pane.Show(session, "U8", "PAL", Published());
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.False(datasheet.IsVisible);
+            Assert.True(casePins.IsVisible);
+            Assert.False(pane.FillFromDatasheet());
+
+            pane.PinsForTests[0].Name = "PHI0";
+            pane.CommitHeld();
+            pane.Show(session, "U8", "PAL", Published());
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.True(datasheet.IsVisible);
+            Assert.False(casePins.IsVisible);
+
+            Assert.True(pane.FillFromDatasheet());
+
+            Assert.Equal("Pins of [U8] from the datasheet", session.UndoDescription);
+
+            List<ComponentPinEntry> pins = ComponentPaneEdits.PinsOf(session.Content.Board, "U8", "PAL");
+
+            Assert.Equal(40, pins.Count);
+            Assert.Equal(
+                ["1:PHI0:Ground", "7:A0:Output", "21:GND:Ground", "30:D7:Input/output", "38:R/W:Output"],
+                new[] { "1", "7", "21", "30", "38" }.Select(number => pins.Single(pin => pin.Pin == number)).Select(pin => $"{pin.Pin}:{pin.Name}:{pin.Direction}"));
+            Assert.Equal("Filled from the datasheet: 39 pins added.", Get<TextBlock>(pane, "PaneMessageText").Text);
+            Assert.False(datasheet.IsVisible);
+            Assert.False(casePins.IsVisible);
+
+            // Pressed with nothing left to fill in, it says so - no step (code review, 2026-11-17: it said nothing).
+            Assert.False(pane.FillFromDatasheet());
+            Assert.Equal(ComponentPaneWording.NothingToFillFromDatasheet, Get<TextBlock>(pane, "PaneMessageText").Text);
+            Assert.Equal("Pins of [U8] from the datasheet", session.UndoDescription);
+
+            window.Close();
+        });
+    }
+
     // Another component shown lets go of the KiCad pins - they were the last one's.
     [Fact]
     public void Another_component_shown_lets_go_of_the_KiCad_pins()

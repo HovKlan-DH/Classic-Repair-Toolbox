@@ -102,6 +102,11 @@ public sealed class DataTreeConversionTests : IClassFixture<DataTreeConversionTe
 
         Assert.Equal(["U1", "U7"], a.Components.Select(row => row.BoardLabel));
         Assert.Equal("1uS", a.ScopeBaselines.Single().TimeDiv);
+
+        // The workbook's "HIGH" in plain words (owner request, 2026-11-17 - ReadingWords), and a note saying so.
+        Assert.Equal("High", a.ScopeBaselines.Single().ExpectedOscilloscopeReading);
+        Assert.Contains(this.Plan.Notes, note => note.Contains($"[{BoardA}]: 1 expected oscilloscope reading(s) written in plain words", StringComparison.Ordinal));
+
         Assert.Equal(new[] { 100, 200, 30, 40 }, new[] { a.Highlights[0].X, a.Highlights[0].Y, a.Highlights[0].Width, a.Highlights[0].Height });
         Assert.Equal(0.75, a.KiCadCalibrations.Single().ScaleX);
         Assert.Equal("Board layout.png", a.SchematicRenames.Single().File);
@@ -614,7 +619,7 @@ public sealed class DataTreeConversionTests : IClassFixture<DataTreeConversionTe
                     ComponentImages =
                     [
                         new ComponentImageEntry { BoardLabel = "U7", Name = "Pinout", File = "Commodore/Shared files/Component images/7406.png" },
-                        new ComponentImageEntry { BoardLabel = "U1", Pin = "1", Name = "PHI0", File = BoardA + "/Scope baseline/U1_1_PAL.png", TimeDiv = "1uS", VoltsDiv = "2V", TriggerLevelVolts = "1.4V" },
+                        new ComponentImageEntry { BoardLabel = "U1", Pin = "1", Name = "PHI0", ExpectedOscilloscopeReading = "HIGH", File = BoardA + "/Scope baseline/U1_1_PAL.png", TimeDiv = "1uS", VoltsDiv = "2V", TriggerLevelVolts = "1.4V" },
                         new ComponentImageEntry { BoardLabel = "U1", Name = "Pinout", Note = "Same as 6510" },
                     ],
                     ComponentHighlights = [new ComponentHighlightEntry { SchematicName = "Board layout", BoardLabel = "U1", X = "100", Y = "200", Width = "30", Height = "40" }],

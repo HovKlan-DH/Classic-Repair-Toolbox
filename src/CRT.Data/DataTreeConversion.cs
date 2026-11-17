@@ -522,6 +522,12 @@ namespace Handlers.DataHandling
 
             data = DataTreeConversion.WithPinouts(data, Path.Combine(root, DataTreeConversion.Native(DataTreeConversion.FolderOf(workbook!)), DataTreeUsage.KiCadFolderName), boardId, notes);
 
+            // The expected readings in plain words - "HIGH" is "High" (owner request, 2026-11-17; ReadingWords).
+            data = ReadingWords.ApplyToBoard(data, out int readings);
+
+            if (readings > 0)
+                notes.Add($"Board [{boardId}]: {readings} expected oscilloscope reading(s) written in plain words (\"HIGH\" as \"High\").");
+
             var content = new BoardContent(
                 data,
                 BoardComponentHighlightStorage.LoadAllKiCadCalibrations(workbookPath),
@@ -590,10 +596,13 @@ namespace Handlers.DataHandling
                     notes.Add($"Board [{boardId}]: its KiCad data could not be read, so its pinouts are made of its scope baselines alone.");
             }
 
-            BoardData made = ConversionPinouts.ApplyToBoard(data, out int components, kiCad);
+            BoardData made = ConversionPinouts.ApplyToBoard(data, out int components, out int directed, kiCad);
 
             if (components > 0)
                 notes.Add($"Board [{boardId}]: pinouts made for {components} component(s), of its scope baselines{(kiCad is null ? string.Empty : " and its KiCad data")}.");
+
+            if (directed > 0)
+                notes.Add($"Board [{boardId}]: pin directions taken from the datasheet for {directed} chip(s).");
 
             return made;
         }

@@ -404,6 +404,23 @@ public sealed class KiCadBoardComponentsTests
         Assert.Equal(2, board.Components.Count);
     }
 
+    // ###########################################################################################
+    // THE DATASHEET BEFORE KiCad's TYPE (owner decision, 2026-11-17 - DatasheetPins): a 74LS373 whose symbol types an output
+    // as an input and an input as an output comes in with its datasheet's directions; a pin KiCad says is not connected on
+    // this board stays so.
+    // ###########################################################################################
+    [Fact]
+    public void A_chip_CRT_holds_the_datasheet_of_comes_in_with_its_directions()
+    {
+        BoardData result = KiCadBoardComponents.WithComponents(
+            new BoardData(),
+            [new("U26", "74LS373", "IC", "DIP-20", string.Empty)],
+            _ => [new KiCadPin("2", "1Q", "Input", "Q0"), new KiCadPin("3", "1D", "Output", "D0"), new KiCadPin("5", "2Q", "Not connected", string.Empty)],
+            out _);
+
+        Assert.Equal(["2|Output", "3|Input", "5|Not connected"], result.ComponentPins.Select(row => $"{row.Pin}|{row.Direction}"));
+    }
+
     // Nothing to add: the very same board, so no step in the draft's history.
     [Fact]
     public void A_board_that_has_them_all_is_the_same_board()

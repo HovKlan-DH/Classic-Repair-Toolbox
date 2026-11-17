@@ -1022,7 +1022,12 @@ the main workbook does not list. **With a problem it writes nothing**; fix the d
 KiCad data say, and the package a footprint or the baselines make certain - the Excel trees have no
 pinouts, so each conversion makes them again. A `Note:` line per board says how many components got
 pins and from what; KiCad files it could not read are a note too (that board then gets its baselines'
-pins alone), not a problem.
+pins alone), not a problem. **A pin of a chip whose datasheet CRT holds gets that datasheet's
+direction** - the 74, 40 and 55 series logic chips and the boards' CPUs, CIAs, VIAs, video and sound
+chips, ROMs, RAMs and PLAs - but a pin the board says is not connected stays so; **any other pin gets its
+KiCad type**, unless KiCad calls every signal pin of that chip an input. **The expected oscilloscope
+readings are written in plain words** - "HIGH" as "High", "LOW" as "Low", "FLOAT" as "Floating", "VIDEO"
+as "Video" - a `Note:` line per board saying how many (both since server 11.1.0).
 
 Then convert each tree into its own 4.0 folder, with that folder's public address so its manifest is
 written:

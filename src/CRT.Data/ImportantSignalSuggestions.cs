@@ -129,11 +129,12 @@ namespace Handlers.DataHandling
         // A net's name - the last part of its hierarchical name, as the picker offers it, where KiCad
         // writes a "/" as "{slash}" - spelt down to what it says: "~{RESET'}" is RESET,
         // "R{slash}~{W}" is R/W, a phi and "DOT" is PHIDOT, "'9VAC~" is 9VAC. Read through
-        // KiCadNetNames.Readable, the one rule (code review, 2026-10-26), then every overbar mark dropped.
+        // KiCadNetNames.Plain, the one rule (code review, 2026-10-26) with the overbar dropped, then every
+        // other overbar mark dropped.
         // ###########################################################################################
         public static string KeyOf(string? net)
         {
-            string name = KiCadNetNames.Readable(net).Replace("~", string.Empty, StringComparison.Ordinal);
+            string name = KiCadNetNames.Plain(net).Replace("~", string.Empty, StringComparison.Ordinal);
 
             // Capital phi, the phi symbol and small phi - each written as PHI too.
             name = name.Replace("\u03A6", "PHI", StringComparison.Ordinal)

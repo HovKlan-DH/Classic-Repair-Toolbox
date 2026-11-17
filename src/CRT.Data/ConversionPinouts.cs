@@ -34,7 +34,20 @@ namespace Handlers.DataHandling
     // ICs. I do think it should fill in details for all components having KiCad data, and ideally guess
     // their 'package'"): after the baselines, every component the KiCad data has gets the pins it lacks and
     // the names and directions still empty ("Fill pins from KiCad"'s rule), and the package its footprint
-    // says where it has none (KiCadBoardComponents.PackageOf).
+    // says where it has none (KiCadBoardComponents.PackageOf). KiCad's pin type replaces the "Unknown" the
+    // baselines' pins got - that "Unknown" is the conversion's own - unless its symbol types every signal
+    // pin "input" (KiCadComponentPins: such a symbol was never typed); where KiCad says nothing the pin is
+    // "Unknown" again.
+    //
+    // *** AND THEN THE DATASHEET, BEFORE KiCad *** (owner request, 2026-11-17: "I would rather then convert
+    // the data, so it also will show correctly in the text part of it, in the pin out page (for "Direction"
+    // in the table) ... make sure it also gets done when we go-live"; and, the same day, "OK to what you
+    // suggest for 1-4" - DatasheetPins' order): every pin of a chip CRT holds the datasheet of - a logic chip
+    // (LogicChips) or another IC (IcPinouts) - takes the datasheet's direction, keeping only a "Not
+    // connected" the board says and what it says of a pin the datasheet leaves unconnected. For one
+    // afternoon KiCad's type came first (the owner's earlier decision that day), until the owner was shown
+    // the same chips typed three ways by three KiCad projects - the 250407's 6510 and ROMs all inputs, the
+    // Open128's 6526 exactly its datasheet, the 250469's every chip inputs.
     //
     // PURE but for KiCadOf, which reads a board's KiCad files: takes a board, returns a board.
     // ###########################################################################################
@@ -149,14 +162,17 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // Every component of the board with a baseline, and every one `kiCad` has, as one change -
-        // `components` says how many changed.
+        // Every component of the board with a baseline, and every one `kiCad` has, as one change - `components` says how many
+        // got pins or a package of those - and every chip CRT holds the datasheet of given its directions - `directed` says how
+        // many took a direction of their datasheet, apart from `components` (code review, 2026-11-17: counted together, the
+        // conversion's note said pinouts were made of the baselines for chips that only took their datasheet's directions).
         // ###########################################################################################
-        public static BoardData ApplyToBoard(BoardData board, out int components, KiCadPinoutSource? kiCad = null)
+        public static BoardData ApplyToBoard(BoardData board, out int components, out int directed, KiCadPinoutSource? kiCad = null)
         {
             ArgumentNullException.ThrowIfNull(board);
 
             var changed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var fromDatasheets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             BoardData result = board;
 
             foreach (string label in board.ComponentImages
@@ -186,10 +202,95 @@ namespace Handlers.DataHandling
                 }
             }
 
+            foreach (string label in result.Components
+                .Select(row => row.BoardLabel?.Trim() ?? string.Empty)
+                .Where(label => label.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList())
+            {
+                BoardData next = ConversionPinouts.WithDatasheetDirections(result, label);
+
+                if (!ReferenceEquals(next, result))
+                {
+                    fromDatasheets.Add(label);
+                    result = next;
+                }
+            }
+
             components = changed.Count;
+            directed = fromDatasheets.Count;
 
             return result;
         }
+
+        // ###########################################################################################
+        // A chip CRT holds the datasheet of - a logic chip or another IC (DatasheetPins.Of) - with every pin's direction the
+        // datasheet's, but what the board must keep of it (DatasheetPins.Settled: "Not connected", and a pin the datasheet
+        // leaves unconnected or does not settle), in each set of its pins - each region's while they are told apart, else the
+        // one set - judged on that set, so a component the board says something against the datasheet of is left alone. The
+        // conversion's pins were typed by nobody: what they say came from the baselines' names and KiCad. The same board when
+        // the component is no such chip or nothing would change.
+        // ###########################################################################################
+        internal static BoardData WithDatasheetDirections(BoardData board, string label)
+        {
+            List<ComponentEntry> rows = board.Components.Where(row => ConversionPinouts.SameLabel(row.BoardLabel, label)).ToList();
+
+            if (rows.Count == 0)
+            {
+                return board;
+            }
+
+            BoardData result = board;
+
+            foreach (string region in ConversionPinouts.PinSetsOf(board, label, rows))
+            {
+                List<ComponentPinEntry> pins = ComponentPaneEdits.PinsOf(result, label, region);
+                ComponentEntry row = rows.FirstOrDefault(candidate => string.Equals(candidate.Region?.Trim() ?? string.Empty, region, StringComparison.OrdinalIgnoreCase)) ?? rows[0];
+
+                if (pins.Count == 0 || DatasheetPins.Of(row, pins) is not { } datasheet)
+                {
+                    continue;
+                }
+
+                bool changed = false;
+
+                List<ComponentPinEntry> directed = pins.Select(pin =>
+                {
+                    if (ComponentVocabulary.PinNumberOf(pin.Pin) is not int number)
+                    {
+                        return pin;
+                    }
+
+                    string settled = DatasheetPins.Settled(pin.Direction, datasheet(number));
+
+                    if (string.Equals(settled, pin.Direction ?? string.Empty, StringComparison.Ordinal))
+                    {
+                        return pin;
+                    }
+
+                    changed = true;
+                    return pin.WithDirection(settled);
+                }).ToList();
+
+                if (changed)
+                {
+                    result = ComponentPaneEdits.WithPins(result, label, region, directed);
+                }
+            }
+
+            return result;
+        }
+
+        // The regions a component's pins are kept for: each region's while its pins are told apart, else the one set - of the
+        // region of its one row, or every region.
+        private static List<string> PinSetsOf(BoardData board, string label, List<ComponentEntry> rows) =>
+            ComponentPaneEdits.PinsAreRegional(board, label)
+                ? board.ComponentPins
+                    .Where(row => ConversionPinouts.SameLabel(row.BoardLabel, label) && !string.IsNullOrWhiteSpace(row.Region))
+                    .Select(row => row.Region.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList()
+                : [rows.Count == 1 ? rows[0].Region?.Trim() ?? string.Empty : string.Empty];
 
         // ###########################################################################################
         // One component with what the KiCad data has for it: the pins it lacks and the names and directions
@@ -207,19 +308,22 @@ namespace Handlers.DataHandling
                 return board;
             }
 
-            IEnumerable<string> regions = ComponentPaneEdits.PinsAreRegional(board, label)
-                ? board.ComponentPins
-                    .Where(row => ConversionPinouts.SameLabel(row.BoardLabel, label) && !string.IsNullOrWhiteSpace(row.Region))
-                    .Select(row => row.Region.Trim())
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToList()
-                : [rows.Count == 1 ? rows[0].Region?.Trim() ?? string.Empty : string.Empty];
-
             BoardData result = board;
 
-            foreach (string region in regions)
+            foreach (string region in ConversionPinouts.PinSetsOf(board, label, rows))
             {
-                List<ComponentPinEntry> filled = KiCadComponentPins.Fill(ComponentPaneEdits.PinsOf(result, label, region), pins, region, out int added, out int named);
+                // The conversion's own "Unknown" is no direction given: KiCad's pin type says it, and where that says nothing
+                // the pin is "Unknown" again.
+                List<ComponentPinEntry> current = ComponentPaneEdits.PinsOf(result, label, region);
+                var unknown = current
+                    .Where(pin => string.Equals(pin.Direction?.Trim(), ConversionPinouts.Unknown, StringComparison.OrdinalIgnoreCase))
+                    .Select(pin => pin.Pin?.Trim() ?? string.Empty)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                List<ComponentPinEntry> open = current.Select(pin => unknown.Contains(pin.Pin?.Trim() ?? string.Empty) ? pin.WithDirection(string.Empty) : pin).ToList();
+
+                List<ComponentPinEntry> filled = KiCadComponentPins.Fill(open, pins, region, out int added, out int named)
+                    .Select(pin => string.IsNullOrWhiteSpace(pin.Direction) && unknown.Contains(pin.Pin?.Trim() ?? string.Empty) ? pin.WithDirection(ConversionPinouts.Unknown) : pin)
+                    .ToList();
 
                 if (added + named > 0)
                 {
@@ -309,14 +413,7 @@ namespace Handlers.DataHandling
                 return false;
             }
 
-            pins[index] = new ComponentPinEntry
-            {
-                BoardLabel = row.BoardLabel,
-                Region = row.Region,
-                Pin = row.Pin,
-                Name = fillName ? name : row.Name,
-                Direction = fillDirection ? direction : row.Direction,
-            };
+            pins[index] = row.WithNameAndDirection(fillName ? name : row.Name, fillDirection ? direction : row.Direction);
 
             return true;
         }
@@ -333,8 +430,10 @@ namespace Handlers.DataHandling
 
             return string.Equals(name, "NC", StringComparison.OrdinalIgnoreCase) || string.Equals(name, "N/C", StringComparison.OrdinalIgnoreCase)
                 ? "Not connected"
-                : "Unknown";
+                : ConversionPinouts.Unknown;
         }
+
+        private const string Unknown = "Unknown";
 
         // The other components' pins left where they stand, this one's in pin order where its first was.
         private static List<ComponentPinEntry> WithOwnPins(List<ComponentPinEntry> all, string label, List<ComponentPinEntry> own)

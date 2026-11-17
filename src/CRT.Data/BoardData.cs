@@ -161,14 +161,20 @@ namespace Handlers.DataHandling
         // compares every property by reflection.
         public ComponentImageEntry WithBoardLabel(string boardLabel) => this.FiledAs(boardLabel, this.Region, this.File);
 
+        // This row with another expected reading (ReadingWords), every other value as it was.
+        public ComponentImageEntry WithExpectedReading(string reading) => this.With(this.BoardLabel, this.Region, this.File, reading);
+
         // This row under another label and region, citing another file (ComponentClone).
-        public ComponentImageEntry FiledAs(string boardLabel, string region, string file) => new()
+        public ComponentImageEntry FiledAs(string boardLabel, string region, string file) => this.With(boardLabel, region, file, this.ExpectedOscilloscopeReading);
+
+        // The one copy of the row's every value - a new column is added here once (code review, 2026-11-17).
+        private ComponentImageEntry With(string boardLabel, string region, string file, string reading) => new()
         {
             BoardLabel = boardLabel,
             Region = region,
             Pin = this.Pin,
             Name = this.Name,
-            ExpectedOscilloscopeReading = this.ExpectedOscilloscopeReading,
+            ExpectedOscilloscopeReading = reading,
             File = file,
             Note = this.Note,
             TimeDiv = this.TimeDiv,
@@ -181,7 +187,7 @@ namespace Handlers.DataHandling
     // ###########################################################################################
     // ONE PIN OF A COMPONENT - new in CRT 4.0 (step 2, 2026-10-25 - the plan's Pinout: "name the
     // pins: number, signal name, direction"). Pin is its number on the case ("1", "40"), Name the
-    // signal ("VCC", "~{RESET}"), Direction one of ComponentVocabulary.PinDirections. A pin is
+    // signal ("VCC", "/RESET"), Direction one of ComponentVocabulary.PinDirections. A pin is
     // filed by label and region, as a component's pictures are: a blank region is every region.
     // ###########################################################################################
     public class ComponentPinEntry
@@ -193,17 +199,24 @@ namespace Handlers.DataHandling
         public string Direction { get; init; } = string.Empty;
 
         // This pin of a relabelled component, or in another region - every other value as it was.
-        public ComponentPinEntry WithBoardLabel(string boardLabel) => this.With(boardLabel, this.Region);
+        public ComponentPinEntry WithBoardLabel(string boardLabel) => this.With(boardLabel, this.Region, this.Name, this.Direction);
 
-        public ComponentPinEntry WithRegion(string region) => this.With(this.BoardLabel, region);
+        public ComponentPinEntry WithRegion(string region) => this.With(this.BoardLabel, region, this.Name, this.Direction);
 
-        private ComponentPinEntry With(string boardLabel, string region) => new()
+        // This pin with another direction (the conversion's datasheet directions), or another name and direction (a name or
+        // direction filled in) - every other value as it was. BoardSchematicEntryTests compares every property by reflection.
+        public ComponentPinEntry WithDirection(string direction) => this.With(this.BoardLabel, this.Region, this.Name, direction);
+
+        public ComponentPinEntry WithNameAndDirection(string name, string direction) => this.With(this.BoardLabel, this.Region, name, direction);
+
+        // The one copy of the row's every value - a new column is added here once (code review, 2026-11-17).
+        private ComponentPinEntry With(string boardLabel, string region, string name, string direction) => new()
         {
             BoardLabel = boardLabel,
             Region = region,
             Pin = this.Pin,
-            Name = this.Name,
-            Direction = this.Direction,
+            Name = name,
+            Direction = direction,
         };
     }
 

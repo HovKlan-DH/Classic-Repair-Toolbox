@@ -175,9 +175,11 @@ namespace Handlers.DataHandling
             BoardData? publishedBoard = published is null ? null : BoardDocumentMapping.ToContent(published).Board;
 
             // The pinouts the tree's conversion gave the published board, in the draft as in its base
-            // (ConversionPinouts.FromPublished): without them both would read as every pin removed.
+            // (ConversionPinouts.FromPublished): without them both would read as every pin removed. And
+            // its expected readings in the published board's plain words (ReadingWords), or every
+            // baseline would read as changed.
             var content = new BoardContent(
-                ConversionPinouts.FromPublished(data, publishedBoard),
+                ReadingWords.ApplyToBoard(ConversionPinouts.FromPublished(data, publishedBoard)),
                 BoardComponentHighlightStorage.LoadAllKiCadCalibrations(workbook),
                 BoardComponentHighlightStorage.LoadSchematicRenames(workbook));
 
@@ -307,7 +309,7 @@ namespace Handlers.DataHandling
                 files.TryAdd(name, new BoardDocument.StoredFileRow { Name = name, Sha256 = sha, Size = size });
             }
 
-            var content = new BoardContent(ConversionPinouts.FromPublished(draftBase.Board, publishedBoard), draftBase.Calibrations, []);
+            var content = new BoardContent(ReadingWords.ApplyToBoard(ConversionPinouts.FromPublished(draftBase.Board, publishedBoard)), draftBase.Calibrations, []);
 
             BoardDocument document = BoardDocumentMapping.ToDocument(content, namer.BaseNameFor, DraftConversion.Sorted(files.Values));
             document.RevisionDate = string.IsNullOrWhiteSpace(document.RevisionDate) ? draftBase.Revision : document.RevisionDate;

@@ -703,6 +703,18 @@ namespace CRT
             this.DescriptionTooLongText.IsVisible = length > ComponentVocabulary.ShortDescriptionLimit;
         }
 
+        // The component as the boxes now read - one component's, never several's (null then).
+        private ComponentEntry? ShownComponent() => this.IsSeveral ? null : new ComponentEntry
+        {
+            BoardLabel = this.thisLabel,
+            FriendlyName = this.BoxText(ComponentField.FriendlyName),
+            TechnicalNameOrValue = this.BoxText(ComponentField.TechnicalNameOrValue),
+            PartNumber = this.BoxText(ComponentField.PartNumber),
+            Category = this.BoxText(ComponentField.Category),
+            Description = this.BoxText(ComponentField.Description),
+            Package = this.PackageBox.Text ?? string.Empty,
+        };
+
         // ###########################################################################################
         // The case drawn with the pins as the pane holds them, and the offer to add the case's pins. A leaded part is drawn
         // as it looks instead, from what the boxes say (owner request, 2026-11-09; PartPicture decides) - never for several
@@ -712,23 +724,17 @@ namespace CRT
         {
             string package = this.PackageBox.Text ?? string.Empty;
             List<ComponentPinEntry> pins = this.thisPins.Select(row => row.ToEntry()).ToList();
-
-            // As the boxes now read - one component's, never several's.
-            ComponentEntry? shown = this.IsSeveral ? null : new ComponentEntry
-            {
-                BoardLabel = this.thisLabel,
-                FriendlyName = this.BoxText(ComponentField.FriendlyName),
-                TechnicalNameOrValue = this.BoxText(ComponentField.TechnicalNameOrValue),
-                PartNumber = this.BoxText(ComponentField.PartNumber),
-                Category = this.BoxText(ComponentField.Category),
-                Description = this.BoxText(ComponentField.Description),
-                Package = package,
-            };
+            ComponentEntry? shown = this.ShownComponent();
 
             // The board's KiCad nets tell a regulator's legs apart where its pins have no names (PartPicture.RegulatorOf).
             PartPicture.Picture? part = shown is null ? null : PartPicture.Of(shown, pins, KiCadComponentPins.NetsByPin(this.thisKiCadPins));
 
-            this.PinoutPicture.Show(package, pins);
+            // The datasheet CRT holds of the chip, looked up once for the drawing and the offer below (code review, 2026-11-17).
+            DatasheetPinout? datasheet = shown is null ? null : DatasheetPins.PinoutOf(shown, pins);
+
+            // A logic chip CRT knows is drawn with its insides (2026-11-16; LogicChips decides), each pin in the color of its
+            // direction as the pins here say it (2026-11-17).
+            this.PinoutPicture.Show(package, pins, datasheet?.Logic);
             this.PinoutPartDrawing.Show(part);
 
             // A single resistor, or an axial ceramic capacitor, is its color bands, in the same place (owner requests, 2026-11-09;
@@ -742,9 +748,21 @@ namespace CRT
 
             int missing = ComponentPaneWording.MissingCasePins(package, pins);
 
+            // The datasheet's pins (owner request, 2026-11-17 - DatasheetPins.PinoutOf): offered while CRT holds the chip's
+            // datasheet and filling from it would add or fill in something - and then in place of the case's bare pins, which
+            // it adds with their names and directions.
+            bool datasheetOffered = datasheet is not null && KiCadComponentPins.WouldFill(pins, datasheet.Pins);
+
+            this.FillFromDatasheetButton.IsVisible = datasheetOffered;
+
+            if (datasheet is not null)
+            {
+                ToolTip.SetTip(this.FillFromDatasheetButton, ComponentPaneWording.FillFromDatasheetTip(this.thisLabel, datasheet.Chip));
+            }
+
             // Never for several (code review, 2026-11-09): the pins listed are those ALL of them have, so a case's pins missing
             // from that list may be pins one of them has - added to every one, U1 with pins 1-14 got 1-14 again.
-            this.AddCasePinsButton.IsVisible = !this.IsSeveral && missing > 0;
+            this.AddCasePinsButton.IsVisible = !this.IsSeveral && missing > 0 && !datasheetOffered;
             this.AddCasePinsButton.Content = ComponentPaneWording.AddCasePins(package, missing, pins.Count == 0);
             this.ShowWordsOfBoard();
             this.ShowKiCadPins();
@@ -1253,6 +1271,54 @@ namespace CRT
             this.CommitPins();
             this.ShowPinout();
             this.ShowEmptyLines();
+        }
+
+        private void OnFillFromDatasheetClick(object? sender, RoutedEventArgs e) => this.FillFromDatasheet();
+
+        // ###########################################################################################
+        // "FILL PINS FROM DATASHEET" (owner request, 2026-11-17): every pin of the datasheet CRT holds of the chip that the pins
+        // lack added, and the empty names and directions filled in, as ONE step - "Fill pins from KiCad"'s rule
+        // (KiCadComponentPins.Fill), so nothing typed is changed. What came of it is said under the title. False when there
+        // was nothing to add or fill in, or no datasheet.
+        // ###########################################################################################
+        internal bool FillFromDatasheet()
+        {
+            if (this.thisSession is null || this.IsSeveral)
+            {
+                return false;
+            }
+
+            // A technical name or package typed goes in first: the datasheet is judged on them.
+            this.CommitHeld();
+            this.ShowMessage(null);
+
+            List<ComponentPinEntry> current = this.thisPins.Select(row => row.ToEntry()).ToList();
+
+            if (this.ShownComponent() is not { } shown || DatasheetPins.PinoutOf(shown, current) is not { } datasheet)
+            {
+                return false;
+            }
+
+            List<ComponentPinEntry> pins = KiCadComponentPins.Fill(current, datasheet.Pins, this.RegionForNewPin(), out int added, out int filled);
+
+            if (added + filled == 0)
+            {
+                this.ShowMessage(ComponentPaneWording.NothingToFillFromDatasheet);
+                this.ShowPinout();
+                return false;
+            }
+
+            ComponentPane.Fill(this.thisPins, pins.Select(ComponentPanePinRow.From));
+
+            this.Apply(
+                DraftStepWording.ComponentPinsFromDatasheet(this.thisLabel),
+                board => ComponentPaneEdits.WithPins(board, this.thisLabel, this.thisRegion, pins));
+
+            this.ShowPinout();
+            this.ShowEmptyLines();
+            this.ShowMessage(ComponentPaneWording.FilledFromDatasheet(added, filled));
+
+            return true;
         }
 
         private void OnAddReplacementClick(object? sender, RoutedEventArgs e)

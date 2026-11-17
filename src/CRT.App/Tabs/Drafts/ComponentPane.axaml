@@ -715,7 +715,8 @@
 							  ToolTip.Tip="The pins are not the same in each region, so each has a set of its own. Off, one set of pins is for every region."
 							  Click="OnPinsRegionalClick" />
 
-					<StackPanel Orientation="Horizontal" Spacing="8">
+					<!-- Buttons side by side are 6px apart, everywhere (code review, 2026-11-17: 8 here). -->
+					<StackPanel Orientation="Horizontal" Spacing="6">
 						<StackPanel Width="200">
 							<TextBlock Classes="FieldLabel" Text="Package" />
 							<!-- Its list opens with the focus, every case in it, and narrows as it is typed in
@@ -743,6 +744,14 @@
 								IsVisible="False"
 								ToolTip.ShowOnDisabled="True"
 								Click="OnFillFromKiCadClick" />
+						<!-- The pins the datasheet CRT holds of the chip, with their names and directions - offered while
+						     it would add or fill in something (owner request, 2026-11-17; ComponentPane.axaml.cs, FillFromDatasheet). -->
+						<Button x:Name="FillFromDatasheetButton"
+								Classes="Accept"
+								Content="Fill pins from datasheet"
+								VerticalAlignment="Bottom"
+								IsVisible="False"
+								Click="OnFillFromDatasheetClick" />
 					</StackPanel>
 
 					<!-- Its columns and rows never change (RegionButtonLayout's header: Avalonia's Grid throws on a lost one).
@@ -827,7 +836,7 @@
 												<ColumnDefinition Width="Auto" SharedSizeGroup="PinButtons" />
 											</Grid.ColumnDefinitions>
 											<TextBox Grid.Column="0" Text="{Binding Pin, Mode=TwoWay}" Classes.Missing="{Binding PinOutside}" />
-											<TextBox Grid.Column="2" Text="{Binding Name, Mode=TwoWay}" Watermark="VCC, A0, ~RESET" />
+											<TextBox Grid.Column="2" Text="{Binding Name, Mode=TwoWay}" Watermark="VCC, A0, /RESET" />
 											<TextBlock Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="8" Classes="Required" Text="{Binding PinProblem}" IsVisible="{Binding PinOutside}" />
 											<ComboBox Grid.Column="4"
 													  HorizontalAlignment="Stretch"
@@ -919,7 +928,7 @@
 												</StackPanel>
 												<StackPanel Grid.Column="2">
 													<TextBlock Classes="FieldLabel" Text="Signal name" />
-													<TextBox Text="{Binding Name, Mode=TwoWay}" Watermark="PA3, ~IRQ, PHI2" />
+													<TextBox Text="{Binding Name, Mode=TwoWay}" Watermark="PA3, /IRQ, PHI2" />
 												</StackPanel>
 												<StackPanel Grid.Column="4">
 													<TextBlock Classes="FieldLabel" Text="Expected reading" />
@@ -1020,7 +1029,7 @@
 										</StackPanel>
 										<StackPanel Grid.Column="2">
 											<TextBlock Classes="FieldLabel" Text="Signal name" />
-											<TextBox x:Name="NewBaselineNameBox" Watermark="PA3, ~IRQ, PHI2" />
+											<TextBox x:Name="NewBaselineNameBox" Watermark="PA3, /IRQ, PHI2" />
 										</StackPanel>
 									</Grid>
 									<Grid ColumnDefinitions="*,8,*,8,*">

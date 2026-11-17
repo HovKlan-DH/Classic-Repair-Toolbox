@@ -90,12 +90,20 @@ namespace Handlers.DataHandling
     {
         // ###########################################################################################
         // A KiCad name - a pin's, or a net's last part - as CRT spells it: KiCad's overbar "~{RESET}"
-        // is "~RESET" (the component pane's own hint), a "/" written inside a name as "{slash}" is "/",
-        // and "~" alone - KiCad's "no name" - is none. THE ONE RULE for reading KiCad's escapes (code
-        // review, 2026-10-26: written twice, with different rules) - KiCadComponentPins and
-        // ImportantSignalSuggestions both read names through it.
+        // is "/RESET" - an active-low pin is written with "/" before it, everywhere (owner decision,
+        // 2026-11-17: "use "/" everywhere" - what 11 published boards write, 687 names against 66 with
+        // "~", and the component pane's hint; "~RESET" until then), so "R/~{W}" is "R//W" as the 250407
+        // writes it - a "/" written inside a name as "{slash}" is "/", and "~" alone - KiCad's "no
+        // name" - is none. THE ONE RULE for reading KiCad's escapes (code review, 2026-10-26: written
+        // twice, with different rules) - KiCadComponentPins and ImportantSignalSuggestions both read
+        // names through it. A net's name as an important signal stores it is the loader's, untouched.
         // ###########################################################################################
-        public static string Readable(string? kiCadName)
+        public static string Readable(string? kiCadName) => KiCadNetNames.Spelt(kiCadName, "/");
+
+        // The same name with KiCad's overbar dropped - what it says, for telling names apart: "R/~{W}" is "R/W".
+        public static string Plain(string? kiCadName) => KiCadNetNames.Spelt(kiCadName, string.Empty);
+
+        private static string Spelt(string? kiCadName, string overbar)
         {
             string name = kiCadName?.Trim() ?? string.Empty;
 
@@ -104,7 +112,7 @@ namespace Handlers.DataHandling
                 return string.Empty;
             }
 
-            return KiCadNetNames.Overbar().Replace(name.Replace("{slash}", "/", StringComparison.Ordinal), match => "~" + match.Groups[1].Value);
+            return KiCadNetNames.Overbar().Replace(name.Replace("{slash}", "/", StringComparison.Ordinal), match => overbar + match.Groups[1].Value);
         }
 
         [System.Text.RegularExpressions.GeneratedRegex(@"~\{([^}]*)\}")]

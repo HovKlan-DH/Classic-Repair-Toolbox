@@ -298,6 +298,33 @@
 					<SolidColorBrush x:Key="Changelog_Alert_Warning">#875B00</SolidColorBrush>
 					<SolidColorBrush x:Key="Changelog_Alert_Caution">#C1212B</SolidColorBrush>
 
+					<!-- Light, a chip drawn with its insides (PinoutDrawing, 2026-11-16), per pin direction (owner request,
+					     2026-11-17: "color it for its pin direction ... Not connected + Power + Other + Unknown can all have the same
+					     lightgrey'ish color ... and then probably the Input/output one needs a new color") - input, output, input/output,
+					     anything else - and discreet (owner request, 2026-11-16: "too much color"): its ink, the edge of the pin's square
+					     and badge, muted; the square's pale tint (_Bg) and the number on it (_Fg); the wires inside the case (_Wire).
+					     The owner's pick of the variations (2026-11-16: "A for the pin-background colors + D for the pin text color + E
+					     for the grey wires"): the tints, every number near-black, every wire one quiet grey - the color only in the
+					     squares and badges. An input green and an input/output blue (owner request, 2026-11-17: "change the "Input"
+					     color to a nice green'ish color, and then have the "Input/output" as the blue'ish color" - purple the day
+					     before), an output the red the level "high" had, all in the same muted style. -->
+					<SolidColorBrush x:Key="PinoutChip_Input_Wire">#6B7280</SolidColorBrush>
+					<SolidColorBrush x:Key="PinoutChip_Output_Wire">#6B7280</SolidColorBrush>
+					<SolidColorBrush x:Key="PinoutChip_InputOutput_Wire">#6B7280</SolidColorBrush>
+					<SolidColorBrush x:Key="PinoutChip_Other_Wire">#6B7280</SolidColorBrush>
+					<SolidColorBrush x:Key="PinoutChip_Input">#3F8A5A</SolidColorBrush>
+					<SolidColorBrush x:Key="PinoutChip_Input_Bg">#DCF0E2</SolidColorBrush>
+					<SolidColorBrush x:Key="PinoutChip_Input_Fg">#1F2328</SolidColorBrush>
+					<SolidColorBrush x:Key="PinoutChip_Output">#B5524C</SolidColorBrush>
+					<SolidColorBrush x:Key="PinoutChip_Output_Bg">#F7DCDA</SolidColorBrush>
+					<SolidColorBrush x:Key="PinoutChip_Output_Fg">#1F2328</SolidColorBrush>
+					<SolidColorBrush x:Key="PinoutChip_InputOutput">#4A72B0</SolidColorBrush>
+					<SolidColorBrush x:Key="PinoutChip_InputOutput_Bg">#DCE6F7</SolidColorBrush>
+					<SolidColorBrush x:Key="PinoutChip_InputOutput_Fg">#1F2328</SolidColorBrush>
+					<SolidColorBrush x:Key="PinoutChip_Other">#737B85</SolidColorBrush>
+					<SolidColorBrush x:Key="PinoutChip_Other_Bg">#EEF0F2</SolidColorBrush>
+					<SolidColorBrush x:Key="PinoutChip_Other_Fg">#1F2328</SolidColorBrush>
+
 					<!-- Light, Thumbnail -->
 					<SolidColorBrush x:Key="Thumbnail_Border">Black</SolidColorBrush>
 					<SolidColorBrush x:Key="Thumbnail_BorderSelected">IndianRed</SolidColorBrush>
@@ -553,6 +580,25 @@
 				<SolidColorBrush x:Key="Changelog_Alert_Important">#AB7DF8</SolidColorBrush>
 				<SolidColorBrush x:Key="Changelog_Alert_Warning">#D29922</SolidColorBrush>
 				<SolidColorBrush x:Key="Changelog_Alert_Caution">#F85149</SolidColorBrush>
+
+				<!-- Dark, a chip drawn with its insides: the ink light enough to read on the dark card, the squares a dark tint
+				     with a white number, every wire one quiet grey (the owner's pick, 2026-11-16 - as the light theme's). -->
+				<SolidColorBrush x:Key="PinoutChip_Input_Wire">#9A938D</SolidColorBrush>
+				<SolidColorBrush x:Key="PinoutChip_Output_Wire">#9A938D</SolidColorBrush>
+				<SolidColorBrush x:Key="PinoutChip_InputOutput_Wire">#9A938D</SolidColorBrush>
+				<SolidColorBrush x:Key="PinoutChip_Other_Wire">#9A938D</SolidColorBrush>
+				<SolidColorBrush x:Key="PinoutChip_Input">#7CC596</SolidColorBrush>
+				<SolidColorBrush x:Key="PinoutChip_Input_Bg">#213D2B</SolidColorBrush>
+				<SolidColorBrush x:Key="PinoutChip_Input_Fg">#FFFFFF</SolidColorBrush>
+				<SolidColorBrush x:Key="PinoutChip_Output">#E08A84</SolidColorBrush>
+				<SolidColorBrush x:Key="PinoutChip_Output_Bg">#4A2A27</SolidColorBrush>
+				<SolidColorBrush x:Key="PinoutChip_Output_Fg">#FFFFFF</SolidColorBrush>
+				<SolidColorBrush x:Key="PinoutChip_InputOutput">#8AAEE0</SolidColorBrush>
+				<SolidColorBrush x:Key="PinoutChip_InputOutput_Bg">#24344D</SolidColorBrush>
+				<SolidColorBrush x:Key="PinoutChip_InputOutput_Fg">#FFFFFF</SolidColorBrush>
+				<SolidColorBrush x:Key="PinoutChip_Other">#A9A39D</SolidColorBrush>
+				<SolidColorBrush x:Key="PinoutChip_Other_Bg">#3A3633</SolidColorBrush>
+				<SolidColorBrush x:Key="PinoutChip_Other_Fg">#FFFFFF</SolidColorBrush>
 
 				<!-- Dark, Thumbnail -->
 				<SolidColorBrush x:Key="Thumbnail_Border">LightGray</SolidColorBrush>

@@ -18,28 +18,23 @@ namespace Handlers.Geometry
     // where its number and its signal name are written.
     public sealed record PinoutPin(int Number, PinSide Side, Rect Lead, Point NumberAnchor, Point NameAnchor);
 
-    // A drawn case: its body, its pins, and - for a DIP - the notch at the top and the dot by pin 1.
-    public sealed record PinoutLayout(Rect Body, IReadOnlyList<PinoutPin> Pins, bool IsDualInLine, Size Size)
+    // A drawn case: its body and its pins. Pitch: how far apart its pins are (a DIP has them further apart -
+    // LogicChipGeometry). A single row's dot by pin 1 is FirstPinDot; a DIP's notch and dot are LogicChipGeometry's.
+    public sealed record PinoutLayout(Rect Body, IReadOnlyList<PinoutPin> Pins, Size Size, double Pitch = PinoutGeometry.Pitch)
     {
-        // The notch's centre - the middle of the top edge.
-        public Point Notch => new(this.Body.Center.X, this.Body.Top);
-
-        // The dot that marks pin 1, inside the body beside it - clear of its number, which is written
-        // against the edge.
-        public Point FirstPinDot => this.IsDualInLine
-            ? new Point(this.Body.Left + PinoutGeometry.DotInset, this.Pins[0].Lead.Center.Y)
-            : new Point(this.Body.Left + PinoutGeometry.EndPadding + (PinoutGeometry.Pitch / 2), this.Body.Bottom - 8);
+        // The dot that marks pin 1 of a single row, inside the body over it.
+        public Point FirstPinDot => new(this.Body.Left + PinoutGeometry.EndPadding + (PinoutGeometry.Pitch / 2), this.Body.Bottom - 8);
     }
 
     // ###########################################################################################
     // THE PINOUT DRAWING'S GEOMETRY (CRT 4.0 step 2, 2026-10-25 - the plan's Pinout: "Pick a package
     // ... CRT draws the top view, with the notch and pin 1").
     //
-    // A DIP seen from above, notch at the top: pins 1 to N/2 down the left side, N/2+1 to N UP the
-    // right side - so pin N sits opposite pin 1, as on every datasheet. Each pin's signal name is
-    // written outside the case beside it, its number inside. A single row of pins (SIP, TO-92,
-    // TO-220) leaves the case at the bottom, pin 1 on the left, its number under it; the names are
-    // the pin list's to show.
+    // A single row of pins (SIP, TO-92, TO-220) leaves the case at the bottom, pin 1 on the left, its
+    // number under it; the names are the pin list's to show. A DIP is LogicChipGeometry's case since
+    // 2026-11-17 (owner request: "unify ALL pinout IC's so they look the same" - EmptyCaseFor), the one
+    // a chip drawn with its insides stands in; this keeps what every case shares - a pin's area under the
+    // pointer, how wide the names are.
     //
     // A case whose pin count CRT cannot tell has no drawing (null) - the pin list alone says it all.
     // Coordinates start at (0, 0); the drawing's size is the layout's Size.
@@ -50,15 +45,9 @@ namespace Handlers.Geometry
         public const double LeadLength = 12;
         public const double LeadThickness = 6;
         public const double NameWidth = 120;
-        public const double NarrowBodyWidth = 76;
-        public const double WideBodyWidth = 116;
         public const double EndPadding = 6;
-        public const double DotInset = 24;
         public const double SingleRowBodyHeight = 34;
         public const double NumberHeight = 14;
-
-        // How much of a pin's number stands inside the case, which a pin's area takes in.
-        private const double NumberInsideCase = 24;
 
         // The drawing's right margin (the markup's), between it and the list.
         public const double ListGap = 12;
@@ -76,25 +65,23 @@ namespace Handlers.Geometry
 
         // ###########################################################################################
         // The part of a drawing that is one pin - to point at and click (owner request, 2026-11-01): the
-        // strip of its row, from its name to its number inside the case; under a single row, the column
-        // of its lead and number.
+        // strip of its row, from its name to the case's edge - its number is on its square, outside the
+        // case (code review, 2026-11-17: the strip reached 24 into the case, where the old case wrote the
+        // numbers, and took a badge drawn there for the pin of its row); under a single row, the column of
+        // its lead and number.
         // ###########################################################################################
         public static Rect AreaOf(PinoutLayout layout, PinoutPin pin)
         {
             ArgumentNullException.ThrowIfNull(layout);
             ArgumentNullException.ThrowIfNull(pin);
 
-            double half = PinoutGeometry.Pitch / 2;
+            double half = layout.Pitch / 2;
 
             return pin.Side switch
             {
-                PinSide.Left => new Rect(0, pin.Lead.Center.Y - half, layout.Body.Left + PinoutGeometry.NumberInsideCase, PinoutGeometry.Pitch),
-                PinSide.Right => new Rect(
-                    layout.Body.Right - PinoutGeometry.NumberInsideCase,
-                    pin.Lead.Center.Y - half,
-                    layout.Size.Width - layout.Body.Right + PinoutGeometry.NumberInsideCase,
-                    PinoutGeometry.Pitch),
-                _ => new Rect(pin.Lead.Center.X - half, layout.Body.Bottom, PinoutGeometry.Pitch, layout.Size.Height - layout.Body.Bottom),
+                PinSide.Left => new Rect(0, pin.Lead.Center.Y - half, layout.Body.Left, layout.Pitch),
+                PinSide.Right => new Rect(layout.Body.Right, pin.Lead.Center.Y - half, layout.Size.Width - layout.Body.Right, layout.Pitch),
+                _ => new Rect(pin.Lead.Center.X - half, layout.Body.Bottom, layout.Pitch, layout.Size.Height - layout.Body.Bottom),
             };
         }
 
@@ -116,19 +103,19 @@ namespace Handlers.Geometry
             width - drawing - PinoutGeometry.ListGap >= list;
 
         // ###########################################################################################
-        // The drawing of `package` - or null when CRT cannot tell how many pins it has. A SIP's count
-        // is the highest pin number the component's pins name (`pinNumbers`); every other case's is
-        // in its name (ComponentVocabulary.PinCountOf). `nameWidth`: how wide its name columns are.
+        // The single row of pins `package` is - or null for a DIP (LogicChipGeometry.EmptyCaseFor) and when
+        // CRT cannot tell how many pins it has. A SIP's count is the highest pin number the component's pins
+        // name (`pinNumbers`); every other case's is in its name (ComponentVocabulary.PinCountOf).
         // ###########################################################################################
-        public static PinoutLayout? For(string? package, IEnumerable<string?> pinNumbers, double nameWidth = PinoutGeometry.NameWidth)
+        public static PinoutLayout? For(string? package, IEnumerable<string?> pinNumbers)
         {
             ArgumentNullException.ThrowIfNull(pinNumbers);
 
             string text = (package ?? string.Empty).Trim();
 
-            if (ComponentVocabulary.IsDualInLine(text) && ComponentVocabulary.PinCountOf(text) is int dipCount)
+            if (ComponentVocabulary.IsDualInLine(text))
             {
-                return PinoutGeometry.DualInLine(dipCount, wide: text.Contains("wide", StringComparison.OrdinalIgnoreCase), nameWidth);
+                return null;
             }
 
             if (ComponentVocabulary.PinCountOf(text) is int count)
@@ -147,48 +134,6 @@ namespace Handlers.Geometry
             }
 
             return null;
-        }
-
-        // A DIP of `count` pins (even, at least 2), seen from above.
-        public static PinoutLayout DualInLine(int count, bool wide, double nameWidth = PinoutGeometry.NameWidth)
-        {
-            if (count < 2 || count % 2 != 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(count), count, "A DIP has an even number of pins, at least two.");
-            }
-
-            int perSide = count / 2;
-            double bodyWidth = wide ? PinoutGeometry.WideBodyWidth : PinoutGeometry.NarrowBodyWidth;
-            double bodyLeft = nameWidth + PinoutGeometry.LeadLength;
-            var body = new Rect(bodyLeft, 0, bodyWidth, (perSide * PinoutGeometry.Pitch) + (2 * PinoutGeometry.EndPadding));
-
-            var pins = new List<PinoutPin>(count);
-
-            for (int index = 0; index < count; index++)
-            {
-                bool left = index < perSide;
-                int row = left ? index : count - 1 - index;
-                double centreY = body.Top + PinoutGeometry.EndPadding + ((row + 0.5) * PinoutGeometry.Pitch);
-                double top = centreY - (PinoutGeometry.LeadThickness / 2);
-
-                pins.Add(left
-                    ? new PinoutPin(
-                        index + 1,
-                        PinSide.Left,
-                        new Rect(body.Left - PinoutGeometry.LeadLength, top, PinoutGeometry.LeadLength, PinoutGeometry.LeadThickness),
-                        new Point(body.Left + 4, centreY),
-                        new Point(body.Left - PinoutGeometry.LeadLength - 4, centreY))
-                    : new PinoutPin(
-                        index + 1,
-                        PinSide.Right,
-                        new Rect(body.Right, top, PinoutGeometry.LeadLength, PinoutGeometry.LeadThickness),
-                        new Point(body.Right - 4, centreY),
-                        new Point(body.Right + PinoutGeometry.LeadLength + 4, centreY)));
-            }
-
-            var size = new Size(body.Right + PinoutGeometry.LeadLength + nameWidth, body.Bottom);
-
-            return new PinoutLayout(body, pins, IsDualInLine: true, size);
         }
 
         // A single row of `count` pins (at least 1), leaving the case at the bottom.
@@ -217,7 +162,7 @@ namespace Handlers.Geometry
 
             var size = new Size(body.Right, body.Bottom + PinoutGeometry.LeadLength + PinoutGeometry.NumberHeight + 2);
 
-            return new PinoutLayout(body, pins, IsDualInLine: false, size);
+            return new PinoutLayout(body, pins, size);
         }
     }
 }

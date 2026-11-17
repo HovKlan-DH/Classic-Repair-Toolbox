@@ -177,15 +177,25 @@ public sealed class KiCadNetNamesTests
 
     // ###########################################################################################
     // THE ONE RULE for reading KiCad's escapes in a name (code review, 2026-10-26: written twice, with
-    // different rules) - the overbar as CRT spells it, "{slash}" as "/", "~" alone as no name.
+    // different rules) - the overbar as CRT spells it, a "/" before the name (owner decision, 2026-11-17:
+    // "use "/" everywhere"; "~" until then), "{slash}" as "/", "~" alone as no name.
     // ###########################################################################################
     [Theory]
-    [InlineData("~{RESET}", "~RESET")]
-    [InlineData("R{slash}~{W}", "R/~W")]
-    [InlineData("R~{W}", "R~W")]
+    [InlineData("~{RESET}", "/RESET")]
+    [InlineData("R{slash}~{W}", "R//W")]
+    [InlineData("R~{W}", "R/W")]
     [InlineData("~", "")]
     [InlineData(" A0 ", "A0")]
     [InlineData(null, "")]
     public void A_KiCad_name_is_read_as_CRT_spells_it(string? kiCad, string readable) =>
         Assert.Equal(readable, KiCadNetNames.Readable(kiCad));
+
+    // Plain drops the overbar - what a name says, for telling names apart.
+    [Theory]
+    [InlineData("~{RESET}", "RESET")]
+    [InlineData("R{slash}~{W}", "R/W")]
+    [InlineData("~", "")]
+    [InlineData(" A0 ", "A0")]
+    public void A_KiCad_name_without_its_overbar_is_what_it_says(string kiCad, string plain) =>
+        Assert.Equal(plain, KiCadNetNames.Plain(kiCad));
 }

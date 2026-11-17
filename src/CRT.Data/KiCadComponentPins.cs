@@ -32,10 +32,12 @@ namespace Handlers.DataHandling
     //     own number appended ("A2_6" on pad 6); when EVERY named pad of the footprint does, it is
     //     taken off - a real name may hold an underscore ("AUDIO_IN").
     //   - THE SYMBOL'S PINS, where the board has a schematic, name a pin before its pad does.
-    //   - NAMES are CRT's spelling: KiCad's overbar "~{RESET}" is "~RESET" (the pane's own hint), and
-    //     "~" - KiCad's "no name" - is none.
+    //   - NAMES are CRT's spelling: KiCad's overbar "~{RESET}" is "/RESET" (an active-low pin is
+    //     written with "/" everywhere - owner decision, 2026-11-17), and "~" - KiCad's "no name" - is none.
     //   - DIRECTIONS are ComponentVocabulary's words; a passive or unspecified pin gets none, and a
-    //     supply pin is told by its name (Direction).
+    //     supply pin is told by its name (Direction). A symbol typing every signal pin "input" gives
+    //     none (WithoutUntypedSignals), and a chip CRT has the datasheet of goes by that before any of
+    //     these (DatasheetPins).
     //   - THE NET is never stored: it is this board's, read from its KiCad data when shown. KiCad's
     //     "no net" and its "unconnected-(...)" names are none.
     // ###########################################################################################
@@ -74,7 +76,7 @@ namespace Handlers.DataHandling
                     bySymbol.TryAdd(number, pin);
             }
 
-            return byPad.Keys
+            List<KiCadPin> pins = byPad.Keys
                 .Concat(bySymbol.Keys)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(number => number, ComponentPaneEdits.PinOrder)
@@ -94,9 +96,30 @@ namespace Handlers.DataHandling
                     return new KiCadPin(number, name, direction, KiCadComponentPins.NetName(pad?.Net));
                 })
                 .ToList();
+
+            return KiCadComponentPins.WithoutUntypedSignals(pins);
         }
 
-        // A pin's name as CRT spells it: "~{RESET}" is "~RESET", KiCad's "~" (no name) is none - the one
+        // ###########################################################################################
+        // *** A SYMBOL WHOSE EVERY SIGNAL PIN IS AN INPUT WAS NEVER TYPED *** (owner decision, 2026-11-17): no chip has no
+        // outputs, so where KiCad calls every pin that carries a signal "Input" - the live 250407's 6510 (38 of its 40 pins),
+        // its ROMs, nearly every chip of the 250469 - those directions say nothing and are left out; a supply, ground or
+        // unconnected pin keeps its own. Measured that day on the boards' KiCad projects, the same chip drawn by three people
+        // came out three ways. Only when those inputs are at least half the component's pins: a symbol typing a pin or two
+        // (a /RESET as an input) and leaving the rest unspecified typed what it typed.
+        // ###########################################################################################
+        private static List<KiCadPin> WithoutUntypedSignals(List<KiCadPin> pins)
+        {
+            List<KiCadPin> signals = pins.Where(pin => KiCadComponentPins.IsSignal(pin.Direction)).ToList();
+
+            return signals.Count >= 2 && signals.Count * 2 >= pins.Count && signals.All(pin => pin.Direction == "Input")
+                ? pins.Select(pin => pin.Direction == "Input" ? pin with { Direction = string.Empty } : pin).ToList()
+                : pins;
+        }
+
+        private static bool IsSignal(string direction) => direction is "Input" or "Output" or "Input/output";
+
+        // A pin's name as CRT spells it: "~{RESET}" is "/RESET", KiCad's "~" (no name) is none - the one
         // rule, KiCadNetNames.Readable.
         public static string PinName(string? kiCadName) => KiCadNetNames.Readable(kiCadName);
 
@@ -155,8 +178,8 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         // "Fill from KiCad": `current` - the component's pins in its region - with every pin of
         // `kiCad` it lacks added (in `region`), and the name and direction of each it has filled in
-        // where they are EMPTY - what was typed is never changed. In pin order. `added` and `filled`
-        // count what changed.
+        // where they are EMPTY (a direction "Unknown" too - SaysNoDirection) - what was typed is never
+        // changed. In pin order. `added` and `filled` count what changed.
         // ###########################################################################################
         public static List<ComponentPinEntry> Fill(
             IReadOnlyList<ComponentPinEntry> current,
@@ -186,24 +209,33 @@ namespace Handlers.DataHandling
 
                 ComponentPinEntry row = rows[index];
                 bool nameEmpty = string.IsNullOrWhiteSpace(row.Name) && pin.Name.Length > 0;
-                bool directionEmpty = string.IsNullOrWhiteSpace(row.Direction) && pin.Direction.Length > 0;
+                bool directionEmpty = KiCadComponentPins.SaysNoDirection(row.Direction) && pin.Direction.Length > 0;
 
                 if (!nameEmpty && !directionEmpty)
                     continue;
 
-                rows[index] = new ComponentPinEntry
-                {
-                    BoardLabel = row.BoardLabel,
-                    Region = row.Region,
-                    Pin = row.Pin,
-                    Name = nameEmpty ? pin.Name : row.Name,
-                    Direction = directionEmpty ? pin.Direction : row.Direction,
-                };
+                rows[index] = row.WithNameAndDirection(nameEmpty ? pin.Name : row.Name, directionEmpty ? pin.Direction : row.Direction);
 
                 filled++;
             }
 
             return rows.OrderBy(row => row.Pin, ComponentPaneEdits.PinOrder).ToList();
+        }
+
+        // ###########################################################################################
+        // A direction that says none: empty, or "Unknown" - the word for "not known", which DatasheetPins.Settled reads as
+        // none too (code review, 2026-11-17: Fill took "Unknown" for a direction given, so a chip the conversion left
+        // "Unknown" - its name not known then - could never take its datasheet's directions in the pane).
+        // ###########################################################################################
+        private static bool SaysNoDirection(string? direction) =>
+            string.IsNullOrWhiteSpace(direction) || string.Equals(direction.Trim(), "Unknown", StringComparison.OrdinalIgnoreCase);
+
+        // Whether Fill would add a pin to `current` or fill in a name or direction from `source` - "Fill pins from
+        // datasheet" is offered only then.
+        public static bool WouldFill(IReadOnlyList<ComponentPinEntry> current, IReadOnlyList<KiCadPin> source)
+        {
+            KiCadComponentPins.Fill(current, source, string.Empty, out int added, out int filled);
+            return added + filled > 0;
         }
 
         // ###########################################################################################
@@ -266,7 +298,8 @@ namespace Handlers.DataHandling
                 : name;
         }
 
-        // GND, AGND, GND1, VSS, 0V - a supply pin that is ground.
+        // GND, AGND, GND1, VSS, 0V - a supply pin that is ground. Looser than the datasheets' checks (ChipNames) on purpose:
+        // this only types a pin to start from.
         private static bool IsGroundName(string? name)
         {
             string upper = (name?.Trim() ?? string.Empty).TrimStart('~').ToUpperInvariant();

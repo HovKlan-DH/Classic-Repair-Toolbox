@@ -152,6 +152,11 @@ public sealed class PictureReadsTests : IDisposable
             Assert.Null((await overtaken).Picture);
         }
 
+        // Both decodes begun are on their way into the decoder before they are let go (2026-11-16: under the suite's load
+        // the second Task.Run had not reached it yet, the first finished alone, and two at once read as one). A reader
+        // letting only one decode at a time never gets here, and the assertion below still says so.
+        SpinWait.SpinUntil(() => Volatile.Read(ref atOnce) == PictureReads<Picture>.DecodedAtOnce, TimeSpan.FromSeconds(10));
+
         hold.Set();
         (Picture? Picture, Thickness Border)[] all = await Task.WhenAll(asked).WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
 

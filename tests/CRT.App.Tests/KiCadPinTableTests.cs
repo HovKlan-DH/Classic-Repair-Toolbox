@@ -22,11 +22,11 @@ public sealed class KiCadPinTableTests : IDisposable
         KiCadProjectRoot? root = await KiCadRawProjectLoader.LoadAsync([pcb, schematic]);
 
         Assert.Equal(
-            [new KiCadPin("1", "", "", ""), new KiCadPin("40", "~RES", "Input", "~RESET")],
+            [new KiCadPin("1", "", "", ""), new KiCadPin("40", "/RES", "Input", "/RESET")],
             KiCadPinTable.PinsOf(root, " u8 "));
 
         Assert.Equal(
-            ["1:A:Input", "3:~Y:Output", "4:A:Input", "7:GND:Ground", "14:VCC:Power"],
+            ["1:A:Input", "3:/Y:Output", "4:A:Input", "7:GND:Ground", "14:VCC:Power"],
             KiCadPinTable.PinsOf(root, "U5").Select(pin => $"{pin.Pin}:{pin.Name}:{pin.Direction}"));
 
         Assert.Empty(KiCadPinTable.PinsOf(root, "U99"));

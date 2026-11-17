@@ -11,6 +11,17 @@ every push of that version, so a section reworded later reaches the release with
 - Plain ASCII punctuation.
 -->
 
+# 11.1.0, 2026-November-17
+--------------------------
+- Converting a data tree for CRT 4.0 gives every pin of a chip whose datasheet CRT holds the direction that datasheet says: the 74, 40 and 55 series logic chips, and the CPUs, CIAs, VIAs, video and sound chips, ROMs, RAMs and PLAs of the published boards
+- A pin the board says is not connected stays so
+- Other chips' pins get the direction their board's KiCad data says, also where the pin was made from an oscilloscope baseline - unless KiCad calls every signal pin of the chip an input
+- The expected oscilloscope readings are written in plain words: "High" and "Low" for "HIGH" and "LOW", "Floating" for "FLOAT" and "Video" for "VIDEO" - also inside a longer reading such as "LOW/FLOAT"
+- An active-low pin's name is written with "/" before it, as the published boards write theirs: "/IRQ" for KiCad's "~{IRQ}"
+- A resistor, capacitor, diode or connector is never taken for a chip, nor a Z80 PIO or CTC for the Z80 itself
+- The conversion's notes say how many chips took their datasheet's pin directions, apart from the pinouts made
+- Nothing changed in what the server answers
+
 # 11.0.0, 2026-November-15
 --------------------------
 - A board's credits carry what each contribution was and the date it was published

@@ -18,7 +18,9 @@ namespace CRT
     //
     //   - "FILL FROM KICAD" adds every pin the KiCad data has and the pins lack, and fills in the names
     //     and directions still empty - what was typed is never changed - as ONE step
-    //     (KiCadComponentPins.Fill). Offered while the KiCad data has pins for the component.
+    //     (KiCadComponentPins.Fill). Offered while the KiCad data has pins for the component. A chip CRT
+    //     has the datasheet of takes its directions from that, KiCad's only where it says none
+    //     (DatasheetPins - owner decision, 2026-11-17).
     //   - EACH PIN SHOWS ITS NET ON THIS BOARD, beside its direction. The net is the board's, read from
     //     its KiCad data as it is shown - never stored with the pins, which say what the chip is.
     //   - THE PINS ARE ASKED FOR AGAIN when the draft's KiCad files change while the component is shown
@@ -191,9 +193,13 @@ namespace CRT
             this.CommitHeld();
             this.ShowMessage(null);
 
+            List<ComponentPinEntry> current = this.thisPins.Select(row => row.ToEntry()).ToList();
+
+            // A chip CRT has the datasheet of fills its directions from it, KiCad's only where it says none (owner
+            // decision, 2026-11-17 - DatasheetPins.OverKiCad, the KiCad import's rule too).
             List<ComponentPinEntry> pins = KiCadComponentPins.Fill(
-                this.thisPins.Select(row => row.ToEntry()).ToList(),
-                this.thisKiCadPins,
+                current,
+                DatasheetPins.OverKiCad(this.ShownComponent(), current, this.thisKiCadPins),
                 this.RegionForNewPin(),
                 out int added,
                 out int filled);

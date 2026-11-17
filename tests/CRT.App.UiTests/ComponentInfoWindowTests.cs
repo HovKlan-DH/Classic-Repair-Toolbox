@@ -596,10 +596,11 @@ public class ComponentInfoWindowTests : IDisposable
     // "DETACH PINOUT IMAGE IN COMPONENT INFO POPUP" (owner request, 2026-11-07: "do show the pinout and its information in
     // another popup window and do make sure to save size and location etc. (one global, and not per component/board)"):
     // the popup's pinout section stands in a window of its own while the component has pins, back in the popup when it
-    // has none or the setting is unticked; the window's size is saved as it closes, one for all.
+    // has none or the setting is unticked; the window's place is saved as it closes, one for all - its size is what each
+    // pinout takes (below).
     // ###########################################################################################
     [Fact]
-    public void A_detached_pinout_stands_in_a_window_of_its_own_and_its_size_is_kept()
+    public void A_detached_pinout_stands_in_a_window_of_its_own_and_its_place_is_kept()
     {
         UiTest.Run(() =>
         {
@@ -623,9 +624,6 @@ public class ComponentInfoWindowTests : IDisposable
             Assert.Same(pinout, TopLevel.GetTopLevel(section));
             Assert.StartsWith("Pinout - ", pinout.Title, StringComparison.Ordinal);
 
-            // Its size the first time (owner request, 2026-11-07: "aprox 870x960px").
-            Assert.Equal((ComponentPinoutWindow.DefaultWidth, ComponentPinoutWindow.DefaultHeight), (pinout.Width, pinout.Height));
-
             // No pins: no window, the section back in the popup - decided once the caller is done with the popup, before
             // anything is drawn (the jobs at Normal; the section's move is a Background job of its own).
             SetComponent(window, new[] { Component() });
@@ -644,21 +642,242 @@ public class ComponentInfoWindowTests : IDisposable
             Assert.Null(window.PinoutWindowForTests);
             Assert.Same(window, TopLevel.GetTopLevel(section));
 
-            // Ticked again, resized, and the popup closed: the size is kept for the next one.
+            // Ticked again, moved, and the popup closed: its place is kept, and the next one opens there.
             UserSettings.DetachPinoutInComponentPopup = true;
             Dispatcher.UIThread.RunJobs();
             pinout = Assert.IsType<ComponentPinoutWindow>(window.PinoutWindowForTests);
-            pinout.Width = 512;
+            pinout.Position = new PixelPoint(123, 45);
             Dispatcher.UIThread.RunJobs();
 
             window.Close();
             Dispatcher.UIThread.RunJobs();
 
             Assert.False(pinout.IsVisible);
-            Assert.True(UserSettings.HasPinoutWindowLayout);
-            Assert.Equal(512, UserSettings.PinoutWindowWidth);
+            Assert.True(UserSettings.HasPinoutWindowPlace);
+            Assert.Equal((123, 45), (UserSettings.PinoutWindowX, UserSettings.PinoutWindowY));
+
+            var next = CreateWindow();
+            next.Show();
+            SetComponent(next, chip, pins: pins);
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(new PixelPoint(123, 45), Assert.IsType<ComponentPinoutWindow>(next.PinoutWindowForTests).Position);
+            next.Close();
+            Dispatcher.UIThread.RunJobs();
 
             UserSettings.DetachPinoutInComponentPopup = false;
+        });
+    }
+
+    // ###########################################################################################
+    // *** THE PINOUT'S WINDOW IS AS LARGE AS THE PINOUT (owner request, 2026-11-17: "can we make it auto-size, so it will show
+    // all the info, and not being way too big or small in size"). *** Opened, it shows the whole pinout - the pin list beside
+    // the drawing, nothing to scroll - and is no larger than that; resized by hand, it fits the next component's pinout again.
+    // ###########################################################################################
+    [Fact]
+    public void The_pinouts_window_is_as_large_as_the_pinout_it_shows()
+    {
+        UiTest.Run(() =>
+        {
+            ComponentEntry[] large = [new ComponentEntry { BoardLabel = BoardLabel, Category = "IC", Package = "DIP-40" }];
+            ComponentEntry[] small = [new ComponentEntry { BoardLabel = BoardLabel, Category = "IC", Package = "DIP-14" }];
+            ComponentPinEntry[] smallPins = [.. Enumerable.Range(1, 14).Select(pin => new ComponentPinEntry { BoardLabel = BoardLabel, Pin = $"{pin}", Name = $"P{pin}", Direction = "Input" })];
+
+            UserSettings.DetachPinoutInComponentPopup = true;
+
+            try
+            {
+                // At its smallest the popup has room for neither pinout, so both go into the window (PinoutFitsInPopup).
+                var window = CreateWindow();
+                window.Width = window.MinWidth;
+                window.Height = window.MinHeight;
+                window.Show();
+                Dispatcher.UIThread.RunJobs();
+
+                Control section = ControlOf<Control>(window, "PinoutSection");
+                Control list = ControlOf<Control>(window, "InfoPinsPanel");
+
+                void Settle()
+                {
+                    Dispatcher.UIThread.RunJobs();
+                    AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+                    Dispatcher.UIThread.RunJobs();
+                }
+
+                void AssertFits(ComponentPinoutWindow pinout, string what)
+                {
+                    pinout.UpdateLayout();
+                    ScrollViewer scroll = Assert.IsType<ScrollViewer>(pinout.Content);
+
+                    Assert.Same(pinout, TopLevel.GetTopLevel(section));
+                    Assert.Equal(1, Grid.GetColumn(list));
+                    Assert.True(scroll.Extent.Height <= scroll.Viewport.Height + 0.5, $"{what}: {scroll.Extent.Height} to scroll in {scroll.Viewport.Height}");
+                    // What the section takes - its margin included - and the window's padding round it, a pixel or two to spare.
+                    Size takes = section.DesiredSize;
+                    Assert.True(pinout.Width <= Math.Max(pinout.MinWidth, takes.Width + 24 + 2), $"{what}: {pinout.Width} wide for {takes.Width}");
+                    Assert.True(pinout.Height <= Math.Max(pinout.MinHeight, takes.Height + 24 + 2), $"{what}: {pinout.Height} high for {takes.Height}");
+                }
+
+                // Sized as it opens, before the pinout moves in (code review, 2026-11-17: shown empty at the platform's own size,
+                // it jumped once the pinout came in) - the size it keeps once it has the pinout.
+                SetComponent(window, large, pins: FortyPins());
+                Dispatcher.UIThread.RunJobs(DispatcherPriority.Normal);
+                ComponentPinoutWindow pinout = Assert.IsType<ComponentPinoutWindow>(window.PinoutWindowForTests);
+                Assert.NotSame(pinout, TopLevel.GetTopLevel(section));
+                Assert.False(double.IsNaN(pinout.Width) || double.IsNaN(pinout.Height), "no size before the pinout came in");
+                (double openedWidth, double openedHeight) = (pinout.Width, pinout.Height);
+
+                Settle();
+                AssertFits(pinout, "forty pins");
+                Assert.InRange(pinout.Width, openedWidth - 2, openedWidth + 2);
+                Assert.InRange(pinout.Height, openedHeight - 2, openedHeight + 2);
+                double tall = pinout.Height;
+
+                // Dragged far too large by hand: the next component's pinout - smaller - fits again.
+                pinout.Width = 1500;
+                pinout.Height = 1100;
+                Settle();
+
+                SetComponent(window, small, pins: smallPins);
+                Settle();
+                Assert.Same(pinout, window.PinoutWindowForTests);
+                AssertFits(pinout, "fourteen pins");
+                Assert.True(pinout.Height < tall, $"{pinout.Height} is not less than {tall}");
+
+                window.Close();
+            }
+            finally
+            {
+                UserSettings.DetachPinoutInComponentPopup = false;
+            }
+        });
+    }
+
+    // ###########################################################################################
+    // A chip CRT knows is drawn with no pins listed - and goes into the pinout's own window as pins do, when the popup has
+    // no room for it (code review, 2026-11-17: only pins took it there, so the drawing made the popup scroll).
+    // ###########################################################################################
+    [Fact]
+    public void A_known_chip_drawn_with_no_pins_listed_goes_into_its_own_window_too()
+    {
+        UiTest.Run(() =>
+        {
+            UserSettings.DetachPinoutInComponentPopup = true;
+
+            try
+            {
+                var window = CreateWindow();
+                window.Width = window.MinWidth;
+                window.Height = window.MinHeight;
+                window.Show();
+                Dispatcher.UIThread.RunJobs();
+
+                Control section = ControlOf<Control>(window, "PinoutSection");
+
+                SetComponent(window, [new ComponentEntry { BoardLabel = BoardLabel, Category = "IC", TechnicalNameOrValue = "74LS245", Package = "DIP-20" }]);
+                Dispatcher.UIThread.RunJobs();
+
+                Assert.True(section.IsVisible);
+                ComponentPinoutWindow pinout = Assert.IsType<ComponentPinoutWindow>(window.PinoutWindowForTests);
+                Assert.Same(pinout, TopLevel.GetTopLevel(section));
+
+                window.Close();
+            }
+            finally
+            {
+                UserSettings.DetachPinoutInComponentPopup = false;
+            }
+        });
+    }
+
+    // ###########################################################################################
+    // *** IN A POPUP NARROWER THAN THE CASE, THE CASE IS DRAWN SMALLER, NEVER CUT (code review, 2026-11-17). *** The drawing
+    // stands in the pinout grid's Auto column, which Avalonia measures with no limit, so it was never drawn smaller there and
+    // the popup - which does not scroll sideways - cut its right-hand names and its legend off.
+    // ###########################################################################################
+    [Fact]
+    public void A_pinout_wider_than_the_popup_is_drawn_smaller_not_cut()
+    {
+        UiTest.Run(() =>
+        {
+            ComponentPinEntry[] pins = [.. Enumerable.Range(1, 40).Select(pin => new ComponentPinEntry
+            {
+                BoardLabel = BoardLabel,
+                Pin = pin.ToString(System.Globalization.CultureInfo.InvariantCulture),
+                Name = $"SIG{pin}",
+                Direction = pin % 2 == 0 ? "Input" : "Output",
+            })];
+
+            var window = CreateWindow();
+            window.Width = window.MinWidth;
+            window.Height = 900;
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            SetComponent(window, [new ComponentEntry { BoardLabel = BoardLabel, Category = "IC", Package = "DIP-40" }], pins: pins);
+            Dispatcher.UIThread.RunJobs();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            Dispatcher.UIThread.RunJobs();
+            window.UpdateLayout();
+
+            PinoutDrawing drawing = ControlOf<PinoutDrawing>(window, "InfoPinoutDrawing");
+            Grid grid = ControlOf<Grid>(window, "PinoutGrid");
+            double room = grid.Bounds.Width - drawing.Margin.Left - drawing.Margin.Right;
+
+            Assert.True(drawing.IsVisible);
+            Assert.True(drawing.NaturalSize.Width > room, $"the case ({drawing.NaturalSize.Width}) must be wider than its room ({room}) here");
+            Assert.True(drawing.Bounds.Width <= room + 0.5, $"{drawing.Bounds.Width} drawn in {room}");
+            Assert.InRange(drawing.Bounds.Height - (drawing.NaturalSize.Height * drawing.Bounds.Width / drawing.NaturalSize.Width), -1, 1);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // *** WITH NO PLACE OF ITS OWN ON A SCREEN, IT OPENS ON THE SCREEN WHOLE (code review, 2026-11-17). *** Beside a popup at
+    // the screen's right edge it is moved left as far as the pinout needs - its list beside the drawing, nothing past the
+    // screen's edge - and a place kept on a screen taken away is given up for that before it is sized, not after.
+    // ###########################################################################################
+    [Fact]
+    public void A_pinout_window_with_no_place_of_its_own_opens_whole_on_the_screen()
+    {
+        UiTest.Run(() =>
+        {
+            UserSettings.DetachPinoutInComponentPopup = true;
+            UserSettings.SavePinoutWindowPlace(1_000_000, 1_000_000);
+
+            try
+            {
+                var window = CreateWindow();
+                window.Width = window.MinWidth;
+                window.Height = window.MinHeight;
+                window.Show();
+                Dispatcher.UIThread.RunJobs();
+
+                Avalonia.Platform.Screen screen = Assert.IsAssignableFrom<Avalonia.Platform.Screen>(window.Screens.Primary);
+                PixelRect area = screen.WorkingArea;
+                window.Position = new PixelPoint(area.Right - (int)Math.Round(window.Bounds.Width * screen.Scaling) - 2, area.Y + 10);
+                Dispatcher.UIThread.RunJobs();
+
+                SetComponent(window, [new ComponentEntry { BoardLabel = BoardLabel, Category = "IC", Package = "DIP-40" }], pins: FortyPins());
+                Dispatcher.UIThread.RunJobs(DispatcherPriority.Normal);
+
+                ComponentPinoutWindow pinout = Assert.IsType<ComponentPinoutWindow>(window.PinoutWindowForTests);
+                Assert.InRange(pinout.Position.X, area.X, area.Right);
+                Assert.True(pinout.Position.X + (pinout.Width * screen.Scaling) <= area.Right + 1, $"{pinout.Position.X} + {pinout.Width} runs past {area.Right}");
+
+                Dispatcher.UIThread.RunJobs();
+                AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+                Dispatcher.UIThread.RunJobs();
+
+                Assert.Equal(1, Grid.GetColumn(ControlOf<Control>(window, "InfoPinsPanel")));
+                Assert.True(pinout.Position.X + (pinout.Width * screen.Scaling) <= area.Right + 1);
+
+                window.Close();
+            }
+            finally
+            {
+                UserSettings.DetachPinoutInComponentPopup = false;
+            }
         });
     }
 
@@ -1010,6 +1229,57 @@ public class ComponentInfoWindowTests : IDisposable
 
             SetComponent(window, new[] { new ComponentEntry { BoardLabel = BoardLabel, Category = "IC", Package = "DIP-8" } }, pins: pins);
             Assert.False(heading.IsVisible);
+        });
+    }
+
+    // ###########################################################################################
+    // A LOGIC CHIP CRT KNOWS IS DRAWN WITH ITS INSIDES (owner request, 2026-11-16), each pin in the color of its direction
+    // as the pin list beside it says it in the region shown (owner request, 2026-11-17), following the popup's region, else
+    // the datasheet's - and drawn with no pins listed and no package too, as the datasheet numbers them. A chip CRT does
+    // not know is the same case empty (owner request, 2026-11-17: "unify ALL pinout IC's so they look the same").
+    // ###########################################################################################
+    [Fact]
+    public void A_known_logic_chip_is_drawn_with_its_insides_colored_by_the_pin_directions_of_the_region_shown()
+    {
+        UiTest.Run(() =>
+        {
+            var window = CreateWindow();
+            PinoutDrawing drawing = ControlOf<PinoutDrawing>(window, "InfoPinoutDrawing");
+
+            SetComponent(
+                window,
+                new[] { new ComponentEntry { BoardLabel = BoardLabel, Category = "IC", TechnicalNameOrValue = "74LS08", Package = "DIP-14" } },
+                hasExplicitRegionComponents: true,
+                pins:
+                [
+                    new ComponentPinEntry { BoardLabel = BoardLabel, Pin = "3", Region = "PAL", Name = "BA", Direction = "Output" },
+                    new ComponentPinEntry { BoardLabel = BoardLabel, Pin = "3", Region = "NTSC", Name = "BA", Direction = "Other" },
+                ]);
+
+            Assert.True(ControlOf<Control>(window, "PinoutSection").IsVisible);
+            Assert.True(drawing.IsVisible);
+            Assert.Equal(4, Assert.IsType<LogicInside>(drawing.InsideForTests).Symbols.OfType<LogicGateShape>().Count());
+            Assert.Equal(PinDirectionKind.Output, drawing.DirectionsForTests[3]);
+            Assert.Equal(PinDirectionKind.Input, drawing.DirectionsForTests[1]);
+
+            ControlOf<Button>(window, "NtscRegionButton").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            Assert.Equal(PinDirectionKind.Other, drawing.DirectionsForTests[3]);
+
+            // No pins listed, no package: the datasheet's pins and directions, the section shown for the drawing alone.
+            SetComponent(window, new[] { new ComponentEntry { BoardLabel = BoardLabel, Category = "IC", TechnicalNameOrValue = "SN74LS257N" } });
+            Assert.True(ControlOf<Control>(window, "PinoutSection").IsVisible);
+            Assert.NotNull(drawing.InsideForTests);
+            Assert.Equal(16, drawing.LayoutForTests!.Pins.Count);
+            Assert.Equal(PinDirectionKind.Output, drawing.DirectionsForTests[4]);
+            Assert.False(ControlOf<Control>(window, "InfoPinsPanel").IsVisible);
+
+            // A chip CRT does not know: the same case with nothing inside, and with no pins nothing at all, as before.
+            SetComponent(window, new[] { new ComponentEntry { BoardLabel = BoardLabel, Category = "IC", TechnicalNameOrValue = "6510", Package = "DIP-40" } }, pins: FortyPins());
+            Assert.Empty(Assert.IsType<LogicInside>(drawing.InsideForTests).Symbols);
+            Assert.Equal(40, drawing.LayoutForTests!.Pins.Count);
+
+            SetComponent(window, new[] { new ComponentEntry { BoardLabel = BoardLabel, Category = "IC", TechnicalNameOrValue = "6510", Package = "DIP-40" } });
+            Assert.False(ControlOf<Control>(window, "PinoutSection").IsVisible);
         });
     }
 

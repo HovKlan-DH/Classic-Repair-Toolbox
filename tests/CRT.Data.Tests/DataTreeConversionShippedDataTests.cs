@@ -112,10 +112,12 @@ public sealed class DataTreeConversionShippedDataTests
             Assert.All(after.Board.Credits, credit => Assert.True(string.IsNullOrEmpty(credit.Date), $"{who}: a converted credit is dated [{credit.Date}]"));
             DataTreeConversionShippedDataTests.SameRows(before.KiCadImportantSignals, after.Board.KiCadImportantSignals, who, null, SameFile);
 
-            // The one deliberate change: pictures first, then the baselines, each in its own order.
+            // The deliberate changes: pictures first, then the baselines, each in its own order - and every expected reading in
+            // plain words (owner request, 2026-11-17 - ReadingWords: "HIGH" is "High"), the rest of each row the workbook's.
             List<ComponentImageEntry> imagesBefore = before.ComponentImages
                 .Where(image => !ComponentImageKinds.IsScopeBaseline(image))
                 .Concat(before.ComponentImages.Where(ComponentImageKinds.IsScopeBaseline))
+                .Select(image => image.WithExpectedReading(ReadingWords.Of(image.ExpectedOscilloscopeReading)))
                 .ToList();
 
             DataTreeConversionShippedDataTests.SameRows(imagesBefore, after.Board.ComponentImages, who, nameof(ComponentImageEntry.File), SameFile);
@@ -175,6 +177,102 @@ public sealed class DataTreeConversionShippedDataTests
         }
 
         Assert.True(withKiCad >= 5, $"Only {withKiCad} shipped boards with KiCad data were found.");
+    }
+
+    // ###########################################################################################
+    // THE CONVERSION GIVES EVERY PIN OF A CHIP CRT HOLDS THE DATASHEET OF ITS DATASHEET'S DIRECTION (owner request, 2026-11-17:
+    // "convert the data, so it also will show correctly in the text part of it ... make sure it also gets done when we
+    // go-live"; and the same day "OK to what you suggest for 1-4" - the datasheet before KiCad, DatasheetPins): on every
+    // shipped board each such pin says what the datasheet does - but a "Not connected" the board says, and what the board
+    // says of a pin the datasheet leaves unconnected or unsettled. Measured on the 250407, whose KiCad project types its 556's
+    // DISCHARGE, its 6510's address lines and its ROMs' data pins as inputs, and on the 250469, whose project types every pin
+    // of its 6526s as an input.
+    // ###########################################################################################
+    [Fact]
+    public void The_conversion_gives_every_pin_of_a_chip_CRT_holds_the_datasheet_of_its_datasheets_direction()
+    {
+        int logicPins = 0;
+        int otherPins = 0;
+
+        foreach (ConvertedBoard converted in DataTreeConversionShippedDataTests.Planned.Value.Boards)
+        {
+            BoardData board = BoardDocumentMapping.ToContent(converted.Document).Board;
+
+            foreach (ComponentEntry row in board.Components)
+            {
+                List<ComponentPinEntry> pins = ComponentPaneEdits.PinsOf(board, row.BoardLabel, row.Region);
+
+                if (DatasheetPins.Of(row, pins) is not { } datasheet)
+                {
+                    continue;
+                }
+
+                bool logic = LogicChips.For(row, pins) is not null;
+
+                foreach (ComponentPinEntry pin in pins)
+                {
+                    if (ComponentVocabulary.PinNumberOf(pin.Pin) is not int number || datasheet(number) is not { Length: > 0 } said)
+                    {
+                        continue;
+                    }
+
+                    bool kept = pin.Direction == "Not connected" || said == "Not connected";
+
+                    Assert.True(pin.Direction == said || kept, $"{converted.BoardId} {row.BoardLabel} pin {pin.Pin}: [{pin.Direction}], the datasheet says [{said}]");
+
+                    if (logic)
+                    {
+                        logicPins++;
+                    }
+                    else
+                    {
+                        otherPins++;
+                    }
+                }
+            }
+        }
+
+        Assert.True(logicPins > 1500, $"Only {logicPins} pins of logic chips were checked.");
+        Assert.True(otherPins > 2000, $"Only {otherPins} pins of other ICs were checked.");
+
+        string DirectionOf(string boardId, string label, string pin) =>
+            BoardDocumentMapping.ToContent(DataTreeConversionShippedDataTests.Planned.Value.Boards.Single(item => item.BoardId == boardId).Document).Board
+                .ComponentPins.Single(row => row.BoardLabel == label && row.Pin == pin).Direction;
+
+        Assert.Equal("Output", DirectionOf("Commodore/C64/250407", "U20", "1"));
+        Assert.Equal("Output", DirectionOf("Commodore/C64/250407", "U20", "5"));
+        Assert.Equal("Output", DirectionOf("Commodore/C64/250407", "U7", "7"));
+        Assert.Equal("Input/output", DirectionOf("Commodore/C64/250407", "U7", "30"));
+        Assert.Equal("Output", DirectionOf("Commodore/C64/250407", "U4", "9"));
+        Assert.Equal("Input/output", DirectionOf("Commodore/C64/250469", "U1", "2"));
+    }
+
+    // ###########################################################################################
+    // THE CONVERSION WRITES THE EXPECTED READINGS IN PLAIN WORDS (owner request, 2026-11-17: "make sure it is also done on
+    // go-live day"): no shipped board's baseline says "HIGH", "LOW", "FLOAT" or "VIDEO" afterwards - thousands said one
+    // before - and the 250407's 556 reads "Low" on its pin 1.
+    // ###########################################################################################
+    [Fact]
+    public void The_conversion_writes_every_expected_reading_in_plain_words()
+    {
+        int readings = 0;
+
+        foreach (ConvertedBoard converted in DataTreeConversionShippedDataTests.Planned.Value.Boards)
+        {
+            foreach (ComponentImageEntry image in BoardDocumentMapping.ToContent(converted.Document).Board.ComponentImages.Where(image => image.ExpectedOscilloscopeReading.Length > 0))
+            {
+                Assert.Equal(ReadingWords.Of(image.ExpectedOscilloscopeReading), image.ExpectedOscilloscopeReading);
+                Assert.DoesNotMatch(@"\b(HIGH|LOW|FLOAT|VIDEO)\b", image.ExpectedOscilloscopeReading);
+                readings++;
+            }
+        }
+
+        Assert.True(readings > 10000, $"Only {readings} expected readings were checked.");
+        Assert.Contains(DataTreeConversionShippedDataTests.Planned.Value.Notes, note => note.Contains("expected oscilloscope reading(s) written in plain words", StringComparison.Ordinal));
+
+        BoardData c64 = BoardDocumentMapping.ToContent(DataTreeConversionShippedDataTests.Planned.Value.Boards.Single(item => item.BoardId == "Commodore/C64/250407").Document).Board;
+
+        Assert.Contains(c64.ComponentImages, image => image.BoardLabel == "U20" && image.Pin == "1" && image.ExpectedOscilloscopeReading == "Low");
     }
 
     // A board with KiCad data keeps every file of it, under "KiCad data/".
