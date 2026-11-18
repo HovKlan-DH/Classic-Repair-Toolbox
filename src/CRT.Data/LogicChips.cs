@@ -119,6 +119,9 @@ namespace Handlers.DataHandling
     {
         public int PinCount => this.PinNames.Count;
 
+        // The case its pin-out is of: every logic chip's is a DIP's, which its SOIC and the like share (ChipNames.PackageFits).
+        public string Package => $"DIP-{this.PinCount.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+
         // How the chip is known: "74LS08" is a "7408", CMOS and the timers keep their own numbers.
         public string Name => this.Family == "74" ? "74" + this.Number : this.Number;
 
@@ -372,7 +375,7 @@ namespace Handlers.DataHandling
                 return null;
             }
 
-            if (!ChipNames.PackageFits(entry, chip.PinCount))
+            if (!ChipNames.PackageFits(entry, chip.Package))
             {
                 return null;
             }

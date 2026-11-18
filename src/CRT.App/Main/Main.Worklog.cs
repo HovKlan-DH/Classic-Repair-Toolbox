@@ -304,6 +304,10 @@ namespace CRT
             if (!ReferenceEquals(this.MainTabControl?.SelectedItem, this.SchematicsTabItem))
             {
                 this.TabSchematicsControl.SetDrawingTraces(false);
+
+                // A SHIFT held is let go of as the tab is left: let go of elsewhere, the tab never heard it, and its pins
+                // stayed numbered (code review, 2026-11-18). Pressed again on the tab, it is heard again.
+                this.LetGoOfShiftForSchematics();
             }
 
             if (ReferenceEquals(this.MainTabControl?.SelectedItem, this.WorkbooksTabItem))

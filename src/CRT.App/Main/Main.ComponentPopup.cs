@@ -676,6 +676,10 @@ namespace CRT
             if (ColorDropperButton.IsAnyPicking || this.TourOverlay.IsShowing)
                 return;
 
+            // SHIFT reaches the "Schematics" tab wherever the keyboard is (2026-11-17): its pins are numbered while it is held
+            // (TabSchematics.PinsOnImage.cs), and its traces highlighted, with the pointer standing still.
+            this.NoteKeyModifiersForSchematics(e);
+
             // The arrow keys move the box "Align KiCad" aligns wherever the keyboard is (owner report,
             // 2026-11-06: "it seems not always to react when I use the keys for fine-tuning") - see
             // KeyIsForKiCadAlignment. Each press, a held key's every repeat included.
@@ -781,6 +785,119 @@ namespace CRT
             ReferenceEquals(this.MainTabControl?.SelectedItem, this.SchematicsTabItem) &&
             !this.TabSchematicsControl.IsKeyboardFocusWithin &&
             TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is not (TextBox or ComboBox { IsDropDownOpen: true } or ComboBoxItem);
+
+        // ###########################################################################################
+        // SHIFT pressed or let go of, handed to the "Schematics" tab while it is shown: the tab hears a key only while the
+        // keyboard is in it, and the component filter outside it usually holds the keyboard - so SHIFT pressed with the pointer
+        // standing still numbered no pin and highlighted no trace until the pointer moved.
+        //
+        // IN A TEXT BOX - the component filter, which holds the keyboard after every click on the tab - SHIFT is heard only
+        // once it has been held ShiftHeldInTextBox with nothing typed (code review, 2026-11-18: typing "U12" there numbered
+        // every pin of the components selected and took the numbers away again, at every capital). A key typed with it is a
+        // capital, and lets go of whatever SHIFT did.
+        // ###########################################################################################
+        internal static readonly TimeSpan ShiftHeldInTextBox = TimeSpan.FromMilliseconds(300);
+
+        private IDisposable? thisShiftPause;
+
+        private bool IsSchematicsTabShown => ReferenceEquals(this.MainTabControl?.SelectedItem, this.SchematicsTabItem);
+
+        private bool IsKeyboardInATextBox => TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is TextBox;
+
+        private void NoteKeyModifiersForSchematics(KeyEventArgs e)
+        {
+            if (!this.IsSchematicsTabShown)
+            {
+                return;
+            }
+
+            // SHIFT itself pressed is SHIFT held, whatever the modifiers say - on X11 a key's modifiers are those from before it
+            // (code review, 2026-11-18), as its release's are on every platform (OnMainKeyUpForSchematics).
+            KeyModifiers modifiers = e.Key is Key.LeftShift or Key.RightShift ? e.KeyModifiers | KeyModifiers.Shift : e.KeyModifiers;
+
+            if (!modifiers.HasFlag(KeyModifiers.Shift) || !this.IsKeyboardInATextBox)
+            {
+                this.TabSchematicsControl.NoteKeyModifiers(modifiers);
+                return;
+            }
+
+            if (e.Key is Key.LeftShift or Key.RightShift)
+            {
+                // A key held repeats: the pause is started once, never again at each repeat.
+                if (this.thisShiftPause is null && !this.TabSchematicsControl.IsShiftHeld)
+                {
+                    this.thisShiftPause = DispatcherTimer.RunOnce(this.EndShiftPause, ShiftHeldInTextBox);
+                }
+
+                return;
+            }
+
+            // A key typed with SHIFT: a capital, not SHIFT held for the pins.
+            this.CancelShiftPause();
+            this.TabSchematicsControl.NoteKeyModifiers(modifiers & ~KeyModifiers.Shift);
+        }
+
+        private void EndShiftPause()
+        {
+            this.thisShiftPause = null;
+
+            if (this.IsSchematicsTabShown)
+            {
+                this.TabSchematicsControl.NoteKeyModifiers(KeyModifiers.Shift);
+            }
+        }
+
+        private void CancelShiftPause()
+        {
+            this.thisShiftPause?.Dispose();
+            this.thisShiftPause = null;
+        }
+
+        // The pause ended now - for the tests, whose clock does not run.
+        internal void EndShiftPauseForTests()
+        {
+            if (this.thisShiftPause is not null)
+            {
+                this.CancelShiftPause();
+                this.EndShiftPause();
+            }
+        }
+
+        internal bool IsShiftPauseRunningForTests => this.thisShiftPause is not null;
+
+        // SHIFT let go of where the tab cannot hear it: the tab left, CRT's window gone behind another.
+        private void LetGoOfShiftForSchematics()
+        {
+            this.CancelShiftPause();
+            this.TabSchematicsControl.NoteKeyModifiers(KeyModifiers.None);
+        }
+
+        // ###########################################################################################
+        // A key let go of is heard whatever is showing: a SHIFT let go of while a tour or the color dropper had the keys left the
+        // pins numbered (code review, 2026-11-18). SHIFT itself let go of is no SHIFT held, whatever the modifiers say; another
+        // key let go of with SHIFT still down is, in a text box, the end of a capital typed, which changes nothing.
+        // ###########################################################################################
+        private void OnMainKeyUpForSchematics(object? sender, KeyEventArgs e)
+        {
+            KeyModifiers modifiers = e.Key is Key.LeftShift or Key.RightShift ? e.KeyModifiers & ~KeyModifiers.Shift : e.KeyModifiers;
+
+            if (!modifiers.HasFlag(KeyModifiers.Shift))
+            {
+                this.CancelShiftPause();
+
+                if (this.IsSchematicsTabShown)
+                {
+                    this.TabSchematicsControl.NoteKeyModifiers(modifiers);
+                }
+
+                return;
+            }
+
+            if (this.IsSchematicsTabShown && !this.IsKeyboardInATextBox)
+            {
+                this.TabSchematicsControl.NoteKeyModifiers(modifiers);
+            }
+        }
 
         // ###########################################################################################
         // *** ENTER TURNS "Blink selected" ON AND OFF ON THE "Schematics" TAB (owner request, 2026-11-14: "if I have

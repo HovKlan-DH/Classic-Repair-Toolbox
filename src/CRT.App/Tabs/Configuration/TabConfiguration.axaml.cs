@@ -33,13 +33,6 @@ namespace CRT
             this.ApplyCatalogueSplitterWidth();
             this.WireCatalogueSplitterPersistence();
 
-            this.ThemeVariantComboBox.SelectedIndex = UserSettings.ThemeVariant switch
-            {
-                "Dark" => 1,
-                "UserPreference" => 2,
-                _ => 0
-            };
-
             // Initialize configuration checkboxes — subscribe after setting initial values
             // to avoid triggering redundant saves during startup
             this.CheckVersionOnLaunchCheckBox.IsChecked = UserSettings.CheckVersionOnLaunch;
@@ -84,7 +77,6 @@ namespace CRT
             this.UpdateDownloadDataFromTestSourceCheckBoxState();
             this.UpdateShowMaintainerTabOnlyWhenWorkWaitingCheckBoxState();
 
-            this.ThemeVariantComboBox.SelectionChanged += this.OnThemeVariantSelectionChanged;
             this.CheckVersionOnLaunchCheckBox.IsCheckedChanged += this.OnCheckVersionOnLaunchChanged;
             this.CheckDataOnLaunchCheckBox.IsCheckedChanged += this.OnCheckDataOnLaunchChanged;
             this.AllowDeletionOfOrphanAndNonUsedFilesCheckBox.IsCheckedChanged += this.OnAllowDeletionOfOrphanAndNonUsedFilesChanged;
@@ -332,46 +324,6 @@ namespace CRT
             bool isCheckDataOnLaunchEnabled = this.CheckDataOnLaunchCheckBox.IsChecked == true;
             this.AllowDeletionOfOrphanAndNonUsedFilesCheckBox.IsEnabled = isCheckDataOnLaunchEnabled;
         }
-
-        // ###########################################################################################
-        // Applies and persists the selected application theme from the drop-down list.
-        // ###########################################################################################
-        private void OnThemeVariantSelectionChanged(object? sender, SelectionChangedEventArgs e)
-        {
-            var themeVariant = this.ThemeVariantComboBox.SelectedIndex switch
-            {
-                1 => "Dark",
-                2 => "UserPreference",
-                _ => "Light"
-            };
-
-            UserSettings.ThemeVariant = themeVariant;
-
-            this.ApplyTheme();
-        }
-
-        // ###########################################################################################
-        // Puts the configured theme on CRT's application - or, in a test, calls the stand-in instead.
-        // A test must never change the Application the whole headless run shares (CLAUDE.md,
-        // "Headless UI tests"): a test choosing "Dark" here turned every later test in the run dark,
-        // and one comparing a drawn colour with the light theme's failed on CI at random (2026-10-04).
-        // ###########################################################################################
-        private void ApplyTheme()
-        {
-            if (this.ApplyThemeOverrideForTests is Action apply)
-            {
-                apply();
-                return;
-            }
-
-            if (Application.Current is App app)
-            {
-                app.ApplyConfiguredTheme();
-            }
-        }
-
-        // Called instead of App.ApplyConfiguredTheme when set - for tests (see ApplyTheme).
-        internal Action? ApplyThemeOverrideForTests { get; set; }
 
         // ###########################################################################################
         // Persists the "Check for new version at launch" preference when the checkbox is toggled.
@@ -1027,16 +979,6 @@ namespace CRT
             };
 
             await dialog.ShowDialog(owner);
-        }
-
-        // ###########################################################################################
-        // Reloads user-preference theme colors from settings and reapplies the configured theme.
-        // ###########################################################################################
-        private void OnReloadUserPreferenceThemeClick(object? sender, RoutedEventArgs e)
-        {
-            UserSettings.ReloadUserThemeColors();
-
-            this.ApplyTheme();
         }
 
         // ###########################################################################################

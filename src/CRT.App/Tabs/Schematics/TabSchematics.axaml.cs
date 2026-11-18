@@ -45,7 +45,11 @@
 //   TabSchematics.Worklog.TestSeams.cs        ...ForTests seams for the area-drawing flow - see
 //                                             that file's own header
 //   TabSchematics.Settings.cs                 Board-level and global setting rows
-//   TabSchematics.PictureTools.cs             "Mark components" and "Align KiCad" started on a
+//   TabSchematics.PinsOnImage.cs              The pins of the components selected or pointed at:
+//                                             numbered while SHIFT is held, in their directions'
+//                                             colors, with a legend (PinNumbersOverlay, a control
+//                                             of its own)
+//   TabSchematics.PictureTools.cs            "Mark components" and "Align KiCad" started on a
 //                                             picture from the Contribute tab, with their bar
 //                                             (Done/Cancel)
 //   TabSchematics.ViewTools.cs               Panning with the right or middle button and the
@@ -165,6 +169,10 @@ public partial class TabSchematics : UserControl
         this.InlineThumbnailGallery.Initialize(this);
 
         this.InitializeThumbnailsContextMenu();
+
+        // The pins on the board: numbered, their directions and the legend (TabSchematics.PinsOnImage.cs) - global settings, so
+        // nothing of Main's is needed.
+        this.WirePinsOnImage();
     }
 
     public void Initialize(Main mainWindow)
@@ -204,7 +212,6 @@ public partial class TabSchematics : UserControl
 
         this.thisSuppressBoardSettingsChanged = true;
         this.thisSuppressGlobalSettingsChanged = true;
-        this.CheckBoardMarkPin1OnSelectedComponent.IsChecked = true;
         this.CheckBoardShowTracesOnSelectedComponent.IsChecked = UserSettings.SchematicsShowTracesOnSelectedComponent;
         this.CheckGlobalShowTracesOnComponentSelect.IsChecked = UserSettings.SchematicsShowTracesOnComponentSelect;
         this.CheckGlobalShowOppositeSideTraces.IsChecked = UserSettings.SchematicsShowOppositeSideTraces;
@@ -261,26 +268,6 @@ public partial class TabSchematics : UserControl
         {
             UserSettings.SchematicsLabelSelectedOnly = this.CheckLabelSelectedOnly.IsChecked == true;
             this.UpdateComponentLabels();
-        };
-
-        this.CheckBoardMarkPin1OnSelectedComponent.IsCheckedChanged += (s, e) =>
-        {
-            if (this.thisSuppressBoardSettingsChanged)
-            {
-                return;
-            }
-
-            var boardKey = this.MainWindow?.GetCurrentBoardKey();
-            if (string.IsNullOrWhiteSpace(boardKey))
-            {
-                return;
-            }
-
-            UserSettings.SetSchematicsMarkPin1OnSelectedComponentForBoard(
-                boardKey,
-                this.CheckBoardMarkPin1OnSelectedComponent.IsChecked == true);
-
-            this.RefreshKiCadOverlay(forceImmediate: true);
         };
 
         this.CheckBoardShowTracesOnSelectedComponent.IsCheckedChanged += (s, e) =>
@@ -865,6 +852,11 @@ public partial class TabSchematics : UserControl
         this.SchematicsKiCadOverlayCanvas.ClearGeometry();
         ((MatrixTransform)this.SchematicsKiCadOverlayCanvas.RenderTransform!).Matrix = this.schematicsMatrix;
 
+        // The pins numbered or framed on the board before (TabSchematics.PinsOnImage.cs), and the legend of their colors -
+        // left, they stood over the next board's thumbnail until its picture was read (code review, 2026-11-18).
+        this.SchematicsPinNumbersOverlay.Clear();
+        this.PinDirectionLegend.IsVisible = false;
+
         this.KiCadNetConnectionsPanel.IsVisible = false;
         this.KiCadNetConnectionsHeaderTextBlock.Text = "KiCad nets";
         this.KiCadNetConnectionsList.ItemsSource = null;
@@ -940,6 +932,8 @@ public partial class TabSchematics : UserControl
         ((MatrixTransform)this.SchematicsHoverHighlightsOverlay.RenderTransform!).Matrix = this.schematicsMatrix;
         ((MatrixTransform)this.SchematicsLabelEditorOverlay.RenderTransform!).Matrix = this.schematicsMatrix;
 
+        this.SchematicsPinNumbersOverlay.ViewMatrix = this.schematicsMatrix;
+
         this.SchematicsHighlightsOverlay.HighlightIndex = null;
         this.SchematicsHighlightsOverlay.BitmapPixelSize = new PixelSize(0, 0);
         this.SchematicsHighlightsOverlay.ViewMatrix = this.schematicsMatrix;
@@ -980,7 +974,7 @@ public partial class TabSchematics : UserControl
             highlightOpacity: 0.20,
             isVisible: false);
 
-        this.RestoreBoardSettings(string.Empty);
+        this.RestoreBoardSettings();
 
         this.isPanning = false;
         this.HideSchematicsHoverUi();

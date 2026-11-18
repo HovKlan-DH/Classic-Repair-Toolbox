@@ -84,6 +84,9 @@ namespace Handlers.Geometry
     {
         public KiCadNetRef Net { get; init; } = null!;
         public string PadNumber { get; init; } = string.Empty;
+
+        // The component the pad is of - its footprint's reference.
+        public string Reference { get; init; } = string.Empty;
         public Point CenterWorld { get; init; }
         public double HitRadiusWorld { get; init; }
     }

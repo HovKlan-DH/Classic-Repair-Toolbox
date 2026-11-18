@@ -500,76 +500,15 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Applies the persisted theme mode, including JSON-defined user preference colors.
+        // Applies the persisted theme: light or dark, nothing else (owner request, 2026-11-17: "I want to remove the "User
+        // preference" option, and only support light and dark themes" - its colors, typed into the settings file, went with
+        // it). A "UserPreference" an earlier CRT stored reads as the light theme it was drawn over (UserSettings.ThemeVariant).
         // ###########################################################################################
         public void ApplyConfiguredTheme()
         {
-            if (UserSettings.ThemeVariant == "UserPreference")
-            {
-                UserSettings.ReloadUserThemeColors();
-            }
-
-            this.ClearUserPreferenceThemeResources();
-
-            switch (UserSettings.ThemeVariant)
-            {
-                case "Dark":
-                    this.RequestedThemeVariant = Avalonia.Styling.ThemeVariant.Dark;
-                    break;
-
-                case "UserPreference":
-                    this.RequestedThemeVariant = Avalonia.Styling.ThemeVariant.Light;
-                    this.ApplyUserPreferenceThemeResources();
-                    break;
-
-                default:
-                    this.RequestedThemeVariant = Avalonia.Styling.ThemeVariant.Light;
-                    break;
-            }
-        }
-
-        // ###########################################################################################
-        // Removes any previously applied JSON-backed theme overrides from application resources.
-        // ###########################################################################################
-        private void ClearUserPreferenceThemeResources()
-        {
-            foreach (var resourceKey in UserSettings.GetUserThemeColors().Keys.Concat(Handlers.Theming.UserThemeShades.Keys))
-            {
-                this.Resources.Remove(resourceKey);
-            }
-        }
-
-        // ###########################################################################################
-        // Applies JSON-backed user theme colors by overriding the existing application resources.
-        // ###########################################################################################
-        private void ApplyUserPreferenceThemeResources()
-        {
-            foreach (var entry in UserSettings.GetUserThemeColors())
-            {
-                if (!Color.TryParse(entry.Value, out var color))
-                {
-                    Logger.Warning($"Skipped invalid user theme color: [{entry.Key}] [{entry.Value}]");
-                    continue;
-                }
-
-                if (UserSettings.IsUserThemeColorResourceKey(entry.Key))
-                {
-                    this.Resources[entry.Key] = color;
-                }
-                else
-                {
-                    this.Resources[entry.Key] = new SolidColorBrush(color);
-                }
-            }
-
-            // A button color changed from its default gets its shades under the pointer and pressed worked out from it -
-            // the light theme's own are made for its own colors (UserThemeShades).
-            foreach ((string key, Color shade) in Handlers.Theming.UserThemeShades.Of(UserSettings.GetUserThemeColors(), UserSettings.UserThemeDefaultColors))
-            {
-                this.Resources[key] = new SolidColorBrush(shade);
-            }
-
-            Logger.Info($"Applied user preference theme colors: [{UserSettings.GetUserThemeColors().Count} entries]");
+            this.RequestedThemeVariant = UserSettings.ThemeVariant == "Dark"
+                ? Avalonia.Styling.ThemeVariant.Dark
+                : Avalonia.Styling.ThemeVariant.Light;
         }
 
         // ###########################################################################################

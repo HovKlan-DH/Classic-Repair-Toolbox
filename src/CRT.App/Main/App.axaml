@@ -135,6 +135,9 @@
 					     same red the selected-tab underline uses (owner request, 2026-09-25). IndianRed until 2026-11-12, 4.0:1
 					     for 12px text; the failure text's red since, the underline with it. -->
 					<SolidColorBrush x:Key="Main_TabHeader_Drafts_Fg">#B53535</SolidColorBrush>
+					<!-- The theme's icon in the top right corner (Main.ThemeToggle.cs): the moon the light theme shows, a muted
+					     night blue. -->
+					<SolidColorBrush x:Key="Main_ThemeIcon_Fg">#4A5694</SolidColorBrush>
 					<SolidColorBrush x:Key="Main_TabUnderline_Selected">#B53535</SolidColorBrush>
 					<SolidColorBrush x:Key="Main_TabUnderline_Hover">#ecc3c3</SolidColorBrush>
 					<SolidColorBrush x:Key="Main_Banner_Bg">#4C1515</SolidColorBrush>
@@ -454,6 +457,8 @@
 				     until 2026-11-12, 4.2:1 for 12px text); under the pointer a faint red, as the light theme's is - it was
 				     #ECC3C3 here, brighter than the underline of the tab chosen. -->
 				<SolidColorBrush x:Key="Main_TabHeader_Drafts_Fg">#F26C6C</SolidColorBrush>
+				<!-- The theme's icon in the top right corner (Main.ThemeToggle.cs): the sun the dark theme shows, a warm amber. -->
+				<SolidColorBrush x:Key="Main_ThemeIcon_Fg">#F2B33D</SolidColorBrush>
 				<SolidColorBrush x:Key="Main_TabUnderline_Selected">#F26C6C</SolidColorBrush>
 				<SolidColorBrush x:Key="Main_TabUnderline_Hover">#5D3231</SolidColorBrush>
 				<SolidColorBrush x:Key="Main_Banner_Bg">#38241A</SolidColorBrush>

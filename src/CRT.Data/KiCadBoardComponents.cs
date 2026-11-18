@@ -46,8 +46,10 @@ namespace Handlers.DataHandling
     //     KiCad's own libraries call a connector J, which a contributor then changes by hand.
     //   - THE PACKAGE is ComponentVocabulary's word when the footprint's name says it AND its pads
     //     agree: a name STARTING "DIP-14_W7.62mm", "DIP16" or "PDIP-40" with that many pads
-    //     ("Oscillator_DIP-14" is a can, "SOIC-DIP-8" surface-mounted), a 24- or 28-pin DIP "wide" when
-    //     its rows are 600 mil apart; SIP and a resistor array; TO-92 and TO-220 with three pads; and
+    //     ("SOIC-DIP-8" is surface-mounted), a 24- or 28-pin DIP "wide" when
+    //     its rows are 600 mil apart; since 2026-11-18 a surface-mounted chip - "SOIC-14_...",
+    //     "PLCC-84_...", a square "LQFP-64_10x10mm_..." - by the same rule, and an oscillator's can,
+    //     "Oscillator_DIP-14" on its four pads; SIP and a resistor array; TO-92 and TO-220 with three pads; and
     //     since 2026-11-03 (owner request: "ideally guess their 'package'"), by what the footprints of the
     //     six published boards with a PCB file call them: DO-35, DO-41, HC-49, HC-18, a pin header, a
     //     three-legged EMI filter, and with two pads Axial, Radial or Disc as the name says - a resistor,
@@ -315,6 +317,20 @@ namespace Handlers.DataHandling
                 .Select(group => group.First())
                 .ToList();
 
+            // A crystal oscillator's can on a DIP's pads (owner request, 2026-11-18 - the Amiga's X1 and OSC1):
+            // "Oscillator_DIP-14" with exactly the can's four pads (ComponentVocabulary.OscillatorOf).
+            Match oscillator = KiCadBoardComponents.Oscillator().Match(name);
+
+            if (oscillator.Success)
+            {
+                string can = $"Oscillator DIP-{oscillator.Groups["count"].Value}";
+
+                return ComponentVocabulary.OscillatorOf(can) is { } shape &&
+                       numbered.Select(pad => ComponentVocabulary.PinNumberOf(pad.Number)).Order().SequenceEqual(shape.Pins.Select(pin => (int?)pin))
+                    ? can
+                    : string.Empty;
+            }
+
             Match dip = KiCadBoardComponents.Dip().Match(name);
 
             if (dip.Success)
@@ -328,6 +344,30 @@ namespace Handlers.DataHandling
                 bool wide = (count is 24 or 28) && KiCadBoardComponents.IsWide(name, numbered, count);
 
                 return wide ? $"DIP-{count} wide" : $"DIP-{count}";
+            }
+
+            // ###########################################################################################
+            // A SURFACE-MOUNTED CHIP (owner request, 2026-11-18: the Amiga "has a lot of SMD components"): numbered as a DIP
+            // (SOIC, SSOP, TSSOP ...) or a square PLCC or QFP, by the footprint's name STARTING with its family and count as
+            // KiCad's libraries name them - "SOIC-14_3.9x8.7mm_P1.27mm", "PLCC-84_THT-Socket", "LQFP-64_10x10mm_P0.5mm" - with
+            // that many pads (an exposed pad is one more: "TSSOP-20-1EP" is none); a quad's body square where the name gives
+            // its size ("QFP-100_14x20mm" is rectangular, and none). ComponentVocabulary.ChipCaseOf says what it is.
+            // ###########################################################################################
+            Match surfaceChip = KiCadBoardComponents.SurfaceChip().Match(name);
+
+            if (surfaceChip.Success)
+            {
+                string package = $"{surfaceChip.Groups["family"].Value.ToUpperInvariant()}-{surfaceChip.Groups["count"].Value}";
+                bool wideBody = surfaceChip.Groups["wide"].Success;
+                Match size = KiCadBoardComponents.BodySize().Match(name);
+                bool square = !size.Success || size.Groups["width"].Value == size.Groups["height"].Value;
+
+                // A wide body is a case of two rows' - "SOIC-28 wide", as a DIP's is said - and no square case's.
+                return ComponentVocabulary.ChipCaseOf(package) is { } shape &&
+                       shape.Pins == numbered.Count &&
+                       (shape.Kind == ChipCaseKind.TwoRows || (square && !wideBody))
+                    ? shape.Kind == ChipCaseKind.TwoRows && wideBody ? $"{package} wide" : package
+                    : string.Empty;
             }
 
             // "R_Array_Concave_4x0603" is an array too, on a surface (code review, 2026-11-04).
@@ -477,9 +517,22 @@ namespace Handlers.DataHandling
             string.Equals(first?.Trim(), second, StringComparison.OrdinalIgnoreCase);
 
         // "DIP-14", "DIP16", "PDIP-40", "DIP_28" - the footprint's name STARTING with it (code review,
-        // 2026-10-26): "SOIC-DIP-8" is surface-mounted, "Oscillator_DIP-14" a can on a DIP's pads.
+        // 2026-10-26): "SOIC-DIP-8" is surface-mounted, "Oscillator_DIP-14" a can on a DIP's pads (Oscillator).
         [GeneratedRegex(@"^P?DIP[-_ ]?([0-9]+)", RegexOptions.IgnoreCase)]
         private static partial Regex Dip();
+
+        // "Oscillator_DIP-14", "Oscillator_DIP-8" - KiCad's footprints of an oscillator's can.
+        [GeneratedRegex(@"^Oscillator_DIP-(?<count>14|8)(?=$|[-_ ])", RegexOptions.IgnoreCase)]
+        private static partial Regex Oscillator();
+
+        // "SOIC-14_...", "PLCC-84_...", "LQFP-64_...", "SO-8": the family, a dash and the count at the name's start - and a
+        // "W" straight after it, KiCad's wide body ("SOIC-28W_7.5x17.9mm_P1.27mm"; code review, 2026-11-18: none until then).
+        [GeneratedRegex(@"^(?<family>SOIC|SO|SOP|SSOP|TSSOP|TSOP|SOJ|PLCC|QFP|LQFP|TQFP|PQFP)-(?<count>[0-9]{1,3})(?<wide>W)?(?=$|[-_ ])", RegexOptions.IgnoreCase)]
+        private static partial Regex SurfaceChip();
+
+        // The body's size in a footprint's name: "_10x10mm", "_14x20mm", "_29.3x29.3mm".
+        [GeneratedRegex(@"_(?<width>[0-9]+(?:\.[0-9]+)?)x(?<height>[0-9]+(?:\.[0-9]+)?)mm", RegexOptions.IgnoreCase)]
+        private static partial Regex BodySize();
 
         [GeneratedRegex(@"(?<![A-Za-z])SIP", RegexOptions.IgnoreCase)]
         private static partial Regex Sip();

@@ -1,7 +1,9 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Presenters;
 using Avalonia.LogicalTree;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using CRT;
 using Handlers.DataHandling;
 using Handlers.Theming;
@@ -262,6 +264,267 @@ public sealed class MainWindowTests : IDisposable
 
             Assert.NotNull(main.MainTabControl);
             Assert.NotNull(main.TabSchematicsControl);
+        });
+    }
+
+    // ###########################################################################################
+    // THE ICON IN THE TOP RIGHT CORNER SWITCHES THE THEME (owner requests, 2026-11-17: a sun and a moon there, then one icon
+    // drawn as the data icon is) - the moon in the light theme, the sun in the dark, what a click switches to, its tooltip
+    // saying so - and it is the only place the theme is picked: the "Configuration" tab's "Appearance" went the same day.
+    // A click stores the theme and puts it on CRT - through the stand-in, never on the real Application, which every headless
+    // test shares (a test turning it dark made a later one comparing a drawn color with the light theme's fail on CI,
+    // 2026-10-04).
+    // ###########################################################################################
+    [Fact]
+    public void The_icon_in_the_top_right_corner_switches_the_theme()
+    {
+        this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
+
+        UiTest.Run(() =>
+        {
+            UserSettings.ThemeVariant = "Light";
+
+            var main = new CRT.Main();
+            int applied = 0;
+            main.ApplyThemeOverrideForTests = () => applied++;
+
+            Button icon = main.GetControl<Button>("ThemeToggle");
+            TextBlock glyph = main.GetControl<TextBlock>("ThemeToggleGlyph");
+
+            // It takes no keyboard focus (code review, 2026-11-18): left with it after a click, Enter or Space switched again.
+            Assert.False(icon.Focusable);
+
+            Assert.Equal(CRT.Main.MoonGlyph, glyph.Text);
+            Assert.Equal(CRT.Main.ToDarkTip, ToolTip.GetTip(icon));
+
+            icon.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+
+            Assert.Equal("Dark", UserSettings.ThemeVariant);
+            Assert.Equal(1, applied);
+            Assert.Equal(CRT.Main.SunGlyph, glyph.Text);
+            Assert.Equal(CRT.Main.ToLightTip, ToolTip.GetTip(icon));
+
+            icon.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+
+            Assert.Equal("Light", UserSettings.ThemeVariant);
+            Assert.Equal(2, applied);
+            Assert.Equal(CRT.Main.MoonGlyph, glyph.Text);
+
+            // No theme to pick on the "Configuration" tab any more.
+            Assert.DoesNotContain(main.TabConfiguration.GetLogicalDescendants().OfType<ComboBox>(), box => box.Items.OfType<ComboBoxItem>().Any(item => Equals(item.Content, "Dark")));
+        });
+    }
+
+    // ###########################################################################################
+    // The tabs' headers keep clear of the icons in the top right corner (code review, 2026-11-18): on a narrow window they
+    // wrap and run to the right edge, and a header under the theme's icon switched the theme when it was clicked.
+    // ###########################################################################################
+    [Fact]
+    public void The_tabs_headers_keep_clear_of_the_icons_in_the_top_right_corner()
+    {
+        this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
+
+        UiTest.Run(() =>
+        {
+            var main = new CRT.Main { Width = 700, Height = 520 };
+            main.Show();
+
+            try
+            {
+                main.UpdateLayout();
+
+                var tabs = main.GetControl<TabControl>("MainTabControl");
+                var tools = main.GetControl<StackPanel>("TopRightTools");
+                ItemsPresenter headers = tabs.GetVisualDescendants().OfType<ItemsPresenter>().First(presenter => presenter.Name == "PART_ItemsPresenter");
+
+                double headersRight = headers.TranslatePoint(new Point(headers.Bounds.Width, 0), main)!.Value.X;
+                double toolsLeft = tools.TranslatePoint(new Point(0, 0), main)!.Value.X;
+
+                Assert.True(headersRight <= toolsLeft, $"the headers end at {headersRight:0}, the icons start at {toolsLeft:0}");
+
+                // Every header of the tabs shown within that room.
+                foreach (TabItem item in tabs.Items.OfType<TabItem>().Where(item => item.IsVisible))
+                {
+                    double right = item.TranslatePoint(new Point(item.Bounds.Width, 0), main)!.Value.X;
+                    Assert.True(right <= toolsLeft, $"\"{item.Header}\" ends at {right:0}, the icons start at {toolsLeft:0}");
+                }
+            }
+            finally
+            {
+                main.IsApplicationShuttingDownForTests = true;
+                main.Close();
+            }
+        });
+    }
+
+    // ###########################################################################################
+    // A SHIFT held on the "Schematics" tab is let go of as the tab is left (code review, 2026-11-18): let go of on another tab,
+    // the "Schematics" tab never heard it, and its pins stayed numbered once back.
+    // ###########################################################################################
+    [Fact]
+    public void A_shift_held_on_the_schematics_tab_is_let_go_of_as_the_tab_is_left()
+    {
+        this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
+
+        UiTest.Run(() =>
+        {
+            var main = new CRT.Main();
+            var tabs = main.GetControl<TabControl>("MainTabControl");
+            tabs.SelectedItem = main.GetControl<TabItem>("SchematicsTabItem");
+
+            main.TabSchematicsControl.NoteKeyModifiers(Avalonia.Input.KeyModifiers.Shift);
+            Assert.True(main.TabSchematicsControl.IsShiftHeld);
+
+            tabs.SelectedItem = main.GetControl<TabItem>("ResourcesTabItem");
+            Assert.False(main.TabSchematicsControl.IsShiftHeld);
+        });
+    }
+
+    // ###########################################################################################
+    // IN THE COMPONENT FILTER, SHIFT IS HEARD ONLY ONCE HELD A MOMENT WITH NOTHING TYPED (code review, 2026-11-18): the filter
+    // holds the keyboard after every click on the "Schematics" tab, and typing "U12" there numbered every pin of the
+    // components selected and took the numbers away again at every capital. Anywhere else SHIFT is heard at once.
+    // ###########################################################################################
+    [Fact]
+    public void Shift_in_the_component_filter_is_heard_only_once_held_with_nothing_typed()
+    {
+        this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
+
+        UiTest.Run(() =>
+        {
+            var main = new CRT.Main();
+            main.Show();
+
+            try
+            {
+                main.GetControl<TabControl>("MainTabControl").SelectedItem = main.GetControl<TabItem>("SchematicsTabItem");
+                TabSchematics tab = main.TabSchematicsControl;
+                TextBox filter = main.GetControl<TextBox>("ComponentSearchTextBox");
+                Assert.True(filter.Focus());
+
+                void Key(Control on, Avalonia.Input.Key key, Avalonia.Input.KeyModifiers modifiers, bool down) =>
+                    on.RaiseEvent(new Avalonia.Input.KeyEventArgs
+                    {
+                        RoutedEvent = down ? Avalonia.Input.InputElement.KeyDownEvent : Avalonia.Input.InputElement.KeyUpEvent,
+                        Key = key,
+                        KeyModifiers = modifiers,
+                        Source = on,
+                    });
+
+                // SHIFT pressed: nothing yet, a pause running - and its repeats start no other.
+                Key(filter, Avalonia.Input.Key.LeftShift, Avalonia.Input.KeyModifiers.Shift, down: true);
+                Key(filter, Avalonia.Input.Key.LeftShift, Avalonia.Input.KeyModifiers.Shift, down: true);
+                Assert.False(tab.IsShiftHeld);
+                Assert.True(main.IsShiftPauseRunningForTests);
+
+                // Held with nothing typed: heard.
+                main.EndShiftPauseForTests();
+                Assert.True(tab.IsShiftHeld);
+
+                // A capital typed while it is held: let go of, and the capital's release brings nothing back.
+                Key(filter, Avalonia.Input.Key.U, Avalonia.Input.KeyModifiers.Shift, down: true);
+                Assert.False(tab.IsShiftHeld);
+                Key(filter, Avalonia.Input.Key.U, Avalonia.Input.KeyModifiers.Shift, down: false);
+                Assert.False(tab.IsShiftHeld);
+                Key(filter, Avalonia.Input.Key.LeftShift, Avalonia.Input.KeyModifiers.Shift, down: false);
+                Assert.False(tab.IsShiftHeld);
+
+                // A capital typed straight away: the pause ends unheard.
+                Key(filter, Avalonia.Input.Key.LeftShift, Avalonia.Input.KeyModifiers.Shift, down: true);
+                Key(filter, Avalonia.Input.Key.U, Avalonia.Input.KeyModifiers.Shift, down: true);
+                Assert.False(main.IsShiftPauseRunningForTests);
+                Assert.False(tab.IsShiftHeld);
+                Key(filter, Avalonia.Input.Key.LeftShift, Avalonia.Input.KeyModifiers.None, down: false);
+
+                // Outside a text box SHIFT is heard at once, and its release too.
+                CheckBox blink = main.GetControl<CheckBox>("BlinkSelectedCheckBox");
+                Assert.True(blink.Focus());
+                Key(blink, Avalonia.Input.Key.LeftShift, Avalonia.Input.KeyModifiers.Shift, down: true);
+                Assert.True(tab.IsShiftHeld);
+                Assert.False(main.IsShiftPauseRunningForTests);
+                Key(blink, Avalonia.Input.Key.LeftShift, Avalonia.Input.KeyModifiers.Shift, down: false);
+                Assert.False(tab.IsShiftHeld);
+
+                // SHIFT pressed is SHIFT held whatever its modifiers say - on X11 they are those from before it (code review,
+                // 2026-11-18).
+                Key(blink, Avalonia.Input.Key.RightShift, Avalonia.Input.KeyModifiers.None, down: true);
+                Assert.True(tab.IsShiftHeld);
+                Key(blink, Avalonia.Input.Key.RightShift, Avalonia.Input.KeyModifiers.Shift, down: false);
+                Assert.False(tab.IsShiftHeld);
+            }
+            finally
+            {
+                main.IsApplicationShuttingDownForTests = true;
+                main.Close();
+            }
+        });
+    }
+
+    // The icon as CRT starts: the theme stored - and one CRT does not know, a settings file edited by hand or from another
+    // version, read as light, as App.ApplyConfiguredTheme takes it.
+    [Theory]
+    [InlineData("Dark", true)]
+    [InlineData("Light", false)]
+    [InlineData("Chartreuse", false)]
+    public void The_theme_icon_starts_from_the_stored_theme(string stored, bool dark)
+    {
+        this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
+
+        UiTest.Run(() =>
+        {
+            UserSettings.ThemeVariant = stored;
+
+            var main = new CRT.Main();
+
+            Assert.Equal(dark ? CRT.Main.SunGlyph : CRT.Main.MoonGlyph, main.GetControl<TextBlock>("ThemeToggleGlyph").Text);
+            Assert.Equal(dark ? CRT.Main.ToLightTip : CRT.Main.ToDarkTip, ToolTip.GetTip(main.GetControl<Button>("ThemeToggle")));
+        });
+    }
+
+    // ###########################################################################################
+    // *** A TAB'S COUNT IS CENTRED BY ITS TEXT, ACROSS THE BADGE'S WHOLE WIDTH (owner report, 2026-11-17: on the "Contribute"
+    // tab "I do not think that the number "3" is perfectly centered in the badge. It seems a little more aligned to the
+    // right"). *** Centred as a box, the number stood at the left of a box rounded up to whole pixels - measured with the
+    // real Inter font (the render harness, 2026-11-17), "3" stood 0.41 left of a 16 wide badge's middle at 100 %, and
+    // either way by up to half a pixel at a display's scaling; centred by its text across the badge, 0.01. The headless
+    // platform these tests run on draws no real glyphs - every one 11 wide, its ink the whole em - so what is held here is
+    // how the badge centres it: the text as wide as the badge's inside, its line centred in it. The "Maintainer" tab's
+    // badge alike.
+    // ###########################################################################################
+    [Fact]
+    public void A_tabs_count_is_centred_by_its_text_across_the_badge()
+    {
+        this.RedirectWorklogToTemp();
+        this.RedirectSettingsToTemp();
+
+        UiTest.Run(() =>
+        {
+            var main = new CRT.Main();
+            main.Show();
+            main.MaintainerTabItem.IsVisible = true;
+
+            foreach ((string badgeName, string textName) in new[] { ("ContributeTabBadge", "ContributeTabBadgeText"), ("MaintainerTabBadge", "MaintainerTabBadgeText") })
+            {
+                Border badge = main.GetControl<Border>(badgeName);
+                TextBlock text = main.GetControl<TextBlock>(textName);
+
+                text.Text = "3";
+                badge.IsVisible = true;
+                Dispatcher.UIThread.RunJobs();
+                main.UpdateLayout();
+
+                Assert.Equal(Avalonia.Media.TextAlignment.Center, text.TextAlignment);
+                Assert.Equal(Avalonia.Layout.HorizontalAlignment.Stretch, text.HorizontalAlignment);
+                Assert.Equal(badge.Bounds.Width - badge.Padding.Left - badge.Padding.Right, text.Bounds.Width, precision: 6);
+                Assert.Equal(badge.Padding.Left, badge.Padding.Right);
+            }
+
+            main.Close();
         });
     }
 

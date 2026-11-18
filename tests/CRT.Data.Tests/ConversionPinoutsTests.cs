@@ -96,7 +96,7 @@ public sealed class ConversionPinoutsTests
             ComponentPins = [new ComponentPinEntry { BoardLabel = "C1", Pin = "1", Name = "Typed" }],
         };
 
-        BoardData made = ConversionPinouts.ApplyToBoard(board, out int components, out _, KiCadWith(("R1", "Axial"), ("C1", "Disc"), ("X9", "HC-49")));
+        BoardData made = ConversionPinouts.ApplyToBoard(board, out int components, out _, out _, KiCadWith(("R1", "Axial"), ("C1", "Disc"), ("X9", "HC-49")));
 
         Assert.Equal(2, components);
 
@@ -109,7 +109,7 @@ public sealed class ConversionPinoutsTests
 
         Assert.DoesNotContain(made.Components, row => row.BoardLabel == "X9");
 
-        Assert.Same(made, ConversionPinouts.ApplyToBoard(made, out int again, out _, KiCadWith(("R1", "Axial"), ("C1", "Disc"), ("X9", "HC-49"))));
+        Assert.Same(made, ConversionPinouts.ApplyToBoard(made, out int again, out _, out _, KiCadWith(("R1", "Axial"), ("C1", "Disc"), ("X9", "HC-49"))));
         Assert.Equal(0, again);
     }
 
@@ -131,7 +131,7 @@ public sealed class ConversionPinoutsTests
             [new KiCadBoardComponent("U9", "XC9572", "IC", "DIP-40", string.Empty)],
             _ => [new KiCadPin("1", "CLK", "Input", "CLK"), new KiCadPin("2", "RDY", "", "RDY"), new KiCadPin("7", "A0", "Output", "A0"), new KiCadPin("30", "D0", "Input/output", "D0")]);
 
-        BoardData made = ConversionPinouts.ApplyToBoard(board, out _, out _, kiCad);
+        BoardData made = ConversionPinouts.ApplyToBoard(board, out _, out _, out _, kiCad);
 
         Assert.Equal(
             ["1|CLK|Input", "2|RDY|Unknown", "7|A0|Output", "30|D0|Input/output"],
@@ -161,11 +161,14 @@ public sealed class ConversionPinoutsTests
                 ? [new KiCadPin("1", "1DISCHARGE", "Input", "N1")]
                 : [new KiCadPin("7", "A0", "Input", "A0"), new KiCadPin("30", "D0", "Input", "D0")]);
 
-        BoardData made = ConversionPinouts.ApplyToBoard(board, out _, out _, kiCad);
+        BoardData made = ConversionPinouts.ApplyToBoard(board, out _, out _, out _, kiCad);
 
+        // The pins the baselines and KiCad made - the datasheet adds the rest of each chip's (A_chip_CRT_holds_the_datasheet_of_gets_every_pin_and_its_case).
         Assert.Equal(
             ["U20|1|Output", "U20|5|Output", "U7|7|Output", "U7|30|Input/output"],
-            made.ComponentPins.Select(pin => $"{pin.BoardLabel}|{pin.Pin}|{pin.Direction}"));
+            made.ComponentPins
+                .Where(pin => (pin.BoardLabel, pin.Pin) is ("U20", "1") or ("U20", "5") or ("U7", "7") or ("U7", "30"))
+                .Select(pin => $"{pin.BoardLabel}|{pin.Pin}|{pin.Direction}"));
     }
 
     // ###########################################################################################
@@ -210,22 +213,141 @@ public sealed class ConversionPinoutsTests
             ],
         };
 
-        // Counted apart from the pinouts made: these chips only took their datasheet's directions (code review, 2026-11-17).
-        BoardData made = ConversionPinouts.ApplyToBoard(board, out int components, out int directed);
+        // Counted apart from the pinouts made: these chips took their datasheet's pins they lacked, and its directions (code
+        // review, 2026-11-17).
+        BoardData made = ConversionPinouts.ApplyToBoard(board, out int components, out int completed, out int directed);
 
-        Assert.Equal((0, 3), (components, directed));
-        Assert.Equal(
-            ["1|Output", "2|Input", "5|Output", "7|Ground", "8|Input", "9|Not connected", "14|Power"],
-            made.ComponentPins.Where(pin => pin.BoardLabel == "U20").Select(pin => $"{pin.Pin}|{pin.Direction}"));
-        Assert.Equal(["1|Input", "7|Output"], made.ComponentPins.Where(pin => pin.BoardLabel == "U7").Select(pin => $"{pin.Pin}|{pin.Direction}"));
-        Assert.Equal(["1|Power", "11|Output"], made.ComponentPins.Where(pin => pin.BoardLabel == "U4").Select(pin => $"{pin.Pin}|{pin.Direction}"));
+        Assert.Equal((0, 3, 3), (components, completed, directed));
+
+        // The pins the board had, each with the datasheet's direction but what it must keep.
+        string[] Had(string label) =>
+        [
+            .. made.ComponentPins
+                .Where(pin => pin.BoardLabel == label && board.ComponentPins.Any(before => before.BoardLabel == label && before.Pin == pin.Pin))
+                .Select(pin => $"{pin.Pin}|{pin.Direction}"),
+        ];
+
+        Assert.Equal(["1|Output", "2|Input", "5|Output", "7|Ground", "8|Input", "9|Not connected", "14|Power"], Had("U20"));
+        Assert.Equal(["1|Input", "7|Output"], Had("U7"));
+        Assert.Equal(["1|Power", "11|Output"], Had("U4"));
+
+        // And every pin of their datasheets.
+        Assert.Equal([14, 40, 28], new[] { "U20", "U7", "U4" }.Select(label => made.ComponentPins.Count(pin => pin.BoardLabel == label)));
 
         // A 74LS08 in a DIP-16 is no 74LS08, and an XC9572 no chip CRT holds the datasheet of: both as they were.
         Assert.Equal("Unknown", made.ComponentPins.Single(pin => pin.BoardLabel == "U27").Direction);
         Assert.Equal("Unknown", made.ComponentPins.Single(pin => pin.BoardLabel == "U9").Direction);
 
-        Assert.Same(made, ConversionPinouts.ApplyToBoard(made, out int again, out int directedAgain));
-        Assert.Equal((0, 0), (again, directedAgain));
+        Assert.Same(made, ConversionPinouts.ApplyToBoard(made, out int again, out int completedAgain, out int directedAgain));
+        Assert.Equal((0, 0, 0), (again, completedAgain, directedAgain));
+    }
+
+    // ###########################################################################################
+    // A CHIP CRT HOLDS THE DATASHEET OF GETS EVERY PIN AND ITS CASE (owner request, 2026-11-17: "Can you now draw also this IC?
+    // (and add its pins in data migration) (when go-live)" - the C128 250477's 4464s, which had neither, as no chip of that
+    // board had): the pins it lacks with the datasheet's names and directions, "Unknown" where the datasheet settles none; a
+    // name only where its pin has none, the name it had kept and its pin found by its number ("2 [64K]" is pin 2); the case
+    // where its row has none - the CX20185's a QFP-44 - and the case it has kept. A chip CRT does
+    // not know (a 64H156 with no part number to say 40 pins or 42), or one the board says something against the datasheet of,
+    // is left alone.
+    // ###########################################################################################
+    [Fact]
+    public void A_chip_CRT_holds_the_datasheet_of_gets_every_pin_and_its_case()
+    {
+        BoardData board = new()
+        {
+            Components =
+            [
+                new ComponentEntry { BoardLabel = "U23", Category = "IC", TechnicalNameOrValue = "4464", PartNumber = "390083-02" },
+                new ComponentEntry { BoardLabel = "IC116", Category = "IC", TechnicalNameOrValue = "Gate Array", PartNumber = "40008/40010" },
+                new ComponentEntry { BoardLabel = "U108", Category = "IC", TechnicalNameOrValue = "CX20185" },
+                new ComponentEntry { BoardLabel = "U5", Category = "IC", TechnicalNameOrValue = "74LS08", Package = "DIP-14 (socketed)" },
+                new ComponentEntry { BoardLabel = "U105", Category = "IC", TechnicalNameOrValue = "64H156", PartNumber = "251828-01" },
+                new ComponentEntry { BoardLabel = "U106", Category = "IC", TechnicalNameOrValue = "64H156" },
+                new ComponentEntry { BoardLabel = "U1", Category = "IC", TechnicalNameOrValue = "6526" },
+            ],
+            ComponentPins =
+            [
+                new ComponentPinEntry { BoardLabel = "IC116", Pin = "4", Name = "CCLK", Direction = "Unknown" },
+                new ComponentPinEntry { BoardLabel = "IC116", Pin = "23 [244]", Name = "", Direction = "Unknown" },
+                new ComponentPinEntry { BoardLabel = "U5", Pin = "3", Name = "BA", Direction = "Unknown" },
+                new ComponentPinEntry { BoardLabel = "U1", Pin = "20", Name = "GND" },
+            ],
+        };
+
+        BoardData made = ConversionPinouts.ApplyToBoard(board, out int components, out int completed, out _);
+
+        string[] PinsOf(string label) => [.. made.ComponentPins.Where(pin => pin.BoardLabel == label).Select(pin => $"{pin.Pin}|{pin.Name}|{pin.Direction}")];
+        string PackageOf(string label) => made.Components.Single(row => row.BoardLabel == label).Package;
+
+        // The 4464: every pin as the owner's picture names them, in a DIP-18.
+        Assert.Equal(
+            ["1|/G|Input", "2|D0|Input/output", "3|D1|Input/output", "4|/W|Input", "5|/RAS|Input", "6|A6|Input", "7|A5|Input", "8|A4|Input", "9|VCC|Power",
+             "10|A7|Input", "11|A3|Input", "12|A2|Input", "13|A1|Input", "14|A0|Input", "15|D2|Input/output", "16|/CAS|Input", "17|D3|Input/output", "18|VSS|Ground"],
+            PinsOf("U23"));
+        Assert.Equal("DIP-18", PackageOf("U23"));
+
+        // The Gate Array: its 40 pins, the name pin 4 had kept, pin 23 found by its number and named, its direction settled.
+        Assert.Equal(40, PinsOf("IC116").Length);
+        Assert.Contains("4|CCLK|Output", PinsOf("IC116"));
+        Assert.Contains("23 [244]|/N244EN|Output", PinsOf("IC116"));
+        Assert.DoesNotContain(PinsOf("IC116"), pin => pin.StartsWith("23|", StringComparison.Ordinal));
+        Assert.Equal("DIP-40", PackageOf("IC116"));
+
+        // The CX20185: its 44 pins, in its QFP-44.
+        Assert.Equal(44, PinsOf("U108").Length);
+        Assert.Contains("28|/WRITE DATA|Input", PinsOf("U108"));
+        Assert.Contains("12|HEAD0 A|Input/output", PinsOf("U108"));
+        Assert.Equal("QFP-44", PackageOf("U108"));
+
+        // A case the row names stays; the pin it had keeps its name and takes the datasheet's direction.
+        Assert.Equal(14, PinsOf("U5").Length);
+        Assert.Contains("3|BA|Output", PinsOf("U5"));
+        Assert.Equal("DIP-14 (socketed)", PackageOf("U5"));
+
+        // The 64H156 by its part number, a 40-pin -01; "64H156" alone - 40 pins or 42 - is not known.
+        Assert.Equal(40, PinsOf("U105").Length);
+        Assert.Contains("21|OSC|Input", PinsOf("U105"));
+        Assert.Equal("DIP-40", PackageOf("U105"));
+        Assert.Empty(PinsOf("U106"));
+        Assert.Equal(string.Empty, PackageOf("U106"));
+
+        // Said against: a 6526's pin 20 is its VCC.
+        Assert.Equal(["20|GND|"], PinsOf("U1"));
+        Assert.Equal(string.Empty, PackageOf("U1"));
+
+        Assert.Equal((0, 5), (components, completed));
+
+        Assert.Same(made, ConversionPinouts.ApplyToBoard(made, out int again, out int completedAgain, out int directedAgain));
+        Assert.Equal((0, 0, 0), (again, completedAgain, directedAgain));
+    }
+
+    // ###########################################################################################
+    // A COMPONENT OF TWO CHIPS, ONE PER REGION, takes one set of pins for every region only when both are the same pin-out
+    // (the 250477's U21: an 8566 in PAL, an 8564 in NTSC), and each row its case; two pin-outs leave it alone.
+    // ###########################################################################################
+    [Fact]
+    public void A_component_of_one_chip_per_region_takes_pins_only_when_the_chips_share_a_pinout()
+    {
+        BoardData Of(string pal, string ntsc) => new()
+        {
+            Components =
+            [
+                new ComponentEntry { BoardLabel = "U21", Category = "IC", TechnicalNameOrValue = pal, Region = "PAL" },
+                new ComponentEntry { BoardLabel = "U21", Category = "IC", TechnicalNameOrValue = ntsc, Region = "NTSC" },
+            ],
+        };
+
+        BoardData same = ConversionPinouts.ApplyToBoard(Of("8566", "8564"), out _, out _, out _);
+
+        Assert.Equal(48, same.ComponentPins.Count);
+        Assert.All(same.ComponentPins, pin => Assert.Equal(string.Empty, pin.Region));
+        Assert.Equal(["DIP-48", "DIP-48"], same.Components.Select(row => row.Package));
+
+        BoardData different = ConversionPinouts.ApplyToBoard(Of("8566", "6526"), out _, out _, out _);
+
+        Assert.Empty(different.ComponentPins);
+        Assert.Equal(["DIP-48", "DIP-40"], different.Components.Select(row => row.Package));
     }
 
     // The datasheet's directions go to each region's own pins while a chip's pins are told apart per region.
@@ -246,9 +368,13 @@ public sealed class ConversionPinoutsTests
             ],
         };
 
-        BoardData made = ConversionPinouts.ApplyToBoard(board, out _, out _);
+        BoardData made = ConversionPinouts.ApplyToBoard(board, out _, out _, out _);
 
-        Assert.Equal(["NTSC|3|Output", "PAL|3|Output"], made.ComponentPins.Select(pin => $"{pin.Region}|{pin.Pin}|{pin.Direction}").Order());
+        Assert.Equal(["NTSC|3|Output", "PAL|3|Output"], made.ComponentPins.Where(pin => pin.Pin == "3").Select(pin => $"{pin.Region}|{pin.Pin}|{pin.Direction}").Order());
+
+        // Each region's set gets the rest of the chip's pins, in its own region.
+        Assert.Equal(14, made.ComponentPins.Count(pin => pin.Region == "PAL"));
+        Assert.Equal(14, made.ComponentPins.Count(pin => pin.Region == "NTSC"));
     }
 
     // A component whose pins are told apart per region gets the KiCad pins in each of its regions.
@@ -265,7 +391,7 @@ public sealed class ConversionPinoutsTests
             ],
         };
 
-        BoardData made = ConversionPinouts.ApplyToBoard(board, out _, out _, KiCadWith(("U1", string.Empty)));
+        BoardData made = ConversionPinouts.ApplyToBoard(board, out _, out _, out _, KiCadWith(("U1", string.Empty)));
 
         Assert.Equal(["PAL|1|P", "PAL|2|B"], made.ComponentPins.Where(pin => pin.Region == "PAL").Select(pin => $"{pin.Region}|{pin.Pin}|{pin.Name}"));
         Assert.Equal(["NTSC|1|N", "NTSC|2|B"], made.ComponentPins.Where(pin => pin.Region == "NTSC").Select(pin => $"{pin.Region}|{pin.Pin}|{pin.Name}"));
@@ -446,12 +572,12 @@ public sealed class ConversionPinoutsTests
             ComponentImages = [Baseline("U1", "", "1", "A"), Baseline("U2", "", "1", "B"), new ComponentImageEntry { BoardLabel = "C1", Name = "Top", File = "c.png" }],
         };
 
-        BoardData made = ConversionPinouts.ApplyToBoard(board, out int components, out _);
+        BoardData made = ConversionPinouts.ApplyToBoard(board, out int components, out _, out _);
 
         Assert.Equal(2, components);
         Assert.Equal(["U1", "U2"], made.ComponentPins.Select(pin => pin.BoardLabel));
 
-        ConversionPinouts.ApplyToBoard(made, out int again, out _);
+        ConversionPinouts.ApplyToBoard(made, out int again, out _, out _);
         Assert.Equal(0, again);
     }
 }

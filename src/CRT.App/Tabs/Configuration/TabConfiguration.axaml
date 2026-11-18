@@ -140,25 +140,10 @@
                     HorizontalAlignment="Left"
                     VerticalAlignment="Top">
 
+			<!-- No "Appearance" with the theme's drop-down any more (owner request, 2026-11-17: "you can entirely remove the
+			     "Appearance" with the theme, as this is now possible to selec elsewhere") - the theme is the icon in the window's
+			     top right corner (Main.ThemeToggle.cs). -->
 			<Border Classes="SectionHeading First">
-				<TextBlock Text="Appearance" />
-			</Border>
-
-			<TextBlock Text="Theme" />
-
-			<ComboBox x:Name="ThemeVariantComboBox"
-                      MinWidth="180">
-				<ComboBoxItem Content="Light" />
-				<ComboBoxItem Content="Dark" />
-				<ComboBoxItem Content="User preference" />
-			</ComboBox>
-
-			<Button x:Name="ReloadUserPreferenceThemeButton"
-                    Content="Reload user preference colors"
-                    HorizontalAlignment="Left"
-                    Click="OnReloadUserPreferenceThemeClick" />
-
-			<Border Classes="SectionHeading">
 				<TextBlock Text="Behaviour" />
 			</Border>
 

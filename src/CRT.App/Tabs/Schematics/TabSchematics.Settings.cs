@@ -111,18 +111,13 @@ public partial class TabSchematics
     }
 
     // ###########################################################################################
-    // Restores board-specific schematic settings from persisted configuration.
+    // Restores the settings panel's rows from persisted configuration - none is per board since "Mark first pin on component"
+    // went (2026-11-17).
     // ###########################################################################################
-    private void RestoreBoardSettings(string boardKey)
+    private void RestoreBoardSettings()
     {
         this.thisSuppressBoardSettingsChanged = true;
         this.thisSuppressGlobalSettingsChanged = true;
-
-        bool hasBoard = !string.IsNullOrWhiteSpace(boardKey);
-
-        this.CheckBoardMarkPin1OnSelectedComponent.IsChecked = hasBoard
-            ? UserSettings.GetSchematicsMarkPin1OnSelectedComponentForBoard(boardKey)
-            : false;
 
         this.CheckBoardShowTracesOnSelectedComponent.IsChecked = UserSettings.SchematicsShowTracesOnSelectedComponent;
         this.CheckGlobalShowTracesOnComponentSelect.IsChecked = UserSettings.SchematicsShowTracesOnComponentSelect;
@@ -173,36 +168,12 @@ public partial class TabSchematics
     }
 
     // ###########################################################################################
-    // Handle manual row clicks for board-specific pin-1 marking.
+    // Whether pin 1 of the components selected or pointed at is marked in orange: ALWAYS, on a schematic image showing the
+    // board's KiCad pads (owner decision, 2026-11-17: "remove the "Mark first pin on component" checkbox, but keep its
+    // functionality enabled per default, so everyone gets this" - a box per board, ticked unless unticked, until then; the
+    // pins numbered with SHIFT held mark it on their own badge, over it).
     // ###########################################################################################
-    private void OnBoardMarkPin1OnSelectedComponentRowClicked(object? sender, PointerPressedEventArgs e)
-    {
-        if (!this.CheckBoardMarkPin1OnSelectedComponent.IsEnabled)
-        {
-            return;
-        }
-
-        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
-        {
-            this.CheckBoardMarkPin1OnSelectedComponent.IsChecked = !this.CheckBoardMarkPin1OnSelectedComponent.IsChecked;
-            e.Handled = true;
-        }
-    }
-
-    // ###########################################################################################
-    // Returns true when the current board enables the special orange pin-1 marker.
-    // ###########################################################################################
-    private bool IsBoardMarkPin1OnSelectedComponentEnabled()
-    {
-        if (!this.HasCurrentSchematicKiCadPcbPadData())
-        {
-            return false;
-        }
-
-        var boardKey = this.MainWindow?.GetCurrentBoardKey();
-        return !string.IsNullOrWhiteSpace(boardKey) &&
-               UserSettings.GetSchematicsMarkPin1OnSelectedComponentForBoard(boardKey);
-    }
+    private bool IsMarkingFirstPin() => this.HasCurrentSchematicKiCadPcbPadData();
 
     // ###########################################################################################
     // Handle manual row clicks for board-specific selected-component trace preview.

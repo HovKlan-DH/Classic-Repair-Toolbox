@@ -12,6 +12,7 @@ namespace Handlers.Geometry
         Left,
         Right,
         Bottom,
+        Top,
     }
 
     // One pin of a drawn case: its number, which side it leaves the case on, the pin itself, and
@@ -20,10 +21,14 @@ namespace Handlers.Geometry
 
     // A drawn case: its body and its pins. Pitch: how far apart its pins are (a DIP has them further apart -
     // LogicChipGeometry). A single row's dot by pin 1 is FirstPinDot; a DIP's notch and dot are LogicChipGeometry's.
-    public sealed record PinoutLayout(Rect Body, IReadOnlyList<PinoutPin> Pins, Size Size, double Pitch = PinoutGeometry.Pitch)
+    // IsCan: an oscillator's metal can, its pins at the corners of a DIP's places (LogicChipGeometry.CanFor).
+    public sealed record PinoutLayout(Rect Body, IReadOnlyList<PinoutPin> Pins, Size Size, double Pitch = PinoutGeometry.Pitch, bool IsCan = false)
     {
         // The dot that marks pin 1 of a single row, inside the body over it.
         public Point FirstPinDot => new(this.Body.Left + PinoutGeometry.EndPadding + (PinoutGeometry.Pitch / 2), this.Body.Bottom - 8);
+
+        // Whether its pins stand on four sides (QuadCaseGeometry) - only such a case has pins over it.
+        public bool IsQuad => this.Pins.Any(pin => pin.Side == PinSide.Top);
     }
 
     // ###########################################################################################
@@ -68,7 +73,7 @@ namespace Handlers.Geometry
         // strip of its row, from its name to the case's edge - its number is on its square, outside the
         // case (code review, 2026-11-17: the strip reached 24 into the case, where the old case wrote the
         // numbers, and took a badge drawn there for the pin of its row); under a single row, the column of
-        // its lead and number.
+        // its lead and number; over and under a case of four sides, the column of its square and name.
         // ###########################################################################################
         public static Rect AreaOf(PinoutLayout layout, PinoutPin pin)
         {
@@ -81,6 +86,7 @@ namespace Handlers.Geometry
             {
                 PinSide.Left => new Rect(0, pin.Lead.Center.Y - half, layout.Body.Left, layout.Pitch),
                 PinSide.Right => new Rect(layout.Body.Right, pin.Lead.Center.Y - half, layout.Size.Width - layout.Body.Right, layout.Pitch),
+                PinSide.Top => new Rect(pin.Lead.Center.X - half, 0, layout.Pitch, layout.Body.Top),
                 _ => new Rect(pin.Lead.Center.X - half, layout.Body.Bottom, layout.Pitch, layout.Size.Height - layout.Body.Bottom),
             };
         }
@@ -103,9 +109,10 @@ namespace Handlers.Geometry
             width - drawing - PinoutGeometry.ListGap >= list;
 
         // ###########################################################################################
-        // The single row of pins `package` is - or null for a DIP (LogicChipGeometry.EmptyCaseFor) and when
-        // CRT cannot tell how many pins it has. A SIP's count is the highest pin number the component's pins
-        // name (`pinNumbers`); every other case's is in its name (ComponentVocabulary.PinCountOf).
+        // The single row of pins `package` is - or null for a chip's case, of two rows or four sides
+        // (LogicChipGeometry.EmptyCaseFor), and when CRT cannot tell how many pins it has. A SIP's count is
+        // the highest pin number the component's pins name (`pinNumbers`); every other case's is in its name
+        // (ComponentVocabulary.PinCountOf).
         // ###########################################################################################
         public static PinoutLayout? For(string? package, IEnumerable<string?> pinNumbers)
         {
@@ -113,7 +120,7 @@ namespace Handlers.Geometry
 
             string text = (package ?? string.Empty).Trim();
 
-            if (ComponentVocabulary.IsDualInLine(text))
+            if (ComponentVocabulary.ChipCaseOf(text) is not null)
             {
                 return null;
             }

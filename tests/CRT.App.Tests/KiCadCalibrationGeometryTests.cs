@@ -615,6 +615,34 @@ public class KiCadCalibrationGeometryTests
         Assert.Equal(800, inset.Bottom);
     }
 
+    // A PADDED image (code review, 2026-11-18): it reaches past the panel at the first view, so a box at its own edges started
+    // with its handles off the screen. The box is pulled in from the image's CONTENT - its own empty border left out - where
+    // the board is; an image that is all border is taken whole.
+    [Fact]
+    public void A_padded_images_box_is_pulled_in_from_its_content()
+    {
+        var box = new KiCadCalibrationBox(0, 0, 1000, 800);
+        var blank = new Avalonia.Thickness(100, 150, 80, 60);
+
+        var inset = KiCadCalibrationGeometry.InsetForInitialVisibility(box, imageWidth: 1000, imageHeight: 800, blank);
+
+        Assert.Equal(100 + 30, inset.Left, 6);
+        Assert.Equal(150 + 24, inset.Top, 6);
+        Assert.Equal(1000 - 80 - 30, inset.Right, 6);
+        Assert.Equal(800 - 60 - 24, inset.Bottom, 6);
+
+        // A box already inside the content is left as it is.
+        var inside = KiCadCalibrationGeometry.InsetForInitialVisibility(new KiCadCalibrationBox(300, 300, 700, 600), 1000, 800, blank);
+        Assert.Equal(300, inside.Left);
+        Assert.Equal(700, inside.Right);
+
+        // All border: the image's own edges, as without one.
+        var whole = KiCadCalibrationGeometry.InsetForInitialVisibility(box, 1000, 800, new Avalonia.Thickness(500, 0, 500, 0));
+        var plain = KiCadCalibrationGeometry.InsetForInitialVisibility(box, 1000, 800);
+        Assert.Equal(plain.Left, whole.Left);
+        Assert.Equal(plain.Right, whole.Right);
+    }
+
     // A zero/negative image size (no bitmap loaded yet) must not divide by zero or otherwise
     // misbehave - the box is simply returned as given.
     [Fact]

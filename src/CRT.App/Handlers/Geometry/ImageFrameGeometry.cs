@@ -11,22 +11,27 @@ namespace Handlers.Geometry
     // left corner; an image cropped to the board had them over the board, while the owner's own images carry room of their
     // own for them.
     //
-    //   - THE ROOM WANTED: TopRoom above the image (the badges' 10 down, their 26 and 8 more), SideRoom on the other sides -
-    //     in the first view, as the image is fitted, and so at the furthest it zooms out; zoomed in, the image moves over the
-    //     whole panel as before.
-    //   - LESS WHAT THE IMAGE HAS OF ITS OWN (BlankBorder): its rows and columns of one color from edge to edge - transparent
-    //     or plain - counted from each side. A row across the board always holds something of it - its outline, a trace, a
-    //     part - so only room round the board is counted, never the board (Frame):
-    //       - ABOVE, TOPPED UP TO TopRoom - the badges need it whatever the image has;
-    //       - AT THE OTHER SIDES, SideRoom ONLY WHERE THE IMAGE HAS NONE (under a pixel on screen) - room of its own, however
-    //         much, is the owner's choice, and topped up by a pixel or two it drew the owner's padded "PCB Top" 0.2% smaller
-    //         than it always was (measured on the real image, 2026-11-13).
+    //   - THE ROOM WANTED: TopRoom above the image - under BOTH rows of badges, the name and region's and the one a component
+    //     or pin under the pointer adds, with room to spare (owner request, 2026-11-17: "make sure all schematic images, when
+    //     displayed initially (not when zoomed), are displayed below both rows of badges + with a little margin, so it does
+    //     not look cramped") - SideRoom on the other sides; in the first view, as the image is fitted, and so at the furthest
+    //     it zooms out; zoomed in, the image moves over the whole panel as before.
+    //   - THE IMAGE'S CONTENT IS WHAT IS FITTED, ITS OWN EMPTY BORDER LEFT OUT (BlankBorder): its rows and columns of one
+    //     color from edge to edge - transparent or plain - counted from each side. A row across the board always holds
+    //     something of it - its outline, a trace, a part - so only room round the board is counted, never the board. So
+    //     WHETHER AN IMAGE IS CROPPED TO ITS BOARD OR PADDED, ITS BOARD STANDS IN THE SAME PLACE (owner request, 2026-11-17:
+    //     "no matter if I have inserted empty spacing or not, then the actual PCB should be displayed same place" - an image's
+    //     own room was kept as the owner's choice from 2026-11-13 until then, and the owner's padded "PCB Top" showed its
+    //     board lower and smaller than "PCB Top CROPPED"): its empty border lies in the room round it, or past the panel's
+    //     edge, where there is nothing to see (Frame).
     //
     // PURE: pixels and sizes in, room out - but for BlankBorderOfFile, which reads an image file for the pixels.
     // ###########################################################################################
     internal static class ImageFrameGeometry
     {
-        public const double TopRoom = 44;
+        // Above: the second row of badges stands 44 down (TabSchematics.axaml), 26 high, and 10 more. 44 - under the first row
+        // alone - until 2026-11-17, so a component pointed at put its badges over the board's top edge.
+        public const double TopRoom = 80;
         public const double SideRoom = 16;
 
         // How far two pixels may differ per channel and still be the one color - a picture saved as JPEG is never exact.
@@ -169,11 +174,26 @@ namespace Handlers.Geometry
         {
             using SkiaSharp.SKBitmap? decoded = SkiaSharp.SKBitmap.Decode(file);
 
-            if (decoded is null)
-            {
-                return default;
-            }
+            return decoded is null ? default : ImageFrameGeometry.BlankBorderOf(decoded);
+        }
 
+        // ###########################################################################################
+        // The same of an image ENCODED in `encoded` - a picture's thumbnail standing in for it, whose pixels Avalonia will not
+        // copy when it is grayscale (TabSchematics.BlankBorderOf; code review, 2026-11-18: measured as no border, the stand-in
+        // stood elsewhere than the picture once it came - the jump the stand-in is there to prevent). None for bytes SkiaSharp
+        // cannot read.
+        // ###########################################################################################
+        public static Thickness BlankBorderOfEncoded(System.IO.Stream encoded)
+        {
+            ArgumentNullException.ThrowIfNull(encoded);
+
+            using SkiaSharp.SKBitmap? decoded = SkiaSharp.SKBitmap.Decode(encoded);
+
+            return decoded is null ? default : ImageFrameGeometry.BlankBorderOf(decoded);
+        }
+
+        private static Thickness BlankBorderOf(SkiaSharp.SKBitmap decoded)
+        {
             if (decoded.ColorType == SkiaSharp.SKColorType.Gray8)
             {
                 int rowBytes = decoded.RowBytes;
@@ -254,11 +274,13 @@ namespace Handlers.Geometry
         }
 
         // ###########################################################################################
-        // The room to add round an image of `image` pixels fitted in `box`, with `blank` of its own (BlankBorder): above, what
-        // `wanted` asks less what its own border gives at the scale it is drawn at; at each other side what `wanted` asks
-        // where its own gives less than a pixel, else none. That scale grows as the room added shrinks, so it is worked out
-        // until it settles - the room only ever shrinks, so it does. No image, no room; a box the room would leave nothing
-        // of, no room either.
+        // The room round an image of `image` pixels in `box`, with `blank` of its own (BlankBorder), so its CONTENT - the image
+        // less that border - is fitted in `box` less `wanted`, at its top left: `wanted` at each side less the image's own
+        // border at the scale it is drawn at. Less than nothing where its border is wider than the room wanted - the image
+        // then reaches past the room, or past the panel's edge, with nothing of its content there. RectGeometry's fit of the
+        // whole image inside `box` less this room is then exactly that: a side's own border and the room taken from it add up
+        // to `wanted` on that side. No image, no room; a box the room would leave nothing of, no room either; an image that
+        // is all border is fitted whole.
         // ###########################################################################################
         public static Thickness Frame(Size box, PixelSize image, Thickness blank, Thickness wanted)
         {
@@ -267,40 +289,56 @@ namespace Handlers.Geometry
                 return default;
             }
 
-            Thickness frame = wanted;
+            double areaWidth = box.Width - wanted.Left - wanted.Right;
+            double areaHeight = box.Height - wanted.Top - wanted.Bottom;
 
-            for (int round = 0; round < 8; round++)
+            if (areaWidth <= 0 || areaHeight <= 0)
             {
-                double inside = Math.Min(
-                    (box.Width - frame.Left - frame.Right) / image.Width,
-                    (box.Height - frame.Top - frame.Bottom) / image.Height);
-
-                if (inside <= 0)
-                {
-                    return default;
-                }
-
-                double Side(double room, double own) => inside * own >= 1 ? 0 : room;
-
-                var next = new Thickness(
-                    Side(wanted.Left, blank.Left),
-                    Math.Max(0, wanted.Top - (inside * blank.Top)),
-                    Side(wanted.Right, blank.Right),
-                    Side(wanted.Bottom, blank.Bottom));
-
-                if (ImageFrameGeometry.Same(next, frame))
-                {
-                    return next;
-                }
-
-                frame = next;
+                return default;
             }
 
-            return frame;
+            double contentWidth = image.Width - blank.Left - blank.Right;
+            double contentHeight = image.Height - blank.Top - blank.Bottom;
+
+            if (contentWidth <= 0 || contentHeight <= 0)
+            {
+                blank = default;
+                contentWidth = image.Width;
+                contentHeight = image.Height;
+            }
+
+            double scale = Math.Min(areaWidth / contentWidth, areaHeight / contentHeight);
+
+            return new Thickness(
+                wanted.Left - (scale * blank.Left),
+                wanted.Top - (scale * blank.Top),
+                wanted.Right - (scale * blank.Right),
+                wanted.Bottom - (scale * blank.Bottom));
         }
 
-        private static bool Same(Thickness a, Thickness b) =>
-            Math.Abs(a.Left - b.Left) < 0.01 && Math.Abs(a.Top - b.Top) < 0.01 &&
-            Math.Abs(a.Right - b.Right) < 0.01 && Math.Abs(a.Bottom - b.Bottom) < 0.01;
+        // ###########################################################################################
+        // Where the image's CONTENT stands, drawn in `drawn`: the image of `image` pixels less its own empty border, at the
+        // scale it is drawn at. Whether the first view can be panned asks THIS, never the whole image (code review,
+        // 2026-11-18): a padded image reaches past the panel's edge at the first view (Frame), and judged by its whole size it
+        // was pannable there, its border dragged into view and its board away from where a cropped image's stands. An
+        // image that is all border is its whole self, as Frame fits it.
+        // ###########################################################################################
+        public static Rect ContentWithin(Rect drawn, PixelSize image, Thickness blank)
+        {
+            if (image.Width <= 0 || image.Height <= 0 ||
+                image.Width - blank.Left - blank.Right <= 0 || image.Height - blank.Top - blank.Bottom <= 0)
+            {
+                return drawn;
+            }
+
+            double scaleX = drawn.Width / image.Width;
+            double scaleY = drawn.Height / image.Height;
+
+            return new Rect(
+                drawn.X + (blank.Left * scaleX),
+                drawn.Y + (blank.Top * scaleY),
+                drawn.Width - ((blank.Left + blank.Right) * scaleX),
+                drawn.Height - ((blank.Top + blank.Bottom) * scaleY));
+        }
     }
 }

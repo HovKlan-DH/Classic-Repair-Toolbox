@@ -248,6 +248,100 @@ public sealed class DataTreeConversionShippedDataTests
     }
 
     // ###########################################################################################
+    // THE CONVERSION GIVES EVERY CHIP CRT HOLDS THE DATASHEET OF EVERY PIN AND ITS CASE (owner request, 2026-11-17: "Can you
+    // now draw also this IC? (and add its pins in data migration) (when go-live)", and of the rest of the chips not drawn:
+    // "investigate ... if they are drawn as pinouts and its data created/migrated at go-live"): on every shipped board each
+    // such chip has a pin of every number its datasheet lists, and a DIP of that many pins - so CRT draws it. The C128
+    // 250477's chips had neither, nor the CPC 664's: the 4464s come out as the owner's picture names their pins, the 8568 with
+    // its own pins (not the 8563's), the Gate Array whole beside the pins its baselines gave it, the CX20185 in its QFP-44,
+    // the 64H156 as the 40-pin 251828-01 it is (the owner counted its pins, 2026-11-18).
+    // ###########################################################################################
+    [Fact]
+    public void The_conversion_gives_every_chip_CRT_holds_the_datasheet_of_every_pin_and_its_case()
+    {
+        int chips = 0;
+
+        foreach (ConvertedBoard converted in DataTreeConversionShippedDataTests.Planned.Value.Boards)
+        {
+            BoardData board = BoardDocumentMapping.ToContent(converted.Document).Board;
+
+            foreach (ComponentEntry row in board.Components)
+            {
+                List<ComponentPinEntry> pins = ComponentPaneEdits.PinsOf(board, row.BoardLabel, row.Region);
+
+                if (DatasheetPins.PinoutOf(row, pins) is not { } pinout)
+                {
+                    continue;
+                }
+
+                chips++;
+
+                var numbers = pins.Select(pin => ComponentVocabulary.PinNumberOf(pin.Pin)).ToHashSet();
+                string who = $"{converted.BoardId} {row.BoardLabel} {row.Region} ({pinout.Chip})";
+
+                Assert.All(pinout.Pins, pin => Assert.True(numbers.Contains(int.Parse(pin.Pin, System.Globalization.CultureInfo.InvariantCulture)), $"{who}: no pin {pin.Pin}"));
+
+                if (pinout.Package is not null)
+                {
+                    Assert.True(ComponentVocabulary.PinCountOf(row.Package) == pinout.Pins.Count, $"{who}: package [{row.Package}]");
+                }
+            }
+        }
+
+        // 483 on 2026-11-17.
+        Assert.True(chips > 450, $"Only {chips} chips with a datasheet were found.");
+
+        BoardData Board(string boardId) =>
+            BoardDocumentMapping.ToContent(DataTreeConversionShippedDataTests.Planned.Value.Boards.Single(item => item.BoardId == boardId).Document).Board;
+        string[] PinsOf(BoardData board, string label) =>
+            [.. board.ComponentPins.Where(pin => pin.BoardLabel == label).Select(pin => $"{pin.Pin}|{pin.Name}|{pin.Direction}")];
+        string PackageOf(BoardData board, string label) => board.Components.First(row => row.BoardLabel == label).Package;
+
+        BoardData dcr = Board("Commodore/C128/250477");
+
+        foreach (string dram in new[] { "U23", "U25", "U38", "U39", "U40", "U41" })
+        {
+            Assert.Equal(
+                ["1|/G|Input", "2|D0|Input/output", "3|D1|Input/output", "4|/W|Input", "5|/RAS|Input", "6|A6|Input", "7|A5|Input", "8|A4|Input", "9|VCC|Power",
+                 "10|A7|Input", "11|A3|Input", "12|A2|Input", "13|A1|Input", "14|A0|Input", "15|D2|Input/output", "16|/CAS|Input", "17|D3|Input/output", "18|VSS|Ground"],
+                PinsOf(dcr, dram));
+            Assert.Equal("DIP-18", PackageOf(dcr, dram));
+        }
+
+        Assert.Equal("DIP-48", PackageOf(dcr, "U22"));
+        Assert.Contains("9|/INTR|Output", PinsOf(dcr, "U22"));
+        Assert.Equal("DIP-48", PackageOf(dcr, "U107"));
+        Assert.Equal(44, PinsOf(dcr, "U108").Length);
+        Assert.Equal("QFP-44", PackageOf(dcr, "U108"));
+        Assert.Equal(40, PinsOf(dcr, "U105").Length);
+        Assert.Equal("DIP-40", PackageOf(dcr, "U105"));
+
+        BoardData cpc = Board("Amstrad/CPC 664/MC0005A");
+
+        Assert.Equal(40, PinsOf(cpc, "IC116").Length);
+        Assert.Equal("DIP-40", PackageOf(cpc, "IC116"));
+        Assert.Equal("DIP-28", PackageOf(cpc, "IC103"));
+    }
+
+    // ###########################################################################################
+    // AN OSCILLATOR'S CAN FROM ITS KiCad FOOTPRINT (owner request, 2026-11-18 - for the Amiga, proven here on the C128's): the
+    // Open128's 16 MHz Y1 stands on KiCad's "Oscillator_DIP-14", pads 1, 7, 8 and 14, so it is converted as that can, every pin
+    // of it on a corner - on both boards the Open128 project is the KiCad data of.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("Commodore/C128/310378")]
+    [InlineData("Commodore/C128/310378 Open128")]
+    public void The_conversion_makes_the_Open128s_oscillator_its_can(string boardId)
+    {
+        BoardData board = BoardDocumentMapping.ToContent(DataTreeConversionShippedDataTests.Planned.Value.Boards.Single(item => item.BoardId == boardId).Document).Board;
+        ComponentEntry oscillator = board.Components.First(row => row.BoardLabel == "Y1");
+
+        Assert.Equal("Oscillator DIP-14", oscillator.Package);
+        Assert.NotEmpty(ComponentPaneEdits.PinsOf(board, "Y1", oscillator.Region));
+        Assert.All(ComponentPaneEdits.PinsOf(board, "Y1", oscillator.Region), pin => Assert.True(ComponentVocabulary.IsOnPackage(oscillator.Package, pin.Pin), pin.Pin));
+    }
+
+    // ###########################################################################################
     // THE CONVERSION WRITES THE EXPECTED READINGS IN PLAIN WORDS (owner request, 2026-11-17: "make sure it is also done on
     // go-live day"): no shipped board's baseline says "HIGH", "LOW", "FLOAT" or "VIDEO" afterwards - thousands said one
     // before - and the 250407's 556 reads "Low" on its pin 1.

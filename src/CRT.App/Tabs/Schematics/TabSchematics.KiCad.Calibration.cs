@@ -316,12 +316,15 @@ public partial class TabSchematics
             // resize handles being clamped onto the viewport frame and hard to grab. Pull them
             // in so every handle starts comfortably inside the visible schematic. A schematic
             // that already has a saved calibration skips this entirely, so re-entering
-            // calibration mode on an already-aligned board never moves the box the user set.
+            // calibration mode on an already-aligned board never moves the box the user set. In
+            // from the image's content, its own empty border left out - a padded image's edges lie
+            // past the panel at the first view (code review, 2026-11-18).
             this.SetKiCadCalibrationBox(
                 KiCadCalibrationGeometry.InsetForInitialVisibility(
                     this.GetKiCadCalibrationBox(),
                     this.currentFullResBitmap.PixelSize.Width,
-                    this.currentFullResBitmap.PixelSize.Height));
+                    this.currentFullResBitmap.PixelSize.Height,
+                    this.thisImageBlankBorder));
         }
 
         this.thisKiCadCalibrationStartImageLeft = this.thisKiCadCalibrationImageLeft;

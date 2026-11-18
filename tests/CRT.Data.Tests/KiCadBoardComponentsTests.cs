@@ -139,6 +139,53 @@ public sealed class KiCadBoardComponentsTests
         Assert.Equal(package, KiCadBoardComponents.PackageOf(footprint, Pads(pads)));
     }
 
+    // ###########################################################################################
+    // A SURFACE-MOUNTED CHIP (owner request, 2026-11-18: the Amiga "has a lot of SMD components"): as KiCad's libraries name
+    // them, the family and count at the name's start, with as many pads - numbered as a DIP (SOIC, SSOP, TSSOP), or a square
+    // PLCC or QFP. An exposed pad is one pad more, a rectangular QFP ("14x20mm") no square, a PLCC-32 no square either.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("Package_SO:SOIC-14_3.9x8.7mm_P1.27mm", 14, "SOIC-14")]
+    [InlineData("Package_SO:SSOP-20_5.3x7.2mm_P0.65mm", 20, "SSOP-20")]
+    [InlineData("Package_SO:TSSOP-16_4.4x5mm_P0.65mm", 16, "TSSOP-16")]
+    [InlineData("Package_SO:SO-8_3.9x4.9mm_P1.27mm", 8, "SO-8")]
+    [InlineData("Package_SO:SOIC-28W_7.5x17.9mm_P1.27mm", 28, "SOIC-28 wide")]
+    [InlineData("Package_SO:SOIC-16W_7.5x10.3mm_P1.27mm", 16, "SOIC-16 wide")]
+    [InlineData("Package_SO:SOIC-28W_7.5x17.9mm_P1.27mm", 26, "")]
+    [InlineData("Package_QFP:LQFP-64W_10x10mm_P0.5mm", 64, "")]
+    [InlineData("Package_LCC:PLCC-84_29.3x29.3mm_P1.27mm", 84, "PLCC-84")]
+    [InlineData("Package_LCC:PLCC-84_THT-Socket", 84, "PLCC-84")]
+    [InlineData("Package_QFP:LQFP-64_10x10mm_P0.5mm", 64, "LQFP-64")]
+    [InlineData("Package_QFP:TQFP-44_10x10mm_P0.8mm", 44, "TQFP-44")]
+    [InlineData("Package_QFP:QFP-100_14x20mm_P0.65mm", 100, "")]
+    [InlineData("Package_LCC:PLCC-32_11.4x14.0mm_P1.27mm", 32, "")]
+    [InlineData("Package_SO:TSSOP-20-1EP_4.4x6.5mm_P0.65mm", 21, "")]
+    [InlineData("Package_SO:SOIC-14_3.9x8.7mm_P1.27mm", 12, "")]
+    [InlineData("Package_TO_SOT_SMD:SOT-23", 3, "")]
+    public void A_surface_mounted_chip_is_named_by_its_family_and_pads(string footprint, int pads, string package)
+    {
+        Assert.Equal(package, KiCadBoardComponents.PackageOf(footprint, Pads(pads)));
+    }
+
+    // ###########################################################################################
+    // A CRYSTAL OSCILLATOR'S CAN (owner request, 2026-11-18 - the Amiga's): KiCad's "Oscillator_DIP-14" on exactly the can's
+    // four pads, 1, 7, 8 and 14 - as the Open128's Y1 stands - and "Oscillator_DIP-8" on 1, 4, 5 and 8. Other pads say
+    // something else: none.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("Oscillator:Oscillator_DIP-14", new[] { "1", "7", "8", "14" }, "Oscillator DIP-14")]
+    [InlineData("Oscillator:Oscillator_DIP-14", new[] { "14", "8", "7", "1" }, "Oscillator DIP-14")]
+    [InlineData("Oscillator:Oscillator_DIP-8", new[] { "1", "4", "5", "8" }, "Oscillator DIP-8")]
+    [InlineData("Oscillator:Oscillator_DIP-14", new[] { "1", "2", "3", "4" }, "")]
+    [InlineData("Oscillator:Oscillator_DIP-8", new[] { "1", "7", "8", "14" }, "")]
+    [InlineData("Oscillator:Oscillator_SMD_Abracon_ASE-4Pin_3.2x2.5mm", new[] { "1", "2", "3", "4" }, "")]
+    public void An_oscillators_can_is_named_by_its_footprint_on_its_four_pads(string footprint, string[] numbers, string package)
+    {
+        List<KiCadPadPlace> pads = [.. numbers.Select((number, index) => new KiCadPadPlace(number, index, 0))];
+
+        Assert.Equal(package, KiCadBoardComponents.PackageOf(footprint, pads));
+    }
+
     [Theory]
     [InlineData("Resistor_THT:R_Array_SIP8", "SIP")]
     [InlineData("Package_TO_SOT_THT:TO-92_Inline_Wide", "TO-92")]

@@ -205,13 +205,6 @@ namespace Handlers.DataHandling
         // A region of a board's own picked on that board (2026-11-09) - "region" stays PAL or NTSC, as CRT 3.x reads it.
         [JsonPropertyName("regionByBoard")] public Dictionary<string, string> RegionByBoard { get; set; } = new();
         [JsonPropertyName("theme")] public string ThemeVariant { get; set; } = "Light";
-        [JsonPropertyName("userThemeColors")] public Dictionary<string, string> UserThemeColors { get; set; } = new();
-
-        // How far the colors above have followed the defaults' moves (UserSettings.UserThemeEarlierDefaults) - each is
-        // followed ONCE, so a color typed back to an old default afterwards stays (code review, 2026-11-13). None is 0.
-        [JsonPropertyName("userThemeDefaultsRevision")]
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public int? UserThemeDefaultsRevision { get; set; }
         [JsonPropertyName("hasWindowPlacement")] public bool HasWindowPlacement { get; set; } = false;
         [JsonPropertyName("windowState")] public string WindowState { get; set; } = "Normal";
         [JsonPropertyName("windowWidth")] public double WindowWidth { get; set; } = 1024.0;
@@ -320,12 +313,19 @@ namespace Handlers.DataHandling
         [JsonPropertyName("oscilloscopeImageFolder")] public string OscilloscopeImageFolder { get; set; } = string.Empty;
         [JsonPropertyName("oscilloscopeSyncEnabled")] public bool? ComponentInfoOscilloscopeSyncEnabled { get; set; }
         [JsonPropertyName("interactiveCadTraceHoverMode")] public string InteractiveCadTraceHoverMode { get; set; } = "Always";
+        // "Mark first pin on component" per board - gone from CRT on 2026-11-17 (owner decision: pin 1 is always marked), but
+        // the stored name stays and is written as found: CRT 3.x reads the same file and goes by it.
         [JsonPropertyName("schematicsMarkPin1OnSelectedComponentByBoard")] public Dictionary<string, bool> SchematicsMarkPin1OnSelectedComponentByBoard { get; set; } = new();
         [JsonPropertyName("schematicsShowTracesOnSelectedComponent")] public bool SchematicsShowTracesOnSelectedComponent { get; set; } = true;
         [JsonPropertyName("schematicsShowTracesOnSelectedComponentByBoard")] public Dictionary<string, bool> SchematicsShowTracesOnSelectedComponentByBoard { get; set; } = new();
         [JsonPropertyName("schematicsImportantSignalsPanelExpanded")] public bool SchematicsImportantSignalsPanelExpanded { get; set; } = true;
         [JsonPropertyName("schematicsShowOppositeSideTraces")] public bool SchematicsShowOppositeSideTraces { get; set; } = true;
         [JsonPropertyName("schematicsShowZones")] public bool SchematicsShowZones { get; set; } = true;
+
+        // The pins on the "Schematics" tab's board (2026-11-17, owner request: ticked "per default"): numbered while SHIFT is
+        // held, in their directions' colors.
+        [JsonPropertyName("schematicsNumberPinsHoldingShift")] public bool SchematicsNumberPinsHoldingShift { get; set; } = true;
+        [JsonPropertyName("schematicsShowPinDirection")] public bool SchematicsShowPinDirection { get; set; } = true;
         [JsonPropertyName("downloadDataFromTestSource")]
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public bool? DownloadDataFromTestSource { get; set; }
@@ -384,164 +384,6 @@ namespace Handlers.DataHandling
     {
         private static UserSettingsData _data = new();
         private static string _settingsFilePath = string.Empty;
-
-        // ###########################################################################################
-        // The "User preference" theme's colors as first seeded into the settings file: the light theme's (App.axaml), its
-        // ground excepted. A key not here is the light theme's own. ThemeContrastTests reads it, so every text pair of this
-        // theme is held to 4.5:1 as the light and dark ones are.
-        // ###########################################################################################
-        internal static readonly Dictionary<string, string> UserThemeDefaultColors = new(StringComparer.Ordinal)
-        {
-            { "Bg", "#E0E4D9" },
-            { "Fg", "Black" },
-            { "Border", "Black" },
-            { "Form_Bg", "White" },
-            { "Form_Fg", "Black" },
-            { "Form_Border", "Gray" },
-            { "Form_Selected_Bg", "LightBlue" },
-            { "Form_Selected_Fg", "Black" },
-            { "Form_Selected_Hover_Bg", "SkyBlue" },
-            { "Splitter", "Gray" },
-            { "Button_Bg", "LightGray" },
-            { "Button_Fg", "Black" },
-            { "Button_Border", "DarkGray" },
-            { "Button_Ok_Bg", "#497F54" },
-            { "Button_Ok_Fg", "White" },
-            { "Button_Ok_Border", "#3E6E48" },
-            { "Button_Cancel_Bg", "#BC5454" },
-            { "Button_Cancel_Fg", "White" },
-            { "Button_Cancel_Border", "#A34747" },
-            { "Panel_Border", "Gray" },
-            { "Link_Fg", "Blue" },
-            { "LinkHover_Fg", "Black" },
-            { "Table_Header_Bg", "LightGray" },
-            { "Table_Header_Fg", "Black" },
-            { "Table_Bg", "White" },
-            { "Table_Fg", "Black" },
-            { "Table_BorderRowLine", "#EEEEEE" },
-            { "Table_RowHover_Bg", "#E1F0FA" },
-            { "Text_Success_Fg", "#516C2F" },
-            { "Text_Fail_Fg", "#B53535" },
-            { "Main_TabUnderline_Selected", "#B53535" },
-            { "Main_TabUnderline_Hover", "#ecc3c3" },
-            { "Main_Banner_Bg", "#4C1515" },
-            { "Main_Banner_Fg", "White" },
-            { "Main_BannerButtonsHover_Bg", "#4F3528" },
-            { "Main_BannerButtonsHover_Fg", "#DDE0DA" },
-            { "Schematics_Name_Bg", "Khaki" },
-            { "Schematics_Name_Fg", "Black" },
-            { "Schematics_Name_Border", "Black" },
-            { "Schematics_Region_PAL_Bg", "#BC5454" },
-            { "Schematics_Region_PAL_Fg", "White" },
-            { "Schematics_Region_PAL_Border", "Black" },
-            { "Schematics_Region_NTSC_Bg", "#CBD6E5" },
-            { "Schematics_Region_NTSC_Fg", "Black" },
-            { "Schematics_Region_NTSC_Border", "Black" },
-            { "Schematics_ComponentHover_Bg", "Khaki" },
-            { "Schematics_ComponentHover_Fg", "Black" },
-            { "Schematics_ComponentHover_Border", "Black" },
-            { "Schematics_Panels_Bg", "#F2F2F2" },
-            { "Schematics_Panels_Fg", "Black" },
-            { "Schematics_Panels_Border", "Gray" },
-            { "Schematics_ComponentLabel_Bg", "#222113" },
-            { "Schematics_ComponentLabel_Fg", "#ECEEEF" },
-            { "Schematics_ComponentLabel_Border", "Gray" },
-            { "Schematics_Panel_TracesVisible_Trace_Border", "Gray" },
-            { "Schematics_FirstPin", "Orange" },
-            { "Schematics_TracePalette_Color1", "#F40000" },
-            { "Schematics_TracePalette_Color2", "#1564F4" },
-            { "Schematics_TracePalette_Color3", "#0BC419" },
-            { "Schematics_TracePalette_Color4", "#E6E600" },
-            { "Thumbnail_Border", "Black" },
-            { "Thumbnail_BorderSelected", "IndianRed" },
-            { "Thumbnail_Bg", "Khaki" },
-            { "Thumbnail_Fg", "Black" },
-            { "Thumbnail_Selection_Bg", "#4076A4" },
-            { "Thumbnail_Selection_Fg", "White" },
-            { "ComponentPopup_Name_Bg", "Khaki" },
-            { "ComponentPopup_Name_Fg", "Black" },
-            { "ComponentPopup_Name_Border", "Black" },
-            { "ComponentPopup_Pin_Bg", "Khaki" },
-            { "ComponentPopup_Pin_Fg", "Black" },
-            { "ComponentPopup_Pin_Border", "Black" },
-            { "ComponentPopup_OscilloscopeExpected_Bg", "#B0D8EC" },
-            { "ComponentPopup_OscilloscopeExpected_Fg", "Black" },
-            { "ComponentPopup_OscilloscopeExpected_Border", "Black" },
-            { "ComponentPopup_OscilloscopeSyncData_Bg", "LightGray" },
-            { "ComponentPopup_OscilloscopeSyncData_Fg", "Black" },
-            { "ComponentPopup_OscilloscopeSyncData_Border", "Black" },
-            { "ComponentPopup_ImageXofY_Bg", "#BB000000" },
-            { "ComponentPopup_ImageXofY_Border", "Black" },
-            { "ComponentPopup_ImageXofY_Fg", "White" },
-            { "ComponentPopup_KeyboardTyping_Bg", "#6B7657" },
-            { "ComponentPopup_KeyboardTyping_Fg", "White" },
-            { "ComponentPopup_KeyboardTyping_Border", "Black" },
-            { "ComponentPopup_ImageTransparent_Bg", "White" },
-            { "Feedback_TrashIcon_Fg", "#B53535" }
-        };
-
-        // ###########################################################################################
-        // What the defaults above WERE, for each one changed since (2026-11-12, the theme color review: white on LightBlue,
-        // white on IndianRed, ...). A color in the settings file still at one of these was never picked by anybody - it is
-        // the default as it stood - so it follows the default; any other color is the user's own and stays.
-        // EACH MOVE IS FOLLOWED ONCE (code review, 2026-11-13): the colors are typed into the file by hand, and somebody who
-        // wants the old look types the old default back - followed at every load, it was taken from them at every launch
-        // and "Reload". So each earlier default names the revision that moved it, and the file keeps how far it has
-        // followed (userThemeDefaultsRevision). A default that moves again: its old value here with the next revision, and
-        // UserThemeDefaultsRevisionNow raised to it. (CRT 3.x, saving the same file, drops the stamp - a color still at a
-        // default then follows it once more, which is what it would do anyway.)
-        // ###########################################################################################
-        private const int UserThemeDefaultsRevisionNow = 1;
-
-        private static readonly Dictionary<string, (string Was, int MovedIn)[]> UserThemeEarlierDefaults = new(StringComparer.Ordinal)
-        {
-            { "Form_Selected_Fg", [("White", 1)] },
-            { "Button_Ok_Bg", [("#4F8A5B", 1)] },
-            { "Button_Cancel_Bg", [("IndianRed", 1)] },
-            { "Button_Cancel_Border", [("#B85C5C", 1)] },
-            { "Text_Success_Fg", [("#547131", 1)] },
-            { "Text_Fail_Fg", [("IndianRed", 1)] },
-            { "Main_TabUnderline_Selected", [("IndianRed", 1)] },
-            { "Schematics_Region_PAL_Bg", [("IndianRed", 1)] },
-            { "Thumbnail_Selection_Bg", [("#4682B4", 1)] },
-            { "ComponentPopup_KeyboardTyping_Bg", [("#778461", 1)] },
-            { "Feedback_TrashIcon_Fg", [("IndianRed", 1)] }
-        };
-
-        // ###########################################################################################
-        // What each of those reads against - its ground for words or a mark, its words for a ground. A move is followed only
-        // while that one is still the theme's, at its default now or before (code review, 2026-11-13): the white on a
-        // selection a user made navy was the user's choice as much as the navy, and moved to black it read 1.6:1.
-        // ###########################################################################################
-        private static readonly Dictionary<string, string> UserThemeMovedAgainst = new(StringComparer.Ordinal)
-        {
-            { "Form_Selected_Fg", "Form_Selected_Bg" },
-            { "Button_Ok_Bg", "Button_Ok_Fg" },
-            { "Button_Cancel_Bg", "Button_Cancel_Fg" },
-            { "Button_Cancel_Border", "Button_Cancel_Bg" },
-            { "Text_Success_Fg", "Bg" },
-            { "Text_Fail_Fg", "Bg" },
-            { "Main_TabUnderline_Selected", "Bg" },
-            { "Schematics_Region_PAL_Bg", "Schematics_Region_PAL_Fg" },
-            { "Thumbnail_Selection_Bg", "Thumbnail_Selection_Fg" },
-            { "ComponentPopup_KeyboardTyping_Bg", "ComponentPopup_KeyboardTyping_Fg" },
-            { "Feedback_TrashIcon_Fg", "Bg" }
-        };
-
-        // Whether `key` holds a color the theme gave it - its default now, or one it had before.
-        private static bool IsThemesOwnColor(string key)
-        {
-            if (!_data.UserThemeColors.TryGetValue(key, out string? value) || string.IsNullOrWhiteSpace(value))
-            {
-                return true;
-            }
-
-            string held = value.Trim();
-
-            return (UserThemeDefaultColors.TryGetValue(key, out string? now) && string.Equals(now, held, StringComparison.OrdinalIgnoreCase)) ||
-                   (UserThemeEarlierDefaults.TryGetValue(key, out (string Was, int MovedIn)[]? earlier) &&
-                    earlier.Any(old => string.Equals(old.Was, held, StringComparison.OrdinalIgnoreCase)));
-        }
 
         public static bool AllowDeletionOfOrphanAndNonUsedFiles
         {
@@ -618,6 +460,36 @@ namespace Handlers.DataHandling
             }
         }
 
+        // "Hold SHIFT to number pins on hover and select" on the "Schematics" tab (2026-11-17) - ticked until unticked.
+        public static bool SchematicsNumberPinsHoldingShift
+        {
+            get => _data.SchematicsNumberPinsHoldingShift;
+            set
+            {
+                if (_data.SchematicsNumberPinsHoldingShift == value)
+                    return;
+
+                _data.SchematicsNumberPinsHoldingShift = value;
+                Logger.Info($"Setting changed: [SchematicsNumberPinsHoldingShift] [{value}]");
+                Save();
+            }
+        }
+
+        // "Show color for pin direction" - the numbered pins in their directions' colors (2026-11-17) - ticked until unticked.
+        public static bool SchematicsShowPinDirection
+        {
+            get => _data.SchematicsShowPinDirection;
+            set
+            {
+                if (_data.SchematicsShowPinDirection == value)
+                    return;
+
+                _data.SchematicsShowPinDirection = value;
+                Logger.Info($"Setting changed: [SchematicsShowPinDirection] [{value}]");
+                Save();
+            }
+        }
+
         // ###########################################################################################
         // Returns whether selected-component trace preview is enabled globally.
         // ###########################################################################################
@@ -680,14 +552,6 @@ namespace Handlers.DataHandling
             _data.ValidateDataOnLaunch = isEnabled;
             _data.DebugLogging = isEnabled;
         }
-
-        private static readonly HashSet<string> UserThemeColorResourceKeys = new(StringComparer.Ordinal)
-        {
-            "Schematics_TracePalette_Color1",
-            "Schematics_TracePalette_Color2",
-            "Schematics_TracePalette_Color3",
-            "Schematics_TracePalette_Color4"
-        };
 
         public static event Action? InteractiveCadTraceHoverModeChanged;
 
@@ -1509,16 +1373,17 @@ namespace Handlers.DataHandling
         public static IReadOnlySet<string> CatalogueCollapsedKeysSnapshot =>
             new HashSet<string>(_data.CatalogueCollapsedKeys, CatalogueVisibility.KeyComparer);
 
+        // ###########################################################################################
+        // "Light" or "Dark" - nothing else since 2026-11-17 (owner request: "only support light and dark themes"). A
+        // "UserPreference" an earlier CRT stored reads as "Light", the theme it was drawn over, and stays stored as it is until
+        // another theme is picked - a theme picked again that reads the same is written, so the file then says what is shown.
+        // ###########################################################################################
         public static string ThemeVariant
         {
-            get => string.Equals(_data.ThemeVariant, "Dark", StringComparison.OrdinalIgnoreCase) ? "Dark"
-                : string.Equals(_data.ThemeVariant, "UserPreference", StringComparison.OrdinalIgnoreCase) ? "UserPreference"
-                : "Light";
+            get => string.Equals(_data.ThemeVariant, "Dark", StringComparison.OrdinalIgnoreCase) ? "Dark" : "Light";
             set
             {
-                var normalized = string.Equals(value, "Dark", StringComparison.OrdinalIgnoreCase) ? "Dark"
-                    : string.Equals(value, "UserPreference", StringComparison.OrdinalIgnoreCase) ? "UserPreference"
-                    : "Light";
+                var normalized = string.Equals(value, "Dark", StringComparison.OrdinalIgnoreCase) ? "Dark" : "Light";
 
                 if (string.Equals(_data.ThemeVariant, normalized, StringComparison.Ordinal))
                     return;
@@ -1935,50 +1800,6 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // Returns the persisted user-defined theme colors loaded from configuration.
-        // ###########################################################################################
-        public static IReadOnlyDictionary<string, string> GetUserThemeColors()
-            => _data.UserThemeColors;
-
-        // ###########################################################################################
-        // Returns whether a resource key should be applied as a raw Color instead of a brush.
-        // ###########################################################################################
-        public static bool IsUserThemeColorResourceKey(string resourceKey)
-            => UserThemeColorResourceKeys.Contains(resourceKey);
-
-        // ###########################################################################################
-        // Ensures all JSON-backed user theme color entries exist, seeding missing values from Light - and moves one still at
-        // an earlier default to the default now (UserThemeEarlierDefaults).
-        // ###########################################################################################
-        private static bool EnsureUserThemeColors()
-        {
-            _data.UserThemeColors ??= new Dictionary<string, string>();
-
-            var changed = false;
-            int followed = _data.UserThemeDefaultsRevision ?? 0;
-
-            foreach (var entry in UserThemeDefaultColors)
-            {
-                if (!_data.UserThemeColors.TryGetValue(entry.Key, out var value) || string.IsNullOrWhiteSpace(value) ||
-                    (UserThemeEarlierDefaults.TryGetValue(entry.Key, out (string Was, int MovedIn)[]? earlier) &&
-                     earlier.Any(old => old.MovedIn > followed && string.Equals(old.Was, value.Trim(), StringComparison.OrdinalIgnoreCase)) &&
-                     (!UserThemeMovedAgainst.TryGetValue(entry.Key, out string? against) || UserSettings.IsThemesOwnColor(against))))
-                {
-                    _data.UserThemeColors[entry.Key] = entry.Value;
-                    changed = true;
-                }
-            }
-
-            if (followed < UserThemeDefaultsRevisionNow)
-            {
-                _data.UserThemeDefaultsRevision = UserThemeDefaultsRevisionNow;
-                changed = true;
-            }
-
-            return changed;
-        }
-
-        // ###########################################################################################
         // Resolves the settings file path in the user's AppData folder and loads persisted values.
         // Falls back to defaults silently on any failure.
         // ###########################################################################################
@@ -2071,16 +1892,10 @@ namespace Handlers.DataHandling
                 // Now evaluate settings
                 if (!File.Exists(_settingsFilePath))
                 {
-                    var createdUserThemeDefaults = EnsureUserThemeColors();
-
+                    // The defaults written at once, so the file is there from the first launch - as it was while the
+                    // "User preference" theme's colors were seeded into it (they went on 2026-11-17).
                     Logger.Info("Configuration file not found - using defaults");
-
-                    if (createdUserThemeDefaults)
-                    {
-                        Save();
-                        Logger.Info($"Created [UserThemeColors] defaults [{_data.UserThemeColors.Count} entries]");
-                    }
-
+                    Save();
                     return;
                 }
 
@@ -2096,7 +1911,6 @@ namespace Handlers.DataHandling
                 NormalizeCatalogueKeySets();
                 MigrateLegacyDetailedLogSettings();
 
-                var addedUserThemeDefaults = EnsureUserThemeColors();
                 SyncDetailedLogLinkedSettings();
 
                 Logger.Info("Settings loaded:");
@@ -2152,7 +1966,8 @@ namespace Handlers.DataHandling
                 Logger.Info($"        [SchematicsLabelFriendly] [{SchematicsLabelFriendly}]");
                 Logger.Info($"        [SchematicsLabelSelectedOnly] [{SchematicsLabelSelectedOnly}]");
                 Logger.Info($"        [SchematicsShowTracesOnSelectedComponent] [{SchematicsShowTracesOnSelectedComponent}]");
-                Logger.Info($"        [UserThemeColors] [{_data.UserThemeColors.Count} entries]");
+                Logger.Info($"        [SchematicsNumberPinsHoldingShift] [{SchematicsNumberPinsHoldingShift}]");
+                Logger.Info($"        [SchematicsShowPinDirection] [{SchematicsShowPinDirection}]");
                 Logger.Info($"        [WindowPlacement] [{_data.WindowState}] [{_data.WindowWidth:F0}x{_data.WindowHeight:F0}]");
                 Logger.Info($"    Various hardware/board specific settings:");
                 Logger.Info($"        [LastBoardByHardware] [{_data.LastBoardByHardware.Count} entries]");
@@ -2170,10 +1985,13 @@ namespace Handlers.DataHandling
                 Logger.Info($"        [OscilloscopePort] [{_data.OscilloscopePort}]");
                 Logger.Info($"        [OscilloscopeSyncEnabled] [{ComponentInfoOscilloscopeSyncEnabled}]");
 
-                if (addedUserThemeDefaults)
+                // The "User preference" theme's colors went with it (owner request, 2026-11-17: "the user colors are also
+                // somewhere in the user configuration, so should be removed from there also"): a file still holding them is
+                // written again at once, without them - nothing here reads them any more.
+                if (_loadedRetiredSettings)
                 {
                     Save();
-                    Logger.Info("Missing [UserThemeColors] entries were added to configuration");
+                    Logger.Info("The retired [UserThemeColors] were taken out of the settings file");
                 }
             }
             catch (Exception ex)
@@ -2210,6 +2028,7 @@ namespace Handlers.DataHandling
             {
                 if (JsonSerializer.Deserialize<UserSettingsData>(json) is { } loaded)
                 {
+                    _loadedRetiredSettings = UserSettings.HoldsRetiredSettings(json);
                     return loaded;
                 }
 
@@ -2237,6 +2056,30 @@ namespace Handlers.DataHandling
             return null;
         }
 
+        // Whether the file last read held settings no CRT of this version stores (the "User preference" theme's colors, gone
+        // on 2026-11-17) - then it is written again at once, without them.
+        private static bool _loadedRetiredSettings;
+
+        // Read as a document, its top level's names gone through one by one: a file edited by hand may hold a key twice, which
+        // the settings' own read takes (the last counts) and a JsonObject refuses - it threw, and the read set the whole file
+        // aside as unreadable (code review, 2026-11-18). Whatever else goes wrong, the file holds none: this look is no reason
+        // to lose a settings file.
+        internal static bool HoldsRetiredSettings(string json)
+        {
+            try
+            {
+                using JsonDocument document = JsonDocument.Parse(json);
+
+                return document.RootElement.ValueKind == JsonValueKind.Object &&
+                       document.RootElement.EnumerateObject().Any(property =>
+                           property.NameEquals("userThemeColors") || property.NameEquals("userThemeDefaultsRevision"));
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
         // ###########################################################################################
         // Moves `path` to "<path>.corrupt-<yyyyMMdd-HHmmss>" ("-2", "-3", ... when that is taken).
         // Returns where it went, or null when it could not be moved (CorruptFileSetAside).
@@ -2245,22 +2088,16 @@ namespace Handlers.DataHandling
             CorruptFileSetAside.SetAside(path, now, UserSettings.MoveSettingsFile);
 
         // ###########################################################################################
-        // Defaults, after an unreadable file - set up as a missing file's are. The theme colours a
-        // fresh file gets are saved only where nothing is now (the bad file was moved aside); with
-        // the file left in place there is no save target, so nothing is written.
+        // Defaults, after an unreadable file - set up as a missing file's are, and saved only where
+        // nothing is now (the bad file was moved aside); with the file left in place there is no save
+        // target, so nothing is written.
         // ###########################################################################################
         private static void StartOnDefaultsAfterUnreadableFile()
         {
             _data = new UserSettingsData();
             NormalizeCatalogueKeySets();
-
-            bool addedUserThemeDefaults = EnsureUserThemeColors();
             SyncDetailedLogLinkedSettings();
-
-            if (addedUserThemeDefaults)
-            {
-                Save();
-            }
+            Save();
         }
 
         private static readonly JsonSerializerOptions SaveJsonOptions = new() { WriteIndented = true };
@@ -2678,105 +2515,6 @@ namespace Handlers.DataHandling
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 AppConfig.AppFolderName,
                 AppConfig.OscilloscopeImagesFolderName);
-
-        // ###########################################################################################
-        // Reloads only the user preference theme colors from the settings file while the app runs.
-        // ###########################################################################################
-        public static void ReloadUserThemeColors()
-        {
-            if (string.IsNullOrWhiteSpace(_settingsFilePath))
-            {
-                return;
-            }
-
-            try
-            {
-                if (!File.Exists(_settingsFilePath))
-                {
-                    var createdDefaults = EnsureUserThemeColors();
-
-                    if (createdDefaults)
-                    {
-                        Save();
-                        Logger.Info($"Created [UserThemeColors] defaults [{_data.UserThemeColors.Count} entries]");
-                    }
-
-                    return;
-                }
-
-                var json = File.ReadAllText(_settingsFilePath);
-                var loaded = JsonSerializer.Deserialize<UserSettingsData>(json);
-
-                if (loaded == null)
-                {
-                    Logger.Warning("Failed to reload user theme colors: settings file could not be deserialized");
-                    return;
-                }
-
-                // The colors and how far they followed the defaults, from the same file (code review, 2026-11-14): the
-                // revision held in memory says what THIS run followed, and a save of it that failed left the file behind.
-                Dictionary<string, string> before = _data.UserThemeColors;
-                int? revisionBefore = _data.UserThemeDefaultsRevision;
-                _data.UserThemeColors = loaded.UserThemeColors ?? new Dictionary<string, string>();
-                _data.UserThemeDefaultsRevision = loaded.UserThemeDefaultsRevision;
-
-                var addedMissingDefaults = EnsureUserThemeColors();
-
-                // ###########################################################################################
-                // *** WHAT WAS RELOADED IS WHAT IS WRITTEN NEXT (code review, 2026-11-16). *** The settings are written a moment
-                // after a change (DeferredTextFile): a text queued before the file was edited by hand, or being written as it
-                // was read, held the colors from before - and replaced the file up to a moment later, the hand edit gone at the
-                // next launch. So when the colors read differ from those held, or a text still waits, the settings as they now
-                // are take its place.
-                // ###########################################################################################
-                bool reloadedOther = revisionBefore != _data.UserThemeDefaultsRevision ||
-                    before.Count != _data.UserThemeColors.Count ||
-                    before.Any(color => !_data.UserThemeColors.TryGetValue(color.Key, out string? now) || !string.Equals(now, color.Value, StringComparison.Ordinal));
-
-                if (addedMissingDefaults || reloadedOther || UserSettings.Writer.IsPending)
-                {
-                    Save();
-                }
-
-                if (addedMissingDefaults)
-                {
-                    Logger.Info("Missing [UserThemeColors] entries were added to configuration during reload");
-                }
-
-                Logger.Info($"Reloaded [UserThemeColors] [{_data.UserThemeColors.Count} entries]");
-            }
-            catch (Exception ex)
-            {
-                Logger.Warning($"Failed to reload user theme colors: [{ex.Message}]");
-            }
-        }
-
-        // ###########################################################################################
-        // Returns whether pin 1 should be specially marked for selected components on the given board.
-        // Defaults to true unless explicitly disabled for that board.
-        // ###########################################################################################
-        public static bool GetSchematicsMarkPin1OnSelectedComponentForBoard(string boardKey)
-        {
-            if (string.IsNullOrWhiteSpace(boardKey))
-                return true;
-
-            return _data.SchematicsMarkPin1OnSelectedComponentByBoard.TryGetValue(boardKey, out var enabled)
-                ? enabled
-                : true;
-        }
-
-        // ###########################################################################################
-        // Persists whether pin 1 should be specially marked for selected components on the given board.
-        // ###########################################################################################
-        public static void SetSchematicsMarkPin1OnSelectedComponentForBoard(string boardKey, bool enabled)
-        {
-            if (string.IsNullOrWhiteSpace(boardKey))
-                return;
-
-            _data.SchematicsMarkPin1OnSelectedComponentByBoard[boardKey] = enabled;
-            Logger.Info($"Setting changed: [SchematicsMarkPin1OnSelectedComponent] [{boardKey}] [{enabled}]");
-            Save();
-        }
 
     }
 }

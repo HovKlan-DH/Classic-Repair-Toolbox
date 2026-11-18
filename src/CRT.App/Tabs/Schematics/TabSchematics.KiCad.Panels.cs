@@ -272,8 +272,7 @@ public partial class TabSchematics
         this.ResetSchematicsHoverLabelToDefaultAppearance();
         this.SchematicsHoverLabelBorder.IsVisible = false;
         this.SchematicsHoverLabelText.Text = string.Empty;
-        this.SchematicsHoverPadBorder.IsVisible = false;
-        this.SchematicsHoverPadText.Text = string.Empty;
+        this.HideHoverPinBadges();
         this.SchematicsContainer.Cursor = Cursor.Default;
 
         if (this.MainWindow != null)

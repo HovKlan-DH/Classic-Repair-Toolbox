@@ -153,16 +153,29 @@ public partial class TabSchematics
     // ###########################################################################################
     private PixelSize? thisStandInPixelSize;
 
+    // The stand-in's own empty border, in its pixels: the picture's made small, so its board stands where the picture's will
+    // once it comes (2026-11-17 - the board is what is placed since, its border left out).
+    private Thickness thisStandInBlankBorder;
+
     // A picture's thumbnail standing in for it while it is read (above): no picture held meanwhile, framed by its own size.
-    private void ShowStandIn(IImage standIn)
+    private void ShowStandIn(IImage standIn, Thickness? blankBorder = null)
     {
         this.currentFullResBitmap = null;
-        this.thisStandInPixelSize = PixelSize.FromSize(standIn.Size, 1.0);
+        this.thisStandInPixelSize = standIn is Bitmap bitmap ? bitmap.PixelSize : PixelSize.FromSize(standIn.Size, 1.0);
+        this.thisStandInBlankBorder = blankBorder ?? (standIn is Bitmap small ? TabSchematics.StandInBorderOf(small) : default);
         this.ApplyImageFrame();
         this.SchematicsImage.Source = standIn;
     }
 
-    internal void ShowStandInForTests(IImage standIn) => this.ShowStandIn(standIn);
+    // A thumbnail's border, measured the first time it stands in and kept with it: it stands in again at every switch back
+    // to its picture before that is read, on the UI thread.
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Bitmap, System.Runtime.CompilerServices.StrongBox<Thickness>> StandInBorders = new();
+
+    private static Thickness StandInBorderOf(Bitmap thumbnail) =>
+        TabSchematics.StandInBorders.GetValue(thumbnail, small => new(TabSchematics.BlankBorderOf(small))).Value;
+
+    // The headless platform keeps no pixels in a bitmap, so a test hands over the border the stand-in has.
+    internal void ShowStandInForTests(IImage standIn, Thickness blankBorder = default) => this.ShowStandIn(standIn, blankBorder);
 
     // In whole pixels of the screen, as layout rounds the image's Margin: a frame of 35.62 put the image at 36, and
     // every overlay - fitted at 35.62 - drew beside it, further the more it was zoomed.
@@ -174,7 +187,7 @@ public partial class TabSchematics
         Thickness frame = this.currentFullResBitmap is { } bitmap
             ? ImageFrameGeometry.Frame(this.LayerSize(), bitmap.PixelSize, this.thisImageBlankBorder, ImageFrameGeometry.Wanted)
             : this.thisStandInPixelSize is { } standIn
-                ? ImageFrameGeometry.Frame(this.LayerSize(), standIn, default, ImageFrameGeometry.Wanted)
+                ? ImageFrameGeometry.Frame(this.LayerSize(), standIn, this.thisStandInBlankBorder, ImageFrameGeometry.Wanted)
                 : default;
 
         frame = this.RoundedToScreen(frame);
@@ -234,7 +247,19 @@ public partial class TabSchematics
                 return ImageFrameGeometry.BlankBorder(width, height, Read);
             }
 
-            return file is null ? default : ImageFrameGeometry.BlankBorderOfFile(file);
+            if (file is not null)
+            {
+                return ImageFrameGeometry.BlankBorderOfFile(file);
+            }
+
+            // No file: a picture's thumbnail standing in for it (ShowStandIn), a few hundred pixels - written out as PNG and
+            // read back by SkiaSharp, as gray as it is (code review, 2026-11-18: a grayscale thumbnail measured as no border,
+            // and the stand-in stood elsewhere than its picture once that came).
+            using var encoded = new System.IO.MemoryStream();
+            bitmap.Save(encoded, new PngBitmapEncoderOptions());
+            encoded.Position = 0;
+
+            return ImageFrameGeometry.BlankBorderOfEncoded(encoded);
         }
         catch (Exception ex)
         {
@@ -390,13 +415,22 @@ public partial class TabSchematics
 
         bool shouldUseStrictEdgeClamp = useStrictEdgeClamp || this.isPanning;
 
+        // Judged by the image's CONTENT, its own empty border left out (ImageFrameGeometry.ContentWithin): a padded image
+        // reaches past the panel at the first view, its border where there is nothing to see - no reason to pan. But by the
+        // WHOLE image while a tool works on it - aligning KiCad data, marking components, a worklog's area - whose box or
+        // rectangles may lie in that border, so it can be panned to (code review, 2026-11-18).
+        bool toolOnTheImage = this.thisIsKiCadTraceCalibrationMode || this.thisIsLabelEditorMode || this.thisIsWorklogEntryMode;
+        Rect boardRect = this.currentFullResBitmap is { } shown && !toolOnTheImage
+            ? ImageFrameGeometry.ContentWithin(contentRect, shown.PixelSize, this.thisImageBlankBorder)
+            : contentRect;
+
         bool shouldAllowBaselinePanX =
-            contentRect.Width > viewportRect.Width + 0.01 ||
+            boardRect.Width > viewportRect.Width + 0.01 ||
             viewportRect.Left > 0.01 ||
             viewportRect.Right < containerSize.Width - 0.01;
 
         bool shouldAllowBaselinePanY =
-            contentRect.Height > viewportRect.Height + 0.01 ||
+            boardRect.Height > viewportRect.Height + 0.01 ||
             viewportRect.Top > 0.01 ||
             viewportRect.Bottom < containerSize.Height - 0.01;
 
@@ -446,6 +480,10 @@ public partial class TabSchematics
         ((MatrixTransform)this.SchematicsPolylineCanvas.RenderTransform!).Matrix = this.schematicsMatrix;
         ((MatrixTransform)this.SchematicsLabelsCanvas.RenderTransform!).Matrix = this.schematicsMatrix;
         ((MatrixTransform)this.SchematicsKiCadOverlayCanvas.RenderTransform!).Matrix = this.schematicsMatrix;
+
+        // The pins' numbers are drawn in the panel's own coordinates, at the view's matrix (TabSchematics.PinsOnImage.cs).
+        this.SchematicsPinNumbersOverlay.ViewMatrix = this.schematicsMatrix;
+        this.SchematicsPinNumbersOverlay.InvalidateVisual();
         ((MatrixTransform)this.SchematicsWorklogEntryOverlay.RenderTransform!).Matrix = this.schematicsMatrix;
         ((MatrixTransform)this.SchematicsWorklogEntryBadgeCanvas.RenderTransform!).Matrix = this.schematicsMatrix;
         ((MatrixTransform)this.SchematicsWorklogEntriesOverlay.RenderTransform!).Matrix = this.schematicsMatrix;

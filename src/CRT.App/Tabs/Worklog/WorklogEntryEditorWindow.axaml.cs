@@ -66,6 +66,9 @@ namespace CRT
         // The picture's own size when the bitmap was decoded smaller (Initialize) - null when it is the picture whole.
         private PixelSize? thisSchematicPixelSize;
 
+        // The picture's own empty border where the caller knows it (Initialize) - a default area is placed in from it.
+        private Thickness thisSchematicBlankBorder;
+
         // What every area is mapped by: the picture's own size, never a smaller decode's.
         private PixelSize SchematicPixelSize => this.thisSchematicPixelSize ?? this.thisSchematicBitmap?.PixelSize ?? default;
 
@@ -601,7 +604,10 @@ namespace CRT
         // `schematicPixelSize`: the picture's OWN size when `schematicBitmap` was decoded smaller (the "Workbooks" tab's
         // pane, SchematicPreviewPicture - 2026-11-16) - every area is kept in the picture's own pixels, so it is mapped,
         // and a default one placed, by that size; null when the bitmap is the picture whole.
-        public void Initialize(int workbookId, WorklogEntryRecord entry, Bitmap? schematicBitmap, PixelSize? schematicPixelSize = null)
+        // `schematicBlankBorder`: the picture's own empty border, in its own pixels, where the caller knows it (the
+        // "Schematics" tab, which measured it as it read the picture) - a default area is placed in from it, as that border
+        // lies past the tab's panel at the first view (code review, 2026-11-18). None elsewhere: the picture is shown whole.
+        public void Initialize(int workbookId, WorklogEntryRecord entry, Bitmap? schematicBitmap, PixelSize? schematicPixelSize = null, Thickness schematicBlankBorder = default)
         {
             this.thisIsInitializing = true;
 
@@ -609,6 +615,7 @@ namespace CRT
             this.thisEntry = CloneEntry(entry);
             this.thisSchematicBitmap = schematicBitmap;
             this.thisSchematicPixelSize = schematicPixelSize;
+            this.thisSchematicBlankBorder = schematicBlankBorder;
 
             // "Update worklog" for a saved entry; InitializeForNewEntry overrides this to "Add
             // worklog" straight afterwards for a draft. Set here rather than left as the markup's
@@ -924,7 +931,8 @@ namespace CRT
             // the single decision point while the editor quietly kept its own copy of the rule.
             var area = WorklogDefaultAreaGeometry.ResolveAreaForShowing(
                 existing,
-                new Size(this.SchematicPixelSize.Width, this.SchematicPixelSize.Height));
+                new Size(this.SchematicPixelSize.Width, this.SchematicPixelSize.Height),
+                this.thisSchematicBlankBorder);
 
             // Unchanged means the entry already had a real area, and it is never replaced. Still
             // unusable means the image has no size to place one on, so the entry stays parked.

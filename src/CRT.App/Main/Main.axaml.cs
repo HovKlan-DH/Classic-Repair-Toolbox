@@ -42,6 +42,7 @@ namespace CRT
         //   Main.ComponentPopup.cs    - component filter/search, component info popup, blink, region
         //   Main.ContributeLists.cs   - the Contribute tab's own lists on the far left, its selector
         //   Main.DataSyncStatus.cs    - sync settings reactions, sync status icon, background cleanup
+        //   Main.ThemeToggle.cs       - the theme's icon in the top right corner: the moon to go dark, the sun to go light
         //   Main.ModeHint.cs          - the mode-hint label shown while a mode awaits user action
         //   Main.Notices.cs           - what the notice cards over the tabs' bottom-right corner share
         //   Main.NoticeDemo.cs        - "--demo-notices": every notice played once after launch
@@ -269,6 +270,7 @@ namespace CRT
             this.PlaceDeviceList();
             this.TabDrafts.Initialize(this);
             this.TabConfiguration.Initialize(this);
+            this.WireThemeToggle();
             this.TabMaintainer.UseRememberedChoices(
                 UserSettings.MaintainerTableFilter,
                 filter => UserSettings.MaintainerTableFilter = filter);
@@ -290,6 +292,10 @@ namespace CRT
             this.TabMaintainer.UpdateRequiredActionClicked += this.OnUpdateRequiredAction;
 
             this.MainTabControl.SelectionChanged += this.OnMainTabControlSelectionChanged;
+
+            // A SHIFT held as CRT's window goes behind another is let go of: let go of there, the "Schematics" tab never heard
+            // it, and its pins stayed numbered (code review, 2026-11-18).
+            this.Deactivated += (_, _) => this.LetGoOfShiftForSchematics();
 
             this.ApplyOscilloscopeTabVisibility();
 
@@ -415,6 +421,13 @@ namespace CRT
             this.AddHandler(
                 InputElement.KeyDownEvent,
                 this.OnMainKeyDownCloseSinglePopup,
+                RoutingStrategies.Tunnel,
+                handledEventsToo: true
+            );
+
+            this.AddHandler(
+                InputElement.KeyUpEvent,
+                this.OnMainKeyUpForSchematics,
                 RoutingStrategies.Tunnel,
                 handledEventsToo: true
             );

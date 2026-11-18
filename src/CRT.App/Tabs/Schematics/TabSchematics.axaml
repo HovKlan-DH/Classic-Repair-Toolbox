@@ -75,6 +75,12 @@
 					</Canvas.RenderTransform>
 				</Canvas>
 
+				<!-- EVERY PIN NUMBERED ON ITS PAD WHILE SHIFT IS HELD (owner request, 2026-11-17; "Hold SHIFT to number pins on
+				     hover and select", TabSchematics.PinsOnImage.cs) - in the panel's own coordinates, so a number reads at any zoom. -->
+				<ts:PinNumbersOverlay x:Name="SchematicsPinNumbersOverlay"
+									  IsHitTestVisible="False"
+									  ZIndex="101" />
+
 				<ts:ComponentLabelEditorOverlay x:Name="SchematicsLabelEditorOverlay"
 												IsVisible="False"
 												IsHitTestVisible="False"
@@ -165,11 +171,17 @@
 				<Canvas x:Name="SchematicsWorklogParkedBadgeCanvas"
 						ZIndex="150" />
 
-				<StackPanel Orientation="Horizontal"
+				<!-- THE TWO ROWS OF BADGES IN THE TOP LEFT CORNER STAND OVER WHAT IS DRAWN ON THE SCHEMATIC IMAGE (owner report,
+				     2026-11-17: hovering a component in the top-left corner, holding SHIFT, "the "Khaki" badges are shown below the pin
+				     numbers"): over the component labels (100) and the pins' numbers (101), under the parked worklog badges (150) and
+				     the panels (200). -->
+				<StackPanel x:Name="SchematicsInfoBadgesRow"
+							Orientation="Horizontal"
 							HorizontalAlignment="Left"
 							VerticalAlignment="Top"
 							Margin="10,10,0,0"
 							Spacing="8"
+							ZIndex="110"
 							IsHitTestVisible="False">
 
 					<Border x:Name="SchematicsNameBorder"
@@ -196,11 +208,13 @@
 					</Border>
 				</StackPanel>
 
-				<StackPanel Orientation="Horizontal"
+				<StackPanel x:Name="SchematicsHoverBadgesRow"
+					Orientation="Horizontal"
 					HorizontalAlignment="Left"
 					VerticalAlignment="Top"
 					Margin="10,44,0,0"
 					Spacing="6"
+					ZIndex="110"
 					IsHitTestVisible="False">
 					<Border x:Name="SchematicsHoverLabelBorder"
 						IsVisible="False"
@@ -235,24 +249,65 @@
 										Foreground="{DynamicResource Schematics_ComponentHover_Fg}" />
 						</StackPanel>
 					</Border>
-					<Border x:Name="SchematicsHoverPadBorder"
-						IsVisible="False"
-						Background="{DynamicResource Schematics_ComponentHover_Bg}"
-						BorderBrush="{DynamicResource Schematics_ComponentHover_Border}"
-						BorderThickness="1"
-						CornerRadius="4"
-						Padding="8,4">
-						<StackPanel Orientation="Horizontal" Spacing="2">
-							<TextBlock Text="Pin"
-								FontSize="11"
-								FontWeight="Normal"
-								Foreground="{DynamicResource Schematics_ComponentHover_Fg}" />
-							<TextBlock x:Name="SchematicsHoverPadText"
-								FontSize="11"
-								FontWeight="Bold"
-								Foreground="{DynamicResource Schematics_ComponentHover_Fg}" />
-						</StackPanel>
-					</Border>
+					<!-- THE PIN UNDER THE POINTER, ITS NET AND ITS DIRECTION - A BADGE EACH (owner request, 2026-11-17: "split this in
+					     to 3 different badges (horizontally aligned)"; "Pin 20 | ~{CHAROM}" in one until then). A badge with nothing
+					     to say is not there (TabSchematics.KiCad.HitTest.cs, RefreshKiCadHoverPadUi). -->
+					<StackPanel x:Name="SchematicsHoverPinBadges"
+								IsVisible="False"
+								Orientation="Horizontal"
+								Spacing="6">
+						<Border x:Name="SchematicsHoverPadBorder"
+							Background="{DynamicResource Schematics_ComponentHover_Bg}"
+							BorderBrush="{DynamicResource Schematics_ComponentHover_Border}"
+							BorderThickness="1"
+							CornerRadius="4"
+							Padding="8,4">
+							<StackPanel Orientation="Horizontal" Spacing="3">
+								<TextBlock Text="Pin"
+									FontSize="11"
+									FontWeight="Normal"
+									Foreground="{DynamicResource Schematics_ComponentHover_Fg}" />
+								<TextBlock x:Name="SchematicsHoverPadText"
+									FontSize="11"
+									FontWeight="Bold"
+									Foreground="{DynamicResource Schematics_ComponentHover_Fg}" />
+							</StackPanel>
+						</Border>
+						<Border x:Name="SchematicsHoverNetBorder"
+							Background="{DynamicResource Schematics_ComponentHover_Bg}"
+							BorderBrush="{DynamicResource Schematics_ComponentHover_Border}"
+							BorderThickness="1"
+							CornerRadius="4"
+							Padding="8,4">
+							<StackPanel Orientation="Horizontal" Spacing="3">
+								<TextBlock Text="Net"
+									FontSize="11"
+									FontWeight="Normal"
+									Foreground="{DynamicResource Schematics_ComponentHover_Fg}" />
+								<TextBlock x:Name="SchematicsHoverNetText"
+									FontSize="11"
+									FontWeight="Bold"
+									Foreground="{DynamicResource Schematics_ComponentHover_Fg}" />
+							</StackPanel>
+						</Border>
+						<Border x:Name="SchematicsHoverDirectionBorder"
+							Background="{DynamicResource Schematics_ComponentHover_Bg}"
+							BorderBrush="{DynamicResource Schematics_ComponentHover_Border}"
+							BorderThickness="1"
+							CornerRadius="4"
+							Padding="8,4">
+							<StackPanel Orientation="Horizontal" Spacing="3">
+								<TextBlock Text="Direction"
+									FontSize="11"
+									FontWeight="Normal"
+									Foreground="{DynamicResource Schematics_ComponentHover_Fg}" />
+								<TextBlock x:Name="SchematicsHoverDirectionText"
+									FontSize="11"
+									FontWeight="Bold"
+									Foreground="{DynamicResource Schematics_ComponentHover_Fg}" />
+							</StackPanel>
+						</Border>
+					</StackPanel>
 				</StackPanel>
 
 				<!-- THE ONE-TIME TIP on moving and zooming (CRT 4.0 step 5 - the plan: "a middle-button
@@ -291,7 +346,7 @@
 					  VerticalAlignment="Bottom"
 					  Margin="10,0,0,10"
 					  RowDefinitions="Auto"
-					  ColumnDefinitions="Auto,Auto,Auto"
+					  ColumnDefinitions="Auto,Auto,Auto,Auto"
 					  ColumnSpacing="8"
 					  ZIndex="200">
 
@@ -351,7 +406,7 @@
 									</Viewbox>
 									<TextBlock Text="Highlight trace on hover"
 											   FontSize="11"
-											   Foreground="{DynamicResource SchematicsPanels_Fg}"
+											   Foreground="{DynamicResource Schematics_Panels_Fg}"
 											   VerticalAlignment="Center"
 											   IsHitTestVisible="False" />
 								</StackPanel>
@@ -374,7 +429,7 @@
 									</Viewbox>
 									<TextBlock Text="Hold SHIFT to highlight trace on hover"
 											   FontSize="11"
-											   Foreground="{DynamicResource SchematicsPanels_Fg}"
+											   Foreground="{DynamicResource Schematics_Panels_Fg}"
 											   VerticalAlignment="Center"
 											   IsHitTestVisible="False" />
 								</StackPanel>
@@ -396,7 +451,7 @@
 									</Viewbox>
 									<TextBlock Text="Highlight component traces on select"
 											   FontSize="11"
-											   Foreground="{DynamicResource SchematicsPanels_Fg}"
+											   Foreground="{DynamicResource Schematics_Panels_Fg}"
 											   VerticalAlignment="Center"
 											   IsHitTestVisible="False" />
 								</StackPanel>
@@ -418,7 +473,7 @@
 									</Viewbox>
 									<TextBlock Text="Highlight component traces on hover"
 											   FontSize="11"
-											   Foreground="{DynamicResource SchematicsPanels_Fg}"
+											   Foreground="{DynamicResource Schematics_Panels_Fg}"
 											   VerticalAlignment="Center"
 											   IsHitTestVisible="False" />
 								</StackPanel>
@@ -441,7 +496,7 @@
 									</Viewbox>
 									<TextBlock Text="Show traces from opposite side"
 											   FontSize="11"
-											   Foreground="{DynamicResource SchematicsPanels_Fg}"
+											   Foreground="{DynamicResource Schematics_Panels_Fg}"
 											   VerticalAlignment="Center"
 											   IsHitTestVisible="False" />
 								</StackPanel>
@@ -488,30 +543,56 @@
 									</Viewbox>
 									<TextBlock Text="Show zones"
 											   FontSize="11"
-											   Foreground="{DynamicResource SchematicsPanels_Fg}"
+											   Foreground="{DynamicResource Schematics_Panels_Fg}"
 											   VerticalAlignment="Center"
 											   IsHitTestVisible="False" />
 								</StackPanel>
 
-								<StackPanel x:Name="BoardMarkPin1OnSelectedComponentRow"
+								<!-- THE PINS ON THE BOARD (owner request, 2026-11-17; TabSchematics.PinsOnImage.cs): every pin of the
+								     components selected or pointed at numbered on its pad while SHIFT is held, pin 1 told apart among them,
+								     their directions' colors with them. -->
+								<StackPanel x:Name="GlobalNumberPinsRow"
 									IsVisible="False"
 									Orientation="Horizontal"
 									Spacing="6"
 									Background="Transparent"
 									Cursor="Hand"
-									PointerPressed="OnBoardMarkPin1OnSelectedComponentRowClicked">
+									PointerPressed="OnGlobalNumberPinsRowClicked">
 									<Viewbox Width="20" Height="20" IsHitTestVisible="False">
-										<CheckBox x:Name="CheckBoardMarkPin1OnSelectedComponent"
+										<CheckBox x:Name="CheckGlobalNumberPins"
 												  MinHeight="0"
 												  Margin="0"
 												  Padding="0"
 												  CornerRadius="2"
-												  IsChecked="False"
+												  IsChecked="True"
 												  IsHitTestVisible="False" />
 									</Viewbox>
-									<TextBlock Text="Mark first pin on component"
+									<TextBlock Text="Hold SHIFT to number pins on hover and select"
 											   FontSize="11"
-											   Foreground="{DynamicResource SchematicsPanels_Fg}"
+											   Foreground="{DynamicResource Schematics_Panels_Fg}"
+											   VerticalAlignment="Center"
+											   IsHitTestVisible="False"/>
+								</StackPanel>
+
+								<StackPanel x:Name="GlobalShowPinDirectionRow"
+									IsVisible="False"
+									Orientation="Horizontal"
+									Spacing="6"
+									Background="Transparent"
+									Cursor="Hand"
+									PointerPressed="OnGlobalShowPinDirectionRowClicked">
+									<Viewbox Width="20" Height="20" IsHitTestVisible="False">
+										<CheckBox x:Name="CheckGlobalShowPinDirection"
+												  MinHeight="0"
+												  Margin="0"
+												  Padding="0"
+												  CornerRadius="2"
+												  IsChecked="True"
+												  IsHitTestVisible="False" />
+									</Viewbox>
+									<TextBlock Text="Show color for pin direction"
+											   FontSize="11"
+											   Foreground="{DynamicResource Schematics_Panels_Fg}"
 											   VerticalAlignment="Center"
 											   IsHitTestVisible="False"/>
 								</StackPanel>
@@ -557,28 +638,28 @@
 									<Viewbox Width="20" Height="20" IsHitTestVisible="False">
 										<CheckBox x:Name="CheckLabelBoard" MinHeight="0" Margin="0" Padding="0" CornerRadius="2" IsChecked="False" IsHitTestVisible="False" />
 									</Viewbox>
-									<TextBlock Text="Board label" FontSize="11" Foreground="{DynamicResource SchematicsPanels_Fg}" VerticalAlignment="Center" IsHitTestVisible="False"/>
+									<TextBlock Text="Board label" FontSize="11" Foreground="{DynamicResource Schematics_Panels_Fg}" VerticalAlignment="Center" IsHitTestVisible="False"/>
 								</StackPanel>
 
 								<StackPanel Orientation="Horizontal" Spacing="6" Background="Transparent" Cursor="Hand" PointerPressed="OnLabelTechnicalRowClicked">
 									<Viewbox Width="20" Height="20" IsHitTestVisible="False">
 										<CheckBox x:Name="CheckLabelTechnical" MinHeight="0" Margin="0" Padding="0" CornerRadius="2" IsChecked="False" IsHitTestVisible="False" />
 									</Viewbox>
-									<TextBlock Text="Technical name" FontSize="11" Foreground="{DynamicResource SchematicsPanels_Fg}" VerticalAlignment="Center" IsHitTestVisible="False"/>
+									<TextBlock Text="Technical name" FontSize="11" Foreground="{DynamicResource Schematics_Panels_Fg}" VerticalAlignment="Center" IsHitTestVisible="False"/>
 								</StackPanel>
 
 								<StackPanel Orientation="Horizontal" Spacing="6" Background="Transparent" Cursor="Hand" PointerPressed="OnLabelFriendlyRowClicked">
 									<Viewbox Width="20" Height="20" IsHitTestVisible="False">
 										<CheckBox x:Name="CheckLabelFriendly" MinHeight="0" Margin="0" Padding="0" CornerRadius="2" IsChecked="False" IsHitTestVisible="False" />
 									</Viewbox>
-									<TextBlock Text="Friendly name" FontSize="11" Foreground="{DynamicResource SchematicsPanels_Fg}" VerticalAlignment="Center" IsHitTestVisible="False"/>
+									<TextBlock Text="Friendly name" FontSize="11" Foreground="{DynamicResource Schematics_Panels_Fg}" VerticalAlignment="Center" IsHitTestVisible="False"/>
 								</StackPanel>
 
 								<StackPanel Orientation="Horizontal" Spacing="6" Background="Transparent" Cursor="Hand" PointerPressed="OnLabelSelectedOnlyRowClicked">
 									<Viewbox Width="20" Height="20" IsHitTestVisible="False">
 										<CheckBox x:Name="CheckLabelSelectedOnly" MinHeight="0" Margin="0" Padding="0" CornerRadius="2" IsChecked="False" IsHitTestVisible="False" />
 									</Viewbox>
-									<TextBlock Text="Selected components only" FontSize="11" Foreground="{DynamicResource SchematicsPanels_Fg}" VerticalAlignment="Center" IsHitTestVisible="False"/>
+									<TextBlock Text="Selected components only" FontSize="11" Foreground="{DynamicResource Schematics_Panels_Fg}" VerticalAlignment="Center" IsHitTestVisible="False"/>
 								</StackPanel>
 							</StackPanel>
 						</StackPanel>
@@ -663,6 +744,32 @@
 								HorizontalContentAlignment="Center"
 								IsVisible="True"
 								IsEnabled="False" />
+						</StackPanel>
+					</Border>
+
+					<!-- WHAT THE NUMBERED PINS' COLORS MEAN (owner question, 2026-11-17: "If I have selected "Show color for pin
+					     direction" then I think we need a legend somewhere that can explain the colors?"; and "I would like the pin
+					     direction legend to show vertically and right to the "Important KiCad signals" panel" - beside the schematic
+					     image's name until then): shown while pins are numbered in their directions' colors, every direction and
+					     pin 1's ring, one a line - its items made in TabSchematics.PinsOnImage.cs, from the words and colors the
+					     pinout's own legend uses. It takes no click: the schematic image under it stays the pointer's. -->
+					<Border x:Name="PinDirectionLegend"
+							Grid.Row="0"
+							Grid.Column="3"
+							IsVisible="False"
+							IsHitTestVisible="False"
+							HorizontalAlignment="Left"
+							VerticalAlignment="Bottom"
+							Background="{DynamicResource Schematics_Panels_Bg}"
+							BorderBrush="{DynamicResource Schematics_Panels_Border}"
+							BorderThickness="1"
+							CornerRadius="4"
+							Padding="8,8">
+						<StackPanel x:Name="PinDirectionLegendItems" Spacing="6">
+							<TextBlock Text="Pin direction"
+									   FontSize="11"
+									   FontWeight="Bold"
+									   Foreground="{DynamicResource Schematics_Panels_Fg}" />
 						</StackPanel>
 					</Border>
 				</Grid>
@@ -761,7 +868,7 @@
 										   FontSize="11"
 										   VerticalAlignment="Center"
 										   FontWeight="Bold"
-										   Foreground="{DynamicResource SchematicsPanels_Fg}" />
+										   Foreground="{DynamicResource Schematics_Panels_Fg}" />
 								<Button x:Name="ClearTracesButton"
 										Classes="Danger"
 										Content="Clear All"
@@ -823,7 +930,7 @@
 												  Height="24"
 												  Padding="0" />
 
-						<Border Width="1" Height="18" Background="{DynamicResource SchematicsPanels_Fg}" Margin="2,0"/>
+						<Border Width="1" Height="18" Background="{DynamicResource Schematics_Panels_Fg}" Margin="2,0"/>
 
 						<TextBlock Text="🗑"
 								   FontSize="16"

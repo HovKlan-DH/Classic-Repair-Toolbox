@@ -124,7 +124,7 @@ public static class UiTest
         {
             Assert.Fail(
                 $"The test changed the shared Application's theme ({before} to {after}). Every later test would run in it - " +
-                "use the control's seam instead (TabConfiguration.ApplyThemeOverrideForTests, for one).");
+                "use the control's seam instead (Main.ApplyThemeOverrideForTests, for one).");
         }
     }
 }

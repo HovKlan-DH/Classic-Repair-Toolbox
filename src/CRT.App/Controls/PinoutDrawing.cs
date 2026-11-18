@@ -30,8 +30,9 @@ namespace CRT
     // its gates, blocks, switches and wires in a case as a real chip's, each pin a square in the color of its direction, and
     // under it what the colors mean - painted by PinoutDrawing.Inside.cs. AND EVERY OTHER DIP IN THE SAME CASE, EMPTY (owner
     // request, 2026-11-17: "unify ALL pinout IC's so they look the same"; LogicChipGeometry.EmptyCaseFor). It is drawn
-    // smaller, never cut, where its place is narrower than it, as a part's picture is (PartPictureDrawing). Only a single
-    // row of pins - a SIP, a TO-92 or TO-220 - keeps the plain case (RenderCase).
+    // smaller, never cut, where its place is narrower than it, as a part's picture is (PartPictureDrawing). An oscillator's
+    // can is drawn so too, with its four pins (owner request, 2026-11-18). Only a single row of pins - a SIP, a TO-92 or
+    // TO-220 - keeps the plain case (RenderCase).
     //
     // The parts: PinoutDrawing.cs (this - showing, the pointer, the single row's case), PinoutDrawing.Inside.cs (a DIP's
     // case, pins, wires and badges, and the legend under them), PinoutDrawing.Symbols.cs (the gates, blocks and switches inside it).

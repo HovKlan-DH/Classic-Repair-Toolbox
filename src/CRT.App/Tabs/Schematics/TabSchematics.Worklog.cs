@@ -1666,7 +1666,9 @@ public partial class TabSchematics
             // The workbook id is captured up front: the dialog below is modal but the board can still
             // change underneath it (the thumbnail load path refreshes on its own), and re-reading the
             // field afterwards would point the editor at a different workbook than the badge came from.
-            editor.Initialize(workbookId, entry, this.currentFullResBitmap);
+            // With the picture's own empty border: a default area is placed in from it, where the tab shows it (code review,
+            // 2026-11-18 - in it, past the panel at the first view, it could not be seen or reached).
+            editor.Initialize(workbookId, entry, this.currentFullResBitmap, schematicBlankBorder: this.thisImageBlankBorder);
 
             // The editor cannot work this out for itself - it has neither the board data nor the
             // highlight rectangles - so the scope is computed here and handed over. Resolved against

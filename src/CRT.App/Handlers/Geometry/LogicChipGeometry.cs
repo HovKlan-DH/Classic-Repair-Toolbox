@@ -225,17 +225,36 @@ namespace Handlers.Geometry
         // custom chip - is this case with nothing in it: each pin a square in its direction's color with its number, its name
         // outside, the notch and pin 1's dot - its body as wide as a real one's in proportion to its pins, 100 mil apart: 300 mil,
         // three pitches, or 600 mil, six - the latter for a package named "wide" or of 24 pins or more (the SID, the ROMs,
-        // every 40-pin chip). Null for a package that is no DIP CRT can count: a single row is PinoutGeometry's.
+        // every 40-pin chip). A surface-mounted chip numbered as a DIP - a SOIC, an SSOP - is drawn in it too, and a PLCC or a
+        // QFP in the square case of four sides (QuadCaseGeometry; owner request, 2026-11-18: the Amiga "has a lot of SMD
+        // components"), and an oscillator's can on a DIP's places (CanFor). Null for a package that is no chip's case CRT can
+        // count: a single row is PinoutGeometry's.
         // ###########################################################################################
         public static LogicInside? EmptyCaseFor(string? package, double nameWidth = PinoutGeometry.NameWidth)
         {
             string text = (package ?? string.Empty).Trim();
 
-            if (!ComponentVocabulary.IsDualInLine(text) || ComponentVocabulary.PinCountOf(text) is not int count || count < 2 || count % 2 != 0)
+            if (ComponentVocabulary.OscillatorOf(text) is { } can)
+            {
+                return new LogicInside(LogicChipGeometry.CanFor(can, nameWidth), [], [], []);
+            }
+
+            if (ComponentVocabulary.ChipCaseOf(text) is not { } chipCase)
             {
                 return null;
             }
 
+            if (chipCase.Kind != ChipCaseKind.TwoRows)
+            {
+                return new LogicInside(QuadCaseGeometry.Case(chipCase, nameWidth), [], [], []);
+            }
+
+            int count = chipCase.Pins;
+
+            // The same rule for a surface-mounted case, ON PURPOSE (code reviews, 2026-11-18, twice: "drawn as a wide DIP"):
+            // the drawing goes by the PITCH, never by mils, and in pitches a surface-mounted body is as wide - a SOIC's 150 mil
+            // narrow body is three of its 50 mil pitches, as a 300 mil DIP is three of 100, and the 300 mil body every SOIC of
+            // 24 pins or more has is six, as a 600 mil DIP is; an SSOP's or a TSSOP's is wider still, near seven or eight.
             bool wide = text.Contains("wide", StringComparison.OrdinalIgnoreCase) || count >= LogicChipGeometry.WideFrom;
 
             return new LogicInside(LogicChipGeometry.Case(count, (wide ? 6 : 3) * LogicChipGeometry.Pitch, nameWidth), [], [], []);
@@ -243,6 +262,27 @@ namespace Handlers.Geometry
 
         // The pin count from which an empty case is a 600 mil one.
         public const int WideFrom = 24;
+
+        // ###########################################################################################
+        // A CRYSTAL OSCILLATOR'S METAL CAN, FROM ABOVE (owner request, 2026-11-18 - the Amiga's; ComponentVocabulary.OscillatorOf):
+        // the case of the DIP it stands on with only its four pins, at the corners, each in its direction's color as on any case -
+        // the body in proportion to a real can, a full-size one 13 by 20.5 mm, a half-size one square. PinoutDrawing draws it
+        // round at three corners and square at pin 1's, as the cans are made, with the rim pressed round its top.
+        // ###########################################################################################
+        public static PinoutLayout CanFor(OscillatorCan can, double nameWidth = PinoutGeometry.NameWidth)
+        {
+            ArgumentNullException.ThrowIfNull(can);
+
+            double height = (can.Positions / 2 * LogicChipGeometry.Pitch) + (2 * LogicChipGeometry.EndPadding);
+            double width = Math.Round(height * (can.Positions >= 14 ? 13.0 / 20.5 : 1.0));
+            PinoutLayout places = LogicChipGeometry.Case(can.Positions, width, nameWidth);
+
+            return places with { Pins = places.Pins.Where(pin => can.Pins.Contains(pin.Number)).ToList(), IsCan = true };
+        }
+
+        // How round a can's corners are drawn, and how far inside its edge the rim is pressed.
+        public const double CanCorner = 12;
+        public const double CanRim = 6;
 
         // ###########################################################################################
         // A DIP of `count` pins with its body `bodyWidth` wide and `endPadding` above its first pin's row and under its last:

@@ -230,6 +230,8 @@ public sealed class PinoutDrawingTests
             // Under the case, what the chip is and the legend - so the drawing is taller than the case.
             Assert.True(drawing.NaturalSize.Height > layout.Size.Height);
             Assert.Equal(drawing.NaturalSize, drawing.DesiredSize);
+            Size fourDirections = drawing.LegendSizeForTests;
+            Assert.True(drawing.NaturalSize.Height >= layout.Size.Height + fourDirections.Height);
 
             window.MouseMove(FarOutOn(layout, layout.Pins[2]));
             Assert.Equal(3, drawing.LitPinForTests);
@@ -248,6 +250,12 @@ public sealed class PinoutDrawingTests
             Assert.Equal(PinDirectionKind.InputOutput, drawing.DirectionsForTests[2]);
             Assert.Equal(13, drawing.DirectionsForTests.Values.Count(kind => kind == PinDirectionKind.Other));
             Assert.Equal([PinDirectionKind.InputOutput, PinDirectionKind.Other], drawing.LegendDirectionsForTests);
+
+            // The directions stand in a column, one a line (owner request, 2026-11-17: "ordered vertically instead of
+            // horizontally"): four are twice as tall as two, and no wider than the widest of them needs.
+            Size twoDirections = drawing.LegendSizeForTests;
+            Assert.InRange(fourDirections.Height / twoDirections.Height, 1.9, 2.1);
+            Assert.InRange(fourDirections.Width - twoDirections.Width, 0, 20);
 
             // No pin with a direction a color says - a DIP-40 just given its package: no legend, nothing under the case (code
             // review, 2026-11-17: "Pin direction: Other" explained nothing).
@@ -272,9 +280,133 @@ public sealed class PinoutDrawingTests
     }
 
     // ###########################################################################################
+    // A CHIP WITH PINS ON FOUR SIDES IS DRAWN SQUARE (owner request, 2026-11-18: "Drawing square packages ... there might come
+    // new hardware soon - e.g. Amiga 500 or Amiga 1000"): a PLCC-84's pins all round its case, each found and picked by the
+    // pointer on its name - over the case and under it as beside it - nothing in the body, and the legend under the names
+    // below the case, not over them.
+    // ###########################################################################################
+    [Fact]
+    public void A_chip_with_pins_on_four_sides_is_drawn_square_and_its_pins_are_found_all_round()
+    {
+        UiTest.Run(() =>
+        {
+            var drawing = new PinoutDrawing { PinsCanBePicked = true, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Top };
+            var window = new Window { Content = drawing, Width = 1000, Height = 1000 };
+
+            window.Show();
+            drawing.Show(
+                "PLCC-84",
+                [
+                    new ComponentPinEntry { Pin = "1", Name = "D3", Direction = "Input/output" },
+                    new ComponentPinEntry { Pin = "33", Name = "/RES", Direction = "Input" },
+                    new ComponentPinEntry { Pin = "54", Name = "CCK", Direction = "Output" },
+                ]);
+            Dispatcher.UIThread.RunJobs();
+
+            PinoutLayout layout = drawing.LayoutForTests!;
+            Assert.True(layout.IsQuad);
+            Assert.Equal(84, layout.Pins.Count);
+            Assert.Equal("D3", drawing.NamesForTests[1]);
+            Assert.Equal(PinDirectionKind.Output, drawing.DirectionsForTests[54]);
+
+            var picked = new List<int>();
+            drawing.PinPicked += (_, e) => picked.Add(e.Pin);
+
+            // Pin 1 over the case, 12 beside it on the left, 33 under it, 54 beside it on the right.
+            foreach (int number in new[] { 1, 12, 33, 54 })
+            {
+                PinoutPin pin = layout.Pins[number - 1];
+
+                window.MouseMove(pin.NameAnchor);
+                Assert.Equal(number, drawing.LitPinForTests);
+
+                window.MouseDown(pin.NameAnchor, MouseButton.Left);
+                window.MouseUp(pin.NameAnchor, MouseButton.Left);
+            }
+
+            Assert.Equal([1, 12, 33, 54], picked);
+
+            window.MouseMove(layout.Body.Center);
+            Assert.Null(drawing.LitPinForTests);
+
+            // The legend stands under everything drawn under the case.
+            Assert.True(drawing.NaturalSize.Height > layout.Size.Height);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // A CRYSTAL OSCILLATOR'S CAN (owner request, 2026-11-18 - the Amiga's, the Open128's Y1): its four pins drawn and picked
+    // at the corners, each in its direction's color - and the legend names only those: a place of its DIP with no pin is
+    // nothing, whatever the pin list says of it.
+    // ###########################################################################################
+    [Fact]
+    public void An_oscillators_can_draws_its_four_pins_and_the_legend_names_theirs_alone()
+    {
+        UiTest.Run(() =>
+        {
+            var drawing = new PinoutDrawing { PinsCanBePicked = true, HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left, VerticalAlignment = Avalonia.Layout.VerticalAlignment.Top };
+            var window = new Window { Content = drawing, Width = 800, Height = 800 };
+
+            window.Show();
+            drawing.Show(
+                "Oscillator DIP-14",
+                [
+                    new ComponentPinEntry { Pin = "1", Name = "NC", Direction = "Not connected" },
+                    new ComponentPinEntry { Pin = "2", Name = "?", Direction = "Input/output" },
+                    new ComponentPinEntry { Pin = "7", Name = "GND", Direction = "Ground" },
+                    new ComponentPinEntry { Pin = "8", Name = "OUT", Direction = "Output" },
+                    new ComponentPinEntry { Pin = "14", Name = "VCC", Direction = "Power" },
+                ]);
+            Dispatcher.UIThread.RunJobs();
+
+            PinoutLayout layout = drawing.LayoutForTests!;
+            Assert.True(layout.IsCan);
+            Assert.Equal([1, 7, 8, 14], layout.Pins.Select(pin => pin.Number));
+            Assert.Equal(PinDirectionKind.Output, drawing.DirectionsForTests[8]);
+            Assert.False(drawing.DirectionsForTests.ContainsKey(2));
+            Assert.Equal([PinDirectionKind.Output, PinDirectionKind.Other], drawing.LegendDirectionsForTests);
+
+            var picked = new List<int>();
+            drawing.PinPicked += (_, e) => picked.Add(e.Pin);
+
+            foreach (PinoutPin pin in layout.Pins)
+            {
+                window.MouseDown(pin.NameAnchor, MouseButton.Left);
+                window.MouseUp(pin.NameAnchor, MouseButton.Left);
+            }
+
+            Assert.Equal([1, 7, 8, 14], picked);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
     // In a place narrower than it, the chip is drawn smaller, never cut (as a part's picture is) - and the pointer still
     // finds each pin where it is drawn.
     // ###########################################################################################
+    // ###########################################################################################
+    // The legend starts under the left pins' squares as the case lays them out (code review, 2026-11-18): a case of four
+    // sides of 100 pins or more draws them larger, and the legend stood 4 right of them, worked out from a DIP's square.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("DIP-14")]
+    [InlineData("QFP-44")]
+    [InlineData("QFP-100")]
+    [InlineData("PLCC-84")]
+    public void The_legend_starts_under_the_left_pins_squares(string package)
+    {
+        UiTest.Run(() =>
+        {
+            PinoutLayout layout = LogicChipGeometry.EmptyCaseFor(package)!.Case;
+            double squaresLeft = layout.Pins.Where(pin => pin.Side == PinSide.Left).Min(pin => pin.Lead.Left);
+
+            Assert.Equal(squaresLeft, PinoutDrawing.CaptionLeftOf(layout), precision: 6);
+        });
+    }
+
     [Fact]
     public void A_chip_drawn_smaller_in_a_narrow_place_still_finds_its_pins()
     {

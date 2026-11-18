@@ -75,33 +75,8 @@ public class SmallTabsTests : IDisposable
         });
     }
 
-    [Fact]
-    public void The_theme_drop_down_is_seeded_from_the_saved_theme()
-    {
-        UiTest.Run(() =>
-        {
-            UserSettings.ThemeVariant = "Dark";
-
-            var tab = new TabConfiguration();
-
-            Assert.Equal(1, tab.GetControl<ComboBox>("ThemeVariantComboBox").SelectedIndex);
-        });
-    }
-
-    // An unrecognised stored value must fall back to the first entry rather than leaving the box
-    // unselected - a settings file can be hand-edited or carried over from an older version.
-    [Fact]
-    public void An_unknown_saved_theme_falls_back_to_the_first_entry()
-    {
-        UiTest.Run(() =>
-        {
-            UserSettings.ThemeVariant = "Chartreuse";
-
-            var tab = new TabConfiguration();
-
-            Assert.Equal(0, tab.GetControl<ComboBox>("ThemeVariantComboBox").SelectedIndex);
-        });
-    }
+    // The theme's drop-down went on 2026-11-17 (owner request) - the icon in the window's top right corner picks it, and its
+    // tests are MainWindowTests' (The_theme_icon_starts_from_the_stored_theme, the unknown theme read as light among them).
 
     // -----------------------------------------------------------------------------------------
     // Configuration - writing settings back
@@ -172,30 +147,6 @@ public class SmallTabsTests : IDisposable
             tab.GetControl<CheckBox>("AllowAlphaVersionNotificationCheckBox").IsChecked = true;
 
             Assert.True(UserSettings.AllowAlphaVersionNotification);
-        });
-    }
-
-    // ###########################################################################################
-    // Choosing a theme saves it and puts it on the application - through the tab's stand-in here,
-    // never on the real Application: that is shared by every headless test, and this test turning
-    // it dark made a later test comparing a drawn colour with the light theme fail on CI, at random
-    // with the run's order (2026-10-04). UiTest now fails any test that changes the theme.
-    // ###########################################################################################
-    [Fact]
-    public void Choosing_a_theme_persists_it_and_applies_it()
-    {
-        UiTest.Run(() =>
-        {
-            UserSettings.ThemeVariant = "Light";
-
-            var tab = new TabConfiguration();
-            int applied = 0;
-            tab.ApplyThemeOverrideForTests = () => applied++;
-
-            tab.GetControl<ComboBox>("ThemeVariantComboBox").SelectedIndex = 1;
-
-            Assert.Equal("Dark", UserSettings.ThemeVariant);
-            Assert.Equal(1, applied);
         });
     }
 

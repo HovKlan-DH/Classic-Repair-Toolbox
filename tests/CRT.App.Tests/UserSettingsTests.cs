@@ -707,7 +707,11 @@ public sealed class UserSettingsTests : IDisposable
     [Fact]
     public void An_unchanged_value_never_rewrites_the_file_whichever_setter_saves_it()
     {
-        string path = this.LoadSettings("""{"blinkSelected": true}""");
+        // Written once as CRT writes it - a load writes nothing (since 2026-11-17, when seeding the "User preference" theme's
+        // colors went), so the file is CRT's own only after a change.
+        string path = this.LoadSettings("""{"blinkSelected": false}""");
+        UserSettings.BlinkSelected = true;
+        UserSettings.Flush();
         DateTime before = MarkFileAsOld(path);
 
         UserSettings.BlinkSelected = true;
@@ -771,7 +775,11 @@ public sealed class UserSettingsTests : IDisposable
         string second = this.LoadSettings("{}");
 
         Assert.Equal("NTSC", JsonNode.Parse(File.ReadAllText(first))!["region"]!.GetValue<string>());
-        Assert.Equal("PAL", ReadJson(second)["region"]!.GetValue<string>());
+
+        // The second file never got the first's change (a load writes nothing since the "User preference" theme's colors
+        // went, 2026-11-17 - the file is as it was put there).
+        Assert.Null(ReadJson(second)["region"]);
+        Assert.Equal("PAL", UserSettings.Region);
     }
 
     /// <summary>Backdates the file so a rewrite is unambiguous rather than a timer-resolution race.</summary>
@@ -1200,186 +1208,70 @@ public sealed class UserSettingsTests : IDisposable
         Assert.Null(UserSettings.GetLastOscilloscopeSeriesForVendor("Siglent"));
     }
 
-    // ------------------------------------------------------------- theme colours
+    // ------------------------------------------------------------- theme
 
+    // ###########################################################################################
+    // LIGHT OR DARK, NOTHING ELSE (owner request, 2026-11-17: "I want to remove the "User preference" option, and only support
+    // light and dark themes"). A "UserPreference" an earlier CRT stored was the light theme with colors over it: it reads as
+    // the light theme, and a theme picked afterwards is stored as picked.
+    // ###########################################################################################
     [Fact]
-    public void Missing_theme_colours_are_filled_in_with_defaults_on_load()
+    public void A_stored_user_preference_theme_reads_as_the_light_theme()
     {
-        this.LoadSettings("{}");
+        string path = this.LoadSettings("""{"theme": "UserPreference"}""");
 
-        var colors = UserSettings.GetUserThemeColors();
+        Assert.Equal("Light", UserSettings.ThemeVariant);
 
-        Assert.NotEmpty(colors);
-        Assert.True(colors.ContainsKey("Bg"));
-        Assert.True(colors.ContainsKey("Schematics_FirstPin"));
-    }
+        UserSettings.ThemeVariant = "UserPreference";
+        Assert.Equal("Light", UserSettings.ThemeVariant);
 
-    [Fact]
-    public void A_customised_theme_colour_is_not_overwritten_by_the_default()
-    {
-        this.LoadSettings("""{"userThemeColors": {"Bg": "#123456"}}""");
-
-        Assert.Equal("#123456", UserSettings.GetUserThemeColors()["Bg"]);
-    }
-
-    [Fact]
-    public void A_customised_theme_still_gains_any_newly_added_default_keys()
-    {
-        // Upgrading to a build with a new themed element must not leave that element unstyled.
-        this.LoadSettings("""{"userThemeColors": {"Bg": "#123456"}}""");
-
-        var colors = UserSettings.GetUserThemeColors();
-
-        Assert.Equal("#123456", colors["Bg"]);
-        Assert.True(colors.ContainsKey("Thumbnail_Border"));
-    }
-
-    // A color still at an EARLIER default was never picked by anybody, so it follows the default as it is now (2026-11-12,
-    // the theme color review: white on LightBlue was 1.5:1, white on IndianRed 4:1) - in any capitals, as typed by hand.
-    [Fact]
-    public void A_theme_colour_still_at_an_earlier_default_follows_the_default_now()
-    {
-        this.LoadSettings("""{"userThemeColors": {"Form_Selected_Fg": "White", "Button_Cancel_Bg": "indianred", "Button_Ok_Bg": " #4F8A5B "}}""");
-
-        var colors = UserSettings.GetUserThemeColors();
-
-        Assert.Equal("Black", colors["Form_Selected_Fg"]);
-        Assert.Equal("#BC5454", colors["Button_Cancel_Bg"]);
-        Assert.Equal("#497F54", colors["Button_Ok_Bg"]);
+        UserSettings.ThemeVariant = "Dark";
+        Assert.Equal("Dark", ReadJson(path)["theme"]!.GetValue<string>());
     }
 
     // ###########################################################################################
-    // The defaults are followed ONCE (code review, 2026-11-13): the colors are typed into the file by hand, so somebody who
-    // wants the old look writes the old default back - and at every launch and every "Reload" it was taken from them again.
-    // The file says how far it has followed (userThemeDefaultsRevision), and a file that has followed keeps what is typed.
+    // THE "User preference" THEME'S COLORS ARE TAKEN OUT OF THE FILE (owner request, 2026-11-17: "the user colors are also
+    // somewhere in the user configuration, so should be removed from there also"): a file still holding them is written again
+    // as it is loaded, without them - every other setting in it kept.
     // ###########################################################################################
     [Fact]
-    public void A_theme_colour_typed_back_to_an_earlier_default_after_following_it_stays()
+    public void The_retired_user_preference_colors_are_taken_out_of_the_settings_file()
     {
-        string path = this.LoadSettings("""{"userThemeColors": {"Button_Cancel_Bg": "IndianRed"}}""");
-        Assert.Equal("#BC5454", UserSettings.GetUserThemeColors()["Button_Cancel_Bg"]);
+        string path = this.LoadSettings("""{"region": "NTSC", "userThemeColors": {"Bg": "#123456"}, "userThemeDefaultsRevision": 1}""");
 
-        // The file as saved, the old default typed back in by hand - then launched again, and "Reload" pressed.
-        string saved = ReadSaved(path);
-        Assert.Contains("\"userThemeDefaultsRevision\"", saved);
-        File.WriteAllText(path, saved.Replace("\"#BC5454\"", "\"IndianRed\"", StringComparison.Ordinal));
-
-        UserSettings.LoadFrom(path);
-        Assert.Equal("IndianRed", UserSettings.GetUserThemeColors()["Button_Cancel_Bg"]);
-
-        UserSettings.ReloadUserThemeColors();
-        Assert.Equal("IndianRed", UserSettings.GetUserThemeColors()["Button_Cancel_Bg"]);
-    }
-
-    // ###########################################################################################
-    // "Reload" reads the colors AND how far they followed from the same file (code review, 2026-11-14): it read the colors
-    // and kept the revision in memory. A launch that followed but could not save - the file held by a sync tool - left the
-    // file at the earlier default with no revision; reloaded, white on LightBlue came back and was never followed that run.
-    // Here the file is put back as it was before the launch's save, as a save that never landed leaves it.
-    // ###########################################################################################
-    [Fact]
-    public void Reloading_the_theme_colours_follows_a_default_the_file_has_not_followed_yet()
-    {
-        const string Before = """{"userThemeColors": {"Form_Selected_Fg": "White"}}""";
-
-        string path = this.LoadSettings(Before);
-        Assert.Equal("Black", UserSettings.GetUserThemeColors()["Form_Selected_Fg"]);
-
-        File.WriteAllText(path, Before);
-
-        UserSettings.ReloadUserThemeColors();
-
-        Assert.Equal("Black", UserSettings.GetUserThemeColors()["Form_Selected_Fg"]);
-    }
-
-    // ###########################################################################################
-    // *** A color typed into the file by hand and reloaded is what is written next (code review, 2026-11-16). *** The settings
-    // are written a moment after a change: a change made just before the hand edit queued a text with the colors from before,
-    // which replaced the file after "Reload" read it - the hand edit gone at the next launch.
-    // ###########################################################################################
-    [Fact]
-    public void A_color_reloaded_from_the_file_is_not_written_over_by_a_change_queued_before_it()
-    {
-        string path = this.LoadSettings("""{"userThemeColors": {"Button_Ok_Bg": "#497F54"}}""");
         string saved = ReadSaved(path);
 
-        // A change queued, not written yet - then the color typed into the file by hand, and "Reload" pressed.
-        UserSettings.CheckDataOnLaunch = !UserSettings.CheckDataOnLaunch;
-        Assert.True(UserSettings.IsWritePendingForTests);
-        File.WriteAllText(path, saved.Replace("\"#497F54\"", "\"#123456\"", StringComparison.Ordinal));
+        Assert.DoesNotContain("userThemeColors", saved, StringComparison.Ordinal);
+        Assert.DoesNotContain("userThemeDefaultsRevision", saved, StringComparison.Ordinal);
+        Assert.Equal("NTSC", ReadJson(path)["region"]!.GetValue<string>());
+    }
 
-        UserSettings.ReloadUserThemeColors();
-
-        Assert.Contains("\"#123456\"", ReadSaved(path), StringComparison.Ordinal);
-        Assert.Equal("#123456", UserSettings.GetUserThemeColors()["Button_Ok_Bg"]);
+    [Fact]
+    public void Only_a_file_holding_the_retired_colors_counts_as_holding_them()
+    {
+        Assert.True(UserSettings.HoldsRetiredSettings("""{"userThemeColors": {}}"""));
+        Assert.True(UserSettings.HoldsRetiredSettings("""{"userThemeDefaultsRevision": 1}"""));
+        Assert.False(UserSettings.HoldsRetiredSettings("""{"region": "PAL", "theme": "Dark"}"""));
+        Assert.False(UserSettings.HoldsRetiredSettings("""{"region": "userThemeColors"}"""));
+        Assert.False(UserSettings.HoldsRetiredSettings("not json"));
     }
 
     // ###########################################################################################
-    // A color is followed only while what it reads against is still the theme's (code review, 2026-11-13): white words on a
-    // navy selection the user picked were never "the default as it stood", and moved to black they read 1.6:1. So a text
-    // keeps its old default on a ground the user changed - and a ground keeps it under words the user changed.
+    // A settings file edited by hand with a key TWICE loads as it always did, the last one counting (code review, 2026-11-18):
+    // the look for the retired colors threw on the repeated key, and the read set the whole file aside as unreadable - every
+    // setting lost.
     // ###########################################################################################
     [Fact]
-    public void A_theme_colour_at_an_earlier_default_stays_where_what_it_reads_against_was_picked()
+    public void A_settings_file_with_a_key_twice_is_read_not_set_aside()
     {
-        this.LoadSettings("""{"userThemeColors": {"Form_Selected_Fg": "White", "Form_Selected_Bg": "#003366", "Button_Cancel_Bg": "IndianRed", "Button_Cancel_Fg": "Black", "Text_Fail_Fg": "IndianRed"}}""");
+        Assert.False(UserSettings.HoldsRetiredSettings("""{"theme": "Dark", "theme": "Light"}"""));
+        Assert.True(UserSettings.HoldsRetiredSettings("""{"theme": "Dark", "theme": "Light", "userThemeColors": {}}"""));
 
-        var colors = UserSettings.GetUserThemeColors();
+        string path = this.LoadSettings("""{"region": "NTSC", "region": "PAL", "theme": "Dark"}""");
 
-        Assert.Equal("White", colors["Form_Selected_Fg"]);
-        Assert.Equal("IndianRed", colors["Button_Cancel_Bg"]);
-
-        // Its ground still the theme's, the red text follows as before.
-        Assert.Equal("#B53535", colors["Text_Fail_Fg"]);
-    }
-
-    // Any other color is the user's own - an earlier default of ANOTHER key included - and stays.
-    [Fact]
-    public void A_theme_colour_the_user_picked_stays_though_a_default_moved()
-    {
-        this.LoadSettings("""{"userThemeColors": {"Form_Selected_Fg": "#202020", "Button_Cancel_Bg": "#4F8A5B", "Bg": "IndianRed"}}""");
-
-        var colors = UserSettings.GetUserThemeColors();
-
-        Assert.Equal("#202020", colors["Form_Selected_Fg"]);
-        Assert.Equal("#4F8A5B", colors["Button_Cancel_Bg"]);
-        Assert.Equal("IndianRed", colors["Bg"]);
-    }
-
-    // The colors a fresh "User preference" theme starts from: what the light theme draws now, never the old defaults.
-    [Fact]
-    public void A_new_user_preference_theme_starts_from_the_colours_held_to_contrast()
-    {
-        this.LoadSettings("{}");
-
-        var colors = UserSettings.GetUserThemeColors();
-
-        Assert.Equal("Black", colors["Form_Selected_Fg"]);
-        Assert.Equal("#B53535", colors["Text_Fail_Fg"]);
-        Assert.False(colors.ContainsKey("ComponentPopup_BulletList_Fg"));
-    }
-
-    [Fact]
-    public void IsUserThemeColorResourceKey_only_matches_the_four_trace_palette_colours()
-    {
-        // Despite the broad name, this predicate is NOT "is this a user theme colour" - it
-        // recognises only the four Schematics_TracePalette_ColorN keys. "Bg" is a themed
-        // colour and still returns false.
-        this.LoadSettings("{}");
-
-        Assert.True(UserSettings.IsUserThemeColorResourceKey("Schematics_TracePalette_Color1"));
-        Assert.True(UserSettings.IsUserThemeColorResourceKey("Schematics_TracePalette_Color4"));
-
-        Assert.False(UserSettings.IsUserThemeColorResourceKey("Bg"));
-        Assert.False(UserSettings.IsUserThemeColorResourceKey("NotAThemeKey"));
-    }
-
-    [Fact]
-    public void IsUserThemeColorResourceKey_is_case_sensitive()
-    {
-        this.LoadSettings("{}");
-
-        Assert.False(UserSettings.IsUserThemeColorResourceKey("schematics_tracepalette_color1"));
+        Assert.Null(UserSettings.UnreadableSettings);
+        Assert.True(File.Exists(path));
+        Assert.Equal("Dark", UserSettings.ThemeVariant);
     }
 
     // ###########################################################################################

@@ -93,7 +93,7 @@ public partial class TabSchematics
         this.SchematicsNameBorder.IsVisible = false;
         this.SchematicsRegionBorder.IsVisible = false;
         this.SchematicsHoverLabelBorder.IsVisible = false;
-        this.SchematicsHoverPadBorder.IsVisible = false;
+        this.HideHoverPinBadges();
     }
 
     // ###########################################################################################
@@ -646,8 +646,7 @@ public partial class TabSchematics
         this.ResetSchematicsHoverLabelToDefaultAppearance();
         this.SchematicsHoverLabelBorder.IsVisible = false;
         this.SchematicsHoverLabelText.Text = string.Empty;
-        this.SchematicsHoverPadBorder.IsVisible = false;
-        this.SchematicsHoverPadText.Text = string.Empty;
+        this.HideHoverPinBadges();
         this.SchematicsContainer.Cursor = Cursor.Default;
 
         // The worklog area's resize markers are hover state too, so they go with everything else.
@@ -689,8 +688,7 @@ public partial class TabSchematics
             this.SchematicsHoverLabelText.Text =
                 "KiCad calibration mode - drag inside box to move, drag edges to resize, drag across to flip";
             this.SchematicsHoverLabelBorder.IsVisible = true;
-            this.SchematicsHoverPadBorder.IsVisible = false;
-            this.SchematicsHoverPadText.Text = string.Empty;
+            this.HideHoverPinBadges();
 
             if (this.MainWindow != null)
             {
@@ -719,8 +717,7 @@ public partial class TabSchematics
             this.ResetSchematicsHoverLabelToDefaultAppearance();
             this.SchematicsHoverLabelBorder.IsVisible = false;
             this.SchematicsHoverLabelText.Text = string.Empty;
-            this.SchematicsHoverPadBorder.IsVisible = false;
-            this.SchematicsHoverPadText.Text = string.Empty;
+            this.HideHoverPinBadges();
             this.UpdateLabelEditorCursor(pointerInContainer);
             return;
         }
@@ -769,8 +766,7 @@ public partial class TabSchematics
                 this.MainWindow.isHoveringComponent = false;
             }
 
-            this.SchematicsHoverPadBorder.IsVisible = false;
-            this.SchematicsHoverPadText.Text = string.Empty;
+            this.HideHoverPinBadges();
 
             this.SchematicsContainer.Cursor = this.thisHandCursor;
             return;
@@ -806,7 +802,7 @@ public partial class TabSchematics
 
         this.RefreshKiCadHoverPadUi();
 
-        if (hoveringComponent || this.SchematicsHoverPadBorder.IsVisible)
+        if (hoveringComponent || this.SchematicsHoverPinBadges.IsVisible)
         {
             this.SchematicsContainer.Cursor = this.thisHandCursor;
         }
@@ -1020,7 +1016,7 @@ public partial class TabSchematics
 
         bool shouldRefreshKiCadOverlay = false;
 
-        if (this.IsBoardMarkPin1OnSelectedComponentEnabled())
+        if (this.IsMarkingFirstPin())
         {
             shouldRefreshKiCadOverlay = true;
         }
@@ -1039,6 +1035,8 @@ public partial class TabSchematics
         this.thisHoveredComponentBoardLabel = normalizedBoardLabel;
         this.RefreshHoveredComponentHighlightOverlay();
 
+        // The pins of the component pointed at are numbered and framed as the overlay is drawn again (RefreshKiCadOverlayNow) -
+        // asked for above whenever there are pads to number (IsMarkingFirstPin); with none, there is nothing to number.
         if (shouldRefreshKiCadOverlay)
         {
             this.RefreshKiCadOverlay(forceImmediate: true);

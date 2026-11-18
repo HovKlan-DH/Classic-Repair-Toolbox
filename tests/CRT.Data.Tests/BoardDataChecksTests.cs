@@ -864,6 +864,29 @@ public sealed class BoardDataChecksTests
         Assert.Equal(1, error.Index);
     }
 
+    // An oscillator's can (owner request, 2026-11-18) has a pin at each corner of its DIP's places alone: pin 2 is refused,
+    // and the error says which pins it has - "14 pins" would say pin 2 is one.
+    [Fact]
+    public void A_pin_of_an_oscillators_can_that_is_no_corner_is_an_error_naming_its_four()
+    {
+        BoardCheckRows rows = Rows(components: [new ComponentEntry { BoardLabel = "Y1", Category = "Misc", Package = "Oscillator DIP-14" }]) with
+        {
+            ComponentPins =
+            [
+                new ComponentPinEntry { BoardLabel = "Y1", Pin = "1" },
+                new ComponentPinEntry { BoardLabel = "Y1", Pin = "7" },
+                new ComponentPinEntry { BoardLabel = "Y1", Pin = "8" },
+                new ComponentPinEntry { BoardLabel = "Y1", Pin = "14" },
+                new ComponentPinEntry { BoardLabel = "Y1", Pin = "2" },
+            ],
+        };
+
+        BoardDataProblem error = Assert.Single(BoardDataChecks.Check(rows, null, BoardCheckScope.Submission), problem => problem.Code == "pin.outside_package");
+
+        Assert.Equal(4, error.Index);
+        Assert.Contains("An Oscillator DIP-14 has only pins 1, 7, 8 and 14, so there is no pin 2", error.Message, StringComparison.Ordinal);
+    }
+
     // The submission's rows reach the check: a server taking only the table's word would miss them.
     [Fact]
     public void The_servers_rows_carry_the_pins_to_the_check()

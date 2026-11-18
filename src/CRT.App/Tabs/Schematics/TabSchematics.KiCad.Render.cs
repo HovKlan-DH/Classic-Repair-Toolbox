@@ -169,6 +169,9 @@ public partial class TabSchematics
         };
     }
 
+    // How many rebuilds of the overlay were asked for - for the tests.
+    internal int KiCadOverlayRefreshRequestsForTests => this.thisKiCadOverlayRefreshRequestVersion;
+
     // ###########################################################################################
     // Queues normal KiCad overlay refreshes, but allows blink-driven callers to bypass the queue
     // and render immediately so visual blinking stays synchronized with the main highlight layer.
@@ -222,11 +225,43 @@ public partial class TabSchematics
     }
 
     // ###########################################################################################
+    // A PAD AS THE OVERLAY DRAWS IT, the one rule for it (code review, 2026-11-18: the black frame round pin 1's orange pad,
+    // TabSchematics.PinsOnImage.cs, worked it out again beside it): in the image's local coordinates, axis-aligned from the
+    // pad's own width and height - at least 2 each - and turned by RotationDegrees, which puts a 90-degree rectangular or oval
+    // pad the right way round (without it its width and height were swapped); square-cornered or round. Null for a pad with
+    // no place.
+    // ###########################################################################################
+    private (Rect Rect, double RotationDegrees, bool IsRectangle)? PadOnImage(KiCadPcbPad pad, Rect worldBounds, Rect contentRect, KiCadViewCalibration calibration)
+    {
+        if (pad.AbsoluteCenter == null)
+        {
+            return null;
+        }
+
+        Point center = this.MapKiCadWorldToLocal(pad.AbsoluteCenter.X, pad.AbsoluteCenter.Y, worldBounds, contentRect, calibration);
+        double width = Math.Max(2.0, MapKiCadWorldLengthToLocal(pad.Size?.X ?? 1.2, worldBounds, contentRect, calibration));
+        double height = Math.Max(2.0, MapKiCadWorldLengthToLocal(pad.Size?.Y ?? 1.2, worldBounds, contentRect, calibration));
+
+        return (
+            new Rect(center.X - (width / 2.0), center.Y - (height / 2.0), width, height),
+            KiCadPadGeometry.ResolveScreenRotationDegrees(pad.RotationDegrees, calibration.MirrorX, calibration.MirrorY),
+            KiCadPadGeometry.IsRectangularShape(pad.Shape));
+    }
+
+    // ###########################################################################################
     // Rebuilds the currently visible KiCad overlay for the selected image view immediately.
     // While trace calibration mode is active, the temporary calibration transform is used and the
     // temporary traces-and-pads checkbox can suppress all overlay geometry except the box itself.
     // ###########################################################################################
     private void RefreshKiCadOverlayNow()
+    {
+        this.RefreshKiCadOverlayGeometryNow();
+
+        // The pins numbered go with what is selected and where the image is (TabSchematics.PinsOnImage.cs).
+        this.RefreshPinsOnImage();
+    }
+
+    private void RefreshKiCadOverlayGeometryNow()
     {
         this.ClearKiCadOverlay();
 
@@ -378,7 +413,7 @@ public partial class TabSchematics
     // Returns true when the supplied pad belongs to a selected or hovered component and should
     // receive the special primary-pin highlight.
     //
-    // `isMarkPin1Enabled` is IsBoardMarkPin1OnSelectedComponentEnabled, asked ONCE per rebuild by the
+    // `isMarkPin1Enabled` is IsMarkingFirstPin, asked ONCE per rebuild by the
     // caller (2026-11-06): asked here it resolved the picture's KiCad view and read the board's setting
     // for every pad of every net drawn - some 3,000 times a rebuild on 250469.
     // ###########################################################################################
@@ -417,7 +452,7 @@ public partial class TabSchematics
     // ###########################################################################################
     private bool HasPin1HighlightTargetReference()
     {
-        if (!this.IsBoardMarkPin1OnSelectedComponentEnabled())
+        if (!this.IsMarkingFirstPin())
         {
             return false;
         }
@@ -523,7 +558,7 @@ public partial class TabSchematics
         var firstPinBrush = this.ResolveThemeBrush("Schematics_FirstPin", new SolidColorBrush(Colors.Orange));
 
         // Asked once for the whole rebuild, not per pad (ShouldUseSelectedComponentPin1Highlight).
-        bool isMarkPin1Enabled = this.IsBoardMarkPin1OnSelectedComponentEnabled();
+        bool isMarkPin1Enabled = this.IsMarkingFirstPin();
 
         // ###########################################################################################
         // One 1.2 px outline pen per brush for the pads and vias of this rebuild (2026-11-06), where
@@ -537,7 +572,7 @@ public partial class TabSchematics
         {
             if (!outlinePenByBrush.TryGetValue(brush, out Pen? pen))
             {
-                pen = new Pen(brush, 1.2);
+                pen = new Pen(brush, KiCadPadGeometry.OutlineWidth);
                 outlinePenByBrush[brush] = pen;
             }
 
@@ -582,54 +617,19 @@ public partial class TabSchematics
 
         void AddPadPrimitive(List<KiCadOverlayPrimitive> target, KiCadPcbPad pad, IBrush padBrush)
         {
-            if (pad.AbsoluteCenter == null)
+            if (this.PadOnImage(pad, worldBounds, contentRect, calibration) is not { } placed)
             {
                 return;
             }
 
-            Point center = this.MapKiCadWorldToLocal(
-                pad.AbsoluteCenter.X,
-                pad.AbsoluteCenter.Y,
-                worldBounds,
-                contentRect,
-                calibration);
-
-            double width = MapKiCadWorldLengthToLocal(
-                pad.Size?.X ?? 1.2,
-                worldBounds,
-                contentRect,
-                calibration);
-
-            double height = MapKiCadWorldLengthToLocal(
-                pad.Size?.Y ?? 1.2,
-                worldBounds,
-                contentRect,
-                calibration);
-
-            var rect = new Rect(
-                center.X - (Math.Max(2.0, width) / 2.0),
-                center.Y - (Math.Max(2.0, height) / 2.0),
-                Math.Max(2.0, width),
-                Math.Max(2.0, height));
-
-            var pen = OutlinePen(padBrush);
-
-            // The rect above is built axis-aligned from the pad's own width and height; the pad's
-            // rotation is what turns it the right way round on the board. Without this a 90-degree
-            // rect or oval pad is drawn with its width and height swapped.
-            double rotationDegrees = KiCadPadGeometry.ResolveScreenRotationDegrees(
-                pad.RotationDegrees,
-                calibration.MirrorX,
-                calibration.MirrorY);
-
             target.Add(new KiCadOverlayPrimitive
             {
-                Kind = KiCadPadGeometry.IsRectangularShape(pad.Shape)
+                Kind = placed.IsRectangle
                     ? KiCadOverlayPrimitiveKind.Rectangle
                     : KiCadOverlayPrimitiveKind.Ellipse,
-                Rect = rect,
-                RotationDegrees = rotationDegrees,
-                Pen = pen,
+                Rect = placed.Rect,
+                RotationDegrees = placed.RotationDegrees,
+                Pen = OutlinePen(padBrush),
                 Fill = padBrush
             });
         }

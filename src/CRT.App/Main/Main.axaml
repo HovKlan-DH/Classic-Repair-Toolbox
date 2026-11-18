@@ -40,6 +40,29 @@
 			<Setter Property="BorderThickness" Value="0" />
 		</Style>
 
+		<!-- The theme's icon in the top right corner: the icon alone, as the data check's beside it is - no frame, no fill,
+		     under the pointer or pressed either (Main.ThemeToggle.cs). -->
+		<Style Selector="Button.ThemeIcon">
+			<Setter Property="Background" Value="Transparent" />
+			<Setter Property="BorderThickness" Value="0" />
+			<Setter Property="Padding" Value="0" />
+			<Setter Property="Cursor" Value="Hand" />
+		</Style>
+		<Style Selector="Button.ThemeIcon:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+			<Setter Property="Background" Value="Transparent" />
+		</Style>
+		<Style Selector="Button.ThemeIcon:pressed /template/ ContentPresenter#PART_ContentPresenter">
+			<Setter Property="Background" Value="Transparent" />
+		</Style>
+
+		<!-- The tabs' headers keep clear of the top right corner's icons (TopRightTools: 15 from the edge, two icons of 22 and
+		     12 between them, and 9 to spare): on a narrow window the headers wrap and run to the right edge, and a header under
+		     the theme's icon switched the theme when it was clicked (code review, 2026-11-18). By the strip's placement as
+		     Fluent's own style sets this margin: a style with a trigger outranks a plain one, and a plain one was ignored. -->
+		<Style Selector="TabControl#MainTabControl[TabStripPlacement=Top] /template/ ItemsPresenter#PART_ItemsPresenter">
+			<Setter Property="Margin" Value="0,0,80,0" />
+		</Style>
+
 		<!-- A notice card floating over the tabs' bottom-right corner (NoticeStack) -->
 		<Style Selector="Border.NoticeCard">
 			<Setter Property="Background" Value="{DynamicResource Main_Banner_Bg}" />
@@ -554,10 +577,15 @@
 								        Padding="4,0"
 								        MinWidth="16"
 								        VerticalAlignment="Center">
+									<!-- The number centred by the text itself, across the badge's whole width (owner report, 2026-11-17: the
+									     "3" "a little more aligned to the right"): a TextBlock centred as a box is as wide as its number
+									     rounded UP to whole pixels and draws it at that box's left, so at a display's scaling the number
+									     stood up to half a pixel off - measured, "3" in a 16 wide badge 0.4 left at 100 %. -->
 									<TextBlock x:Name="ContributeTabBadgeText"
 									           FontSize="11"
 									           FontWeight="SemiBold"
-									           HorizontalAlignment="Center"
+									           HorizontalAlignment="Stretch"
+									           TextAlignment="Center"
 									           Foreground="{DynamicResource Badge_Attention_Fg}" />
 								</Border>
 							</StackPanel>
@@ -591,10 +619,12 @@
 								        Padding="4,0"
 								        MinWidth="16"
 								        VerticalAlignment="Center">
+									<!-- Centred by the text itself, as the Contribute tab's badge is (owner report, 2026-11-17). -->
 									<TextBlock x:Name="MaintainerTabBadgeText"
 									           FontSize="11"
 									           FontWeight="SemiBold"
-									           HorizontalAlignment="Center"
+									           HorizontalAlignment="Stretch"
+									           TextAlignment="Center"
 									           Foreground="{DynamicResource Badge_Attention_Fg}" />
 								</Border>
 							</StackPanel>
@@ -616,42 +646,75 @@
 
 				</TabControl>
 
-				<Border x:Name="DataSyncStatusIconBorder"
-						Grid.Row="1"
-						ZIndex="10"
-						HorizontalAlignment="Right"
-						VerticalAlignment="Top"
-						Margin="0,15,15,0"
-						Width="22"
-						Height="22"
-						Background="Transparent"
-						ClipToBounds="True"
-						PointerEntered="OnDataSyncStatusIconPointerEntered"
-						PointerExited="OnDataSyncStatusIconPointerExited"
-						PointerPressed="OnDataSyncStatusIconPointerPressed">
-					<!-- THE ICON ITSELF TURNS WHILE A CHECK RUNS (owner request, 2026-11-14: "If you have found a solid method
-					     for rotating the non-spinning icon, then I would prefer that"). A dashed circle stood in for it until
-					     then, centred 2px right of and 4px below the icon. The TextBlock takes its own size, so the glyph's ink
-					     box IS its box - Font Awesome's arrows-rotate (U+F021) fills the em square exactly, x 0..512 and y from
-					     the descent to the ascent - and it turns about its centre (Main.DataSyncStatus.cs, SpinAngle). -->
-					<Grid Width="22"
-						  Height="22"
-						  ClipToBounds="True">
+				<!-- THE TOP RIGHT CORNER: the data check's icon, and right of it the theme (owner request, 2026-11-17: "I would like
+				     to get a half-moon and a sun icon somewhere, so the user easily can toggle this from a permanent, always-visible
+				     location. Maybe that could be in the top-right corner, just to the right of the "update data" icon?") - ONE ICON,
+				     drawn as the data icon is and as large, 22 x 22 (owner requests, the same day: "same size as the "update data"
+				     icon", then of a joined sun | moon switch, "I am not satisfied how it looks. Can you try something else"): the
+				     moon in the light theme, the sun in the dark, each in a color of its own - what a click switches to, its
+				     tooltip says so (Main.ThemeToggle.cs). -->
+				<StackPanel x:Name="TopRightTools"
+							Grid.Row="1"
+							ZIndex="10"
+							Orientation="Horizontal"
+							Spacing="12"
+							HorizontalAlignment="Right"
+							VerticalAlignment="Top"
+							Margin="0,13,15,0">
 
-						<TextBlock x:Name="DataSyncStatusIconTextBlock"
+					<Border x:Name="DataSyncStatusIconBorder"
+							VerticalAlignment="Center"
+							Width="22"
+							Height="22"
+							Background="Transparent"
+							ClipToBounds="True"
+							PointerEntered="OnDataSyncStatusIconPointerEntered"
+							PointerExited="OnDataSyncStatusIconPointerExited"
+							PointerPressed="OnDataSyncStatusIconPointerPressed">
+						<!-- THE ICON ITSELF TURNS WHILE A CHECK RUNS (owner request, 2026-11-14: "If you have found a solid method
+						     for rotating the non-spinning icon, then I would prefer that"). A dashed circle stood in for it until
+						     then, centred 2px right of and 4px below the icon. The TextBlock takes its own size, so the glyph's ink
+						     box IS its box - Font Awesome's arrows-rotate (U+F021) fills the em square exactly, x 0..512 and y from
+						     the descent to the ascent - and it turns about its centre (Main.DataSyncStatus.cs, SpinAngle). -->
+						<Grid Width="22"
+							  Height="22"
+							  ClipToBounds="True">
+
+							<TextBlock x:Name="DataSyncStatusIconTextBlock"
+									   FontFamily="{StaticResource FontAwesomeSolid}"
+									   FontWeight="Black"
+									   FontSize="18"
+									   HorizontalAlignment="Center"
+									   VerticalAlignment="Center"
+									   RenderTransformOrigin="50%,50%">
+								<TextBlock.RenderTransform>
+									<RotateTransform Angle="0" />
+								</TextBlock.RenderTransform>
+							</TextBlock>
+
+						</Grid>
+					</Border>
+
+					<!-- Takes no keyboard focus, as the data icon beside it takes none (code review, 2026-11-18): left with it after a
+					     click, on a tab that does not hand the keyboard back, the next Enter or Space switched the theme again. -->
+					<Button x:Name="ThemeToggle"
+							Classes="ThemeIcon"
+							Focusable="False"
+							Width="22"
+							Height="22"
+							VerticalAlignment="Center"
+							HorizontalContentAlignment="Center"
+							VerticalContentAlignment="Center"
+							Click="OnThemeToggleClick">
+						<TextBlock x:Name="ThemeToggleGlyph"
 								   FontFamily="{StaticResource FontAwesomeSolid}"
 								   FontWeight="Black"
 								   FontSize="18"
 								   HorizontalAlignment="Center"
 								   VerticalAlignment="Center"
-								   RenderTransformOrigin="50%,50%">
-							<TextBlock.RenderTransform>
-								<RotateTransform Angle="0" />
-							</TextBlock.RenderTransform>
-						</TextBlock>
-
-					</Grid>
-				</Border>
+								   Foreground="{DynamicResource Main_ThemeIcon_Fg}" />
+					</Button>
+				</StackPanel>
 
 				<!-- THE NOTICES (owner report, 2026-10-11): cards over the tabs' bottom-right corner,
 				     stacked upwards, so one that comes or goes moves nothing else on screen.

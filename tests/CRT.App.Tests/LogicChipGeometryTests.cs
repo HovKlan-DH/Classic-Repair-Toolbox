@@ -623,6 +623,9 @@ public sealed class LogicChipGeometryTests
     [InlineData("DIP-28", 28, 6)]
     [InlineData("DIP-40", 40, 6)]
     [InlineData("DIP-64", 64, 6)]
+    // A surface-mounted chip numbered as a DIP is drawn in its case (owner request, 2026-11-18).
+    [InlineData("SOIC-14", 14, 3)]
+    [InlineData("SSOP-28", 28, 6)]
     public void Any_other_DIP_is_the_same_case_empty_and_as_wide_as_a_real_one(string package, int pins, int pitches)
     {
         LogicInside inside = Assert.IsType<LogicInside>(LogicChipGeometry.EmptyCaseFor(package));
@@ -641,11 +644,59 @@ public sealed class LogicChipGeometryTests
     [InlineData("SIP")]
     [InlineData("DIP")]
     [InlineData("DIP-7")]
-    [InlineData("PLCC-44")]
+    [InlineData("PLCC-32")]
+    [InlineData("SOT-23")]
     [InlineData("")]
     [InlineData(null)]
-    public void What_is_no_DIP_CRT_can_count_has_no_case(string? package) =>
+    public void What_is_no_chips_case_CRT_can_count_has_no_case(string? package) =>
         Assert.Null(LogicChipGeometry.EmptyCaseFor(package));
+
+    // A PLCC or a QFP is the square case of four sides, empty (QuadCaseGeometryTests holds its pins).
+    [Theory]
+    [InlineData("PLCC-44", 44)]
+    [InlineData("PLCC-84", 84)]
+    [InlineData("QFP-44", 44)]
+    public void A_case_of_four_sides_is_the_square_case_empty(string package, int pins)
+    {
+        LogicInside inside = Assert.IsType<LogicInside>(LogicChipGeometry.EmptyCaseFor(package));
+
+        Assert.Equal(pins, inside.Case.Pins.Count);
+        Assert.True(inside.Case.IsQuad);
+        Assert.Equal(inside.Case.Body.Width, inside.Case.Body.Height);
+        Assert.Empty(inside.Symbols);
+        Assert.Empty(inside.Wires);
+        Assert.Empty(inside.Badges);
+    }
+
+    // ###########################################################################################
+    // A CRYSTAL OSCILLATOR'S CAN (owner request, 2026-11-18 - the Amiga's): its DIP's places with a pin at each corner alone,
+    // pin 1 at the top left and the rest where a DIP has them - so the pointer finds each - its body in a real can's
+    // proportion, a full-size one 13 by 20.5 mm and a half-size one square.
+    // ###########################################################################################
+    [Theory]
+    [InlineData("Oscillator DIP-14", new[] { 1, 7, 8, 14 }, 13.0 / 20.5)]
+    [InlineData("Oscillator DIP-8", new[] { 1, 4, 5, 8 }, 1.0)]
+    public void An_oscillators_can_has_its_four_pins_at_its_corners(string package, int[] numbers, double widthToHeight)
+    {
+        LogicInside inside = Assert.IsType<LogicInside>(LogicChipGeometry.EmptyCaseFor(package));
+        PinoutLayout can = inside.Case;
+        PinoutLayout places = LogicChipGeometry.Case(numbers[^1], can.Body.Width);
+
+        Assert.True(can.IsCan);
+        Assert.False(can.IsQuad);
+        Assert.Equal(numbers, can.Pins.Select(pin => pin.Number));
+        Assert.Equal(numbers.Select(number => places.Pins[number - 1]), can.Pins);
+        Assert.Equal([PinSide.Left, PinSide.Left, PinSide.Right, PinSide.Right], can.Pins.Select(pin => pin.Side));
+        Assert.Equal(can.Pins[0].Lead.Center.Y, can.Pins[3].Lead.Center.Y);
+        Assert.Equal(can.Pins[1].Lead.Center.Y, can.Pins[2].Lead.Center.Y);
+        Assert.Equal(widthToHeight, can.Body.Width / can.Body.Height, 2);
+        Assert.Empty(inside.Symbols);
+
+        foreach (PinoutPin pin in can.Pins)
+        {
+            Assert.Equal(pin.Number, PinoutGeometry.PinAt(can, pin.Lead.Center)?.Number);
+        }
+    }
 
     // ###########################################################################################
     // The case: pins down the left and up the right 24 apart, each a square beside the body - so the pointer finds every

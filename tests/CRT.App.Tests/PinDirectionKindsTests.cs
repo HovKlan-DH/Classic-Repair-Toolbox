@@ -78,4 +78,23 @@ public sealed class PinDirectionKindsTests
         Assert.Equal(PinDirectionKind.InputOutput, kinds[30]);
         Assert.Equal(37, kinds.Values.Count(kind => kind == PinDirectionKind.Other));
     }
+
+    // ###########################################################################################
+    // THE ONE RULE for a pin's direction, which the pinout's drawing and the "Schematics" tab's numbered pins both ask (code
+    // review, 2026-11-18: written twice): the list's word, else the datasheet's for a pin 1 to the chip's last - its pin 0 is
+    // the wires inside a unit - else none.
+    // ###########################################################################################
+    [Fact]
+    public void A_pins_word_is_its_lists_else_the_datasheets_for_a_pin_of_the_chip()
+    {
+        LogicChip chip = LogicChips.Named("74LS08")!;
+
+        Assert.Equal("Input/output", PinDirectionKinds.WordOf(" Input/output ", 3, chip));
+        Assert.Equal("Output", PinDirectionKinds.WordOf(null, 3, chip));
+        Assert.Equal("Output", PinDirectionKinds.WordOf("  ", 3, chip));
+        Assert.Equal(string.Empty, PinDirectionKinds.WordOf(null, 0, chip));
+        Assert.Equal(string.Empty, PinDirectionKinds.WordOf(null, 15, chip));
+        Assert.Equal(string.Empty, PinDirectionKinds.WordOf(null, null, chip));
+        Assert.Equal(string.Empty, PinDirectionKinds.WordOf(null, 3, chip: null));
+    }
 }

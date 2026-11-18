@@ -62,6 +62,22 @@ public sealed class DatasheetPinsTests
         Assert.Null(DatasheetPins.PinoutOf(new ComponentEntry { TechnicalNameOrValue = "XC9572" }, []));
     }
 
+    // The case each pin-out is of, which the conversion writes where a row has none (owner request, 2026-11-17): a DIP of its
+    // pins for a logic chip and another IC alike, the CX20185's QFP-44.
+    [Fact]
+    public void A_datasheets_pinout_says_its_case()
+    {
+        DatasheetPinout? Of(string chip) => DatasheetPins.PinoutOf(new ComponentEntry { TechnicalNameOrValue = chip }, []);
+
+        Assert.Equal("DIP-40", Of("6510")!.Package);
+        Assert.Equal("DIP-14", Of("74LS08")!.Package);
+        Assert.Equal("DIP-18", Of("4464")!.Package);
+        Assert.Equal("QFP-44", Of("CX20185")!.Package);
+
+        // A logic chip in a SOIC is that chip, its pin-out its DIP's (owner request, 2026-11-18).
+        Assert.Equal("7408", DatasheetPins.PinoutOf(new ComponentEntry { TechnicalNameOrValue = "74HC08", Package = "SOIC-14" }, [])!.Chip);
+    }
+
     // "Fill pins from KiCad" and the import fill in KiCad's pins with each direction settled by the datasheet; a pin named,
     // not numbered, is left as KiCad has it; no datasheet leaves the list as it is.
     [Fact]

@@ -1,4 +1,5 @@
 using Handlers.DataHandling;
+using System.Collections.Generic;
 
 namespace Handlers.Theming
 {
@@ -35,6 +36,11 @@ namespace Handlers.Theming
 
         // The number on a pin's square and its badges.
         public static string NumberKeyOf(PinDirectionKind kind) => PinDirectionColors.InkKeyOf(kind) + "_Fg";
+
+        // The order every legend of the directions lists them in - under a pinout's drawing and on the "Schematics" tab's
+        // schematic image alike, ONE list (code review, 2026-11-18: written twice, so one reordered left the two disagreeing).
+        public static readonly IReadOnlyList<PinDirectionKind> LegendOrder =
+            [PinDirectionKind.Input, PinDirectionKind.Output, PinDirectionKind.InputOutput, PinDirectionKind.Other];
 
         // What the legend under the drawing calls each - the pin list's own words.
         public static string WordOf(PinDirectionKind kind) => kind switch

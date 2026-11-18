@@ -117,4 +117,32 @@ public sealed class WorklogDefaultAreaGeometryTests
 
         Assert.Equal(WorklogDefaultAreaGeometry.BuildDefaultArea(imageSize), resolved);
     }
+
+    // ###########################################################################################
+    // A PADDED image's area is placed in its CONTENT's bottom-right corner (code review, 2026-11-18): the image's own empty
+    // border lies past the "Schematics" tab's panel at the first view, and a square in it could not be seen or reached
+    // without zooming. An image that is all border is taken whole.
+    // ###########################################################################################
+    [Fact]
+    public void A_padded_images_area_is_placed_in_its_content()
+    {
+        var imageSize = new Size(4000, 3000);
+        var blank = new Thickness(100, 200, 400, 300);
+
+        Rect area = WorklogDefaultAreaGeometry.BuildDefaultArea(imageSize, blank);
+
+        Assert.True(area.Left >= blank.Left && area.Top >= blank.Top, $"{area} starts in the border");
+        Assert.True(area.Right <= 4000 - blank.Right && area.Bottom <= 3000 - blank.Bottom, $"{area} ends in the border");
+
+        // In the content's bottom-right corner, as far in from it as from a plain image's own corner.
+        Rect plain = WorklogDefaultAreaGeometry.BuildDefaultArea(new Size(4000 - 500, 3000 - 500));
+        Assert.Equal(plain.Width, area.Width);
+        Assert.Equal(plain.X + blank.Left, area.X);
+        Assert.Equal(plain.Y + blank.Top, area.Y);
+
+        Assert.Equal(area, WorklogDefaultAreaGeometry.ResolveAreaForShowing(default, imageSize, blank));
+        Assert.Equal(
+            WorklogDefaultAreaGeometry.BuildDefaultArea(imageSize),
+            WorklogDefaultAreaGeometry.BuildDefaultArea(imageSize, new Thickness(2000, 0, 2000, 0)));
+    }
 }

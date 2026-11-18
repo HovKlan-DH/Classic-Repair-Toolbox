@@ -49,6 +49,14 @@ namespace Handlers.DataHandling
     // the same chips typed three ways by three KiCad projects - the 250407's 6510 and ROMs all inputs, the
     // Open128's 6526 exactly its datasheet, the 250469's every chip inputs.
     //
+    // *** AND SUCH A CHIP'S EVERY PIN AND ITS CASE *** (owner request, 2026-11-17: "Can you now draw also this
+    // IC? (and add its pins in data migration) (when go-live)", of the C128 250477's 4464, and of every chip
+    // not drawn: "investigate ... if they are drawn as pinouts and its data created/migrated at go-live"): a
+    // board with neither baselines nor KiCad data - the 250477, the CPC 664 - had no pins and no package for
+    // its chips, so none was drawn. Before the directions, every chip CRT holds the datasheet of gets the
+    // pins it lacks, each with the datasheet's name and direction, and a name where its pin has none; and a
+    // row with no package the datasheet's case (WithDatasheetPins).
+    //
     // PURE but for KiCadOf, which reads a board's KiCad files: takes a board, returns a board.
     // ###########################################################################################
     public sealed record KiCadPinoutSource(IReadOnlyList<KiCadBoardComponent> Components, Func<string, IReadOnlyList<KiCadPin>> PinsOf);
@@ -163,15 +171,17 @@ namespace Handlers.DataHandling
 
         // ###########################################################################################
         // Every component of the board with a baseline, and every one `kiCad` has, as one change - `components` says how many
-        // got pins or a package of those - and every chip CRT holds the datasheet of given its directions - `directed` says how
-        // many took a direction of their datasheet, apart from `components` (code review, 2026-11-17: counted together, the
-        // conversion's note said pinouts were made of the baselines for chips that only took their datasheet's directions).
+        // got pins or a package of those - then every chip CRT holds the datasheet of given the pins and the case it lacks -
+        // `completed` says how many - and its directions - `directed` says how many took a direction of their datasheet, each
+        // count apart from the others (code review, 2026-11-17: counted together, the conversion's note said pinouts were made
+        // of the baselines for chips that only took their datasheet's directions).
         // ###########################################################################################
-        public static BoardData ApplyToBoard(BoardData board, out int components, out int directed, KiCadPinoutSource? kiCad = null)
+        public static BoardData ApplyToBoard(BoardData board, out int components, out int completed, out int directed, KiCadPinoutSource? kiCad = null)
         {
             ArgumentNullException.ThrowIfNull(board);
 
             var changed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var fromDatasheetPins = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var fromDatasheets = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             BoardData result = board;
 
@@ -202,11 +212,24 @@ namespace Handlers.DataHandling
                 }
             }
 
-            foreach (string label in result.Components
+            List<string> labels = result.Components
                 .Select(row => row.BoardLabel?.Trim() ?? string.Empty)
                 .Where(label => label.Length > 0)
                 .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList())
+                .ToList();
+
+            foreach (string label in labels)
+            {
+                BoardData next = ConversionPinouts.WithDatasheetPins(result, label);
+
+                if (!ReferenceEquals(next, result))
+                {
+                    fromDatasheetPins.Add(label);
+                    result = next;
+                }
+            }
+
+            foreach (string label in labels)
             {
                 BoardData next = ConversionPinouts.WithDatasheetDirections(result, label);
 
@@ -218,7 +241,88 @@ namespace Handlers.DataHandling
             }
 
             components = changed.Count;
+            completed = fromDatasheetPins.Count;
             directed = fromDatasheets.Count;
+
+            return result;
+        }
+
+        // ###########################################################################################
+        // A chip CRT holds the datasheet of (DatasheetPins.PinoutOf) with every pin the datasheet lists: in each set of its
+        // pins - each region's while they are told apart, else the one set - the pins it lacks are added with the datasheet's
+        // name and direction ("Unknown" where the datasheet settles none), and a pin it has gets the datasheet's name only where
+        // it has none: what the baselines and KiCad named stays, and its direction is settled after (WithDatasheetDirections).
+        // A pin is its number ("2 [64K]" is pin 2). The set for every region only when every row of the component is the same
+        // chip (the 250477's U21 is an 8566 in PAL and an 8564 in NTSC, one pin-out). Then each row with no package gets the
+        // datasheet's case - a DIP of its pins, the CX20185's QFP-44. Judged on the pins as they stand, so a
+        // component the board says something against the datasheet of is left alone. The same board when nothing changes.
+        // ###########################################################################################
+        internal static BoardData WithDatasheetPins(BoardData board, string label)
+        {
+            List<ComponentEntry> rows = board.Components.Where(row => ConversionPinouts.SameLabel(row.BoardLabel, label)).ToList();
+
+            if (rows.Count == 0)
+            {
+                return board;
+            }
+
+            BoardData result = board;
+
+            foreach (string region in ConversionPinouts.PinSetsOf(board, label, rows))
+            {
+                List<ComponentPinEntry> pins = ComponentPaneEdits.PinsOf(result, label, region);
+                List<ComponentEntry> owners = region.Length == 0
+                    ? rows
+                    : rows.Where(row => string.Equals(row.Region?.Trim() ?? string.Empty, region, StringComparison.OrdinalIgnoreCase)).DefaultIfEmpty(rows[0]).ToList();
+                List<DatasheetPinout?> pinouts = owners.Select(row => DatasheetPins.PinoutOf(row, pins)).ToList();
+
+                if (pinouts.Any(pinout => pinout is null) || pinouts.Select(pinout => pinout!.Chip).Distinct(StringComparer.Ordinal).Count() != 1)
+                {
+                    continue;
+                }
+
+                List<ComponentPinEntry> completed = pins.ToList();
+                bool changed = false;
+
+                foreach (KiCadPin pin in pinouts[0]!.Pins)
+                {
+                    int number = int.Parse(pin.Pin, System.Globalization.CultureInfo.InvariantCulture);
+                    int index = completed.FindIndex(row => ComponentVocabulary.PinNumberOf(row.Pin) == number);
+
+                    if (index < 0)
+                    {
+                        completed.Add(new ComponentPinEntry
+                        {
+                            BoardLabel = label,
+                            Region = region,
+                            Pin = pin.Pin,
+                            Name = pin.Name,
+                            Direction = pin.Direction.Length > 0 ? pin.Direction : ConversionPinouts.Unknown,
+                        });
+                        changed = true;
+                    }
+                    else if (string.IsNullOrWhiteSpace(completed[index].Name) && pin.Name.Length > 0)
+                    {
+                        completed[index] = completed[index].WithNameAndDirection(pin.Name, completed[index].Direction);
+                        changed = true;
+                    }
+                }
+
+                if (changed)
+                {
+                    result = ComponentPaneEdits.WithPins(result, label, region, [.. completed.OrderBy(row => row.Pin, ComponentPaneEdits.PinOrder)]);
+                }
+            }
+
+            foreach (ComponentEntry row in rows.Where(row => string.IsNullOrWhiteSpace(row.Package)))
+            {
+                string region = row.Region?.Trim() ?? string.Empty;
+
+                if (DatasheetPins.PinoutOf(row, ComponentPaneEdits.PinsOf(result, label, region))?.Package is { Length: > 0 } package)
+                {
+                    result = ComponentPaneEdits.WithField(result, label, region, ComponentField.Package, package);
+                }
+            }
 
             return result;
         }

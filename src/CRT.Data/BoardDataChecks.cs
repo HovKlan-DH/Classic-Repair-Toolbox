@@ -742,8 +742,15 @@ namespace Handlers.DataHandling
         }
 
         // What is wrong with such a pin, for the box it is marked on too.
-        public static string PinNotOnPackage(string? pin, string? package) =>
-            $"A {(package ?? string.Empty).Trim()} has {ComponentVocabulary.PinCountOf(package)} pins, so there is no pin {(pin ?? string.Empty).Trim()} - correct the pin, or the package under \"Pinout\".";
+        public static string PinNotOnPackage(string? pin, string? package)
+        {
+            // An oscillator's can has a pin at each corner of its DIP's places alone (ComponentVocabulary.OscillatorOf).
+            (string article, string pins) = ComponentVocabulary.OscillatorOf(package) is { } can
+                ? ("An", $"only pins {string.Join(", ", can.Pins.SkipLast(1))} and {can.Pins[^1]}")
+                : ("A", $"{ComponentVocabulary.PinCountOf(package)} pins");
+
+            return $"{article} {(package ?? string.Empty).Trim()} has {pins}, so there is no pin {(pin ?? string.Empty).Trim()} - correct the pin, or the package under \"Pinout\".";
+        }
 
         private static void ErrorOnEmpty<T>(
             Context context,

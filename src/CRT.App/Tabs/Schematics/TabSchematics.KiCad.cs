@@ -267,14 +267,14 @@ public partial class TabSchematics
         this.ImportantSignalsPanel.IsVisible = false;
         this.UpdateImportantSignalsClearButtonState(false);
 
-        this.RestoreBoardSettings(expectedBoardKey);
+        this.RestoreBoardSettings();
 
         if (this.thisCurrentKiCadRawPaths.Count == 0)
         {
             this.SetKiCadInitializingIndicatorVisible(false);
             this.thisCurrentKiCadRuntimeCacheScopeKey = string.Empty;
             this.RebuildImportantSignalsPanel();
-            this.RestoreBoardSettings(expectedBoardKey);
+            this.RestoreBoardSettings();
             this.RefreshKiCadOverlay();
             this.KiCadSettled(hasProject: false);
             return;
@@ -384,7 +384,7 @@ public partial class TabSchematics
         this.ResetKiCadHoverHitTestThrottle();
 
         this.RebuildImportantSignalsPanel();
-        this.RestoreBoardSettings(currentBoardKey);
+        this.RestoreBoardSettings();
 
         // ###########################################################################################
         // *** WHAT THE LIST HAS SELECTED LIGHTS ITS TRACES NOW THERE ARE ANY (code review, 2026-11-05). ***
@@ -612,8 +612,7 @@ public partial class TabSchematics
         this.UpdateImportantSignalsHeaderText();
         this.UpdateImportantSignalsClearButtonState(this.ImportantSignalsPanel.IsVisible);
 
-        this.SchematicsHoverPadBorder.IsVisible = false;
-        this.SchematicsHoverPadText.Text = string.Empty;
+        this.HideHoverPinBadges();
 
         this.RefreshKiCadOverlay();
         this.RefreshBlinkStateFromCurrentSelection();
@@ -902,8 +901,7 @@ public partial class TabSchematics
         {
             this.thisHoveredKiCadNetName = null;
             this.thisHoveredKiCadPadNumber = null;
-            this.SchematicsHoverPadBorder.IsVisible = false;
-            this.SchematicsHoverPadText.Text = string.Empty;
+            this.HideHoverPinBadges();
         }
     }
 }

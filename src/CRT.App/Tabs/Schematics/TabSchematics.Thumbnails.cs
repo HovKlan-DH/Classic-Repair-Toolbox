@@ -235,7 +235,7 @@ public partial class TabSchematics
                 UserSettings.SetLastSchematicForBoard(boardKey, selected.Name);
             }
 
-            this.RestoreBoardSettings(boardKey ?? string.Empty);
+            this.RestoreBoardSettings();
 
             if (selected == null || string.IsNullOrEmpty(selected.ImageFilePath))
             {
@@ -398,7 +398,7 @@ public partial class TabSchematics
     // ###########################################################################################
     public void LoadSortedThumbnails(string boardKey, List<SchematicThumbnail> rawList)
     {
-        this.RestoreBoardSettings(boardKey);
+        this.RestoreBoardSettings();
 
         var savedOrder = UserSettings.GetSchematicsOrder(boardKey);
         List<SchematicThumbnail> orderedList;

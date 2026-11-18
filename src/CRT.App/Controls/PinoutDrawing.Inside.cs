@@ -25,7 +25,8 @@ namespace CRT
     // bold (owner request, the same day: "can we try without it being bold?").
     //
     // UNDER IT, what the colors mean - only the directions shown; not what the chip is (owner request, the same day: "the name is
-    // already given elsewhere (e.g. in header line)").
+    // already given elsewhere (e.g. in header line)") - "Pin direction:" with the directions in a column beside it, one a line
+    // (owner request, 2026-11-17: "I want the pin directions to be ordered vertically instead of horizontally").
     // ###########################################################################################
     public sealed partial class PinoutDrawing
     {
@@ -36,6 +37,7 @@ namespace CRT
         private const double LegendSwatch = 10;
         private const double LegendSwatchGap = 4;
         private const double LegendItemGap = 12;
+        private const double LegendLineGap = 2;
 
         private const string LegendLead = "Pin direction:";
 
@@ -54,7 +56,13 @@ namespace CRT
         private void ShowInside(LogicChip? chip, string? package, IReadOnlyList<ComponentPinEntry> pins)
         {
             this.thisInside = chip is not null ? LogicChipGeometry.For(chip, this.thisNameWidth) : LogicChipGeometry.EmptyCaseFor(package, this.thisNameWidth);
-            this.thisDirections = this.thisInside is { } inside ? PinDirectionKinds.ByPin(inside.Case.Pins.Count, pins, chip) : new Dictionary<int, PinDirectionKind>();
+            // Of the pins drawn alone, so the legend names no direction of a place without a pin: an oscillator's can has four
+            // pins of fourteen places (LogicChipGeometry.CanFor).
+            this.thisDirections = this.thisInside is { } inside
+                ? PinDirectionKinds.ByPin(inside.Case.Pins.Max(pin => pin.Number), pins, chip)
+                    .Where(pair => inside.Case.Pins.Any(pin => pin.Number == pair.Key))
+                    .ToDictionary(pair => pair.Key, pair => pair.Value)
+                : new Dictionary<int, PinDirectionKind>();
             this.thisGateMarks.Clear();
         }
 
@@ -95,7 +103,7 @@ namespace CRT
         // ###########################################################################################
         private List<PinDirectionKind> LegendDirections()
         {
-            List<PinDirectionKind> shown = new[] { PinDirectionKind.Input, PinDirectionKind.Output, PinDirectionKind.InputOutput, PinDirectionKind.Other }
+            List<PinDirectionKind> shown = PinDirectionColors.LegendOrder
                 .Where(this.thisDirections.Values.Contains)
                 .ToList();
 
@@ -107,8 +115,12 @@ namespace CRT
 
         // ---- the legend under the case --------------------------------------------------------------
 
-        // Where the legend starts: under the left pins' squares.
-        private static double CaptionLeftOf(PinoutLayout layout) => layout.Body.Left - LogicChipGeometry.LeadGap - LogicChipGeometry.Square;
+        // Where the legend starts: under the left pins' squares - as the case laid them out, a case of four sides of 100 pins
+        // or more drawing them larger (QuadCaseGeometry.SquareFor; code review, 2026-11-18: the legend stood 4 right of them).
+        internal static double CaptionLeftOf(PinoutLayout layout) =>
+            layout.Pins.Where(pin => pin.Side == PinSide.Left).Select(pin => pin.Lead.Left)
+                .DefaultIfEmpty(layout.Body.Left - LogicChipGeometry.LeadGap - LogicChipGeometry.Square)
+                .Min();
 
         // The case's size and the legend's under it - worked out once per Show (code review, 2026-11-17: it measured the
         // legend's words again at every measure and every render, so at every pin the pointer passed over).
@@ -119,17 +131,30 @@ namespace CRT
                 return size;
             }
 
-            double height = PinoutDrawing.TextOf(LegendLead, Brushes.Black, CaptionSize, bold: false).Height;
+            Size legend = this.LegendSize();
 
             return new Size(
-                Math.Ceiling(Math.Max(size.Width, PinoutDrawing.CaptionLeftOf(inside.Case) + this.LegendWidth())),
-                Math.Ceiling(size.Height + CaptionGap + height));
+                Math.Ceiling(Math.Max(size.Width, PinoutDrawing.CaptionLeftOf(inside.Case) + legend.Width)),
+                Math.Ceiling(size.Height + CaptionGap + legend.Height));
         }
 
-        private double LegendWidth() =>
-            PinoutDrawing.TextOf(LegendLead, Brushes.Black, CaptionSize, bold: false).Width +
-            this.LegendDirections().Sum(level =>
-                LegendItemGap + LegendSwatch + LegendSwatchGap + PinoutDrawing.TextOf(PinDirectionColors.WordOf(level), Brushes.Black, CaptionSize, bold: false).Width);
+        // The legend's size: "Pin direction:", then a column of the directions shown, one a line.
+        private Size LegendSize()
+        {
+            List<PinDirectionKind> shown = this.LegendDirections();
+
+            if (shown.Count == 0)
+            {
+                return default;
+            }
+
+            FormattedText lead = PinoutDrawing.TextOf(LegendLead, Brushes.Black, CaptionSize, bold: false);
+            double widest = shown.Max(level => LegendSwatch + LegendSwatchGap + PinoutDrawing.TextOf(PinDirectionColors.WordOf(level), Brushes.Black, CaptionSize, bold: false).Width);
+
+            return new Size(lead.Width + LegendItemGap + widest, (shown.Count * lead.Height) + ((shown.Count - 1) * LegendLineGap));
+        }
+
+        internal Size LegendSizeForTests => this.LegendSize();
 
         private void RenderCaption(DrawingContext context, PinoutLayout layout, IBrush foreground)
         {
@@ -138,23 +163,22 @@ namespace CRT
                 return;
             }
 
+            // Under the case and whatever stands under it - a case of four sides has pins and names there.
             double x = PinoutDrawing.CaptionLeftOf(layout);
-            double y = layout.Body.Bottom + CaptionGap;
+            double y = layout.Size.Height + CaptionGap;
 
             FormattedText lead = PinoutDrawing.TextOf(LegendLead, foreground, CaptionSize, bold: false);
             context.DrawText(lead, new Point(x, y));
-            x += lead.Width;
+            x += lead.Width + LegendItemGap;
 
             foreach (PinDirectionKind level in this.LegendDirections())
             {
-                x += LegendItemGap;
                 var swatch = new Rect(x, y + ((lead.Height - LegendSwatch) / 2), LegendSwatch, LegendSwatch);
                 context.DrawRectangle(this.FillOf(level), new Pen(this.InkOf(level), 1), new RoundedRect(swatch, 2));
-                x += LegendSwatch + LegendSwatchGap;
 
                 FormattedText word = PinoutDrawing.TextOf(PinDirectionColors.WordOf(level), foreground, CaptionSize, bold: false);
-                context.DrawText(word, new Point(x, y));
-                x += word.Width;
+                context.DrawText(word, new Point(x + LegendSwatch + LegendSwatchGap, y));
+                y += lead.Height + LegendLineGap;
             }
         }
 
@@ -185,7 +209,7 @@ namespace CRT
 
             IBrush card = this.Brush("Card_Bg", Brushes.White);
 
-            this.RenderBody(context, body, foreground, card);
+            this.RenderBody(context, layout, foreground, card);
             this.RenderPins(context, layout, foreground);
 
             // The wires, then the lit ones over them - wider, with a glow.
@@ -246,11 +270,55 @@ namespace CRT
         // ###########################################################################################
         // The case as the plain one is drawn (owner request, 2026-11-16: "it should have the same color as the normal drawn
         // pinout IC"): the theme's card ground with its text color for the edge, the notch cut into its top, the dot by pin 1
-        // - in its top left corner, clear of the wires.
+        // - in its top left corner, clear of the wires. A case of four sides (owner request, 2026-11-18) has its top left
+        // corner cut instead of the notch, and the dot by pin 1 wherever pin 1 stands (QuadCaseGeometry); an oscillator's can
+        // is round at its other corners (LogicChipGeometry.CanFor).
         // ###########################################################################################
-        private void RenderBody(DrawingContext context, Rect body, IBrush foreground, IBrush card)
+        private void RenderBody(DrawingContext context, PinoutLayout layout, IBrush foreground, IBrush card)
         {
+            Rect body = layout.Body;
             var outline = new Pen(foreground, 1);
+            IBrush firstPin = this.Brush("Schematics_FirstPin", Brushes.IndianRed);
+
+            if (layout.IsQuad)
+            {
+                IReadOnlyList<Point> corners = QuadCaseGeometry.OutlineOf(body);
+                var cut = new StreamGeometry();
+
+                using (StreamGeometryContext path = cut.Open())
+                {
+                    path.BeginFigure(corners[0], isFilled: true);
+
+                    foreach (Point corner in corners.Skip(1))
+                    {
+                        path.LineTo(corner);
+                    }
+
+                    path.EndFigure(isClosed: true);
+                }
+
+                context.DrawGeometry(card, outline, cut);
+                context.DrawEllipse(firstPin, null, QuadCaseGeometry.FirstPinDotOf(layout), LogicChipGeometry.DotRadius, LogicChipGeometry.DotRadius);
+
+                return;
+            }
+
+            // An oscillator's can (owner request, 2026-11-18): round at three corners and square at pin 1's, as the cans are
+            // made, the rim pressed round its top in the muted color, and the dot by pin 1 in its square corner.
+            if (layout.IsCan)
+            {
+                context.DrawGeometry(card, outline, PinoutDrawing.CanOutline(body, LogicChipGeometry.CanCorner));
+                context.DrawGeometry(
+                    null,
+                    new Pen(this.Brush("Text_Muted_Fg", Brushes.Gray), 1),
+                    PinoutDrawing.CanOutline(body.Deflate(LogicChipGeometry.CanRim), LogicChipGeometry.CanCorner - LogicChipGeometry.CanRim));
+
+                double inset = LogicChipGeometry.CanRim + LogicChipGeometry.FirstPinDot;
+                context.DrawEllipse(firstPin, null, new Point(body.Left + inset, body.Top + inset), LogicChipGeometry.DotRadius, LogicChipGeometry.DotRadius);
+
+                return;
+            }
+
             context.DrawRectangle(card, outline, body, 3, 3);
 
             double notch = LogicChipGeometry.NotchRadius;
@@ -261,10 +329,35 @@ namespace CRT
                 context.DrawGeometry(this.Brush("Bg", Brushes.White), outline, new EllipseGeometry(new Rect(body.Center.X - notch, body.Top - notch, 2 * notch, 2 * notch)));
             }
 
-            context.DrawEllipse(this.Brush("Schematics_FirstPin", Brushes.IndianRed), null, new Point(body.Left + dot, body.Top + dot), LogicChipGeometry.DotRadius, LogicChipGeometry.DotRadius);
+            context.DrawEllipse(firstPin, null, new Point(body.Left + dot, body.Top + dot), LogicChipGeometry.DotRadius, LogicChipGeometry.DotRadius);
         }
 
-        // Each pin: its lead from the case, its square in its direction's tint with its number, its name outside.
+        // A can's outline: `box` with its corners rounded by `radius` but the top left one, pin 1's.
+        private static StreamGeometry CanOutline(Rect box, double radius)
+        {
+            var geometry = new StreamGeometry();
+            var round = new Size(radius, radius);
+
+            using (StreamGeometryContext path = geometry.Open())
+            {
+                path.BeginFigure(box.TopLeft, isFilled: true);
+                path.LineTo(new Point(box.Right - radius, box.Top));
+                path.ArcTo(new Point(box.Right, box.Top + radius), round, 0, false, SweepDirection.Clockwise);
+                path.LineTo(new Point(box.Right, box.Bottom - radius));
+                path.ArcTo(new Point(box.Right - radius, box.Bottom), round, 0, false, SweepDirection.Clockwise);
+                path.LineTo(new Point(box.Left + radius, box.Bottom));
+                path.ArcTo(new Point(box.Left, box.Bottom - radius), round, 0, false, SweepDirection.Clockwise);
+                path.EndFigure(isClosed: true);
+            }
+
+            return geometry;
+        }
+
+        // ###########################################################################################
+        // Each pin: its lead from the case, its square in its direction's tint with its number, its name outside - beside a
+        // row, and over and under a case of four sides upright on its side, reading from the bottom up as the datasheets
+        // write them: its foot at its pin over the case, its head at its pin under it (QuadCaseGeometry).
+        // ###########################################################################################
         private void RenderPins(DrawingContext context, PinoutLayout layout, IBrush foreground)
         {
             Rect body = layout.Body;
@@ -277,9 +370,13 @@ namespace CRT
                 context.DrawRectangle(
                     foreground,
                     null,
-                    pin.Side == PinSide.Left
-                        ? new Rect(square.Right, square.Center.Y - 3, body.Left - square.Right, 6)
-                        : new Rect(body.Right, square.Center.Y - 3, square.Left - body.Right, 6));
+                    pin.Side switch
+                    {
+                        PinSide.Left => new Rect(square.Right, square.Center.Y - 3, body.Left - square.Right, 6),
+                        PinSide.Top => new Rect(square.Center.X - 3, square.Bottom, 6, body.Top - square.Bottom),
+                        PinSide.Bottom => new Rect(square.Center.X - 3, body.Bottom, 6, square.Top - body.Bottom),
+                        _ => new Rect(body.Right, square.Center.Y - 3, square.Left - body.Right, 6),
+                    });
 
                 context.DrawRectangle(this.FillOf(level), new Pen(this.InkOf(level), 1), new RoundedRect(square, 3));
 
@@ -293,6 +390,21 @@ namespace CRT
                 }
 
                 FormattedText nameText = PinoutDrawing.Text(name, foreground, this.thisNameWidth - PinoutGeometry.NameGaps, bold: false);
+
+                if (pin.Side is PinSide.Top or PinSide.Bottom)
+                {
+                    // Turned a quarter to the left, the text runs up from where it starts: over the case it starts at the pin,
+                    // under it so far down that it ends there.
+                    double foot = pin.Side == PinSide.Top ? pin.NameAnchor.Y : pin.NameAnchor.Y + nameText.Width;
+                    Matrix upright = Matrix.CreateRotation(-Math.PI / 2) * Matrix.CreateTranslation(pin.NameAnchor.X - (nameText.Height / 2), foot);
+
+                    using (context.PushTransform(upright))
+                    {
+                        context.DrawText(nameText, new Point(0, 0));
+                    }
+
+                    continue;
+                }
 
                 context.DrawText(
                     nameText,

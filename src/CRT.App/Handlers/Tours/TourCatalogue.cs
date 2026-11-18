@@ -141,15 +141,35 @@ namespace Handlers.Tours
                         "Highlight a trace",
                         "The small <b>Has KiCad data</b> badge beside <b>Draw trace</b> says the board's KiCad data is shown on this schematic image, so its traces can be followed.\n\n" +
                         "Point at a trace or a pin, and its whole net is highlighted. Click it to keep it highlighted - on every schematic image with KiCad data - and click it again to let go. Several can be kept at once."),
+                    // The three panels a step each (owner request, 2026-11-17: "I would like to have each of the 3 panels ...
+                    // individually mentioned in the standard introduction ... with some elaborative text for it") - one step
+                    // for all three until then. "Global settings" and "Important KiCad signals" are there only with KiCad
+                    // data, so their steps are left out of a showing without it. The rows only a circuit board's image has are
+                    // SAID to be only there, never left out by TourPart.Shows (code review, 2026-11-18): the words are worked
+                    // out as the tour starts, when a folded panel hides every row - a board's image would lose them too.
                     new TourStep(
                         Crt4,
-                        ["TabSchematicsControl/GlobalSettingsPanel", "TabSchematicsControl/LabelsPanel", "TabSchematicsControl/ImportantSignalsPanel"],
-                        "Panels on the schematic image",
-                        new TourBody(
-                            new TourPart("<b>Global settings</b> decides how the board's KiCad traces are highlighted as you point at or select a trace or a component, and whether the other side's traces and a component's first pin are shown.", Shows: "TabSchematicsControl/GlobalSettingsPanel"),
-                            new TourPart("<b>Labels visible</b> writes the board label, technical name or friendly name on each component - or on the selected ones only."),
-                            new TourPart("<b>Important KiCad signals</b> lists the board's key signals, such as power, ground and the clock - click one to highlight where it runs.", Shows: "TabSchematicsControl/ImportantSignalsPanel"),
-                            new TourPart("Click a panel's headline to fold it away or open it again.")),
+                        ["TabSchematicsControl/GlobalSettingsPanel"],
+                        "The Global settings panel",
+                        "<b>Global settings</b> decides how the board's KiCad data is shown on the schematic image, for every board.\n\n" +
+                        "<b>Highlight trace on hover</b> highlights the whole net of the trace or pin you point at - and with <b>Hold SHIFT to highlight trace on hover</b> only while you hold down <b>Shift</b>, so the schematic image stays calm while you move around. <b>Highlight component traces on select</b> and <b>Highlight component traces on hover</b> highlight every net of the components you select or point at.\n\n" +
+                        "The rest is there only where the schematic image shows the circuit board itself. <b>Show traces from opposite side</b> adds the traces of the other side, and <b>Show zones</b> the copper areas, such as a ground plane.\n\n" +
+                        "<b>Hold SHIFT to number pins on hover and select</b> numbers every pin of the components you point at or select while you hold down <b>Shift</b> - pin 1 is marked in orange either way - and <b>Show color for pin direction</b> colors each number by the pin's direction, with a legend beside the panels saying what each color means.",
+                        Stage: TourStage.SchematicsPanelsExpanded),
+                    new TourStep(
+                        Crt4,
+                        ["TabSchematicsControl/LabelsPanel"],
+                        "The Labels visible panel",
+                        "<b>Labels visible</b> writes names on the components marked on the schematic image, so you can tell them apart without pointing at each one.\n\n" +
+                        "Tick <b>Board label</b>, <b>Technical name</b> or <b>Friendly name</b> - or several of them - to write them on every component, and <b>Selected components only</b> to write them only on the components you have selected.\n\n" +
+                        "Click the headline of this panel, or of the panels beside it, to fold it away or open it again.",
+                        Stage: TourStage.SchematicsPanelsExpanded),
+                    new TourStep(
+                        Crt4,
+                        ["TabSchematicsControl/ImportantSignalsPanel"],
+                        "The Important KiCad signals panel",
+                        "<b>Important KiCad signals</b> lists the board's key signals - its power, ground, clocks, reset and the like - under the names its contributors gave them.\n\n" +
+                        "Click a signal to highlight where it runs, on every schematic image with KiCad data, and click it again to let go. Select several to follow them together, and <b>Clear All</b> lets go of every one.",
                         Stage: TourStage.SchematicsPanelsExpanded),
                     new TourStep(
                         Crt4,
@@ -158,11 +178,14 @@ namespace Handlers.Tours
                         "Each thumbnail is one of the board's schematic images - click it to show it large.\n\n" +
                         "With components selected, the thumbnails holding them get a blue name bar, and the others are dimmed.\n\n" +
                         "Drag the edge of the thumbnail panel to make it wider or narrower - the thumbnails resize to fit."),
+                    // The theme's icon beside the data icon since 2026-11-17 (owner request) - one step for both, as they stand
+                    // in the same corner.
                     new TourStep(
                         Crt4,
-                        ["DataSyncStatusIconBorder"],
-                        "Get the newest data",
-                        "CRT looks for new or updated board data each time it starts. Click this icon to look again now - it turns while it does, and pointing at it says how it went."),
+                        ["DataSyncStatusIconBorder", "ThemeToggle"],
+                        "Newest data, light or dark",
+                        "CRT looks for new or updated board data each time it starts. Click this icon to look again now - it turns while it does, and pointing at it says how it went.\n\n" +
+                        "The icon beside it switches between CRT's light and dark looks, from any tab: the moon to the dark one, the sun back to the light one."),
                 ]),
 
             new TourOfTab(
@@ -287,13 +310,14 @@ namespace Handlers.Tours
             new TourOfTab(
                 TourTab.Configuration,
                 "Configuration",
-                "Here you decide how CRT looks and behaves, and which hardware and boards it lists.",
+                "Here you decide how CRT behaves, and which hardware and boards it lists.",
                 [
+                    // The theme went from here on 2026-11-17 (owner request) - the icon in the window's top right corner picks it.
                     new TourStep(
                         Crt4,
                         ["TabConfiguration/SettingsScrollViewer"],
                         "Settings",
-                        "The theme, the component information window, updates of CRT and its data - and which tabs show: <b>Workbooks</b>, <b>Oscilloscope</b> and <b>Maintainer</b> can each be switched on or off here."),
+                        "The component information window, updates of CRT and its data - and which tabs show: <b>Workbooks</b>, <b>Oscilloscope</b> and <b>Maintainer</b> can each be switched on or off here."),
                     new TourStep(
                         Crt4,
                         ["TabConfiguration/CataloguePanelBorder"],

@@ -9,11 +9,11 @@ using Handlers.DataHandling;
 namespace ClassicRepairToolbox.Tests.Ui;
 
 // ###########################################################################################
-// EVERY COLOR CRT WRITES WITH READS ON THE GROUND IT IS WRITTEN ON, IN ALL THREE THEMES (owner request, 2026-11-12: "check
+// EVERY COLOR CRT WRITES WITH READS ON THE GROUND IT IS WRITTEN ON, IN BOTH THEMES (owner request, 2026-11-12: "check
 // all colors and make sure they have a nice discrete complementary color in a nice visible contrast ratio"). Text at WCAG's
-// 4.5:1, an edge or mark that must be seen at its 3:1, each pair below as CRT draws it - in the light theme, the dark one,
-// and "User preference": the light theme with the colors UserSettings seeds into the settings file over it, the ground
-// a tinted #E0E4D9 that most of the light theme's text colors failed on until that day.
+// 4.5:1, an edge or mark that must be seen at its 3:1, each pair below as CRT draws it - in the light theme and the dark one
+// (the "User preference" theme, the light one with colors of its own over it, was held to it too until it went, owner
+// request 2026-11-17).
 //
 // The ratio is CRT.Data's RegionColors.ContrastRatio, the one rule. A new text color, or one drawn on a new ground, gets
 // its pair here. Left out on purpose: Workbooks_ZeroCount_Fg (a zero meant to look switched off), and what is drawn over
@@ -25,7 +25,7 @@ public class ThemeContrastTests
     private const double Text = 4.5;
     private const double Edge = 3.0;
 
-    private static readonly string[] Themes = ["Light", "Dark", "User preference"];
+    private static readonly string[] Themes = ["Light", "Dark"];
 
     // (foreground, background, the ratio it must reach)
     private static IEnumerable<(string Fore, string Back, double Least)> Pairs()
@@ -88,6 +88,7 @@ public class ThemeContrastTests
         // Edges and marks that must be seen: an input's edge, the selected tab's underline, the chart's bars, a frame.
         foreach (var pair in On("Form_Border", Edge, "Bg", "Form_Bg")) yield return pair;
         foreach (var pair in On("Main_TabUnderline_Selected", Edge, "Bg")) yield return pair;
+        foreach (var pair in On("Main_ThemeIcon_Fg", Edge, "Bg")) yield return pair;
         foreach (var pair in On("Chart_Bar", Edge, "Bg", "Card_Bg")) yield return pair;
         foreach (var pair in On("Badge_Attention_Bg", Edge, "Bg")) yield return pair;
         foreach (var pair in On("Mode_Selected_Border", Edge, "Bg")) yield return pair;
@@ -95,11 +96,12 @@ public class ThemeContrastTests
         foreach (var pair in On("SubmittedCredit_Border", Edge, "Bg")) yield return pair;
 
         // A chip drawn with its insides (2026-11-16), per pin direction (2026-11-17): its ink - the edge of a pin's square on the
-        // window's ground and of its badge on the case's card - its wires on that card, and the number on the square's tint.
+        // window's ground and of its badge on the case's card, and of the "Schematics" tab's legend swatches on that tab's
+        // panel ground (PinDirectionLegend, 2026-11-17) - its wires on that card, and the number on the square's tint.
         // Its gates are in Fg and a multiplexer's "0" and "1" in Text_Muted_Fg (above), on the same card.
         foreach (string level in new[] { "Input", "Output", "InputOutput", "Other" })
         {
-            foreach (var pair in On($"PinoutChip_{level}", Edge, "Card_Bg", "Bg")) yield return pair;
+            foreach (var pair in On($"PinoutChip_{level}", Edge, "Card_Bg", "Bg", "Schematics_Panels_Bg")) yield return pair;
             yield return ($"PinoutChip_{level}_Wire", "Card_Bg", Edge);
             yield return ($"PinoutChip_{level}_Fg", $"PinoutChip_{level}_Bg", Text);
         }
@@ -144,17 +146,6 @@ public class ThemeContrastTests
         Assert.True(failures.Count == 0, "Below WCAG's ratio:\n" + string.Join("\n", failures));
     }
 
-    // The "User preference" theme seeds a color for every key it lists from these defaults, so each must be a color CRT
-    // can read - a misspelt name would leave its key at the light theme's color, silently.
-    [Fact]
-    public void Every_user_preference_default_is_a_colour()
-    {
-        foreach ((string key, string value) in UserSettings.UserThemeDefaultColors)
-        {
-            Assert.True(Color.TryParse(value, out _), $"{key}: \"{value}\" is no color");
-        }
-    }
-
     // A theme's color for `key` as "#RRGGBB" - a translucent one laid over `under` (the theme's ground when none is given),
     // as it is drawn.
     private static string Hex(string theme, string key, string? under = null)
@@ -176,9 +167,6 @@ public class ThemeContrastTests
 
     private static Color Resolve(string theme, string key)
     {
-        if (theme == "User preference" && UserSettings.UserThemeDefaultColors.TryGetValue(key, out string? own))
-            return Color.Parse(own);
-
         ThemeVariant variant = theme == "Dark" ? ThemeVariant.Dark : ThemeVariant.Light;
 
         Assert.True(Application.Current!.TryGetResource(key, variant, out object? resource), $"{theme}: no resource {key}");

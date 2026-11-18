@@ -11,6 +11,20 @@ every push of that version, so a section reworded later reaches the release with
 - Plain ASCII punctuation.
 -->
 
+# 12.0.0, 2026-November-18
+--------------------------
+- Converting a data tree for CRT 4.0 gives every chip whose datasheet CRT holds all its pins, each with the datasheet's name and direction, and the datasheet's case where the board names none - so the C128 250477's and the CPC 664's chips, which had neither, are drawn
+- A pin the board left unnamed gets the datasheet's name; a name the board gives is kept
+- The datasheets now include the 8568, the 5710, the CPC's Gate Array, the CX20185 and the 40-pin 64H156 (part number 251828-01 or -03), and the 4464's pins are named /G, D0-D3 and /W
+- Surface-mounted chips are understood: a SOIC, SSOP, TSSOP and the like is numbered as a DIP of as many pins, and a PLCC or QFP has its pins on four sides
+- A pin past the last pin of a SOIC, PLCC or QFP is refused, as one past a DIP's always was
+- The datasheets now include the Amiga 500's and 1000's chips: the 68000, Agnus (also the A500's Fat Agnus in its PLCC-84), Denise, Paula, Gary, the 8520, the 27C400, the 41256 and 44256 RAMs, the MSM6242 clock, the MC1377, MC1488 and MC1489, the LF347, the LM2901 and the A1000's 74374, 74399, 74393 and 7451
+- A 74LS51 is told apart from a 7451 or 74S51, whose pins differ
+- A crystal oscillator in a metal can is understood, on a DIP-14's or a DIP-8's corners: converting the Open128's KiCad data gives its 16 MHz oscillator that case
+- A pin of such an oscillator that is not on one of its four corners is refused
+- The conversion's notes say how many chips were given pins or a case
+- A submission with such a pin, which the server took before, is now refused - a CRT 4.0 pre-release may have sent one
+
 # 11.1.0, 2026-November-17
 --------------------------
 - Converting a data tree for CRT 4.0 gives every pin of a chip whose datasheet CRT holds the direction that datasheet says: the 74, 40 and 55 series logic chips, and the CPUs, CIAs, VIAs, video and sound chips, ROMs, RAMs and PLAs of the published boards

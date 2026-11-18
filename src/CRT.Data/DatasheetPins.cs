@@ -19,9 +19,9 @@ namespace Handlers.DataHandling
     //   4. "Unknown".
     // ###########################################################################################
     // A datasheet's pin-out as a list of pins - the chip it is of ("6526", "7408") and each pin's number, name and direction -
-    // and the logic chip whose insides CRT draws when it is one (LogicChips.For's answer, so a caller drawing it looks it up
-    // once).
-    public sealed record DatasheetPinout(string Chip, IReadOnlyList<KiCadPin> Pins, LogicChip? Logic = null);
+    // the logic chip whose insides CRT draws when it is one (LogicChips.For's answer, so a caller drawing it looks it up
+    // once), and the case the pin-out is of ("DIP-14", "QFP-44" - IcPinout.Package).
+    public sealed record DatasheetPinout(string Chip, IReadOnlyList<KiCadPin> Pins, LogicChip? Logic = null, string? Package = null);
 
     public static class DatasheetPins
     {
@@ -44,10 +44,12 @@ namespace Handlers.DataHandling
 
             if (LogicChips.For(entry, pins) is { } logic)
             {
-                return new DatasheetPinout(logic.Name, Listed(logic.PinCount, logic.NameOf, logic.DirectionOf), logic);
+                return new DatasheetPinout(logic.Name, Listed(logic.PinCount, logic.NameOf, logic.DirectionOf), logic, logic.Package);
             }
 
-            return IcPinouts.For(entry, pins) is { } chip ? new DatasheetPinout(chip.Name, Listed(chip.PinCount, chip.NameOf, chip.DirectionOf)) : null;
+            return IcPinouts.For(entry, pins) is { } chip
+                ? new DatasheetPinout(chip.Name, Listed(chip.PinCount, chip.NameOf, chip.DirectionOf), Package: chip.Package)
+                : null;
         }
 
         // ###########################################################################################

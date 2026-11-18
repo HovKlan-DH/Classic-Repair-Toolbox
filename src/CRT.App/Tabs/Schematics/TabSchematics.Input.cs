@@ -468,8 +468,7 @@ public partial class TabSchematics
             this.UpdateKiCadTraceCalibrationCursor(point);
             this.SchematicsHoverLabelBorder.IsVisible = false;
             this.SchematicsHoverLabelText.Text = string.Empty;
-            this.SchematicsHoverPadBorder.IsVisible = false;
-            this.SchematicsHoverPadText.Text = string.Empty;
+            this.HideHoverPinBadges();
 
             if (this.MainWindow != null)
             {

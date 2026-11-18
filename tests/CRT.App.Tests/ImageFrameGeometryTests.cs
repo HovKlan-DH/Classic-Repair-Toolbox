@@ -4,10 +4,10 @@ using Handlers.Geometry;
 namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
-// ImageFrameGeometry - room round the "Schematics" tab's image so its badges cover none of it (owner request, 2026-11-13:
-// "Ideally the cropped one can be displayed nicely and with some padding to its borders ... and then ideally the
-// "original" one is displayed as-is today"). The owner's two images of the Open128-2 board are the cases: "PCB Top", with
-// room of its own all round, and "PCB Top CROPPED", cut to the board.
+// ImageFrameGeometry - room round the "Schematics" tab's image so its badges cover none of it (owner request, 2026-11-13),
+// and its board in the same place whether it is cropped or padded (owner request, 2026-11-17: "no matter if I have
+// inserted empty spacing or not, then the actual PCB should be displayed same place"). The owner's two images of the
+// Open128-2 board are the cases: "PCB Top", with room of its own all round, and "PCB Top CROPPED", cut to the board.
 // ###########################################################################################
 public sealed class ImageFrameGeometryTests
 {
@@ -73,62 +73,132 @@ public sealed class ImageFrameGeometryTests
         Assert.False(ImageFrameGeometry.Alike(0x00FFFFFF, 0xFFFFFFFF));
     }
 
-    // "PCB Top" as measured (5080 x 3604, empty 336 above, 211 below, 89 left, 73 right) in a panel of 1400 x 850: its own
-    // room already gives more than is wanted on every side, so nothing is added - it shows as it always did.
-    // At 990 x 750 too, where its 73 empty columns at the right draw as 14 - less than the 16 asked, but room of its own:
-    // topped up by two it drew 0.2% smaller than it always did (the render of the real image, 2026-11-13).
+    // Where the image's CONTENT - the image less its own empty border - is drawn, fitted inside `frame` as the tab fits it.
+    private static Rect BoardOnScreen(Size box, PixelSize image, Thickness blank)
+    {
+        Thickness frame = ImageFrameGeometry.Frame(box, image, blank, ImageFrameGeometry.Wanted);
+        Rect drawn = RectGeometry.GetImageContentRect(box, image, frame);
+        double scale = drawn.Width / image.Width;
+
+        return new Rect(
+            drawn.Left + (scale * blank.Left),
+            drawn.Top + (scale * blank.Top),
+            scale * (image.Width - blank.Left - blank.Right),
+            scale * (image.Height - blank.Top - blank.Bottom));
+    }
+
+    // ###########################################################################################
+    // *** CROPPED OR PADDED, THE BOARD STANDS IN THE SAME PLACE (owner request, 2026-11-17: "no matter if I have inserted
+    // empty spacing or not, then the actual PCB should be displayed same place"). *** The owner's two images of the
+    // Open128-2 as measured: "PCB Top" (5080 x 3604, empty 336 above, 211 below, 89 left, 73 right) and "PCB Top CROPPED"
+    // (4903 x 3058, empty 0 above, 2 below, 1 left, 0 right). Until then the padded one kept its own room, and showed its
+    // board lower and smaller.
+    // ###########################################################################################
     [Theory]
     [InlineData(1400, 850)]
     [InlineData(990, 750)]
-    public void The_owners_padded_image_gets_no_room_added(double width, double height)
+    public void The_owners_padded_and_cropped_images_show_their_board_in_the_same_place(double width, double height)
     {
-        Thickness frame = ImageFrameGeometry.Frame(new Size(width, height), new PixelSize(5080, 3604), new Thickness(89, 336, 73, 211), ImageFrameGeometry.Wanted);
+        var box = new Size(width, height);
+        Rect padded = BoardOnScreen(box, new PixelSize(5080, 3604), new Thickness(89, 336, 73, 211));
+        Rect cropped = BoardOnScreen(box, new PixelSize(4903, 3058), new Thickness(1, 0, 0, 2));
 
-        Assert.Equal(default, frame);
+        Assert.Equal(cropped.Left, padded.Left, precision: 3);
+        Assert.Equal(cropped.Top, padded.Top, precision: 3);
+        Assert.Equal(cropped.Width, padded.Width, tolerance: cropped.Width * 0.01);
+        Assert.Equal(cropped.Height, padded.Height, tolerance: cropped.Height * 0.01);
+
+        // Under both rows of badges, the room wanted at the sides, and wholly in the panel.
+        Assert.Equal(ImageFrameGeometry.TopRoom, padded.Top, precision: 3);
+        Assert.Equal(ImageFrameGeometry.SideRoom, padded.Left, precision: 3);
+        Assert.True(padded.Right <= width - ImageFrameGeometry.SideRoom + 0.001);
+        Assert.True(padded.Bottom <= height - ImageFrameGeometry.SideRoom + 0.001);
     }
 
-    // At the sides any room of its own is the image's choice, however little; above, the badges need their room whatever.
+    // ###########################################################################################
+    // The content of an image as drawn - what the first view's panning is judged by (code review, 2026-11-18): the owner's
+    // padded "PCB Top" reaches past the panel at the first view, while its board stands wholly inside it, so nothing is
+    // there to pan to.
+    // ###########################################################################################
     [Fact]
-    public void A_side_with_room_of_its_own_gets_none_added_but_the_top_is_topped_up()
+    public void A_padded_images_content_stands_inside_the_panel_though_the_image_reaches_past_it()
     {
-        Thickness frame = ImageFrameGeometry.Frame(new Size(1000, 800), new PixelSize(1000, 700), new Thickness(3, 3, 3, 3), ImageFrameGeometry.Wanted);
+        var box = new Size(990, 750);
+        var image = new PixelSize(5080, 3604);
+        var blank = new Thickness(89, 336, 73, 211);
 
-        Assert.Equal(0, frame.Left);
-        Assert.Equal(0, frame.Right);
-        Assert.Equal(0, frame.Bottom);
-        Assert.True(frame.Top > 40, $"{frame.Top} above");
+        Thickness frame = ImageFrameGeometry.Frame(box, image, blank, ImageFrameGeometry.Wanted);
+        Rect drawn = RectGeometry.GetImageContentRect(box, image, frame);
+        Rect content = ImageFrameGeometry.ContentWithin(drawn, image, blank);
+
+        Assert.True(drawn.Top < 0 || drawn.Height > box.Height || drawn.Width > box.Width - (2 * ImageFrameGeometry.SideRoom), $"{drawn} drawn");
+
+        Rect expected = BoardOnScreen(box, image, blank);
+        Assert.Equal(expected.Left, content.Left, precision: 3);
+        Assert.Equal(expected.Top, content.Top, precision: 3);
+        Assert.Equal(expected.Width, content.Width, precision: 3);
+        Assert.Equal(expected.Height, content.Height, precision: 3);
+        Assert.True(content.Width <= box.Width && content.Height <= box.Height, $"{content} in {box}");
     }
 
-    // "PCB Top CROPPED" as measured (4903 x 3058, empty 0 above, 2 below, 1 left, 0 right): the room wanted all round, less
-    // the pixel or two it has, so the board stands under the badges' 44 with 16 at the other sides.
+    // No border, or an image that is all border, is the image as drawn - as Frame fits it.
     [Fact]
-    public void The_owners_cropped_image_gets_the_room_all_round()
+    public void An_image_with_no_content_apart_from_its_border_is_its_whole_self()
     {
-        Thickness frame = ImageFrameGeometry.Frame(new Size(1400, 850), new PixelSize(4903, 3058), new Thickness(1, 0, 0, 2), ImageFrameGeometry.Wanted);
+        var drawn = new Rect(10, 20, 300, 200);
 
-        Assert.Equal(ImageFrameGeometry.TopRoom, frame.Top, precision: 3);
-        Assert.Equal(ImageFrameGeometry.SideRoom, frame.Right, precision: 3);
-        Assert.InRange(frame.Left, ImageFrameGeometry.SideRoom - 1, ImageFrameGeometry.SideRoom);
-        Assert.InRange(frame.Bottom, ImageFrameGeometry.SideRoom - 1, ImageFrameGeometry.SideRoom);
-
-        // And the image fitted inside it: wholly in the panel, its top below the badges.
-        Rect content = RectGeometry.GetImageContentRect(new Size(1400, 850), new PixelSize(4903, 3058), frame);
-        Assert.Equal(frame.Top, content.Top, precision: 3);
-        Assert.Equal(frame.Left, content.Left, precision: 3);
-        Assert.True(content.Bottom <= 850 - frame.Bottom + 0.001);
-        Assert.True(content.Right <= 1400 - frame.Right + 0.001);
+        Assert.Equal(drawn, ImageFrameGeometry.ContentWithin(drawn, new PixelSize(300, 200), default));
+        Assert.Equal(drawn, ImageFrameGeometry.ContentWithin(drawn, new PixelSize(100, 100), new Thickness(50, 50, 50, 50)));
+        Assert.Equal(drawn, ImageFrameGeometry.ContentWithin(drawn, new PixelSize(0, 0), new Thickness(5)));
     }
 
-    // Room of its own short of what is wanted is topped up, no more - at the scale the image is drawn at once the room is in.
+    // The room above clears the second row of badges - a component or pin pointed at - 44 down and 26 high, with room to spare
+    // (owner request, 2026-11-17: "displayed below both rows of badges + with a little margin, so it does not look cramped").
     [Fact]
-    public void Room_of_its_own_short_of_what_is_wanted_is_topped_up()
+    public void The_room_above_clears_both_rows_of_badges()
     {
-        // 1000 x 500 in 1000 x 600: drawn about 0.97 - 20 empty rows above give ~19, so ~25 is added.
-        Thickness frame = ImageFrameGeometry.Frame(new Size(1000, 600), new PixelSize(1000, 500), new Thickness(0, 20, 0, 0), ImageFrameGeometry.Wanted);
-        Rect content = RectGeometry.GetImageContentRect(new Size(1000, 600), new PixelSize(1000, 500), frame);
-        double scale = content.Width / 1000;
+        Assert.True(ImageFrameGeometry.TopRoom >= 44 + 26 + 8, $"{ImageFrameGeometry.TopRoom} above");
+    }
 
-        Assert.Equal(ImageFrameGeometry.TopRoom, frame.Top + (scale * 20), precision: 2);
+    // An image's own border wider than the room wanted reaches past it - less than nothing added - and the image fitted inside
+    // that room is exactly its board in the room wanted.
+    [Fact]
+    public void A_border_wider_than_the_room_wanted_reaches_past_it()
+    {
+        var box = new Size(1000, 800);
+        var image = new PixelSize(1000, 700);
+        var blank = new Thickness(100, 150, 100, 50);
+
+        Thickness frame = ImageFrameGeometry.Frame(box, image, blank, ImageFrameGeometry.Wanted);
+
+        Assert.True(frame.Left < 0 && frame.Top < 0, $"{frame} round it");
+
+        Rect board = BoardOnScreen(box, image, blank);
+        Assert.Equal(ImageFrameGeometry.SideRoom, board.Left, precision: 3);
+        Assert.Equal(ImageFrameGeometry.TopRoom, board.Top, precision: 3);
+
+        // Its board is fitted as large as the room allows: as wide as it, or as tall.
+        double roomWidth = 1000 - (2 * ImageFrameGeometry.SideRoom);
+        double roomHeight = 800 - ImageFrameGeometry.TopRoom - ImageFrameGeometry.SideRoom;
+        Assert.True(Math.Abs(board.Width - roomWidth) < 0.01 || Math.Abs(board.Height - roomHeight) < 0.01, $"{board} in the room");
+    }
+
+    // An image with no border of its own gets the room wanted all round, as before.
+    [Fact]
+    public void An_image_cut_to_its_board_gets_the_room_wanted()
+    {
+        Thickness frame = ImageFrameGeometry.Frame(new Size(1400, 850), new PixelSize(4903, 3058), default, ImageFrameGeometry.Wanted);
+
+        Assert.Equal(ImageFrameGeometry.Wanted, frame);
+    }
+
+    // An image that is all border, as far as can be told, is fitted whole.
+    [Fact]
+    public void An_image_that_is_all_border_is_fitted_whole()
+    {
+        Thickness frame = ImageFrameGeometry.Frame(new Size(1000, 800), new PixelSize(100, 100), new Thickness(50, 50, 50, 50), ImageFrameGeometry.Wanted);
+
+        Assert.Equal(ImageFrameGeometry.Wanted, frame);
     }
 
     [Fact]
@@ -203,6 +273,33 @@ public sealed class ImageFrameGeometryTests
         {
             File.Delete(file);
         }
+    }
+
+    // ###########################################################################################
+    // A grayscale THUMBNAIL standing in for its picture (code review, 2026-11-18): it has no file of its own, so it is read
+    // encoded, from memory - measured as no border, the stand-in stood elsewhere than the picture once it came.
+    // ###########################################################################################
+    [Theory]
+    [InlineData(SkiaSharp.SKColorType.Gray8)]
+    [InlineData(SkiaSharp.SKColorType.Rgba8888)]
+    public void An_encoded_thumbnails_own_border_is_measured(SkiaSharp.SKColorType stored)
+    {
+        using var gray = new SkiaSharp.SKBitmap(new SkiaSharp.SKImageInfo(60, 40, stored, SkiaSharp.SKAlphaType.Opaque));
+        gray.Erase(SkiaSharp.SKColors.White);
+
+        for (int y = 6; y < 40 - 3; y++)
+        {
+            for (int x = 4; x < 60 - 10; x++)
+            {
+                gray.SetPixel(x, y, x == 4 || y == 6 ? SkiaSharp.SKColors.Black : SkiaSharp.SKColors.Gray);
+            }
+        }
+
+        using SkiaSharp.SKData png = gray.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100);
+        using var encoded = new MemoryStream(png.ToArray());
+
+        Assert.Equal(new Thickness(4, 6, 10, 3), ImageFrameGeometry.BlankBorderOfEncoded(encoded));
+        Assert.Equal(default, ImageFrameGeometry.BlankBorderOfEncoded(new MemoryStream([1, 2, 3])));
     }
 
     // ###########################################################################################

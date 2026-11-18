@@ -54,10 +54,21 @@ namespace Handlers.DataHandling
 
             for (int pin = 1; pin <= pinCount; pin++)
             {
-                kinds[pin] = PinDirectionKinds.Of(said.TryGetValue(pin, out string? direction) ? direction : chip?.DirectionOf(pin));
+                kinds[pin] = PinDirectionKinds.Of(PinDirectionKinds.WordOf(said.GetValueOrDefault(pin), pin, chip));
             }
 
             return kinds;
         }
+
+        // ###########################################################################################
+        // THE ONE RULE for the direction a pin is drawn in, in the pin list's words: what its row says (`listed`), else the
+        // datasheet's of `chip` for one of its pins 1 to its last - a datasheet's pin 0 is the wires inside a unit - else ""
+        // for none. The pinout's drawing (ByPin) and the "Schematics" tab's numbered pins and "Direction" badge
+        // (ComponentPinDirections) both ask it, so they color a pin alike (code review, 2026-11-18: written twice).
+        // ###########################################################################################
+        public static string WordOf(string? listed, int? number, LogicChip? chip) =>
+            !string.IsNullOrWhiteSpace(listed) ? listed.Trim()
+            : number is int pin && chip is not null && pin >= 1 && pin <= chip.PinCount ? chip.DirectionOf(pin)
+            : string.Empty;
     }
 }

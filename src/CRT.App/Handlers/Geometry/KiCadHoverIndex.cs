@@ -106,6 +106,7 @@ namespace Handlers.Geometry
                 {
                     Net = pad.Net,
                     PadNumber = pad.Number?.Trim() ?? string.Empty,
+                    Reference = footprint.Reference?.Trim() ?? string.Empty,
                     CenterWorld = new Point(pad.AbsoluteCenter.X, pad.AbsoluteCenter.Y),
                     HitRadiusWorld = hitRadiusWorld
                 });

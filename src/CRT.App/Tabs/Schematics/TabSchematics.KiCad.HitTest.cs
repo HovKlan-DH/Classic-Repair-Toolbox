@@ -35,6 +35,9 @@ public partial class TabSchematics
 
     private string? thisHoveredKiCadPadNumber;
 
+    // The component whose pad that is - the pin's direction is its (RefreshKiCadHoverPadUi). Read only while a pad is.
+    private string? thisHoveredKiCadPadReference;
+
     private bool thisIsInteractiveCadTraceHoverShiftPressed;
 
     private readonly object thisKiCadPcbHoverHitTestCacheSync = new();
@@ -304,6 +307,7 @@ public partial class TabSchematics
         double closestPadDist = double.MaxValue;
         KiCadNetRef? bestPadNet = null;
         string? bestPadNumber = null;
+        string? bestPadReference = null;
 
         for (int cellY = minCellY; cellY <= maxCellY; cellY++)
         {
@@ -334,6 +338,7 @@ public partial class TabSchematics
                         closestPadDist = dist;
                         bestPadNet = candidate.Net;
                         bestPadNumber = candidate.PadNumber;
+                        bestPadReference = candidate.Reference;
                     }
                 }
             }
@@ -344,6 +349,7 @@ public partial class TabSchematics
             string? foundPadNet = bestPadNet.NormalizedName?.Trim();
             this.SetHoveredKiCadNet(string.IsNullOrWhiteSpace(foundPadNet) ? null : foundPadNet);
             this.thisHoveredKiCadPadNumber = bestPadNumber?.Trim();
+            this.thisHoveredKiCadPadReference = bestPadReference?.Trim();
             return;
         }
 
@@ -476,39 +482,105 @@ public partial class TabSchematics
         this.thisIsInteractiveCadTraceHoverShiftPressed = isShiftPressed;
         this.RefreshKiCadHoverPadUi();
 
+        // The pins numbered while SHIFT is held (TabSchematics.PinsOnImage.cs) - in calibration too, where it clears them.
+        // Only when they are numbered with SHIFT at all: SHIFT reaches this tab from anywhere in CRT's window - a capital
+        // letter typed, a range picked in a list - and changes no pin otherwise (code review, 2026-11-18).
+        if (UserSettings.SchematicsNumberPinsHoldingShift)
+        {
+            this.RefreshPinsOnImage();
+        }
+
         // ###########################################################################################
         // Not while aligning (2026-11-06): nothing is hovered then (UpdateSchematicsHoverUi lets go of
         // the hovered net, pad and component), so Shift changes nothing drawn - and Shift is how the
         // alignment's box is widened by a key. Every Shift pressed and let go of rebuilt the whole
         // overlay at the box's new place, the very rebuild the keys no longer make. Ending the
         // alignment rebuilds it anyway.
+        //
+        // And only where SHIFT is what highlights the traces ("HoldShift", IsBoardHoverHighlightsTracesEnabled): in any other
+        // mode the overlay draws the same with it or without, and every SHIFT pressed anywhere in CRT's window - it reaches
+        // this tab from wherever the keyboard is - rebuilt it twice (code review, 2026-11-18).
         // ###########################################################################################
-        if (!this.thisIsKiCadTraceCalibrationMode)
+        if (!this.thisIsKiCadTraceCalibrationMode &&
+            string.Equals(UserSettings.InteractiveCadTraceHoverMode, "HoldShift", StringComparison.Ordinal))
         {
             this.RefreshKiCadOverlay();
         }
     }
 
     // ###########################################################################################
-    // Refreshes the transient KiCad pad hover label based on the active hover mode.
+    // The pin under the pointer, by the active hover mode: a badge for its number, one for its net and one for its direction
+    // (owner request, 2026-11-17: "split this in to 3 different badges" - "Pin 20 | ~{CHAROM}" in one until then) - the
+    // direction its pinout gives it (ComponentPinDirections), the net and the direction only when there is one.
     // ###########################################################################################
     private void RefreshKiCadHoverPadUi()
     {
         string hoveredPadNumber = this.GetActiveHoveredKiCadPadNumber()?.Trim() ?? string.Empty;
         string hoveredNetName = this.GetActiveHoveredKiCadNetName()?.Trim() ?? string.Empty;
 
-        if (!string.IsNullOrWhiteSpace(hoveredPadNumber))
+        this.ShowHoverPinBadges(hoveredPadNumber, hoveredNetName, this.thisHoveredKiCadPadReference);
+    }
+
+    private void ShowHoverPinBadges(string pad, string net, string? reference)
+    {
+        if (string.IsNullOrWhiteSpace(pad))
         {
-            this.SchematicsHoverPadText.Text = string.IsNullOrWhiteSpace(hoveredNetName)
-                ? hoveredPadNumber
-                : $"{hoveredPadNumber} | {hoveredNetName}";
-            this.SchematicsHoverPadBorder.IsVisible = true;
+            this.HideHoverPinBadges();
+            return;
         }
-        else
+
+        string direction = this.PinDirectionsOf(reference).WordOf(pad);
+
+        this.SchematicsHoverPadText.Text = pad;
+        this.SchematicsHoverNetText.Text = net;
+        this.SchematicsHoverNetBorder.IsVisible = net.Length > 0;
+        this.SchematicsHoverDirectionText.Text = direction;
+        this.SchematicsHoverDirectionBorder.IsVisible = direction.Length > 0;
+        this.SchematicsHoverPinBadges.IsVisible = true;
+    }
+
+    // The badges of a pad as the pointer finds one - for a test, which loads no KiCad project.
+    internal void ShowHoverPinBadgesForTests(string pad, string net, string reference) => this.ShowHoverPinBadges(pad, net, reference);
+
+    // The pin under the pointer's badges, gone.
+    private void HideHoverPinBadges()
+    {
+        this.SchematicsHoverPinBadges.IsVisible = false;
+        this.SchematicsHoverPadText.Text = string.Empty;
+        this.SchematicsHoverNetText.Text = string.Empty;
+        this.SchematicsHoverDirectionText.Text = string.Empty;
+    }
+
+    // ###########################################################################################
+    // A component's pin directions on the board shown, in the region shown - KEPT per component while the board and region
+    // are the same, as the pointer asks again at every move over its pins and the pins numbered with SHIFT held ask for
+    // every component selected at every refresh (code review, 2026-11-18: forty chips selected went through the board's pins
+    // forty times a refresh). A board is never changed once handed over (CLAUDE.md, "NOTHING CHANGES A BoardData"), so
+    // another board is another object, and what is kept goes with it.
+    // ###########################################################################################
+    private (BoardData? Board, string Region, Dictionary<string, ComponentPinDirections> ByLabel)? thisPinDirectionsKept;
+
+    private ComponentPinDirections PinDirectionsOf(string? label)
+    {
+        BoardData? board = this.CurrentBoardDataForLabelEditor;
+        string region = this.MainWindow?.LocalRegion ?? string.Empty;
+        string wanted = label?.Trim() ?? string.Empty;
+
+        if (this.thisPinDirectionsKept is not { } kept ||
+            !ReferenceEquals(kept.Board, board) ||
+            !string.Equals(kept.Region, region, StringComparison.Ordinal))
         {
-            this.SchematicsHoverPadBorder.IsVisible = false;
-            this.SchematicsHoverPadText.Text = string.Empty;
+            kept = (board, region, new Dictionary<string, ComponentPinDirections>(StringComparer.OrdinalIgnoreCase));
+            this.thisPinDirectionsKept = kept;
         }
+
+        if (!kept.ByLabel.TryGetValue(wanted, out ComponentPinDirections? directions))
+        {
+            directions = ComponentPinDirections.For(board, wanted, region);
+            kept.ByLabel[wanted] = directions;
+        }
+
+        return directions;
     }
 
     // ###########################################################################################
@@ -532,7 +604,6 @@ public partial class TabSchematics
     // ###########################################################################################
     private void UpdateInteractiveCadTraceHoverModeUi()
     {
-        bool hasBoard = !string.IsNullOrWhiteSpace(this.MainWindow?.GetCurrentBoardKey());
         bool hasKiCadTraces = this.HasCurrentSchematicKiCadTraces();
         bool hasKiCadPcbPadData = this.HasCurrentSchematicKiCadPcbPadData();
         bool isHoverHighlightEnabled = this.CheckGlobalHoverHighlightsTraces.IsChecked == true;
@@ -548,8 +619,8 @@ public partial class TabSchematics
             hasKiCadTraces &&
             this.thisIsKiCadTraceCalibrationMode;
 
-        this.BoardMarkPin1OnSelectedComponentRow.IsVisible = hasBoard && hasKiCadPcbPadData;
-        this.CheckBoardMarkPin1OnSelectedComponent.IsEnabled = hasBoard && hasKiCadPcbPadData;
+        // The pins numbered and their directions (TabSchematics.PinsOnImage.cs).
+        this.UpdatePinsOnImageRows(hasKiCadPcbPadData);
 
         this.GlobalHoverHighlightsTracesRow.IsVisible = hasKiCadTraces;
         this.CheckGlobalHoverHighlightsTraces.IsEnabled = hasKiCadTraces;

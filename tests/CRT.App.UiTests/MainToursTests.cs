@@ -227,9 +227,10 @@ public sealed class MainToursTests : IDisposable
 
             ToFirstStep(main);
 
-            // Every step but the trace step - this board has no KiCad data, so its badge is not there - and, the first
-            // introduction taken, the card on the other tabs.
-            Assert.Equal(TourCatalogue.Of(TourTab.Schematics).Steps.Count(step => !step.Targets.Contains("TabSchematicsControl/KiCadDataBadge")) + 1, StepCount(main));
+            // Every step but those about KiCad data - this board has none, so the trace step's badge, "Global settings" and
+            // "Important KiCad signals" are not there - and, the first introduction taken, the card on the other tabs.
+            string[] kiCadOnly = ["TabSchematicsControl/KiCadDataBadge", "TabSchematicsControl/GlobalSettingsPanel", "TabSchematicsControl/ImportantSignalsPanel"];
+            Assert.Equal(TourCatalogue.Of(TourTab.Schematics).Steps.Count(step => !step.Targets.Any(kiCadOnly.Contains)) + 1, StepCount(main));
 
             // The first step frames the component lists and the filter box under them.
             Rect hole = Assert.NotNull(overlay.HoleShown);
@@ -248,9 +249,10 @@ public sealed class MainToursTests : IDisposable
     }
 
     // ###########################################################################################
-    // *** THE PANELS' STEP SHOWS THEM EXPANDED, AND PUTS THEM BACK (owner request, 2026-11-11: "add an addition step ...
-    // to show the 3 panels. Please show them expanded"). *** "Labels visible" folded away by its owner opens for the step,
-    // framed whole, and folds again as the step is left - by "Next", and by "Skip tour" - its stored setting never written.
+    // *** THE PANELS' STEPS SHOW THEM EXPANDED, AND PUT THEM BACK (owner request, 2026-11-11: "add an addition step ...
+    // to show the 3 panels. Please show them expanded" - a step each since 2026-11-17). *** "Labels visible" folded away by
+    // its owner opens for its step, framed whole, and folds again as the step is left - by "Next", and by "Skip tour" - its
+    // stored setting never written.
     // ###########################################################################################
     [Theory]
     [InlineData(false)]
@@ -266,7 +268,9 @@ public sealed class MainToursTests : IDisposable
 
             Assert.True(Offered(main), main.TourWaitReasonForTests());
             TourOverlay overlay = Overlay(main);
-            ToStep(main, TourCatalogue.Of(TourTab.Schematics).Steps.Single(step => step.Stage == TourStage.SchematicsPanelsExpanded));
+            TourStep labelsStep = TourCatalogue.Of(TourTab.Schematics).Steps.Single(step => step.Targets.Contains("TabSchematicsControl/LabelsPanel"));
+            Assert.Equal(TourStage.SchematicsPanelsExpanded, labelsStep.Stage);
+            ToStep(main, labelsStep);
             Assert.True(labels.IsVisible);
             Assert.Equal("Collapse", main.TabSchematicsControl.GetControl<Button>("ToggleLabelsPanelButton").Content);
 
@@ -294,8 +298,9 @@ public sealed class MainToursTests : IDisposable
     // ###########################################################################################
     // *** A STEP SAYS NOTHING OF WHAT IS NOT ON SCREEN (owner question, 2026-11-11: "Will this step always show the
     // current board selected, as that may not include the regions buttons? Then what? Same for step 4"). *** This board
-    // has no regions and no KiCad data: the buttons' step names no "PAL", the panels' step no "Global settings" and no
-    // "Important KiCad signals" - and both say the rest.
+    // has no regions and no KiCad data: the buttons' step names no "PAL" and says the rest, and of the panels' steps -
+    // a step each since 2026-11-17 - only "Labels visible"'s is shown: "Global settings" and "Important KiCad signals" are
+    // not on screen.
     // ###########################################################################################
     [Fact]
     public async Task A_step_says_nothing_of_a_control_the_board_does_not_show()
@@ -311,13 +316,17 @@ public sealed class MainToursTests : IDisposable
             Assert.Contains("Mark all", BoldRuns.TextOf(body), StringComparison.Ordinal);
             Assert.DoesNotContain("PAL", BoldRuns.TextOf(body), StringComparison.Ordinal);
 
-            ToStep(main, steps.Single(step => step.Stage == TourStage.SchematicsPanelsExpanded));
+            var headlines = new List<string?>();
 
-            Assert.Contains("Labels visible", BoldRuns.TextOf(body), StringComparison.Ordinal);
-            Assert.DoesNotContain("Global settings", BoldRuns.TextOf(body), StringComparison.Ordinal);
-            Assert.DoesNotContain("Important KiCad signals", BoldRuns.TextOf(body), StringComparison.Ordinal);
+            while (overlay.IsShowing)
+            {
+                headlines.Add(overlay.GetControl<TextBlock>("HeadlineText").Text);
+                overlay.Next();
+            }
 
-            overlay.Skip();
+            Assert.Contains(steps.Single(step => step.Targets.Contains("TabSchematicsControl/LabelsPanel")).Headline, headlines);
+            Assert.DoesNotContain(steps.Single(step => step.Targets.Contains("TabSchematicsControl/GlobalSettingsPanel")).Headline, headlines);
+            Assert.DoesNotContain(steps.Single(step => step.Targets.Contains("TabSchematicsControl/ImportantSignalsPanel")).Headline, headlines);
             return Task.CompletedTask;
         });
     }
@@ -344,7 +353,9 @@ public sealed class MainToursTests : IDisposable
             IReadOnlyList<string> leftOut = UserSettings.IntroductionTourStepsLeftOut("Schematics");
             Assert.Contains("Below the component list", leftOut);
             Assert.Contains("Highlight a trace", leftOut);
-            Assert.Contains("Panels on the schematic image", leftOut);
+            Assert.Contains("The Global settings panel", leftOut);
+            Assert.Contains("The Important KiCad signals panel", leftOut);
+            Assert.DoesNotContain("The Labels visible panel", leftOut);
             Assert.DoesNotContain("Find a component", leftOut);
 
             Assert.False(main.OfferTourNow());

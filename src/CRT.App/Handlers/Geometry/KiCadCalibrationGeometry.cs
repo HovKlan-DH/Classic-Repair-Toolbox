@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Input;
 using System;
 
@@ -120,43 +121,60 @@ namespace Handlers.Geometry
         // Deliberately unaware of mirroring: it works in NORMALISED (ascending) edges and comes
         // back out through WithNormalisedEdges, the same pattern every other edge-arithmetic
         // method here uses, so a mirrored box's flip survives the inset untouched.
+        //
+        // In from the image's CONTENT, its own empty border (`blank`, ImageFrameGeometry.BlankBorder)
+        // left out (code review, 2026-11-18): a padded image reaches past the panel at the first view
+        // since 2026-11-17, its border where nothing is to be seen, so a box at its own edges started
+        // with its handles off the screen. The content is where the board is - the box the user drags
+        // to it anyway. An image that is all border, as far as can be told, is taken whole.
         // ###################################################################################
         public static KiCadCalibrationBox InsetForInitialVisibility(
             KiCadCalibrationBox box,
             double imageWidth,
-            double imageHeight)
+            double imageHeight,
+            Thickness blank = default)
         {
             if (imageWidth <= 0.0 || imageHeight <= 0.0)
             {
                 return box;
             }
 
+            if (imageWidth - blank.Left - blank.Right <= 0.0 || imageHeight - blank.Top - blank.Bottom <= 0.0)
+            {
+                blank = default;
+            }
+
             double marginX = imageWidth * MinimumEdgeMarginFraction;
             double marginY = imageHeight * MinimumEdgeMarginFraction;
+
+            double leftmost = blank.Left + marginX;
+            double topmost = blank.Top + marginY;
+            double rightmost = imageWidth - blank.Right - marginX;
+            double bottommost = imageHeight - blank.Bottom - marginY;
 
             double left = box.NormalisedLeft;
             double top = box.NormalisedTop;
             double right = box.NormalisedRight;
             double bottom = box.NormalisedBottom;
 
-            if (left <= marginX)
+            if (left <= leftmost)
             {
-                left = marginX;
+                left = leftmost;
             }
 
-            if (top <= marginY)
+            if (top <= topmost)
             {
-                top = marginY;
+                top = topmost;
             }
 
-            if (right >= imageWidth - marginX)
+            if (right >= rightmost)
             {
-                right = imageWidth - marginX;
+                right = rightmost;
             }
 
-            if (bottom >= imageHeight - marginY)
+            if (bottom >= bottommost)
             {
-                bottom = imageHeight - marginY;
+                bottom = bottommost;
             }
 
             // A degenerate result (an image too small for both margins to fit) falls back to the

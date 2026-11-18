@@ -123,7 +123,10 @@ public class WorklogEntryModeTests
         string markup = ReadMainWindowMarkup();
 
         int hintZ = ReadZIndex(markup, "ModeHintBorder");
-        int syncZ = ReadZIndex(markup, "DataSyncStatusIconBorder");
+
+        // The icon stands in the top right corner's row, beside the theme's sun and moon (2026-11-17) - the row is what is
+        // drawn above or below.
+        int syncZ = ReadZIndex(markup, "TopRightTools");
 
         Assert.True(hintZ > syncZ, $"the hint at ZIndex {hintZ} does not draw above the sync icon at {syncZ}");
     }

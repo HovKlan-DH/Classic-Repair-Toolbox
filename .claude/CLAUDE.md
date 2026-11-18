@@ -400,7 +400,7 @@ Avalonia's headless platform - no display, so they run on CI. `TestAppBuilder.cs
   `--logger trx` to confirm. **Its condition: no test may mutate the shared `Application`** - no
   `RequestedThemeVariant` assignment, no `Styles.Add`; read theme resources with an explicit variant.
   `UiTest.Run` fails a body that changes the theme; a control that applies a theme takes a seam
-  (`TabConfiguration.ApplyThemeOverrideForTests`).
+  (`Main.ApplyThemeOverrideForTests`).
 - **Do NOT add `Avalonia.Headless.XUnit`** to get `[AvaloniaFact]` - its adapter is built against an
   older xunit v3 extensibility API, untried against the 4.x this suite runs. `UiTest` drives the same
   session API directly.
@@ -504,10 +504,19 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
   the pointer" style names `.Accept` in its selector. **Machine-checked:** `ButtonColourTests` (markup);
   a button labelled in code carries the class and its own test checks it. (The red is a shade deeper than
   IndianRed itself since 2026-11-12, `#BC5454`, and the green `#497F54` - below.)
-- **EVERY THEME COLOR READS ON ITS GROUND, IN ALL THREE THEMES** (owner request, 2026-11-12: "check all colors
+- **TWO THEMES, LIGHT AND DARK** (owner request, 2026-11-17: "I want to remove the "User preference" option, and only
+  support light and dark themes" - its colors, typed into the settings file, went with it: `userThemeColors` and
+  `userThemeDefaultsRevision` are taken out of a file still holding them as it loads, `UserSettings.HoldsRetiredSettings`;
+  a stored "UserPreference" reads as "Light"). **Picked ONLY by the icon in the window's top right corner**, right of the
+  data check's icon, from any tab (`Main.ThemeToggle.cs`): drawn as that icon is and as large, 22 x 22, the moon in the light
+  theme and the sun in the dark - what a click switches to, its tooltip saying so - in a color of each theme's own
+  (`Main_ThemeIcon_Fg`) (owner requests, 2026-11-17: "same size as the "update data" icon", then of a joined sun | moon
+  switch, "I am not satisfied how it looks. Can you try something else"). The "Configuration" tab's "Appearance" and its
+  drop-down went the same day (owner request: "you can entirely remove the "Appearance" with the theme"). A test sets
+  `Main.ApplyThemeOverrideForTests`.
+- **EVERY THEME COLOR READS ON ITS GROUND, IN BOTH THEMES** (owner request, 2026-11-12: "check all colors
   and make sure they have a nice discrete complementary color in a nice visible contrast ratio"): text at WCAG's
-  4.5:1, an input's edge or a mark at 3:1, in "Light", "Dark" and "User preference" (the light theme with
-  `UserSettings.UserThemeDefaultColors` over it, its ground a tinted `#E0E4D9`). **`ThemeContrastTests` lists every
+  4.5:1, an input's edge or a mark at 3:1, in "Light" and "Dark". **`ThemeContrastTests` lists every
   pair** - a new text color, or one drawn on a new ground, gets its pair there. **A color set in CODE that the theme
   should decide is `ThemeResources.Paint`** (bound, so it follows a theme switch; **let go of with `ThemeResources.Unpaint`,
   never `ClearValue` or an assignment** - in Avalonia 12.1.4 neither ends the binding, and the next theme switch painted it
@@ -519,9 +528,7 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
   Fluent's look REPLACED the fill - a green button went grey with black words), a Transparent one keeps Fluent's faint
   wash, a toggle and a drop-down button look as a button does (`ButtonStatesTests`). Every input - TextBox, the filter
   and number boxes, `RichNoteTextBox` - has `Form_Bg`, `Form_Fg` and `Form_Border`; every window the `Bg` ground. The
-  light theme's accent is CRT's `#2A78D6`, never the one Windows is set to. **A "User preference" default that moves
-  goes in `UserSettings.UserThemeEarlierDefaults`**, so a stored color still at the old default follows it and one the
-  user picked stays.
+  light theme's accent is CRT's `#2A78D6`, never the one Windows is set to.
 - **Everything only the administrator can use carries Font Awesome's padlock** (owner rule,
   2026-10-04): `<TextBlock Classes="AdminLock" Text="&#xf023;" />` right after its name, NO tooltip,
   and the entry hidden from everybody else. Today that is the Maintainer tab's "Management" screen, whose
@@ -643,7 +650,7 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
   (`Since`; `TourCatalogueTests`), CRT remembers per tab the newest version seen (`UserSettings.IntroductionToursSeen`),
   and somebody who saw an older one gets "Tour of what's new" - every step newer than it, of EVERY version skipped, in the
   tab's order (`TourPlan`). So: a feature worth showing gets a step with the version it ships in (`InIntroduction: false`
-  when it is for those who update only - a first look stays at most seven steps of its own, `TourCatalogueTests` - the first introduction taken ends on one card
+  when it is for those who update only - a first look stays at most seven steps of its own, `TourCatalogueTests` - the "Schematics" tour nine since 2026-11-17, a step per panel (owner request: "each of the 3 panels ... individually mentioned in the standard introduction") - the first introduction taken ends on one card
   more, on the other tabs, which is no step of the tab); a step about something that CHANGED gets
   the new version, so it counts as new again; a step about something gone goes. A step names its controls by x:Name
   ("Tab/Name" inside a tab) - `MainToursTests` fails on a name the window no longer has; one not on screen as the tour
@@ -1357,11 +1364,29 @@ there, and `await` on a finished task looped for ever on the UI thread. A tool f
   meaning that IC's where it has no data (like e.g. the CPU or VIC-II etc) will look like the new ones ... so we can get the same directions
   applied to it"; `LogicChipGeometry.EmptyCaseFor`): its pins colored the same way, its body a real one's proportion - three pitches (300 mil),
   six (600 mil) for a package named "wide" or of 24 pins or more; only a single row (SIP, TO-92, TO-220) keeps `PinoutGeometry`'s plain case.
+  **A SURFACE-MOUNTED CHIP TOO, AND A SQUARE ONE WITH PINS ON FOUR SIDES** (owner requests, 2026-11-18: "Drawing square packages ... there
+  might come new hardware soon - e.g. Amiga 500 or Amiga 1000", "It has a lot of SMD components"; every case CRT.Data's
+  `ComponentVocabulary.ChipCaseOf`, THE ONE RULE): a SOIC, SO, SOP, SSOP, TSSOP, TSOP or SOJ is numbered as a DIP and drawn in its case, and
+  a chip's datasheet fits it (`ChipNames.PackageFits` compares the case, layout and count - a 74HC08 in a SOIC-14 is drawn with its gates);
+  a PLCC (an ODD number of pins a side - the rectangular PLCC-32 is none) or a QFP (LQFP, TQFP, PQFP; the plain name only - "QFP-100
+  14x20mm" is rectangular, none) is the square case of `QuadCaseGeometry`: the pins counter-clockwise from pin 1 - a QFP's at the top of the
+  left side, a PLCC's in the MIDDLE of the top - the top left corner cut, the dot by pin 1, the names over and under the case written upright
+  reading from the bottom up (`PinoutDrawing.RenderPins`), three-digit numbers on wider squares, the legend under everything
+  (`PinoutLayout.IsQuad`, `PinSide.Top`). The KiCad import names them from KiCad's footprint names ("SOIC-14_...", "PLCC-84_...", a square
+  "LQFP-64_10x10mm_...") when the pads agree. No SOT-23, QFN, BGA or SMD passive is drawn yet - **and the A500 and A1000 have no
+  surface-mounted part at all** (investigated 2026-11-18: every A500 revision to the 8A and the A1000 are through-hole; the Fat Agnus is a
+  PLCC-84 in a socket; the A600 and A1200 are the SMD ones). **A CRYSTAL OSCILLATOR'S METAL CAN** (owner request, 2026-11-18: "investigate
+  what kind of components an Amiga 500 and Amiga 1000 have, and then support those" - the A500's X1, the A1000's OSC1;
+  `ComponentVocabulary.OscillatorOf`): "Oscillator DIP-14" with pins 1, 7, 8, 14, "Oscillator DIP-8" with 1, 4, 5, 8 - no chip's case, so no
+  count and no "Add the N pins" - drawn as that DIP's places with only those four (`LogicChipGeometry.CanFor`, `PinoutLayout.IsCan`), its
+  body a real can's proportion, round but at pin 1's square corner, its rim pressed round the top; `pin.outside_package` refuses a pin of
+  no corner, naming the four. The KiCad import reads KiCad's "Oscillator_DIP-14" on exactly those pads - the Open128's 16 MHz Y1, so the
+  conversion gives it on both C128 boards (`DataTreeConversionShippedDataTests`). The legend names the directions of the pins DRAWN alone.
   **All of it discreet** ("I do think this is 'too much color'"): per direction and theme a muted
   ink for its square's edge, a pale (dark, on the dark theme) tint for the square and a number on it, and its wires' own color
   (`PinoutChip_<Kind>`, `_Bg`, `_Fg`, `_Wire`; `PinDirectionColors`; in `ThemeContrastTests`) - **the color only in the squares and badges: every
   number near-black (white on the dark theme) and every wire one quiet grey** (the owner's pick of seven variations drawn from the 250407's U8 and
-  U27: "A for the pin-background colors + D for the pin text color + E for the grey wires"), and under it a legend, "Pin direction:", of those drawn -
+  U27: "A for the pin-background colors + D for the pin text color + E for the grey wires"), and under it a legend, "Pin direction:", of those drawn, one a line in a column beside it (owner request, 2026-11-17) -
   **not what the chip is** ("the name is already given elsewhere (e.g. in header line)"; the catalogue keeps no description since). The pin
   lit has no ring round its square, only the strip behind it; the numbers are not bold (owner requests, the same day). **NOTHING IS WRITTEN AT THE PINS INSIDE THE CASE** ("I do not think
   this text inside the IC is needed (e.g. "GND" and "VCC") as there will always be a text for the pin itself"): no stub and no name at the supply
@@ -2773,10 +2798,14 @@ quick card). **Find the right partial here before grepping** (the map is repeate
 
 **ROOM ROUND THE IMAGE, SO ITS BADGES COVER NONE OF IT** (owner request, 2026-11-13: "fully visible and not so close to the top
 that its info badges blocks something ... the cropped one ... with some padding to its borders ... the "original" one is displayed
-as-is today"; every rule `ImageFrameGeometry`): the first view, and the furthest it zooms out, leave 44 above and 16 at the other
-sides - above topped up to that, at a side only where the image has no empty border of its own (`BlankBorder`, its rows and columns
-of one color from edge to edge, read off its pixels as it is decoded - `BlankBorderOf`; the owner's own padded images draw as they
-always did). **The image stands inside that frame in a layer as large as the overlays** (`SchematicsImageHost` carries the view's
+as-is today"; every rule `ImageFrameGeometry`): the first view, and the furthest it zooms out, leave 80 above - under BOTH rows of
+badges, the second a component or pin pointed at adds (owner request, 2026-11-17; 44, under the first row alone, until then) - and
+16 at the other sides. **What is fitted there is the image's CONTENT, its own empty border left out** (`BlankBorder`, its rows and
+columns of one color from edge to edge, read off its pixels as it is decoded - `BlankBorderOf`; a stand-in thumbnail's too), **so a
+cropped and a padded image show their board in the same place** (owner request, 2026-11-17: "no matter if I have inserted empty
+spacing or not, then the actual PCB should be displayed same place" - the owner's padded "PCB Top" kept its own room, and showed its
+board lower and smaller than "PCB Top CROPPED", from 2026-11-13 until then): the room is less than nothing where the border is wider,
+the image reaching past it, or the panel's edge. **The image stands inside that frame in a layer as large as the overlays** (`SchematicsImageHost` carries the view's
 matrix, the image its Margin), **and EVERY content rect takes the same frame**: the tab's `GetImageContentRect`, and each overlay's
 `RectGeometry.GetImageContentRect(size, pixels, ContentFrame)` - a new overlay drawing on the image takes `ContentFrame` too, set in
 `ApplyImageFrame`, or it draws beside the image. The frame is rounded to the screen's pixels as layout rounds a Margin. The headless
@@ -2794,6 +2823,7 @@ platform keeps no pixels, so a test hands the border over (`ShowImageForTests`).
 | `TabSchematics.Worklog.cs` / `.Worklog.TestSeams.cs` | Worklog overlay, area drawing and moving |
 | `TabSchematics.KiCad*.cs` | KiCad load, panels, rendering, render cache, geometry, hit-testing, calibration |
 | `TabSchematics.Settings.cs` | Board-level and global setting rows |
+| `TabSchematics.PinsOnImage.cs` | The pins of the components selected or pointed at, on a board's KiCad pads (owner requests, 2026-11-17): "Hold SHIFT to number pins on hover and select" - every pad numbered while SHIFT is held, pin 1 told apart (`PinNumbersOverlay`, drawn in the panel's own coordinates so a number reads at any zoom; `PinBadgeGeometry`); "Show color for pin direction" ("Show pin direction" until the owner's rename, 2026-11-17; greyed out while the pins are not numbered) - each number in its direction's colors, the pinout's (`ComponentPinDirections`, the hover badge's "Direction" too), else in the grey of no direction, pin 1 filled orange - **and while numbers are in their directions' colors a legend stands among the panels at the bottom left, right of "Important KiCad signals", one a line** (owner question, 2026-11-17: "I think we need a legend somewhere that can explain the colors?", then "show vertically and right to the "Important KiCad signals" panel"; `PinDirectionLegend`, its ground `Schematics_Panels_Bg` in `ThemeContrastTests`): every direction in the pinout's words, always all four so it stands still as the pointer moves, and pin 1's ring. **Pin 1 of a component selected or pointed at is ALWAYS marked in orange** on an image with KiCad pads (owner decision, 2026-11-17: "remove the "Mark first pin on component" checkbox, but keep its functionality enabled per default, so everyone gets this"; `IsMarkingFirstPin`) - its stored per-board values, `schematicsMarkPin1OnSelectedComponentByBoard`, stay written as found for CRT 3.x - **and, not numbered, FRAMED IN BLACK, a line just outside the orange** (owner requests, the same day: "the "normal" first pin marking having this 1px 2xblack border so it is more visible", then "I do not want the inner black border"; `PinNumbersOverlay.FirstPins`): in the panel's own pixels, as the KiCad overlay's lines scale with the zoom. **The two rows of badges in the top left corner stand over the pins' numbers and the components' labels** (owner report, 2026-11-17: "the "Khaki" badges are shown below the pin numbers"; ZIndex 110 - labels 100, numbers 101, parked worklog badges 150, panels 200). **"Show gates inside the ICs" is GONE** (owner decision, the same day: "It becomes too weird to look at - at least for now") - each IC's pinout laid over it, pin on pad, laid out again for the pads, its text upright on a bottom view; in git history (2026-11-17) should it come back. SHIFT reaches the tab from wherever the keyboard is (`Main.NoteKeyModifiersForSchematics`) - **in a text box only once held `Main.ShiftHeldInTextBox` with nothing typed** (code review, 2026-11-18: capitals typed in the component filter numbered the pins and took them away again), let go of as the tab is left or CRT's window goes behind another; **no pin is numbered while the label editor, a worklog's area or "Draw trace" is on**, whose SHIFT is their own |
 | `TabSchematics.PictureTools.cs` | "Mark components"/"Align KiCad" asked for from the Contribute tab, and their bar (Done/Cancel) |
 | `TabSchematics.ViewTools.cs` | Panning with the right OR middle button (`TryBeginPan`, every mode) and the one-time tip saying so; "Draw trace" |
 | `TabSchematics.PictureReads.cs` | The schematic images read off the UI thread, the last `PicturesKept` (3) kept (`PictureReads`) |
@@ -3371,7 +3401,19 @@ service to the 4.0 trees"). CRT reads a main file only at or below its own versi
   as a word ("LOW (or floating?)", "LOW/FLOAT" - FLOAT and VIDEO only as the whole reading until the owner's "yes, reword those also"
   the same day) - 2,830 of 13,862 readings; the shipped-data proof allows exactly that, and a 3.x draft converted gets it
   in the draft and its base. A reading typed in CRT stays as typed. All four 4.0 trees were converted again that day over Z: (the test
-  trees' 250407 lost the test publishes of 2026-11-14 - the owner's choice). **A user's Excel-era draft takes the pinouts its published board was converted with, in the
+  trees' 250407 lost the test publishes of 2026-11-14 - the owner's choice). **AND SUCH A CHIP GETS EVERY PIN AND ITS CASE**
+(owner request, 2026-11-17: "Can you now draw also this IC? (and add its pins in data migration) (when go-live)", then of every chip not
+drawn; `ConversionPinouts.WithDatasheetPins`, server 12.0.0): the pins it lacks with the datasheet's names and directions, a name where
+a pin has none, the datasheet's case where the row names none (`IcPinout.Package` - a DIP of its pins, the CX20185's QFP-44) - the C128 250477 and the
+CPC 664, with no baselines and no KiCad data, had no pins or case on any chip, so CRT drew none. **The 64H156 (251828) is matched by
+its PART NUMBER alone** (`=251828-01`/`-03`, `=64H156-01`/`-03`): its -01/-03 have 40 pins, its -02 42, so "64H156" alone says neither
+and gets nothing; the 250477's is a -01 of 40 pins (owner, 2026-11-18: "I just counted them") though its schematic numbers the 42-pin
+one. **THE AMIGA 500's AND 1000's CHIPS ARE THERE BEFORE ANY AMIGA BOARD IS** (owner request, 2026-11-18; `IcPinouts`, its header names
+every source): the 68000, Agnus (the A1000's 8361/8367 DIP-48, the A500's Fat Agnus 8370/8371 and 8372 in their PLCC-84 - pin 41 differs;
+the 8375 and 8372B are none), Denise 8362/8373, Paula 8364, Gary 5719, the 8520 as the 6526, the 27C400 the rev 6A's ROM socket takes,
+the RAMs, the MSM6242, MC1377, MC1488/1489, LF347/TL084, LM2901/LM339 and the A1000's 74374, 74399, 74393 and 51. **A 74-series number
+whose families differ in their pins is matched by its family too** (`IcPinout.Families`, `ChipNames.SeventyFourFamily`): the 74LS51 is
+another pin-out than the 7451's and 74S51's. The Kickstart mask ROMs have no datasheet and are matched by no part number. **A user's Excel-era draft takes the pinouts its published board was converted with, in the
   draft and its base** (`ConversionPinouts.FromPublished`, `DraftConversion`): a draft sends its whole pin list, and without them it read as
   every pin removed.
 - **Not done yet**: the release day itself (convert once more, work the queue empty, switch the service - a submission CRT 3.x sent names its

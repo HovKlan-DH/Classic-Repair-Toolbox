@@ -33,6 +33,17 @@ public sealed class ChipNamesTests
     public void A_74_series_name_gives_its_number_as_written(string word, string? number) =>
         Assert.Equal(number, ChipNames.SeventyFourNumber(word));
 
+    // Its family as written, in capitals - "" for the plain one - for the numbers whose families differ in their pins (the 51).
+    [Theory]
+    [InlineData("SN74LS51N", "LS")]
+    [InlineData("SN7451N", "")]
+    [InlineData("74S51", "S")]
+    [InlineData("DM74ALS51N", "ALS")]
+    [InlineData("74hc51", "HC")]
+    [InlineData("6510", null)]
+    public void A_74_series_name_gives_its_family_as_written(string word, string? family) =>
+        Assert.Equal(family, ChipNames.SeventyFourFamily(word));
+
     // ###########################################################################################
     // WHOLE NAMES ONLY: a pin named for the rail it is strapped to as well as its signal - the C16's PLA has "CE - GND" on its
     // /CE input - is no ground pin, or the chip lost its datasheet (measured on the shipped boards, 2026-11-17).
@@ -90,15 +101,25 @@ public sealed class ChipNamesTests
     public void A_category_no_chip_has_is_told(string? category, bool noChip) =>
         Assert.Equal(noChip, ChipNames.IsNoChip(category));
 
-    // A package says nothing against a DIP of the chip's pin count - or nothing at all, left empty.
+    // ###########################################################################################
+    // A package says nothing against the chip's own case - the same layout and count, or nothing at all, left empty. A
+    // surface-mounted case numbered as a DIP fits a DIP's pin-out (owner request, 2026-11-18: the Amiga "has a lot of SMD
+    // components"); a PLCC is no QFP of as many pins, nor a DIP.
+    // ###########################################################################################
     [Theory]
-    [InlineData("DIP-14", 14, true)]
-    [InlineData(" DIP14 ", 14, true)]
-    [InlineData("", 14, true)]
-    [InlineData(null, 40, true)]
-    [InlineData("DIP-16", 14, false)]
-    [InlineData("SIP-14", 14, false)]
-    [InlineData("PLCC-28", 28, false)]
-    public void A_package_fits_a_dip_of_the_chips_pin_count(string? package, int pins, bool fits) =>
-        Assert.Equal(fits, ChipNames.PackageFits(new ComponentEntry { Package = package! }, pins));
+    [InlineData("DIP-14", "DIP-14", true)]
+    [InlineData(" DIP14 ", "DIP-14", true)]
+    [InlineData("SOIC-14", "DIP-14", true)]
+    [InlineData("DIP-28 wide", "DIP-28", true)]
+    [InlineData("", "DIP-14", true)]
+    [InlineData(null, "DIP-40", true)]
+    [InlineData("QFP-44", "QFP-44", true)]
+    [InlineData("LQFP-44", "QFP-44", true)]
+    [InlineData("DIP-16", "DIP-14", false)]
+    [InlineData("SIP-14", "DIP-14", false)]
+    [InlineData("PLCC-28", "DIP-28", false)]
+    [InlineData("PLCC-44", "QFP-44", false)]
+    [InlineData("DIP-44", "QFP-44", false)]
+    public void A_package_fits_the_chips_own_case(string? package, string chipPackage, bool fits) =>
+        Assert.Equal(fits, ChipNames.PackageFits(new ComponentEntry { Package = package! }, chipPackage));
 }

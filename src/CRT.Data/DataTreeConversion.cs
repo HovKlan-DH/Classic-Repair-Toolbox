@@ -577,8 +577,8 @@ namespace Handlers.DataHandling
 
         // ###########################################################################################
         // THE BOARD WITH ITS PINOUTS MADE (owner decision, 2026-11-06: "Conversion adds them"): of its scope
-        // baselines, and of its KiCad data where the board has a "KiCad data" folder the loaders read -
-        // ConversionPinouts, what "Create pinouts for the whole board" did on the "Pinout" page until that
+        // baselines, of its KiCad data where the board has a "KiCad data" folder the loaders read, and of the
+        // datasheets CRT holds (2026-11-17) - ConversionPinouts, what "Create pinouts for the whole board" did on the "Pinout" page until that
         // day. An Excel tree has no pinouts, so every one comes from here, made again by every run - release
         // day's conversion included. What came of it is a note; KiCad files that could not be read are a
         // note too, not a problem: the board then gets its baselines' pins, and nothing of the source is
@@ -596,10 +596,13 @@ namespace Handlers.DataHandling
                     notes.Add($"Board [{boardId}]: its KiCad data could not be read, so its pinouts are made of its scope baselines alone.");
             }
 
-            BoardData made = ConversionPinouts.ApplyToBoard(data, out int components, out int directed, kiCad);
+            BoardData made = ConversionPinouts.ApplyToBoard(data, out int components, out int completed, out int directed, kiCad);
 
             if (components > 0)
                 notes.Add($"Board [{boardId}]: pinouts made for {components} component(s), of its scope baselines{(kiCad is null ? string.Empty : " and its KiCad data")}.");
+
+            if (completed > 0)
+                notes.Add($"Board [{boardId}]: pins or a package taken from the datasheet for {completed} chip(s).");
 
             if (directed > 0)
                 notes.Add($"Board [{boardId}]: pin directions taken from the datasheet for {directed} chip(s).");

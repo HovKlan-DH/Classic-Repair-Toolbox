@@ -12,6 +12,10 @@ namespace Handlers.Geometry
     // ###########################################################################################
     public static class KiCadPadGeometry
     {
+        // How wide the "Schematics" tab's KiCad overlay outlines a pad, in the image's own coordinates - half of it lies
+        // outside the pad's size (TabSchematics.KiCad.Render.cs; PinBadgeGeometry.FirstPinFrame frames pin 1 just outside it).
+        public const double OutlineWidth = 1.2;
+
         // ###########################################################################################
         // Returns true when a KiCad pad shape should be drawn as a rectangle rather than an ellipse.
         // roundrect and trapezoid are approximated by a plain rectangle; circle, oval and custom

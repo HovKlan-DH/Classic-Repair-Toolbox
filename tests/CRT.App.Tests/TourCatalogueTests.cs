@@ -28,14 +28,16 @@ public sealed class TourCatalogueTests
     // The most important things, not everything: a tour of more than seven steps is a manual again. Seven since 2026-11-12
     // (owner requests: the "Schematics" tour's refresh icon and trace steps - the trace step shown only with KiCad data).
     // The steps of the tab's own: the first introduction taken ends on one card more, on the other tabs (owner request,
-    // 2026-11-11), which is about no step of the tab and is not counted here (code review, 2026-11-12).
+    // 2026-11-11), which is about no step of the tab and is not counted here (code review, 2026-11-12). The "Schematics"
+    // tour has nine since 2026-11-17 (owner request: "each of the 3 panels ... individually mentioned in the standard
+    // introduction") - two of those three are left out on a schematic image without KiCad data.
     [Fact]
     public void Each_introduction_is_short()
     {
         foreach (TourOfTab tour in TourCatalogue.All)
         {
             int steps = tour.Steps.Count(step => step.InIntroduction);
-            Assert.InRange(steps, 1, 7);
+            Assert.InRange(steps, 1, tour.Tab == TourTab.Schematics ? 9 : 7);
         }
     }
 

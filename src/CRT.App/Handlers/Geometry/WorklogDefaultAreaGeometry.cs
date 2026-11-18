@@ -58,16 +58,27 @@ namespace Handlers.Geometry
         //
         // An image with no usable size yields Rect.Empty - the caller then simply leaves the entry
         // parked, which is the honest outcome: there is no board to place anything on.
+        //
+        // In the bottom-right corner of the image's CONTENT, its own empty border (`blank`,
+        // ImageFrameGeometry.BlankBorder) left out (code review, 2026-11-18): a padded image reaches
+        // past the "Schematics" tab's panel at the first view, its border where nothing is to be seen,
+        // and a square in it could not be seen or reached without zooming. An image that is all border,
+        // as far as can be told, is taken whole.
         // ###########################################################################################
-        public static Rect BuildDefaultArea(Size imagePixelSize)
+        public static Rect BuildDefaultArea(Size imagePixelSize, Thickness blank = default)
         {
-            double width = imagePixelSize.Width;
-            double height = imagePixelSize.Height;
-
-            if (width < 1.0 || height < 1.0)
+            if (imagePixelSize.Width < 1.0 || imagePixelSize.Height < 1.0)
             {
                 return default;
             }
+
+            if (imagePixelSize.Width - blank.Left - blank.Right < 1.0 || imagePixelSize.Height - blank.Top - blank.Bottom < 1.0)
+            {
+                blank = default;
+            }
+
+            double width = imagePixelSize.Width - blank.Left - blank.Right;
+            double height = imagePixelSize.Height - blank.Top - blank.Bottom;
 
             double side = Math.Clamp(Math.Min(width, height) * SideFraction, MinimumSide, MaximumSide);
 
@@ -77,10 +88,10 @@ namespace Handlers.Geometry
 
             double inset = side * InsetFraction;
 
-            // Clamped at zero so the square never starts off the left or top edge of a small image,
-            // where the inset alone could push it past the origin.
-            double x = Math.Max(0.0, width - side - inset);
-            double y = Math.Max(0.0, height - side - inset);
+            // Clamped at the content's left and top so the square never starts off them on a small
+            // image, where the inset alone could push it past the origin.
+            double x = blank.Left + Math.Max(0.0, width - side - inset);
+            double y = blank.Top + Math.Max(0.0, height - side - inset);
 
             return new Rect(x, y, side, side);
         }
@@ -92,7 +103,7 @@ namespace Handlers.Geometry
         // This is the single decision point for "does this entry need an area inventing", so the
         // editor and anything else that ticks the box on the user's behalf cannot disagree about it.
         // ###########################################################################################
-        public static Rect ResolveAreaForShowing(Rect existingArea, Size imagePixelSize) =>
-            IsUnset(existingArea) ? BuildDefaultArea(imagePixelSize) : existingArea;
+        public static Rect ResolveAreaForShowing(Rect existingArea, Size imagePixelSize, Thickness blank = default) =>
+            IsUnset(existingArea) ? BuildDefaultArea(imagePixelSize, blank) : existingArea;
     }
 }

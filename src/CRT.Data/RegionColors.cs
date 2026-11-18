@@ -142,7 +142,7 @@ namespace Handlers.DataHandling
 
         // ###########################################################################################
         // WCAG 2's relative luminance of a color, 0 (black) to 1 (white) - the ONE copy of the formula every contrast rule
-        // of CRT's goes by (CRT's UserThemeShades too; code review, 2026-11-13: it was written twice).
+        // of CRT's goes by (code review, 2026-11-13: it was written twice).
         // ###########################################################################################
         public static double Luminance(byte red, byte green, byte blue)
         {

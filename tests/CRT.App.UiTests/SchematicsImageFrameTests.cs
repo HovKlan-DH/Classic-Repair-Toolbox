@@ -88,20 +88,34 @@ public sealed class SchematicsImageFrameTests : IDisposable
         });
     }
 
-    // Room of its own round the board, more than the badges need - as the owner's own images have: nothing added, the image
-    // standing where it always did.
+    // ###########################################################################################
+    // Room of its own round the board, more than the badges need - as the owner's own images have: its BOARD stands where a
+    // cropped image's does, under the room wanted (owner request, 2026-11-17: "no matter if I have inserted empty spacing or
+    // not, then the actual PCB should be displayed same place"). The image reaches past that room, and the panel's edge,
+    // where its border has nothing to show - laid out by a margin less than nothing, where the overlays find it too.
+    // ###########################################################################################
     [Fact]
-    public void An_image_with_room_of_its_own_stands_where_it_always_did()
+    public void An_image_with_room_of_its_own_shows_its_board_where_a_cropped_one_does()
     {
         UiTest.Run(() =>
         {
-            (CRT.Main main, TabSchematics tab) = Shown(blankBorder: new Thickness(120, 250, 120, 120));
+            var blank = new Thickness(120, 250, 120, 120);
+            (CRT.Main main, TabSchematics tab) = Shown(blankBorder: blank);
 
-            Assert.Equal(default, tab.ImageFrameForTests);
+            Thickness frame = tab.ImageFrameForTests;
+            Assert.True(frame.Top < 0, $"{frame} round it");
 
+            Rect content = tab.GetImageContentRect();
             Point imageAt = tab.SchematicsImage.TranslatePoint(default, tab.SchematicsImageHost)!.Value;
-            Assert.Equal(new Point(0, 0), imageAt);
-            Assert.Equal(new Point(0, 0), tab.GetImageContentRect().TopLeft);
+            Assert.Equal(content.Left, imageAt.X, precision: 1);
+            Assert.Equal(content.Top, imageAt.Y, precision: 1);
+            Assert.Equal(content.Width, tab.SchematicsImage.Bounds.Width, precision: 1);
+            Assert.Equal(content.Height, tab.SchematicsImage.Bounds.Height, precision: 1);
+
+            double scale = content.Width / 1200;
+            Assert.Equal(ImageFrameGeometry.SideRoom, content.Left + (scale * blank.Left), precision: 0);
+            Assert.Equal(ImageFrameGeometry.TopRoom, content.Top + (scale * blank.Top), precision: 0);
+            Assert.Equal(frame, tab.SchematicsHighlightsOverlay.ContentFrame);
 
             Close(main);
         });
@@ -118,7 +132,7 @@ public sealed class SchematicsImageFrameTests : IDisposable
         UiTest.Run(() =>
         {
             (CRT.Main main, TabSchematics tab) = Shown(blankBorder: new Thickness(120, 250, 120, 120));
-            Assert.Equal(default, tab.ImageFrameForTests);
+            Assert.NotEqual(ImageFrameGeometry.Wanted, tab.ImageFrameForTests);
 
             tab.ShowStandInForTests(new WriteableBitmap(new PixelSize(160, 120), new Vector(96, 96), PixelFormat.Bgra8888, AlphaFormat.Premul));
             Assert.Equal(ImageFrameGeometry.Wanted, tab.ImageFrameForTests);
@@ -148,7 +162,7 @@ public sealed class SchematicsImageFrameTests : IDisposable
             main.UpdateLayout();
             Dispatcher.UIThread.RunJobs();
 
-            // Drawn smaller, the image's own 30 rows give less, so more is added - up to the 44 wanted.
+            // Drawn smaller, the image's own 30 rows give less, so more is added - up to the room wanted.
             double after = tab.ImageFrameForTests.Top;
             Assert.True(after > before, $"{after} after, {before} before");
             Assert.True(after <= ImageFrameGeometry.TopRoom);
