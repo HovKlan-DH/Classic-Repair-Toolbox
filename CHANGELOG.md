@@ -1,3 +1,60 @@
+# 4.0.0, 2026-November-?
+------------------------
+- **Application**
+  - Fixed `ENTER` will toggle blinking of components and traces in "Schematics" tab
+  - Reimplemented UI and functionalities for contribution of data
+    - Added "Find" and "Replace" in table view
+    - New schematic images does not need to have inserted any empty spacing to best-fit with CRT "Schematics" tab
+  - Added management for a "device"
+    - "Devices" visible in "Workbooks" tab after adding one
+    - Documentation of your devices, computers or systems
+    - Workbooks can be associated to a device
+  - Added an "Introduction tour" to display how-to use most important parts of application
+    - It can be seen again via "Configration" tab
+  - Added new component data, shown in the component info popup and in "Overview" tab
+    - Package, pinout image, pin info and replacement parts
+    - Drawn image of component for some types; e.g. resistor, diodes and capacitors etc.
+    - "Capture from my oscilloscope" when adding a scope baseline (when an oscilloscope is connected) <========================== HVOR ???????????
+  - Added pins and direction when holding SHIFT in "Schematics" tab and hovering a component
+  - Added basic text formatting to various text fields (bold, italic, bullets etc.)
+  - Added "Files" and "Links" can be regionalized for both board and component
+  - Added possibility to zoom in/out in worklog photo
+  - Added "Edit component" button in component info popup
+  - Added component label editor shows the components not yet marked on the schematic image
+  - Added option to create a new oscilloscope setting and submit it as a new oscilloscope
+  - Added middle mouse button also pans the image in "Schematics" tab
+    - Pan now works the same everywhere, so it uses right/middle mouse button
+  - Added complete application changelog in "About" tab
+  - Added possibility to have other regions than `PAL` and `NTSC` only
+  - Changed single-click in component list will select only one component, and not toggle its selection
+    - Use `Ctrl` + mouseclick to add/remove component from selection
+    - Use `Shift` + mouseclick to select a range of components
+    - Selecting directly on schematic image will still add the component to the component selection
+  - Changed aligning KiCad data will no longer show ground plane
+  - Changed manual traces in "Schematics" tab are only drawn after clicking "Draw trace"
+  - Changed themes colors for various parts
+  - Changed "KiCad nets" panel shows more info about component
+  - Changed help buttons opening the GitHub Wiki now shows as "Learn more"
+  - Change "Credits" is now a cronological list of changes done
+  - Removed user defined color themes, and now only supporting `Light` and `Dark` themes
+    - Moved theme selector to be always visible, next to the "Update data" icon
+  - Removed "Enable contributor mode" in "Global settings" panel
+  - Various other minor UI and functionality changes and other places where performance has been optimized
+- **Data**
+  - Changed all board data from Excel to JSON format
+  - No files are any longer intended to be edited manually - everything should be done from within application
+
+> [!CAUTION]
+> Due to breaking data format changes, the major version has been increased to reflect this is important.
+> No more data updates will be given for versions **below 4.0.0**, and contributing data or using the "Maintainer" tab requires **4.0.0** or newer.
+
+
+# 3.1.1, 2026-November-5
+------------------------
+- **Application**
+  - Fixed schematic image would not always show in "Schematics" tab
+
+
 # 3.1.0, 2026-October-24
 ------------------------
 - **Application**

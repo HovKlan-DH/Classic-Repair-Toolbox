@@ -11,7 +11,7 @@
 		<!--
 		<InformationalVersion>$(AssemblyVersion)</InformationalVersion>
 		-->
-		<InformationalVersion>4.0.0-alpha.8</InformationalVersion>
+		<InformationalVersion>4.0.0-beta.1</InformationalVersion>
 		
 		<OutputType>WinExe</OutputType>
 		<TargetFrameworks>net10.0</TargetFrameworks>
@@ -94,7 +94,7 @@
     which is why every call is guarded by OperatingSystem.IsWindows() and CRT simply declines to
     remember a maintainer session on other platforms rather than storing one in the clear.
     -->
-    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="10.0.15" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="11.0.0" />
     <PackageReference Include="Velopack" Version="1.2.161" />
     <PackageReference Include="SonarAnalyzer.CSharp" Version="10.36.0.15337" PrivateAssets="all" />
   </ItemGroup>

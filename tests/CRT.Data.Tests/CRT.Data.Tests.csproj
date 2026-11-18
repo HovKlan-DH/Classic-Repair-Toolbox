@@ -50,7 +50,7 @@ command-line (global) property - see the comment on SelfContained below.
   behind in CRT.App for exactly this reason (the three Avalonia-based geometry helpers).
   -->
   <ItemGroup>
-    <PackageReference Include="coverlet.collector" Version="10.1.0" />
+    <PackageReference Include="coverlet.collector" Version="10.1.1" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.12.0" />
     <PackageReference Include="xunit.v3.mtp-off" Version="4.0.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="4.0.1" />
