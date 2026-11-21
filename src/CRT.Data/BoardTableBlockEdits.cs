@@ -151,15 +151,15 @@ namespace Handlers.DataHandling
 
         // ###########################################################################################
         // The replace bar's "Columns" choice (owner request, 2026-11-07: "restrict replacement to specific columns, and not
-        // necessarily all"): its button says how many of the columns shown it looks in, and a replace with none ticked
+        // necessarily all"): its button says how many of the columns shown it looks in, and a replace with none checked
         // says why nothing was replaced.
         // ###########################################################################################
-        public static string ColumnsChoice(int ticked, int shown) =>
-            ticked >= shown ? "Columns: All"
-            : ticked <= 0 ? "Columns: None"
-            : $"Columns: {Number(ticked)} of {Number(shown)}";
+        public static string ColumnsChoice(int chosen, int shown) =>
+            chosen >= shown ? "Columns: All"
+            : chosen <= 0 ? "Columns: None"
+            : $"Columns: {Number(chosen)} of {Number(shown)}";
 
-        public const string NoColumnsTicked = "No column is ticked under \"Columns\", so nothing would be replaced. Tick the columns to replace in.";
+        public const string NoColumnsTicked = "No column is checked under \"Columns\", so nothing would be replaced. Check the columns to replace in.";
 
         public const string ColumnsChoiceTip = "Pick the columns of this sheet to find and replace in - the table shows and marks only what is found in those";
 

@@ -461,4 +461,30 @@ public sealed class PinoutDrawingTests
             window.Close();
         });
     }
+
+    // ###########################################################################################
+    // The pins a host has chosen, and those it is done with ("Capture from oscilloscope pin-by-pin", owner request, 2026-11-18) - kept until the
+    // case is shown again, which lets go of them as it lets go of the pin marked.
+    // ###########################################################################################
+    [Fact]
+    public void The_pins_chosen_and_done_are_kept_until_the_case_is_shown_again()
+    {
+        UiTest.Run(() =>
+        {
+            (PinoutDrawing drawing, Window window) = Shown(canBePicked: true);
+
+            drawing.ShowChosen([1, 2, 2], [2]);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal([1, 2], drawing.ChosenPinsForTests.Order());
+            Assert.Equal([2], drawing.DonePinsForTests);
+
+            drawing.Show("DIP-8", Pins);
+
+            Assert.Empty(drawing.ChosenPinsForTests);
+            Assert.Empty(drawing.DonePinsForTests);
+
+            window.Close();
+        });
+    }
 }

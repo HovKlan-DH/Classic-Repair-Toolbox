@@ -10,12 +10,12 @@ _not_ available on the "Oscilloscope" tab itself.
 
 To enable and use the controls, do this:
 
-* Tick `Enable network connected oscilloscope tab` on the "Configuration" tab (it is on by default).
+* Check `Enable network connected oscilloscope tab` on the "Configuration" tab (it is on by default).
 * Go to the "Oscilloscope" tab, pick your scope's vendor and series or model, type its address, and
   press **Connect to oscilloscope**.
 * Click a component that has an oscilloscope baseline (images depicting a working board), and
   select one of its images.
-* In the component information window, tick `Numpad controls oscilloscope`. The checkbox is only
+* In the component information window, check `Numpad controls oscilloscope`. The checkbox is only
   available while CRT is actually connected to the oscilloscope.
 * Make sure `NumLock` is on.
 
@@ -41,6 +41,25 @@ A few things worth knowing:
   that folder as `<board label>_<pin>_<region>.png`, and - when the Workbooks feature is on and the
   board has a workbook - an **Attach image to worklog** button lets you file it in a repair - see
   [Workbooks: daily use](Workbooks-Daily-use).
+
+## Capturing a whole baseline pin by pin
+
+The same keys work in **Capture from oscilloscope pin-by-pin** - the button on a component's
+"Oscilloscope baseline" page on the "Contribute" tab, shown while the oscilloscope is connected. It
+opens a window of its own, which remembers its size and position, with the component's case and every
+pin listed. Select the pins you want to measure, or click them on the case - the buttons over the list
+select a group of pins and go to the first of them. Probe the pin shown and press `Enter`: the scope's
+screen and how it is set are captured, and the pin stays shown so you can check it. A pin that had a
+baseline shows the old one on the left and the new capture on the right, each labeled, and any setting
+that changed says what it was. Nothing goes into your draft yet: press `Enter` again to retake it, or
+**Accept and continue to next pin** (`Right`) to make it that pin's baseline and go on, with the scope
+set as the next pin's old baseline was measured. `Left` goes back without un-accepting anything. Click
+any picture to see it larger - a click outside it closes it again. Here the numpad always controls the
+scope, no checkbox needed, and **Close capturing** or `Escape` closes the window - first asking about
+any capture not yet accepted.
+
+**Capture again** on one baseline opens this window on that pin and captures it there, so you can check
+it before you accept it.
 
 If your scope is not in the list, or does not work properly, make a model of your own: **My scope
 is not listed** on the "Oscilloscope" tab - see

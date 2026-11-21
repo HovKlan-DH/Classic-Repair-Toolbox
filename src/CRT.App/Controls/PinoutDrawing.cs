@@ -24,7 +24,8 @@ namespace CRT
     // 2026-11-02: "if I am viewing a specific pin, then do highlight it"). A pin the POINTER moves onto or off
     // raises PinHovered, so the host lights its row in the list too (owner request, 2026-11-09: "hovering the IC
     // image pin will not highlight the table pin ... do highlight both places") - never for HoverPin, which is
-    // the host's own say and would only come back to it.
+    // the host's own say and would only come back to it. A host may also FRAME the pins it has chosen, and tint those it is done
+    // with (ShowChosen - "Capture from oscilloscope pin-by-pin", owner request, 2026-11-18).
     //
     // A CHIP CRT KNOWS IS DRAWN WITH ITS INSIDES (owner request, 2026-11-16; LogicChips decides, LogicChipGeometry places):
     // its gates, blocks, switches and wires in a case as a real chip's, each pin a square in the color of its direction, and
@@ -54,6 +55,10 @@ namespace CRT
         // The pin under the pointer - here or in the host's list - and the pin the host says is shown.
         private int? thisHoveredPin;
         private int? thisMarkedPin;
+
+        // The pins the host has CHOSEN, and of them those it is DONE with (ShowChosen).
+        private IReadOnlyCollection<int> thisChosenPins = [];
+        private IReadOnlyCollection<int> thisDonePins = [];
 
         public event EventHandler<PinPickedEventArgs>? PinPicked
         {
@@ -89,6 +94,8 @@ namespace CRT
             this.thisNames = new Dictionary<int, string>();
             this.thisHoveredPin = null;
             this.thisMarkedPin = null;
+            this.thisChosenPins = [];
+            this.thisDonePins = [];
 
             // A pin by its number as every other reading of it goes (ComponentVocabulary.PinNumberOf - "2 [64K]" is pin 2), as
             // its color is (code review, 2026-11-17: by int.TryParse here, such a pin was colored and left unnamed).
@@ -160,6 +167,42 @@ namespace CRT
             {
                 this.thisMarkedPin = number;
                 this.InvalidateVisual();
+            }
+        }
+
+        // ###########################################################################################
+        // THE PINS A HOST HAS CHOSEN, AND THOSE IT IS DONE WITH ("Capture from oscilloscope pin-by-pin", owner request, 2026-11-18: the pins a run
+        // goes round are picked on the case): each chosen pin framed in the green of a button that goes ahead, one done tinted
+        // with it too - over the strip of the pin shown, so the frame stays in sight. Show lets go of them.
+        // ###########################################################################################
+        public void ShowChosen(IReadOnlyCollection<int> chosen, IReadOnlyCollection<int> done)
+        {
+            ArgumentNullException.ThrowIfNull(chosen);
+            ArgumentNullException.ThrowIfNull(done);
+
+            this.thisChosenPins = chosen.ToHashSet();
+            this.thisDonePins = done.ToHashSet();
+            this.InvalidateVisual();
+        }
+
+        internal IReadOnlyCollection<int> ChosenPinsForTests => this.thisChosenPins;
+
+        internal IReadOnlyCollection<int> DonePinsForTests => this.thisDonePins;
+
+        private void RenderChosen(DrawingContext context, PinoutLayout layout)
+        {
+            if (this.thisChosenPins.Count == 0)
+            {
+                return;
+            }
+
+            IBrush green = this.Brush("Button_Ok_Bg", Brushes.SeaGreen);
+            IBrush tint = green is ISolidColorBrush solid ? new SolidColorBrush(solid.Color, 0.25) : green;
+            var edge = new Pen(green, 1.5);
+
+            foreach (PinoutPin pin in layout.Pins.Where(pin => this.thisChosenPins.Contains(pin.Number)))
+            {
+                context.DrawRectangle(this.thisDonePins.Contains(pin.Number) ? tint : null, edge, PinoutGeometry.AreaOf(layout, pin).Deflate(0.75), 2, 2);
             }
         }
 
@@ -263,6 +306,8 @@ namespace CRT
             {
                 context.DrawRectangle(this.Brush("Form_Selected_Hover_Bg", Brushes.SkyBlue), null, PinoutGeometry.AreaOf(layout, litPin), 2, 2);
             }
+
+            this.RenderChosen(context, layout);
 
             foreach (PinoutPin pin in layout.Pins)
             {

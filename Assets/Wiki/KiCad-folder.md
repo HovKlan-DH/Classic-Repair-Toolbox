@@ -21,7 +21,7 @@ board has) and drop the KiCad project's **folder** on the drop area there, or ch
 button. CRT copies in only the files it reads, and says what it found (components, nets, sheets) and
 what it left out. What is left to do on the board is on **Overview**.
 
-While **Add the KiCad components automatically to the board** is ticked (it is, until you untick it),
+While **Add the KiCad components automatically to the board** is checked (it is, until you uncheck it),
 the import also adds every component of the KiCad board that the board does not have yet, with its
 package and pins where the footprint says them, its categories in alphabetical order. Imported without
 it, the summary offers **Add N components from KiCad**.

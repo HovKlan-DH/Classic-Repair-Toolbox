@@ -335,8 +335,9 @@ namespace CRT
         // ###########################################################################################
         // THE OSCILLOSCOPE'S SCREEN, CAPTURED OVER THE ACTIVE SCPI SESSION, AS PNG BYTES - or null, with
         // the reason in this tab's output. What the popup saves into the image folder above, and what
-        // the Contribute tab's component pane makes a scope baseline's screenshot of ("Capture from my
-        // oscilloscope", CRT 4.0 step 2) - which needs no image folder: the screenshot goes into the draft.
+        // the component pane's "Capture from oscilloscope pin-by-pin" and "Capture again" take through
+        // IBaselineScope.CaptureAsync (TabOscilloscope.Baselines.cs) - which need no image folder: the
+        // screenshot waits to be accepted, then goes into the draft.
         // ###########################################################################################
         public async Task<byte[]?> CaptureOscilloscopePngAsync(CancellationToken cancellationToken)
         {

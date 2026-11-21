@@ -104,44 +104,44 @@ On an existing worklog, a lot is saved the moment you do it:
 
 * Picking a category or a state is saved at once, together with its automatic comment.
 * Adding, editing, deleting or dragging anything in Links of interest, Work done, Comments, Photos and Files is saved at once.
-* Each of those saves also writes the title, description, **Show marked area on schematics image** and the component ticks as they are at that moment.
+* Each of those saves also writes the title, description, **Show marked area on schematics image** and which components are checked at that moment.
 
-So Cancel only takes back changes to the title, description, **Show marked area on schematics image** and the component ticks made since the last of those saves.
+So Cancel only takes back changes to the title, description, **Show marked area on schematics image** and the components checked or unchecked since the last of those saves.
 
 **On a NEW worklog nothing is written until you click "Add worklog"** - including its comments and photos. That is deliberate, so backing out leaves nothing behind, but it is the opposite of how the same actions behave on an existing worklog. So if you close a new worklog that has anything in it - by Cancel, Escape, or the window's ✕ - you are asked to confirm first. Choose **Keep editing** to go back and save it.
 
 ## Markers on the board
 
-With **Show worklogs** ticked, each worklog is drawn on its schematic as a dashed rectangle in its category color, with a `#N` marker. The thumbnails show the `#N` markers too.
+With **Show worklogs** checked, each worklog is drawn on its schematic as a dashed rectangle in its category color, with a `#N` marker. The thumbnails show the `#N` markers too.
 
 Click a marker on the schematic to open that worklog.
 
 ### Moving and resizing a marked area
 
-With **Show worklogs** ticked, point at a worklog's rectangle on the "Schematics" tab:
+With **Show worklogs** checked, point at a worklog's rectangle on the "Schematics" tab:
 
 * Drag a corner or a side to resize it.
 * Drag inside it to move it.
 
 It is saved the moment you let go - no need to open the editor.
 
-Making an area smaller removes the components it no longer covers from "Components in scope". Making it larger never adds any - tick those in the editor.
+Making an area smaller removes the components it no longer covers from "Components in scope". Making it larger never adds any - check those in the editor.
 
 Where a component sits inside the rectangle, pressing there selects the component instead, so grab the area by its edge or by an empty part of it.
 
 ### Worklogs without an area
 
-Untick **Show marked area on schematics image**, and the worklog gets no rectangle - its marker parks in the top-right corner of the panel instead.
+Uncheck **Show marked area on schematics image**, and the worklog gets no rectangle - its marker parks in the top-right corner of the panel instead.
 
 Use it for things that are not about a place on the board: "fault is intermittent, only when warm", "case scratched".
 
-Tick it again and the worklog gets a square in the bottom-right corner of the board, which you then move and resize into place as described above. A worklog that already has an area keeps it.
+Check it again and the worklog gets a square in the bottom-right corner of the board, which you then move and resize into place as described above. A worklog that already has an area keeps it.
 
 ## Components in scope
 
 Two checklists in the editor:
 
-* **Components in scope** - which components the worklog is about. Everything your rectangle touched starts ticked.
+* **Components in scope** - which components the worklog is about. Everything your rectangle touched starts checked.
 * **Components completed** - which of those you have finished. Useful for a "replace every electrolytic" pass.
 
 Both have **All** and **None** buttons.

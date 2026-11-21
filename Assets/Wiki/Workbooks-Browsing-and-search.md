@@ -123,7 +123,7 @@ Some worked examples, on a board you have repaired several times:
 | `ram -ruled` | RAM faults, minus the ones you ruled out |
 | `attic storm` | A repair whose description or note mentions both, when that is all you remember |
 
-Searching for a component works because the components you tick in a worklog are part of its text -
+Searching for a component works because the components you check in a worklog are part of its text -
 so `u8` finds the repairs that had U8 in scope, even if you never typed "U8" in the description.
 Remember the substring rule though: `u8` also matches U80 and U81, so add a second word when a
 board has components numbered that way.

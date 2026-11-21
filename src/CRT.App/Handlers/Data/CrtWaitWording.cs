@@ -37,6 +37,10 @@ namespace Handlers.DataHandling
 
         public const string CapturingOscilloscope = "Taking the screenshot from the oscilloscope...";
 
+        // A capture waiting for the oscilloscope to be set as the pin's baseline was measured (code review, 2026-11-21: it waited,
+        // up to the oscilloscope's own time-out, with nothing said and every key ignored).
+        public const string SettingOscilloscope = "Setting the oscilloscope for this pin...";
+
         // A worklog opened from the "Workbooks" tab, its schematic image not read yet (code review, 2026-11-16).
         public const string ReadingSchematicImage = "Reading the schematic image...";
 

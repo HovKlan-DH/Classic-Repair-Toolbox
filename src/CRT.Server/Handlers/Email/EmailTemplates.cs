@@ -212,7 +212,7 @@ namespace CRT.Server.Handlers.Email
                 .Paragraph("To accept it:")
                 .Steps(
                     ["Install Classic Repair Toolbox (CRT) from ", MailText.Link(EmailTemplates.CrtDownloadUrl, EmailTemplates.CrtDownloadUrl), ", or use the one you already have."],
-                    ["In CRT's \"Configuration\" tab, tick the box that turns on the \"Maintainer\" tab."],
+                    ["In CRT's \"Configuration\" tab, check the box that turns on the \"Maintainer\" tab."],
                     ["Open the \"Maintainer\" tab and choose \"I have an invitation\"."],
                     ["Paste the code, and pick the name others will see and a password."])
                 .Paragraph($"The code works for {validDays} days and can only be used once.")
@@ -247,7 +247,7 @@ namespace CRT.Server.Handlers.Email
                     "for everybody who uses the data. You get an email when somebody sends one.")
                 .Paragraph("To review them:")
                 .Steps(
-                    ["In CRT's \"Configuration\" tab, tick the box that turns on the \"Maintainer\" tab."],
+                    ["In CRT's \"Configuration\" tab, check the box that turns on the \"Maintainer\" tab."],
                     ["Open the \"Maintainer\" tab and sign in with this email address and your password."])
                 .WithContactLine()
                 .ToMessage(toAddress, $"For CRT you are now the maintainer of the [{board}] board");
@@ -382,7 +382,7 @@ namespace CRT.Server.Handlers.Email
                     "A board maintainer has reviewed your contribution to ",
                     MailText.Named(EmailTemplates.DescribeBoard(boardDisplayName)),
                     ". It has been accepted and is now in the BETA online source, ready for you to test. To try it, go to the " +
-                    "\"Configuration\" tab in CRT and tick \"",
+                    "\"Configuration\" tab in CRT and check \"",
                     MailText.Bold(EmailTemplates.BetaCheckBoxLabel),
                     "\".");
 
@@ -414,7 +414,7 @@ namespace CRT.Server.Handlers.Email
 
         // ###########################################################################################
         // Published to PRODUCTION - the second of the two stages, and the one that reaches everyone
-        // (2026-09-25). It says how to get the data, to untick BETA if it was ticked for testing,
+        // (2026-09-25). It says how to get the data, to uncheck BETA if it was checked for testing,
         // and that CRT removes the draft by itself once the data matches (PublishedDraftRetirer).
         // ###########################################################################################
         public static EmailMessage SubmissionPublishedToSource(
@@ -430,9 +430,9 @@ namespace CRT.Server.Handlers.Email
                     MailText.Named(EmailTemplates.DescribeBoard(boardDisplayName)),
                     " has been fully accepted and is now published to the stable source, for everyone.")
                 .Paragraph(
-                    "Restart CRT to get the newest data from the stable source - if you ticked \"",
+                    "Restart CRT to get the newest data from the stable source - if you checked \"",
                     MailText.Bold(EmailTemplates.BetaCheckBoxLabel),
-                    "\" to test it, untick it in the \"Configuration\" tab first. Once your data matches the published board, " +
+                    "\" to test it, uncheck it in the \"Configuration\" tab first. Once your data matches the published board, " +
                     "CRT removes your draft of it by itself.")
                 .Paragraph(
                     "Everyone who uses ",

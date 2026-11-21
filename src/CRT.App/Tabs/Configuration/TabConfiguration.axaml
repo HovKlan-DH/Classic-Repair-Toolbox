@@ -177,7 +177,7 @@
 			     rather than as a choice, and the tooltip says what BETA data is for. -->
 			<CheckBox x:Name="DownloadDataFromTestSourceCheckBox"
 					  Content="{x:Static data:ConfigurationWording.BetaSourceCheckBox}"
-					  ToolTip.Tip="BETA data is newly approved data that has not been released to everybody yet. Tick this to check your own submission after a maintainer has approved it, then untick it to go back to the stable source" />
+					  ToolTip.Tip="BETA data is newly approved data that has not been released to everybody yet. Check this to try your own submission after a maintainer has approved it, then uncheck it to go back to the stable source" />
 
 			<CheckBox x:Name="AllowDeletionOfOrphanAndNonUsedFilesCheckBox"
 					  Content="Delete orphan and non-used files"
@@ -356,7 +356,7 @@
 				<CheckBox x:Name="ViewOfficialPublishedOnlyCheckBox"
 						  Content="View boards as published online (hide my draft changes)"
 						  VerticalAlignment="Center"
-						  ToolTip.Tip="With this ticked, every board shows exactly what every other user sees, even on a board where you have unpublished local edits" />
+						  ToolTip.Tip="With this checked, every board shows exactly what every other user sees, even on a board where you have unpublished local edits" />
 				<Button x:Name="ViewOfficialPublishedOnlyHelpButton"
 						Grid.Column="1"
 						Classes="LearnMore"

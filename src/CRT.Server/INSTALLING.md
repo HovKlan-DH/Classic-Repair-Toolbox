@@ -474,7 +474,7 @@ SELECT id, email, is_verified, is_administrator, is_locked FROM crt_review.accou
 (`email_normalised` is the address in lower case, which is what the service matches on.) Expect one
 row: verified, administrator, not locked. No restart is needed.
 
-**Maintainers are added from CRT**, never in SQL: in CRT, tick **Enable "Maintainer" tab** in the
+**Maintainers are added from CRT**, never in SQL: in CRT, check **Enable "Maintainer" tab** in the
 Configuration tab, sign in on the Maintainer tab, and use **Account > Maintainers** - add somebody who
 has an account, or invite somebody new by email. You can add yourself too.
 
@@ -485,7 +485,7 @@ has an account, or invite somebody new by email. You can add yourself too.
 2. Send a small change from CRT's Drafts tab. It appears under **Queue: Contributor submissions**,
    and you get a mail.
 3. Approve it: it is published to BETA (`dataChecksums.json` under `app-data-BETA` changes). Check it
-   in CRT with "Download data from the BETA source instead of the stable source" ticked.
+   in CRT with "Download data from the BETA source instead of the stable source" checked.
 4. Publish it under **Queue: Awaiting push from BETA to stable**. The stable data and its
    `dataChecksums.json` change.
 5. Restart CRT: the launch check-in is a new row in `crt_review.crt_update`.

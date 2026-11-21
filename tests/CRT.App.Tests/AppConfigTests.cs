@@ -50,8 +50,10 @@ public sealed class AppConfigTests
         Assert.True(options.MaxGpuResourceSizeBytes >= 4 * 50L * 1024 * 1024, "Too little room for a few large schematic images");
     }
 
-    // A scope capture waiting for "Add this baseline" too (code review, 2026-10-26): in /tmp another
-    // account could swap the screenshot before it went into the draft and the submission.
+    // A scope capture waiting to be accepted too (code review, 2026-10-26): in /tmp another
+    // account could swap the screenshot before it went into the draft and the submission. (The
+    // test process keeps its own captures elsewhere - TestScopeCaptures - so CRT's own folder is
+    // the default's.)
     [Fact]
     public void A_scope_capture_waits_in_the_users_own_app_data_folder_not_the_shared_temporary_one()
     {
@@ -59,7 +61,8 @@ public sealed class AppConfigTests
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             AppConfig.AppFolderName);
 
-        Assert.StartsWith(ownFolder + Path.DirectorySeparatorChar, AppConfig.ScopeCaptureWaitFolder, StringComparison.Ordinal);
-        Assert.False(AppConfig.ScopeCaptureWaitFolder.StartsWith(Path.GetTempPath(), StringComparison.OrdinalIgnoreCase));
+        Assert.StartsWith(ownFolder + Path.DirectorySeparatorChar, AppConfig.DefaultScopeCaptureWaitFolder, StringComparison.Ordinal);
+        Assert.False(AppConfig.DefaultScopeCaptureWaitFolder.StartsWith(Path.GetTempPath(), StringComparison.OrdinalIgnoreCase));
+        Assert.Equal(TestScopeCaptures.Folder, AppConfig.ScopeCaptureWaitFolder);
     }
 }

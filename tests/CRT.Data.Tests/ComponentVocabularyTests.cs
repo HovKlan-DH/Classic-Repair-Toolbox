@@ -333,4 +333,25 @@ public sealed class ComponentVocabularyTests
         Assert.Same(ComponentVocabulary.PinDirections, ComponentVocabulary.PinDirectionsOf(board));
         Assert.Same(ComponentVocabulary.Packages, ComponentVocabulary.PackagesOf(null));
     }
+
+    // ###########################################################################################
+    // A baseline's "Expected reading" offers the readings the board's baselines already give (owner request, 2026-11-18: "if I
+    // already have typed "High" previously for this board, then when typing "h" it will show the "High"") - every component's,
+    // every region's, alphabetically, each once whatever its capitals, in the board's first spelling; a picture's reading too,
+    // as nothing tells a reading by what its row is.
+    // ###########################################################################################
+    [Fact]
+    public void A_baselines_expected_reading_offers_the_readings_the_board_already_gives()
+    {
+        var board = new BoardData();
+        board.ComponentImages.Add(new ComponentImageEntry { BoardLabel = "U8", Pin = "1", ExpectedOscilloscopeReading = "Pulsing" });
+        board.ComponentImages.Add(new ComponentImageEntry { BoardLabel = "U9", Region = "NTSC", Pin = "2", ExpectedOscilloscopeReading = " High " });
+        board.ComponentImages.Add(new ComponentImageEntry { BoardLabel = "U9", Pin = "3", ExpectedOscilloscopeReading = "high" });
+        board.ComponentImages.Add(new ComponentImageEntry { BoardLabel = "U9", Pin = "4", ExpectedOscilloscopeReading = "" });
+        board.ComponentImages.Add(new ComponentImageEntry { BoardLabel = "U1", Pin = "5", ExpectedOscilloscopeReading = "Low (or floating?)" });
+
+        Assert.Equal(["High", "Low (or floating?)", "Pulsing"], ComponentVocabulary.ReadingsOf(board));
+        Assert.Empty(ComponentVocabulary.ReadingsOf(new BoardData()));
+        Assert.Empty(ComponentVocabulary.ReadingsOf(null));
+    }
 }

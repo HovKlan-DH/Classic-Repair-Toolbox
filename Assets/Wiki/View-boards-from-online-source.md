@@ -16,10 +16,10 @@ for.
 ## Turn it on
 
 * Go to the "Configuration" tab
-* Tick **View boards as published online (hide my draft changes)**
+* Check **View boards as published online (hide my draft changes)**
 
 It takes effect straight away on the board you are looking at, and on every board you open after
-it. Untick it again to see your changes as usual.
+it. Uncheck it again to see your changes as usual.
 
 ## What you see while it is on
 
@@ -35,12 +35,12 @@ A board that exists ONLY as your draft - a new board you created yourself - show
 board, because it is not published yet.
 
 "Online source" means whichever source you download board data from: the stable source, or the
-BETA source if you ticked **Download data from the BETA source instead of the stable source** in the
+BETA source if you checked **Download data from the BETA source instead of the stable source** in the
 same tab.
 
 ## What it does NOT do
 
-* **Your drafts are not touched.** Nothing is deleted, cleared or changed. Untick the setting and
+* **Your drafts are not touched.** Nothing is deleted, cleared or changed. Uncheck the setting and
   every change is back.
 * **The "Contribute" tab still shows and edits your drafts** as normal - "My drafts", the component
   pane, **Table**, **Review changes** and **Submit**. "Preview component info popup" there shows
@@ -51,7 +51,7 @@ same tab.
 ## When it is useful
 
 * To check how a board looks for everybody else, before or after you submit a change to it.
-* To compare: tick and untick it while looking at the same schematic image to see what your draft changes.
+* To compare: check and uncheck it while looking at the same schematic image to see what your draft changes.
 * To be sure a problem you see is in the downloaded data and not caused by something in your own
   draft.
 
@@ -59,5 +59,5 @@ same tab.
 
 | What you see | Likely cause |
 | --- | --- |
-| Your changes have disappeared from a board | The setting is ticked. Untick it - your draft was never touched |
-| A board you created yourself is empty | The setting is ticked, and a board that exists only as your draft has nothing online yet |
+| Your changes have disappeared from a board | The setting is checked. Uncheck it - your draft was never touched |
+| A board you created yourself is empty | The setting is checked, and a board that exists only as your draft has nothing online yet |

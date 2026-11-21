@@ -634,6 +634,23 @@ namespace CRT
             {
                 Logger.Warning($"The KiCad copies could not be swept - [{ex.Message}]");
             }
+
+            // And the oscilloscope captures an earlier run left waiting (Handlers.Oscilloscope.WaitingCaptures; code review,
+            // 2026-11-21) - on its own, so a KiCad cache that cannot be read leaves them no less swept.
+            try
+            {
+                string captures = AppConfig.ScopeCaptureWaitFolder;
+                int swept = await Task.Run(() => Handlers.Oscilloscope.WaitingCaptures.Sweep(captures, DateTime.UtcNow, Handlers.Oscilloscope.WaitingCaptures.SweptAfter));
+
+                if (swept > 0)
+                {
+                    Logger.Info($"[{swept}] oscilloscope captures left waiting by an earlier run were taken away from [{captures}]");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"The oscilloscope captures left waiting could not be swept - [{ex.Message}]");
+            }
         }
 
     }

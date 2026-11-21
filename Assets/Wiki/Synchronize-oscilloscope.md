@@ -15,12 +15,12 @@ settings by hand for every pin you probe.
 
 ## Enabling it
 
-* Tick `Enable network connected oscilloscope tab` on the "Configuration" tab (it is on by default).
+* Check `Enable network connected oscilloscope tab` on the "Configuration" tab (it is on by default).
 * Go to the "Oscilloscope" tab, pick your scope's vendor and series or model, type its address, and
   press **Connect to oscilloscope**. Your scope is not in the list? See "My scope is not listed" at
   the end of this page.
 * Click a component that has an oscilloscope baseline, and select one of its images.
-* In the component information window, make sure `Synchronize oscilloscope` is ticked. It is on by
+* In the component information window, make sure `Synchronize oscilloscope` is checked. It is on by
   default, but it is only available while CRT is actually connected to the oscilloscope.
 
 Each time you select an image, the settings for that image are sent to the oscilloscope. The values

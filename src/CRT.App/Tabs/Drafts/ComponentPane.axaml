@@ -905,106 +905,29 @@
 						</ItemsControl>
 					</StackPanel>
 
-					<TextBlock x:Name="NoBaselinesText" Classes="EmptyLine" Text="No oscilloscope baselines yet." />
+					<!-- THE BUTTONS AND THE PANELS THEY OPEN STAND OVER THE BASELINES (owner request, 2026-11-18: "should be shown on top,
+					     as they will be hidden if it has any capture"), and while no oscilloscope is connected a notice says what one would
+					     offer here (owner request, the same day: "I at first thought it was not implemented"; ComponentPane.ShowCaptureOffer). -->
+					<Border x:Name="ScopeHintNotice" Classes="Notice" IsVisible="False">
+						<Grid ColumnDefinitions="Auto,*">
+							<TextBlock Grid.Column="0" Classes="NoticeIcon" Text="&#xf05a;" />
+							<TextBlock Grid.Column="1" Classes="NoticeText" x:Name="ScopeHintText" />
+						</Grid>
+					</Border>
 
-					<ItemsControl x:Name="BaselinesItemsControl" Classes="RowsInView">
-						<ItemsControl.ItemTemplate>
-							<DataTemplate x:DataType="local:ComponentPaneBaselineRow">
-								<Border Classes="PaneEntry">
-									<Grid ColumnDefinitions="168,12,*">
-										<Border Grid.Column="0"
-												Width="168"
-												Height="112"
-												VerticalAlignment="Top"
-												Background="{DynamicResource Card_Bg}">
-											<Image Source="{Binding Thumbnail}" Stretch="Uniform" />
-										</Border>
-
-										<StackPanel Grid.Column="2">
-											<Grid ColumnDefinitions="70,8,*,8,*">
-												<StackPanel Grid.Column="0">
-													<TextBlock Classes="FieldLabel" Text="Pin" />
-													<TextBox Text="{Binding Pin, Mode=TwoWay}" Classes.Missing="{Binding PinOutside}" />
-												</StackPanel>
-												<StackPanel Grid.Column="2">
-													<TextBlock Classes="FieldLabel" Text="Signal name" />
-													<TextBox Text="{Binding Name, Mode=TwoWay}" Watermark="PA3, /IRQ, PHI2" />
-												</StackPanel>
-												<StackPanel Grid.Column="4">
-													<TextBlock Classes="FieldLabel" Text="Expected reading" />
-													<TextBox Text="{Binding ExpectedReading, Mode=TwoWay}" Watermark="Pulsing, high, 1 MHz clock" />
-												</StackPanel>
-											</Grid>
-											<TextBlock Classes="Required" Text="{Binding PinProblem}" IsVisible="{Binding PinOutside}" />
-											<Grid ColumnDefinitions="*,8,*,8,*">
-												<StackPanel Grid.Column="0">
-													<TextBlock Classes="FieldLabel" Text="T/DIV" />
-													<AutoCompleteBox ItemsSource="{x:Static data:ComponentVocabulary.TimeDivisions}"
-																	 Text="{Binding TimeDiv, Mode=TwoWay}"
-																	 FilterMode="StartsWith"
-																	 MinimumPrefixLength="0"
-																	 IsTextCompletionEnabled="False"
-																	 PlaceholderText="50us"
-																	 HorizontalAlignment="Stretch" />
-												</StackPanel>
-												<StackPanel Grid.Column="2">
-													<TextBlock Classes="FieldLabel" Text="V/DIV" />
-													<AutoCompleteBox ItemsSource="{x:Static data:ComponentVocabulary.VoltDivisions}"
-																	 Text="{Binding VoltsDiv, Mode=TwoWay}"
-																	 FilterMode="StartsWith"
-																	 MinimumPrefixLength="0"
-																	 IsTextCompletionEnabled="False"
-																	 PlaceholderText="1V"
-																	 HorizontalAlignment="Stretch" />
-												</StackPanel>
-												<StackPanel Grid.Column="4">
-													<TextBlock Classes="FieldLabel" Text="Trigger level" />
-													<TextBox Text="{Binding TriggerLevel, Mode=TwoWay}" Watermark="1.5V" />
-												</StackPanel>
-											</Grid>
-											<TextBlock Classes="FieldLabel" Text="Machine state" />
-											<TextBox Text="{Binding MachineState, Mode=TwoWay}" Watermark="At the READY prompt, running a game" />
-											<TextBlock Classes="FieldLabel" Text="Note" />
-											<!-- Several lines, always open as such (owner request, 2026-11-01) - and formatted as typed
-											     (owner request, 2026-11-07; RichNoteTextBox, the note stored as its markup). -->
-											<local:RichNoteTextBox Markup="{Binding Note, Mode=TwoWay}" MinHeight="80" />
-
-											<!-- What it applies to, on a board with regions - its last field (owner request, 2026-11-01). -->
-											<StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6,0,0" IsVisible="{Binding ShowsAppliesTo}">
-												<TextBlock Classes="FieldLabel" Text="Applies to" VerticalAlignment="Center" Margin="0" />
-												<ComboBox MinWidth="130"
-														  ItemsSource="{Binding AppliesToChoices}"
-														  SelectedItem="{Binding AppliesTo, Mode=TwoWay}" />
-											</StackPanel>
-
-											<TextBlock Text="{Binding Problem}"
-													   IsVisible="{Binding HasProblem}"
-													   Margin="0,4,0,0"
-													   Foreground="{DynamicResource Text_Warning_Fg}"
-													   TextWrapping="Wrap" />
-
-											<StackPanel Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
-												<Button Content="Change image"
-														Tag="{Binding}"
-														ToolTip.Tip="Pick another image for this baseline"
-														Click="OnChangeBaselineScreenshotClick" />
-												<!-- Owner request, 2026-11-07. -->
-												<Button Content="Reveal"
-														Tag="{Binding}"
-														ToolTip.Tip="Show this file selected in your file manager (Explorer, Finder or your Linux file manager). A file kept in your draft carries a name made of its checksum there."
-														Click="OnRevealFileClick" />
-												<Button Classes="Danger"
-														Content="Remove"
-														Tag="{Binding}"
-														ToolTip.Tip="Remove this oscilloscope baseline"
-														Click="OnRemoveBaselineClick" />
-											</StackPanel>
-										</StackPanel>
-									</Grid>
-								</Border>
-							</DataTemplate>
-						</ItemsControl.ItemTemplate>
-					</ItemsControl>
+					<StackPanel x:Name="AddBaselineButtons" Orientation="Horizontal" Spacing="6">
+						<Button x:Name="AddBaselineButton"
+								Classes="Accept"
+								Content="Add oscilloscope image"
+								Click="OnAddBaselineClick" />
+						<!-- A window of its own going round the pins with the oscilloscope (owner request, 2026-11-20 - "Capture pin by pin"
+						     on the page until then; BaselineCaptureWindow). -->
+						<Button x:Name="BaselineRunButton"
+								Content="Capture from oscilloscope pin-by-pin"
+								IsVisible="False"
+								ToolTip.Tip="Open a window going round the component's pins with the oscilloscope connected on the &quot;Oscilloscope&quot; tab: Enter takes its screen and how it is set as each pin's baseline"
+								Click="OnRunOpenClick" />
+					</StackPanel>
 
 					<!-- A new baseline, held here until it can be one - its pin, its signal name and an image
 					     (owner request, 2026-11-02: the scope settings may stay empty). -->
@@ -1070,11 +993,6 @@
 												Content="Choose image"
 												ToolTip.Tip="Pick the image from a file"
 												Click="OnChooseNewBaselineScreenshotClick" />
-										<Button x:Name="NewBaselineCaptureButton"
-												Content="Capture from my oscilloscope"
-												IsVisible="False"
-												ToolTip.Tip="Take the image from the oscilloscope connected on the &quot;Oscilloscope&quot; tab"
-												Click="OnCaptureNewBaselineClick" />
 										<Button x:Name="AddNewBaselineButton"
 												Classes="Accept"
 												Content="Add oscilloscope image"
@@ -1089,17 +1007,125 @@
 						</StackPanel>
 					</Border>
 
-					<StackPanel x:Name="AddBaselineButtons" Orientation="Horizontal" Spacing="6">
-						<Button x:Name="AddBaselineButton"
-								Classes="Accept"
-								Content="Add oscilloscope image"
-								Click="OnAddBaselineClick" />
-						<Button x:Name="CaptureBaselineButton"
-								Content="Capture from my oscilloscope"
-								IsVisible="False"
-								ToolTip.Tip="Start a new baseline with the screen of the oscilloscope connected on the &quot;Oscilloscope&quot; tab"
-								Click="OnCaptureBaselineClick" />
-					</StackPanel>
+					<TextBlock x:Name="NoBaselinesText" Classes="EmptyLine" Text="No oscilloscope baselines yet." />
+
+					<ItemsControl x:Name="BaselinesItemsControl" Classes="RowsInView">
+						<ItemsControl.ItemTemplate>
+							<DataTemplate x:DataType="local:ComponentPaneBaselineRow">
+								<Border Classes="PaneEntry">
+									<Grid ColumnDefinitions="168,12,*">
+										<Border Grid.Column="0"
+												Width="168"
+												Height="112"
+												VerticalAlignment="Top"
+												Background="{DynamicResource Card_Bg}">
+											<Image Source="{Binding Thumbnail}" Stretch="Uniform" />
+										</Border>
+
+										<StackPanel Grid.Column="2">
+											<Grid ColumnDefinitions="70,8,*,8,*">
+												<StackPanel Grid.Column="0">
+													<TextBlock Classes="FieldLabel" Text="Pin" />
+													<TextBox Text="{Binding Pin, Mode=TwoWay}" Classes.Missing="{Binding PinOutside}" />
+												</StackPanel>
+												<StackPanel Grid.Column="2">
+													<TextBlock Classes="FieldLabel" Text="Signal name" />
+													<TextBox Text="{Binding Name, Mode=TwoWay}" Watermark="PA3, /IRQ, PHI2" />
+												</StackPanel>
+												<StackPanel Grid.Column="4">
+													<TextBlock Classes="FieldLabel" Text="Expected reading" />
+													<!-- The readings the board's baselines already give, offered as it is typed (owner request,
+													     2026-11-18: "when typing "h" it will show the "High" and I can choose that";
+													     ComponentPane.ExpectedReadingChoices, read again as the box takes the focus). -->
+													<AutoCompleteBox Classes="ExpectedReading"
+																	 ItemsSource="{Binding $parent[local:ComponentPane].ExpectedReadingChoices}"
+																	 Text="{Binding ExpectedReading, Mode=TwoWay}"
+																	 FilterMode="StartsWith"
+																	 MinimumPrefixLength="1"
+																	 IsTextCompletionEnabled="False"
+																	 PlaceholderText="Pulsing, high, 1 MHz clock"
+																	 HorizontalAlignment="Stretch" />
+												</StackPanel>
+											</Grid>
+											<TextBlock Classes="Required" Text="{Binding PinProblem}" IsVisible="{Binding PinOutside}" />
+											<Grid ColumnDefinitions="*,8,*,8,*">
+												<StackPanel Grid.Column="0">
+													<TextBlock Classes="FieldLabel" Text="T/DIV" />
+													<AutoCompleteBox ItemsSource="{x:Static data:ComponentVocabulary.TimeDivisions}"
+																	 Text="{Binding TimeDiv, Mode=TwoWay}"
+																	 FilterMode="StartsWith"
+																	 MinimumPrefixLength="0"
+																	 IsTextCompletionEnabled="False"
+																	 PlaceholderText="50us"
+																	 HorizontalAlignment="Stretch" />
+												</StackPanel>
+												<StackPanel Grid.Column="2">
+													<TextBlock Classes="FieldLabel" Text="V/DIV" />
+													<AutoCompleteBox ItemsSource="{x:Static data:ComponentVocabulary.VoltDivisions}"
+																	 Text="{Binding VoltsDiv, Mode=TwoWay}"
+																	 FilterMode="StartsWith"
+																	 MinimumPrefixLength="0"
+																	 IsTextCompletionEnabled="False"
+																	 PlaceholderText="1V"
+																	 HorizontalAlignment="Stretch" />
+												</StackPanel>
+												<StackPanel Grid.Column="4">
+													<TextBlock Classes="FieldLabel" Text="Trigger level" />
+													<TextBox Text="{Binding TriggerLevel, Mode=TwoWay}" Watermark="1.5V" />
+												</StackPanel>
+											</Grid>
+											<TextBlock Classes="FieldLabel" Text="Machine state" />
+											<TextBox Text="{Binding MachineState, Mode=TwoWay}" Watermark="At the READY prompt, running a game" />
+											<TextBlock Classes="FieldLabel" Text="Note" />
+											<!-- Several lines, always open as such (owner request, 2026-11-01) - and formatted as typed
+											     (owner request, 2026-11-07; RichNoteTextBox, the note stored as its markup). -->
+											<local:RichNoteTextBox Markup="{Binding Note, Mode=TwoWay}" MinHeight="80" />
+
+											<!-- What it applies to, on a board with regions - its last field (owner request, 2026-11-01). -->
+											<StackPanel Orientation="Horizontal" Spacing="8" Margin="0,6,0,0" IsVisible="{Binding ShowsAppliesTo}">
+												<TextBlock Classes="FieldLabel" Text="Applies to" VerticalAlignment="Center" Margin="0" />
+												<ComboBox MinWidth="130"
+														  ItemsSource="{Binding AppliesToChoices}"
+														  SelectedItem="{Binding AppliesTo, Mode=TwoWay}" />
+											</StackPanel>
+
+											<TextBlock Text="{Binding Problem}"
+													   IsVisible="{Binding HasProblem}"
+													   Margin="0,4,0,0"
+													   Foreground="{DynamicResource Text_Warning_Fg}"
+													   TextWrapping="Wrap" />
+
+											<StackPanel Orientation="Horizontal" Spacing="6" Margin="0,6,0,0">
+												<Button Content="Change image"
+														Tag="{Binding}"
+														ToolTip.Tip="Pick another image for this baseline"
+														Click="OnChangeBaselineScreenshotClick" />
+												<!-- The oscilloscope's screen again for this baseline - in "Capture from oscilloscope pin-by-pin",
+												     on its pin, to be checked before it is accepted (owner request, 2026-11-20: "better than
+												     just do an instant-capture"; ComponentPane.BaselineRun.cs) - while an oscilloscope is
+												     connected. Plain: it changes nothing in the draft until the capture is accepted. -->
+												<Button Content="Capture again"
+														Tag="{Binding}"
+														IsVisible="{Binding CaptureOffered}"
+														ToolTip.Tip="Open &quot;Capture from oscilloscope pin-by-pin&quot; on this pin and take its image again from the oscilloscope, to check it before you accept it"
+														Click="OnCaptureBaselineAgainClick" />
+												<!-- Owner request, 2026-11-07. -->
+												<Button Content="Reveal"
+														Tag="{Binding}"
+														ToolTip.Tip="Show this file selected in your file manager (Explorer, Finder or your Linux file manager). A file kept in your draft carries a name made of its checksum there."
+														Click="OnRevealFileClick" />
+												<Button Classes="Danger"
+														Content="Remove"
+														Tag="{Binding}"
+														ToolTip.Tip="Remove this oscilloscope baseline"
+														Click="OnRemoveBaselineClick" />
+											</StackPanel>
+										</StackPanel>
+									</Grid>
+								</Border>
+							</DataTemplate>
+						</ItemsControl.ItemTemplate>
+					</ItemsControl>
 				</StackPanel>
 
 				<!-- ==== Pictures (slice 3b) ==== -->

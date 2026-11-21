@@ -26,10 +26,16 @@ namespace CRT
         // SetTimeDiv, SetVoltsDiv and SetTriggerLevel palettes so all SCPI traffic is logged.
         // This overload captures a UI snapshot first, then delegates to the fully decoupled worker
         // implementation that no longer reads UI controls directly.
+        //
+        // `evenIfSentLast`: sent though these very settings were the last sent - for a pin the
+        // person goes to on purpose ("Capture from oscilloscope pin-by-pin", IBaselineScope), as
+        // knobs turned by hand since are no change the tab can see (code review, 2026-11-21: back
+        // on the pin set last, the capture took another pin's settings).
         // ###########################################################################################
         public async Task ApplyComponentImageOscilloscopeSettingsAsync(
             ComponentImageEntry componentImageEntry,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            bool evenIfSentLast)
         {
             OscilloscopeSelectionSnapshot selectionSnapshot;
 
@@ -47,17 +53,20 @@ namespace CRT
             await this.ApplyComponentImageOscilloscopeSettingsAsync(
                 componentImageEntry,
                 selectionSnapshot,
-                cancellationToken).ConfigureAwait(false);
+                cancellationToken,
+                evenIfSentLast).ConfigureAwait(false);
         }
 
         // ###########################################################################################
         // Applies oscilloscope settings using a previously captured oscilloscope snapshot so the
         // entire auto-sync path can run off the UI thread while still reusing the live SCPI session.
+        // The component popup's sync skips settings it sent last (`evenIfSentLast` false).
         // ###########################################################################################
         private async Task ApplyComponentImageOscilloscopeSettingsAsync(
             ComponentImageEntry componentImageEntry,
             OscilloscopeSelectionSnapshot selectionSnapshot,
-            CancellationToken cancellationToken)
+            CancellationToken cancellationToken,
+            bool evenIfSentLast = false)
         {
             bool enteredSemaphore = false;
 
@@ -140,7 +149,7 @@ namespace CRT
                     mappedVoltsDiv,
                     mappedTriggerLevel);
 
-                if (string.Equals(this.thisLastOscilloscopeImageSyncSignature, signature, StringComparison.Ordinal))
+                if (!evenIfSentLast && string.Equals(this.thisLastOscilloscopeImageSyncSignature, signature, StringComparison.Ordinal))
                 {
                     return;
                 }

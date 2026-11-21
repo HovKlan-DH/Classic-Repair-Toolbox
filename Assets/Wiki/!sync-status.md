@@ -5,7 +5,7 @@
 
 # Wiki pages waiting to be pasted
 
-**22 pages waiting.**
+**23 pages waiting.**
 
 | File in `Assets/Wiki` | Where it is in the Wiki |
 | --- | --- |
@@ -21,6 +21,7 @@
 | `Installing-application-in-Linux.md` | Home > Installing > Install on Linux |
 | `KiCad-folder.md` | Home > Reference > Data files > KiCad folder |
 | `Maintainer-tab.md` | Home > Contributing > Maintainer tab |
+| `MiniPro-programmer.md` | Home > At the bench > MiniPro programmer |
 | `Synchronize-oscilloscope.md` | Home > At the bench > Synchronize oscilloscope |
 | `Table-view.md` | Home > Contributing > Table view |
 | `View-boards-from-online-source.md` | Home > Contributing > View boards from online source |

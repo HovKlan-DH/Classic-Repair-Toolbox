@@ -899,6 +899,43 @@ public sealed class OscilloscopeModelEditorTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // "CAPTURE FROM OSCILLOSCOPE PIN-BY-PIN" SETS THE OSCILLOSCOPE EVERY TIME IT GOES TO A PIN (code review, 2026-11-21): the component
+    // popup's sync skips settings it sent last, and knobs turned by hand since are no change the tab can see - back on the pin set last,
+    // the capture took another pin's settings. The baselines' way in (IBaselineScope.ApplyAsync) sends them again. Here, as the
+    // user's own model can be given the commands setting a trigger level.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_baselines_settings_are_sent_every_time_though_they_were_the_last_sent()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            TabOscilloscope tab = await TabWithOwnModelAsync();
+
+            foreach ((string key, string command) in new[] { ("setTriggerLevel", ":TRIG:EDGE:LEV {0}"), ("operationComplete", "*OPC?"), ("drainErrorQueue", ":SYST:ERR?") })
+            {
+                (TextBox box, _) = tab.FieldForTests(key);
+                box.Text = command;
+                Leave(box);
+                await tab.LastModelSaveForTests;
+            }
+
+            var client = new TakingScopeClient();
+            tab.HostTextBox.Text = "192.0.2.10";
+            tab.PortTextBox.Text = "5555";
+            Dispatcher.UIThread.RunJobs();
+            tab.UseConnectedClientForTests(client);
+
+            IBaselineScope scope = tab;
+            var baseline = new ComponentImageEntry { BoardLabel = "U27", Pin = "1", Name = "1A", File = "Scope baseline/U27_1.png", TriggerLevelVolts = "1.5V" };
+
+            await scope.ApplyAsync(baseline, CancellationToken.None);
+            await scope.ApplyAsync(baseline, CancellationToken.None);
+
+            Assert.Equal(2, client.Sent.Count(command => command == ":TRIG:EDGE:LEV 1.5"));
+        });
+    }
+
     // A scope that takes a command and never answers it.
     private sealed class SilentScopeClient : IScopeClient
     {
@@ -916,16 +953,26 @@ public sealed class OscilloscopeModelEditorTests : IDisposable
         public Task<byte[]> QueryBinaryBlockAsync(string commandText, CancellationToken cancellationToken) => Task.FromResult(Array.Empty<byte>());
     }
 
-    // A scope client that takes every command - what a palette sends goes nowhere.
+    // A scope client that takes every command - what a palette sends goes nowhere, noted in `Sent`.
     private sealed class TakingScopeClient : IScopeClient
     {
         private readonly string thisAnswer;
 
         public TakingScopeClient(string answer = "0,\"No error\"") => this.thisAnswer = answer;
 
-        public Task SendAsync(string commandText, CancellationToken cancellationToken) => Task.CompletedTask;
+        public List<string> Sent { get; } = new();
 
-        public Task<string> QueryLineAsync(string commandText, CancellationToken cancellationToken) => Task.FromResult(this.thisAnswer);
+        public Task SendAsync(string commandText, CancellationToken cancellationToken)
+        {
+            this.Sent.Add(commandText);
+            return Task.CompletedTask;
+        }
+
+        public Task<string> QueryLineAsync(string commandText, CancellationToken cancellationToken)
+        {
+            this.Sent.Add(commandText);
+            return Task.FromResult(this.thisAnswer);
+        }
 
         public Task<byte[]> QueryBinaryBlockAsync(string commandText, CancellationToken cancellationToken) => Task.FromResult(Array.Empty<byte>());
     }

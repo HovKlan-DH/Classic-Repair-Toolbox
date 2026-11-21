@@ -10,7 +10,7 @@ From nothing to a recorded repair.
 
 It is on by default: you have a "Workbooks" tab, and a bar above the tabs.
 
-If you do not see them: "Configuration" tab -> tick **Enable "Workbooks" tab**.
+If you do not see them: "Configuration" tab -> check **Enable "Workbooks" tab**.
 
 Under the checkbox, "Scope in "Workbooks" tab:" chooses which devices and workbooks the tab lists: **Show all workbooks and devices**, **Show only workbooks and devices for selected hardware** (every board of it), or **Show only workbooks and devices for selected board**. Start with the default (selected board only).
 
@@ -42,7 +42,7 @@ One workbook per repair - not per fault. Three faults on the same board is one w
 4. The editor opens. Type a title in the box at the top (it reads "Worklog title") - **Add worklog** stays greyed out until you do.
 5. Click **Add worklog**.
 
-The components your rectangle touched are already ticked under "Components in scope". Untick any that got caught by accident.
+The components your rectangle touched are already checked under "Components in scope". Uncheck any that got caught by accident.
 
 Cancel instead, and nothing at all is written.
 

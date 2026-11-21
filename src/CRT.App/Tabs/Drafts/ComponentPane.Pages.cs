@@ -546,20 +546,21 @@ namespace CRT
         // ###########################################################################################
         private void OnPackageBoxFocused(object? sender, RoutedEventArgs e)
         {
-            if (e is FocusChangedEventArgs { OldFocusedElement: Visual from } && this.IsInPackageBox(from))
+            if (e is FocusChangedEventArgs { OldFocusedElement: Visual from } && ComponentPane.IsInBox(this.PackageBox, from))
                 return;
 
             this.thisPackageTextAtFocus = this.PackageBox.Text ?? string.Empty;
             this.PackageBox.IsDropDownOpen = true;
         }
 
-        // The box's text, or a row of its list - a popup of its own, outside the box's visual tree.
-        private bool IsInPackageBox(Visual element)
+        // `box`'s text, or a row of its list - a popup of its own, outside the box's visual tree. The package's box and a baseline's
+        // "Expected reading" ask it, for the focus coming back from their own list.
+        private static bool IsInBox(AutoCompleteBox box, Visual element)
         {
-            if (this.PackageBox.IsVisualAncestorOf(element))
+            if (box.IsVisualAncestorOf(element))
                 return true;
 
-            Control? list = this.PackageBox.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.Popup>().FirstOrDefault()?.Child;
+            Control? list = box.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.Popup>().FirstOrDefault()?.Child;
 
             return list is not null && (ReferenceEquals(list, element) || list.IsVisualAncestorOf(element));
         }

@@ -161,7 +161,7 @@ namespace Handlers.Tours
                         ["TabSchematicsControl/LabelsPanel"],
                         "The Labels visible panel",
                         "<b>Labels visible</b> writes names on the components marked on the schematic image, so you can tell them apart without pointing at each one.\n\n" +
-                        "Tick <b>Board label</b>, <b>Technical name</b> or <b>Friendly name</b> - or several of them - to write them on every component, and <b>Selected components only</b> to write them only on the components you have selected.\n\n" +
+                        "Check <b>Board label</b>, <b>Technical name</b> or <b>Friendly name</b> - or several of them - to write them on every component, and <b>Selected components only</b> to write them only on the components you have selected.\n\n" +
                         "Click the headline of this panel, or of the panels beside it, to fold it away or open it again.",
                         Stage: TourStage.SchematicsPanelsExpanded),
                     new TourStep(
@@ -241,8 +241,8 @@ namespace Handlers.Tours
                         [],
                         "Worklogs: what you found and did",
                         "A worklog is one finding or one piece of work in a repair. Press <b>Add worklog</b>, then drag a rectangle on the schematic image where it is - the worklog opens.\n\n" +
-                        "Give it a title, and say whether it is a <b>Note</b>, something <b>Cosmetic</b> or an <b>Issue</b>. Describe it, and add the work done, comments, photos, files and links - and tick the components in its area as they are completed.\n\n" +
-                        "A worklog stays <b>Open</b> until you set it <b>Closed</b>. On the <b>Schematics</b> tab each stands on the schematic image as a badge - click one to open it, and untick <b>Show worklogs</b> to hide them."),
+                        "Give it a title, and say whether it is a <b>Note</b>, something <b>Cosmetic</b> or an <b>Issue</b>. Describe it, and add the work done, comments, photos, files and links - and check the components in its area as they are completed.\n\n" +
+                        "A worklog stays <b>Open</b> until you set it <b>Closed</b>. On the <b>Schematics</b> tab each stands on the schematic image as a badge - click one to open it, and uncheck <b>Show worklogs</b> to hide them."),
                     new TourStep(
                         Crt4,
                         ["TabWorkbooks/WorkbookListArea", "TabWorkbooks/DeviceListArea"],
@@ -279,7 +279,7 @@ namespace Handlers.Tours
                         Crt4,
                         ["TabOverview/PrintButtonsPanel"],
                         "Print a list or a bill of materials",
-                        "Tick the components to print at the left of each row - the tick at the top ticks or unticks them all.\n\n" +
+                        "Check the components to print at the left of each row - the checkbox at the top checks or unchecks them all.\n\n" +
                         "<b>Print component list</b> lists them with their details, and <b>Print BOM</b> counts how many of each part the board needs. Both open in your web browser, ready to print."),
                 ]),
 
@@ -298,7 +298,7 @@ namespace Handlers.Tours
                         Crt4,
                         ["TabOscilloscope/HostTextBox", "TabOscilloscope/PortTextBox", "TabOscilloscope/AutoConnectOscilloscopeCheckBox", "TabOscilloscope/ConnectToOscilloscopeButton"],
                         "Connect over the network",
-                        "Type your oscilloscope's network address, then press <b>Connect to oscilloscope</b> - or tick <b>Auto-connect oscilloscope</b>, and CRT connects by itself."),
+                        "Type your oscilloscope's network address, then press <b>Connect to oscilloscope</b> - or check <b>Auto-connect oscilloscope</b>, and CRT connects by itself."),
                     new TourStep(
                         Crt4,
                         ["TabOscilloscope/OscilloscopeImageFolderTextBox", "TabOscilloscope/SelectOscilloscopeImageFolderButton"],
@@ -322,7 +322,7 @@ namespace Handlers.Tours
                         Crt4,
                         ["TabConfiguration/CataloguePanelBorder"],
                         "Hide what you do not need",
-                        "Untick a hardware, a board or a schematic image you never use, and it is hidden from the lists."),
+                        "Uncheck a hardware, a board or a schematic image you never use, and it is hidden from the lists."),
                     new TourStep(
                         Crt4,
                         ["TabConfiguration/TakeToursAgainButton", "TabConfiguration/ShowProblemsButton", "TabConfiguration/OpenDataFolderButton", "TabConfiguration/OpenWorkbooksFolderButton", "TabConfiguration/OpenLogsFolderButton"],

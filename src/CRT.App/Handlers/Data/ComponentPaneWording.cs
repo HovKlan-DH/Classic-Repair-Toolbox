@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text;
 
 namespace Handlers.DataHandling
 {
@@ -198,8 +199,8 @@ namespace Handlers.DataHandling
         // Why the tick cannot be taken away while rows say a region - worded as a region's own line, the count bold (owner
         // request, 2026-11-09; BoldRuns).
         public static string RegionsInUse(int rows) => rows == 1
-            ? "<b>1</b> row of this board has a region applied, so this stays ticked until it applies to all regions."
-            : $"<b>{rows.ToString(CultureInfo.InvariantCulture)}</b> rows of this board have a region applied, so this stays ticked until they apply to all regions.";
+            ? "<b>1</b> row of this board has a region applied, so this stays checked until it applies to all regions."
+            : $"<b>{rows.ToString(CultureInfo.InvariantCulture)}</b> rows of this board have a region applied, so this stays checked until they apply to all regions.";
 
         // Why a region cannot be deleted, under it on "Board: Regions" - the count bold (owner request, 2026-11-09: "change this
         // to "<b>2</b> rows of this board have it applied, so it ..""; BoldRuns.MarkedText shows it).
@@ -240,7 +241,7 @@ namespace Handlers.DataHandling
 
         // ... and why the last two stay (BoardRegions.FewestRegions).
         public const string RegionsAtFewest =
-            "A board with regions comes in two at least - to have none, untick \"This board comes with multiple regions\".";
+            "A board with regions comes in two at least - to have none, uncheck \"This board comes with multiple regions\".";
 
         // ---- the board's categories (2026-11-01) ------------------------------------------------------
 
@@ -496,6 +497,305 @@ namespace Handlers.DataHandling
 
         public const string CaptureFailed =
             "Nothing came from the oscilloscope - the \"Oscilloscope\" tab says why.";
+
+        // ---- "Capture from oscilloscope pin-by-pin" (owner requests, 2026-11-18 and 2026-11-20; BaselineCaptureWindow) -------------
+
+        public static string CaptureWindowTitle(string label) => $"Capture from oscilloscope pin-by-pin - {label}";
+
+        public const string CaptureWindowIntro =
+            "Select the pins to capture, or click them on the case. Probe the pin shown and press Enter to capture the oscilloscope's " +
+            "screen and how it is set. Check it - beside the old one, when it had one - then \"Accept and continue to next pin\" makes it " +
+            "that pin's baseline in your draft. Each capture accepted is one step \"Undo\" takes back.";
+
+        public const string ScopeConnected = "Oscilloscope connected - Enter captures.";
+
+        public const string ScopeNotConnected =
+            "The oscilloscope is not connected - connect it on the \"Oscilloscope\" tab to capture. What was captured is kept.";
+
+        public const string RunNoPins =
+            "This component has no pins to go round yet - give it its case on its \"Pinout\" page, or add its pins there.";
+
+        // Said as a capture is accepted - capturing never asks for one (code review, 2026-11-21: "before it is captured" sent
+        // contributors back to capturing again).
+        public const string RunNeedsName = "This pin has no signal name yet - type one, then accept the capture.";
+
+        // A capture whose baseline changed in the pane, or whose component went, while it was going into the draft (code review,
+        // 2026-11-21: it was filed under whatever the pane showed by then).
+        public const string RunCaptureNotPut =
+            "The component's baselines changed while this capture was going in, so it was not put in - it is still waiting to be accepted.";
+
+        // A capture whose line went while it was being taken - the pin's baselines changed in the pane meanwhile.
+        public const string RunCaptureLost = "The pin's baselines changed while it was being captured - capture it again.";
+
+        // "Capture again" on a baseline the window cannot find - it changed meanwhile.
+        public const string RunBaselineNotFound =
+            "That baseline changed meanwhile - pick its pin in the \"Capture from oscilloscope pin-by-pin\" window.";
+
+        public const string RunNothingPicked = "No pins picked - select the pins to capture, or pick them with the buttons over the list.";
+
+        // How many of the picked baselines are accepted (bold, BoldRuns) - a pin may have several.
+        public static string RunProgress(int picked, int accepted) =>
+            picked == 0
+                ? ComponentPaneWording.RunNothingPicked
+                : $"<b>{accepted.ToString(CultureInfo.InvariantCulture)}</b> of <b>{picked.ToString(CultureInfo.InvariantCulture)}</b> picked " +
+                  $"{(picked == 1 ? "baseline" : "baselines")} accepted";
+
+        // A step's line in the list: its pin and signal name.
+        public static string RunTargetLabel(BaselineRunStep step)
+        {
+            ArgumentNullException.ThrowIfNull(step);
+            return step.Name.Trim().Length == 0 ? step.PinText : $"{step.PinText}  {step.Name.Trim()}";
+        }
+
+        // Under it: accepted, captured and to be checked, a baseline to capture again, or none yet.
+        public static string RunTargetState(BaselineRunStep step)
+        {
+            ArgumentNullException.ThrowIfNull(step);
+
+            return step.IsAccepted ? "Accepted"
+                : step.IsCaptured ? $"Captured - {NotYetAccepted}"
+                : step.IsUpdate ? "Has a baseline"
+                : step.HadBaseline ? "Baseline with no image"
+                : "No baseline yet";
+        }
+
+        // The pin shown, its number and signal name bold (BoldRuns).
+        public static string RunCurrent(BaselineRunStep step)
+        {
+            ArgumentNullException.ThrowIfNull(step);
+            return $"Pin <b>{Handlers.Theming.BoldRuns.Plain(step.PinText)}</b>{ComponentPaneWording.NamePart(step)}";
+        }
+
+        // Under it: what to do with it now, and what the baseline was measured in, so the machine can be put in that state.
+        public static string RunStepDetails(BaselineRunStep step, string machineState)
+        {
+            ArgumentNullException.ThrowIfNull(step);
+
+            string what = step.IsAccepted
+                ? "Accepted. Enter captures it again."
+                : step.IsCaptured
+                    ? "Captured - not yet accepted, so not in your draft. Check it, then \"Accept and continue to next pin\". Enter captures it again."
+                    : step.IsUpdate
+                        ? "Enter captures its baseline again."
+                        : step.HadBaseline
+                            ? "Its baseline has no image yet - Enter captures one, to be accepted."
+                            : "No baseline yet - Enter captures one, to be accepted.";
+
+            return string.IsNullOrWhiteSpace(machineState)
+                ? what
+                : $"{what} Machine state: {machineState.Trim()}";
+        }
+
+        // The pin "Accept and continue to next pin" goes on to, or that none is left (bold, BoldRuns).
+        public static string RunNext(BaselineRunStep? next) =>
+            next is null
+                ? "Every picked pin is accepted."
+                : $"Next: pin <b>{Handlers.Theming.BoldRuns.Plain(next.PinText)}</b>{ComponentPaneWording.NamePart(next)}";
+
+        // With none after it, the pin shown picked and not accepted yet.
+        public const string RunShownIsLast = "This is the last picked pin to accept.";
+
+        private static string NamePart(BaselineRunStep step) =>
+            step.Name.Trim().Length == 0 ? string.Empty : $" - <b>{Handlers.Theming.BoldRuns.Plain(step.Name).Trim()}</b>";
+
+        // ###########################################################################################
+        // The window's keys - the component info window's with an oscilloscope connected (Controlling-oscilloscope-with-keyboard;
+        // owner request, 2026-11-20: "do support the same keyboard options as available in the component info window"), Enter
+        // capturing and the number keys going to a pin as there; Right is "Accept and continue to next pin" (owner request, the same
+        // day: the button that was "Next pin").
+        // ###########################################################################################
+        public static IReadOnlyList<(string Keys, string What)> RunKeys { get; } =
+        [
+            ("Enter", "Capture the pin shown - again to retake it"),
+            ("Right", "Accept and continue to the next pin"),
+            ("Left", "The picked pin before it"),
+            ("0 - 9", "The pin with that number"),
+            ("Space", "The first picked pin"),
+            ("Up / Down", "Trigger level up or down"),
+            ("Numpad + / -", "Time per division, a step either way"),
+            ("Numpad 1 / 2", "1 V or 2 V per division"),
+            ("Numpad .", "Clear statistics"),
+            ("Numpad *", "Single"),
+            ("Numpad /", "Run"),
+            ("Escape", "Close this window"),
+        ];
+
+        // ---- the pictures: the old baseline beside the new capture (owner requests, 2026-11-20: "I want also to see the old baseline
+        // image", and, "Differences" taken away the same day, "have it more clear/visible what is the old and new image") ----------
+
+        public const string PictureOld = "Old baseline";
+
+        public const string PictureNew = "New capture";
+
+        // An existing baseline not captured in this run.
+        public const string PictureBaseline = "Baseline";
+
+        public const string PictureOldUnreadable = "The old baseline's picture could not be read.";
+
+        // The new capture's title over it - checked or not yet.
+        public static string PictureNewTitle(bool accepted) => accepted ? $"{PictureNew} - accepted" : $"{PictureNew} - {NotYetAccepted}";
+
+        // A capture waiting to be checked and accepted - not in the draft until it is (owner request, 2026-11-20: "Rename the "New
+        // capture - to check" to "New capture - not yet accepted", so it is clear this must be accepted before it will be used").
+        public const string NotYetAccepted = "not yet accepted";
+
+        // ###########################################################################################
+        // Closing the window with captures not accepted: they are in no draft, so the window asks before they go (`count` of them).
+        // ###########################################################################################
+        public static string RunNotAcceptedOnClose(int count) =>
+            count == 1
+                ? "<b>1</b> capture is not yet accepted, so it is not in your draft. Accept it before closing, or discard it?"
+                : $"<b>{count.ToString(CultureInfo.InvariantCulture)}</b> captures are not yet accepted, so they are not in your draft. Accept them before closing, or discard them?";
+
+        // Over a picture: what it is, bold, and how the oscilloscope was set for it (BoldRuns) - the settings are the data's words, a
+        // "<b>" in them no mark (code review, 2026-11-21).
+        public static string RunPictureHeader(string title, string settings) =>
+            string.IsNullOrWhiteSpace(settings) ? $"<b>{title}</b>" : $"<b>{title}</b>   {Handlers.Theming.BoldRuns.Plain(settings).Trim()}";
+
+        // How the oscilloscope was set for a baseline, short - its T/DIV, V/DIV and trigger level, those it has, as the data spells
+        // them: "100us, 2V, 1.25V". A line of "Capture from oscilloscope pin-by-pin"'s list, and the strip over each picture.
+        public static string RunSettings(ComponentImageEntry baseline)
+        {
+            ArgumentNullException.ThrowIfNull(baseline);
+
+            return string.Join(", ", new[] { baseline.TimeDiv, baseline.VoltsDiv, baseline.TriggerLevelVolts }
+                .Select(value => value?.Trim() ?? string.Empty)
+                .Where(value => value.Length > 0));
+        }
+
+        // ###########################################################################################
+        // How the oscilloscope was set for a baseline, each value with its name - the line under a picture seen large (owner requests,
+        // 2026-11-20: "have the headers show also, so it is clear what the value is", then "again do remember to have the values
+        // "bold""); one not set says so, not bold. The viewer shows a note with formatting, so this is one (RichNote): written by
+        // RichNote.Serialize, a "*" or "__" a value holds stays a character, never a mark.
+        // ###########################################################################################
+        public static string RunSettingsNamed(ComponentImageEntry baseline)
+        {
+            ArgumentNullException.ThrowIfNull(baseline);
+
+            var text = new StringBuilder();
+            var styles = new List<RichNoteStyle>();
+
+            void Add(string words, RichNoteStyle style)
+            {
+                text.Append(words);
+                styles.AddRange(Enumerable.Repeat(style, words.Length));
+            }
+
+            void Field(string name, string? value)
+            {
+                if (text.Length > 0)
+                {
+                    Add("   |   ", RichNoteStyle.None);
+                }
+
+                Add($"{name}: ", RichNoteStyle.None);
+
+                if (value?.Trim() is { Length: > 0 } words)
+                {
+                    Add(words, RichNoteStyle.Bold);
+                }
+                else
+                {
+                    Add("(none)", RichNoteStyle.None);
+                }
+            }
+
+            Field(FactTimeDiv, baseline.TimeDiv);
+            Field(FactVoltsDiv, baseline.VoltsDiv);
+            Field(FactTriggerLevel, baseline.TriggerLevelVolts);
+
+            return RichNote.Serialize(new RichNoteText(text.ToString(), styles));
+        }
+
+        // A pin's picture seen large (WorklogPhotoViewerWindow): "Pin 3 - 1Y", and which of its pictures it is.
+        public static string RunPictureTitle(BaselineRunStep step, string? which)
+        {
+            ArgumentNullException.ThrowIfNull(step);
+
+            string pin = step.Name.Trim().Length == 0 ? $"Pin {step.PinText}" : $"Pin {step.PinText} - {step.Name.Trim()}";
+            return string.IsNullOrEmpty(which) ? pin : $"{pin} - {which}";
+        }
+
+        // Following the pointer over a picture - never a tooltip, whose window under the pointer takes the next click.
+        public const string PictureHint = "Click to see it larger";
+
+        // ---- every field of the baseline shown ------------------------------------------------------------------------------------
+
+        public const string FactPin = "Pin";
+        public const string FactSignalName = "Signal name";
+        public const string FactExpectedReading = "Expected reading";
+        public const string FactTimeDiv = "T/DIV";
+        public const string FactVoltsDiv = "V/DIV";
+        public const string FactTriggerLevel = "Trigger level";
+        public const string FactMachineState = "Machine state";
+        public const string FactNote = "Note";
+        public const string FactAppliesTo = "Applies to";
+
+        // ###########################################################################################
+        // Beside a baseline's picture, every field the component info popup shows of it (owner request, 2026-11-18: "Everything that
+        // will be shown, should also be shown here, so I can validate it"), in the popup's order - pin, signal name, expected
+        // reading, T/DIV, V/DIV, trigger level, then machine state and note - and what it applies to on a board with regions; the
+        // window lines them up in a table (owner request, 2026-11-20: "align the values, so it looks nicer and easier to get an
+        // overview"). A field left empty says so: the popup leaves it out, and a setting the oscilloscope did not answer is what is
+        // to be checked. THE VALUE BOLD, NOT ITS NAME (owner request, the same day: "I want the value to be the important one here");
+        // a value that changed since the baseline the run started from (`before`) says what it was. Each its name and its value as
+        // BoldRuns shows it; what the data says is its words alone, a "<b>" in it no mark.
+        // ###########################################################################################
+        public static IReadOnlyList<(string Name, string Value)> RunFacts(ComponentImageEntry baseline, bool boardHasRegions, ComponentImageEntry? before = null)
+        {
+            ArgumentNullException.ThrowIfNull(baseline);
+
+            static string Its(string? data) => Handlers.Theming.BoldRuns.Plain(data).Trim();
+
+            (string Name, string Value) Fact(string name, Func<ComponentImageEntry, string?> valueOf)
+            {
+                string now = Its(valueOf(baseline));
+                string value = now.Length > 0 ? $"<b>{now}</b>" : "(none)";
+
+                if (before is not null && Its(valueOf(before)) is var earlier && !string.Equals(earlier, now, StringComparison.Ordinal))
+                {
+                    value += earlier.Length > 0 ? $"  (was {earlier})" : "  (was none)";
+                }
+
+                return (name, value);
+            }
+
+            var facts = new List<(string Name, string Value)>
+            {
+                Fact(FactPin, entry => entry.Pin),
+                Fact(FactSignalName, entry => entry.Name),
+                Fact(FactExpectedReading, entry => entry.ExpectedOscilloscopeReading),
+                Fact(FactTimeDiv, entry => entry.TimeDiv),
+                Fact(FactVoltsDiv, entry => entry.VoltsDiv),
+                Fact(FactTriggerLevel, entry => entry.TriggerLevelVolts),
+                Fact(FactMachineState, entry => entry.MachineState),
+                Fact(FactNote, entry => RichNote.PlainOf(entry.Note)),
+            };
+
+            if (boardHasRegions)
+            {
+                facts.Add(Fact(FactAppliesTo, entry => entry.Region is { Length: > 0 } region ? region : ComponentPaneWording.AllRegions));
+            }
+
+            return facts;
+        }
+
+        // ###########################################################################################
+        // While no oscilloscope is connected, over the baselines: what connecting one offers here (owner request, 2026-11-18: "it
+        // should be shown somewhere, that the user can connect his oscilloscope to get more options here, as I at first thought it
+        // was not implemented") - and, with the "Oscilloscope" tab turned off, where it is turned on.
+        // ###########################################################################################
+        public static string ScopeHint(bool tabTurnedOn)
+        {
+            const string offers =
+                "its screen becomes a baseline once you accept it: \"Capture from oscilloscope pin-by-pin\" goes round the component's pins, " +
+                "and \"Capture again\" on a baseline opens it on that pin - each taking how the oscilloscope is set too.";
+
+            return tabTurnedOn
+                ? $"Connect an oscilloscope on your network in the \"Oscilloscope\" tab, and {offers}"
+                : $"Check \"Enable network connected oscilloscope tab\" in the \"Configuration\" tab, connect an oscilloscope on your network in the \"Oscilloscope\" tab, and {offers}";
+        }
 
         public const string NotAnImage =
             "That file is no picture CRT can show - pick a PNG, JPEG, GIF, BMP or WebP.";

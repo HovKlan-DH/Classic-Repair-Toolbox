@@ -11,6 +11,10 @@ every push of that version, so a section reworded later reaches the release with
 - Plain ASCII punctuation.
 -->
 
+# 12.0.1, 2026-November-20
+--------------------------
+- The mails ask you to "check" a checkbox in CRT, as CRT's own words do
+
 # 12.0.0, 2026-November-18
 --------------------------
 - Converting a data tree for CRT 4.0 gives every chip whose datasheet CRT holds all its pins, each with the datasheet's name and direction, and the datasheet's case where the board names none - so the C128 250477's and the CPC 664's chips, which had neither, are drawn

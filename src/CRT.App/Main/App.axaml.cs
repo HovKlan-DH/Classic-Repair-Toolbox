@@ -114,14 +114,20 @@ namespace CRT
         // Set once, as a test assembly loads (tests/CRT.App.Tests/Shared/TestKiCadCache.cs).
         internal static string? KiCadCacheFolderForTests { get; set; }
 
-        // Where a scope capture waits for "Add this baseline" in the component pane - in the user's
-        // OWN app data folder, for the KiCad cache's reason (code review, 2026-10-26): under the
-        // shared /tmp another account could swap the screenshot before it went into the draft.
-        // Used by: ComponentPane.CaptureNewBaselineAsync
-        public static string ScopeCaptureWaitFolder => Path.Combine(
+        // Where a scope capture waits until it is in the draft - in the user's OWN app data folder,
+        // for the KiCad cache's reason (code review, 2026-10-26): under the shared /tmp another
+        // account could swap the screenshot before it went into the draft.
+        // Used by: ComponentPane.TakeCaptureAsync
+        public static string ScopeCaptureWaitFolder => ScopeCaptureWaitFolderForTests ?? DefaultScopeCaptureWaitFolder;
+
+        public static string DefaultScopeCaptureWaitFolder => Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             AppFolderName,
             "Scope captures waiting");
+
+        // A test process's own folder, as the KiCad cache's (code review, 2026-11-21: the capture tests wrote their screens into
+        // the user's real folder, where one a failing test left stayed). Set as a test assembly loads (TestScopeCaptures.cs).
+        internal static string? ScopeCaptureWaitFolderForTests { get; set; }
 
         // Where the Maintainer tab saves a file from the server to open it - in the user's OWN app
         // data folder, for the same reason (code review, 2026-11-02: under the shared /tmp another

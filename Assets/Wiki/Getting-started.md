@@ -14,7 +14,7 @@ The first launch sets up the data for every board - copied from the installer, t
 
 The first time you open most tabs, a short introduction tour shows its most important parts. **Skip tour** puts away the tours of every tab, and **Take the introduction tours again** on the "Configuration" tab brings them back - each starting the next time you open its tab, as a message there says. After an update that changed a tab, it shows a short tour of what is new there.
 
-Data is downloaded only for the hardware and boards ticked under "Visible hardware, boards and schematics" on the "Configuration" tab. Tick one again whose data is not on your computer, and a card in the bottom-right corner offers **Check for new data** to download it.
+Data is downloaded only for the hardware and boards checked under "Visible hardware, boards and schematics" on the "Configuration" tab. Check one again whose data is not on your computer, and a card in the bottom-right corner offers **Check for new data** to download it.
 
 ## 2. Pick your board
 
@@ -62,7 +62,7 @@ If the board has [KiCad data](KiCad-folder), clicking a pin or a trace highlight
 | **Feedback** | Send an issue or a question to the developer |
 | **About** | Versions, links, and who contributed this board's data - oldest first, each with what the contribution was |
 
-**Workbooks** and **Oscilloscope** can both be hidden from the "Configuration" tab if you do not use them. **Maintainer** shows only when `Enable "Maintainer" tab` is ticked there - it needs a maintainer account.
+**Workbooks** and **Oscilloscope** can both be hidden from the "Configuration" tab if you do not use them. **Maintainer** shows only when `Enable "Maintainer" tab` is checked there - it needs a maintainer account.
 
 Each tab says what it is for as you use it. Where a setting has more to it, **Learn more** beside it opens the page about it here.
 
@@ -84,7 +84,7 @@ The **Contribute** tab is always there. Change anything on the board you are loo
 | Your board revision is not listed | Nobody has added it yet - **Add a new board** on the "Contribute" tab |
 | A component does not highlight | It is not marked on that schematic image yet, or the **Region** filter is excluding it |
 | Clicking a trace does nothing | That board has no [KiCad data](KiCad-folder) - not every board does - or **Traces visible** is off |
-| No **Workbooks** or **Oscilloscope** tab | Both can be switched off in "Configuration" - check they are still ticked |
-| No **Maintainer** tab | It shows only with `Enable "Maintainer" tab` ticked in "Configuration" |
+| No **Workbooks** or **Oscilloscope** tab | Both can be switched off in "Configuration" - make sure they are still checked |
+| No **Maintainer** tab | It shows only with `Enable "Maintainer" tab` checked in "Configuration" |
 
 When something CRT tried did not work - a button, a file it could not read or save, a link it could not open - a **Something went wrong** card in the bottom-right corner says what. **Show details** on it, or **Show errors and warnings** on the "Configuration" tab, lists everything that went wrong since CRT started, with **Copy all** to paste into the "Feedback" tab. If CRT ever closes by itself, it says so the next time you start it.

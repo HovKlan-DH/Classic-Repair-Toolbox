@@ -167,8 +167,20 @@ namespace Handlers.DataHandling
         // This row under another label and region, citing another file (ComponentClone).
         public ComponentImageEntry FiledAs(string boardLabel, string region, string file) => this.With(boardLabel, region, file, this.ExpectedOscilloscopeReading);
 
+        // This baseline with another image and the oscilloscope's settings it was captured with, every other value as it was (a
+        // capture from the oscilloscope - BaselineSettingWords.Captured).
+        public ComponentImageEntry WithCapture(string file, string timeDiv, string voltsDiv, string triggerLevelVolts) =>
+            this.With(this.BoardLabel, this.Region, file, this.ExpectedOscilloscopeReading, timeDiv, voltsDiv, triggerLevelVolts);
+
         // The one copy of the row's every value - a new column is added here once (code review, 2026-11-17).
-        private ComponentImageEntry With(string boardLabel, string region, string file, string reading) => new()
+        private ComponentImageEntry With(
+            string boardLabel,
+            string region,
+            string file,
+            string reading,
+            string? timeDiv = null,
+            string? voltsDiv = null,
+            string? triggerLevelVolts = null) => new()
         {
             BoardLabel = boardLabel,
             Region = region,
@@ -177,9 +189,9 @@ namespace Handlers.DataHandling
             ExpectedOscilloscopeReading = reading,
             File = file,
             Note = this.Note,
-            TimeDiv = this.TimeDiv,
-            VoltsDiv = this.VoltsDiv,
-            TriggerLevelVolts = this.TriggerLevelVolts,
+            TimeDiv = timeDiv ?? this.TimeDiv,
+            VoltsDiv = voltsDiv ?? this.VoltsDiv,
+            TriggerLevelVolts = triggerLevelVolts ?? this.TriggerLevelVolts,
             MachineState = this.MachineState,
         };
     }

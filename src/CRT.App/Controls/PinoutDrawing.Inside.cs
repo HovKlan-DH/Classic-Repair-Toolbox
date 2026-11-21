@@ -207,6 +207,8 @@ namespace CRT
                 context.DrawRectangle(this.Brush("Form_Selected_Hover_Bg", Brushes.SkyBlue), null, PinoutGeometry.AreaOf(layout, hoveredPin), 2, 2);
             }
 
+            this.RenderChosen(context, layout);
+
             IBrush card = this.Brush("Card_Bg", Brushes.White);
 
             this.RenderBody(context, layout, foreground, card);

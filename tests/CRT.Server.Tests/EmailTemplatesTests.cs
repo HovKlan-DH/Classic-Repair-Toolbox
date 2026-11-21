@@ -573,7 +573,7 @@ namespace CRT.Server.Tests
 
             Assert.Equal("Your CRT contribution has been published to the stable source", message.Subject);
             Assert.Contains("Restart CRT", message.Body, StringComparison.Ordinal);
-            Assert.Contains("untick it", message.Body, StringComparison.Ordinal);
+            Assert.Contains("uncheck it", message.Body, StringComparison.Ordinal);
             Assert.Contains("CRT removes your draft of it by itself", message.Body, StringComparison.Ordinal);
             Assert.Contains("<i>Classic Repair Toolbox</i>", message.HtmlBody, StringComparison.Ordinal);
         }

@@ -1588,6 +1588,26 @@ public sealed class UserSettingsTests : IDisposable
         Assert.True(json["hasComponentInfoWindowLayout"]!.GetValue<bool>());
     }
 
+    // "Capture from oscilloscope pin-by-pin"'s window is opened where it was left (owner request, 2026-11-20: "remember size and
+    // position") - and nowhere in particular before it ever was.
+    [Fact]
+    public void The_baseline_capture_windows_place_round_trips_and_is_none_before_it_is_saved()
+    {
+        string path = this.LoadSettings("{}");
+
+        Assert.Null(UserSettings.BaselineCaptureWindowPlace);
+
+        UserSettings.SaveBaselineCaptureWindowPlace(new BaselineCaptureWindowPlace("Maximized", 1100, 700, 40, -30));
+
+        JsonNode json = ReadJson(path);
+        Assert.True(json["hasBaselineCaptureWindowLayout"]!.GetValue<bool>());
+        Assert.Equal(1100, json["baselineCaptureWindowWidth"]!.GetValue<double>());
+        Assert.Equal(-30, json["baselineCaptureWindowY"]!.GetValue<int>());
+
+        UserSettings.LoadFrom(path);
+        Assert.Equal(new BaselineCaptureWindowPlace("Maximized", 1100, 700, 40, -30), UserSettings.BaselineCaptureWindowPlace);
+    }
+
     [Fact]
     public void Schematics_thumbnails_window_layout_round_trips()
     {

@@ -60,6 +60,9 @@ namespace CRT
     //   ComponentPane.RegionsAndCategories.cs - "Board: Regions" and "Board: Categories"
     //   ComponentPane.Files.cs  - oscilloscope baselines (with the new-baseline panel and the capture),
     //                             pictures and files: adding, changing, moving, thumbnails
+    //   ComponentPane.BaselineRun.cs - the baselines with the oscilloscope: "Capture from oscilloscope pin-by-pin"
+    //                             opening its window (BaselineCaptureWindow), every capture into the draft,
+    //                             and "Capture again" on a baseline
     //   ComponentPane.Whole.cs  - the new-component form, Delete component and "Bring back", the
     //                             buttons that ask the host to show the component on the board or
     //                             preview its popup
@@ -495,9 +498,10 @@ namespace CRT
                 return;
             }
 
-            // Several picked, edited as one (ComponentPane.Several.cs).
+            // Several picked, edited as one (ComponentPane.Several.cs) - "Capture from oscilloscope pin-by-pin" is one component's.
             if (this.IsSeveral)
             {
+                this.CloseBaselineCaptureWindow();
                 this.ShowSeveralComponents(session);
                 return;
             }
@@ -515,6 +519,9 @@ namespace CRT
 
             if (row is null)
             {
+                // Gone - deleted, or an Undo took it: "Capture from oscilloscope pin-by-pin" closes with it, or an accepted capture
+                // wrote baselines for a component the board no longer has (code review, 2026-11-21).
+                this.CloseBaselineCaptureWindow();
                 this.TitleText.Text = ComponentPaneWording.Title(this.thisLabel);
                 BoldRuns.ShowMarked(this.RegionText, string.Empty);
                 this.RegionText.IsVisible = false;
@@ -898,7 +905,7 @@ namespace CRT
             // Before the change is told: what follows it reads this, and must read the value just typed.
             this.thisShownValues[field] = wanted;
 
-            this.Apply(
+            bool changed = this.Apply(
                 DraftStepWording.ComponentField(this.thisLabel, ComponentPaneEdits.NameOf(field)),
                 board => ComponentPaneEdits.WithField(board, this.thisLabel, this.thisRegion, field, text));
 
@@ -908,6 +915,12 @@ namespace CRT
                 ComponentPaneEdits.RowShown(session.Content.Board, this.thisLabel, this.thisRegion) is { } row)
             {
                 this.TitleText.Text = ComponentPaneWording.Title(row);
+            }
+
+            // Another case: "Capture from oscilloscope pin-by-pin"'s window draws it and goes round its pins (code review, 2026-11-21).
+            if (changed && field == ComponentField.Package)
+            {
+                this.FollowRowsInBaselineRun();
             }
         }
 
@@ -921,9 +934,15 @@ namespace CRT
 
             List<ComponentPinEntry> pins = this.thisPins.Select(row => row.ToEntry()).ToList();
 
-            this.Apply(
+            // "Capture from oscilloscope pin-by-pin"'s window draws the case and lists the pins as they now are - "Add the N pins",
+            // "Fill pins from datasheet" and a pin deleted commit the pins alone (code review, 2026-11-21). Only when they CHANGED:
+            // every box left and typing pause commits them, and the window was built again at each (second code review, the same day).
+            if (this.Apply(
                 DraftStepWording.ComponentPins(this.thisLabel),
-                board => ComponentPaneEdits.WithPins(board, this.thisLabel, this.thisRegion, pins));
+                board => ComponentPaneEdits.WithPins(board, this.thisLabel, this.thisRegion, pins)))
+            {
+                this.FollowRowsInBaselineRun();
+            }
         }
 
         private void CommitReplacements()
@@ -956,12 +975,12 @@ namespace CRT
                 board => ComponentPaneEdits.WithAllLinks(board, this.thisLabel, links));
         }
 
-        // One change applied to the draft held in memory, as the pane's own step.
-        private void Apply(string description, Func<BoardData, BoardData> transform)
+        // One change applied to the draft held in memory, as the pane's own step - true when the draft changed.
+        private bool Apply(string description, Func<BoardData, BoardData> transform)
         {
             if (this.thisSession is not { } session)
             {
-                return;
+                return false;
             }
 
             bool changed = session.Apply(
@@ -976,6 +995,8 @@ namespace CRT
                 this.ShowChangedState();
                 this.ContentChanged?.Invoke(this, EventArgs.Empty);
             }
+
+            return changed;
         }
 
         // ---- the draft's other changes ----------------------------------------------------------

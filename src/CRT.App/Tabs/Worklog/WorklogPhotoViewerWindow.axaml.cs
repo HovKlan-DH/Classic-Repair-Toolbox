@@ -13,7 +13,8 @@ namespace CRT
 {
     // ###########################################################################################
     // Read-only viewer for one photo, opened by clicking a photo's thumbnail in the worklog editor,
-    // in the device form or on a device's page. Shows the image whole with its file name and comment -
+    // in the device form or on a device's page - and any picture in "Capture from oscilloscope pin-by-pin",
+    // where a click outside closes it (ClosesWhenLeft). Shows the image whole with its file name and comment -
     // the wheel zooms in at the pointer (owner request, 2026-11-06; PhotoZoomView); editing and
     // deleting stay with the rows' buttons, so this window has nothing to save.
     // ###########################################################################################
@@ -38,7 +39,22 @@ namespace CRT
                 this.thisWholePhoto?.Dispose();
                 this.thisWholePhoto = null;
             };
+
+            this.Deactivated += (_, _) =>
+            {
+                if (this.ClosesWhenLeft && !this.thisIsClosed)
+                {
+                    this.Close();
+                }
+            };
         }
+
+        // ###########################################################################################
+        // Closed by a click anywhere outside it - its window no longer the active one - as Escape and "Close" close it ("Capture from
+        // oscilloscope pin-by-pin", owner request, 2026-11-20: "when I click with mouse outside it, then it should also close the
+        // window"). Only shown with Show, never ShowDialog: a dialog refuses the click outside. Off elsewhere.
+        // ###########################################################################################
+        internal bool ClosesWhenLeft { get; set; }
 
         // The photo decoded whole, this window's own - null until it is in.
         private Bitmap? thisWholePhoto;
@@ -56,6 +72,7 @@ namespace CRT
         {
             this.Title = string.IsNullOrWhiteSpace(fileName) ? "Photo" : fileName;
             this.FileNameText.Text = fileName;
+            this.CommentForTests = comment;
 
             // The comment is a note with formatting (RichNote): drawn as it reads, its links clickable - never its
             // marks as typed (code review, 2026-11-08: "**dead** SID" showed with its stars).
@@ -70,6 +87,28 @@ namespace CRT
 
             this.ShowPhotoAsync(imagePath);
         }
+
+        // ###########################################################################################
+        // A picture already in memory - one no file holds, or holds no longer: an oscilloscope baseline replaced in the draft, or a
+        // capture not yet accepted (BaselineCaptureWindow, 2026-11-20). The caller's: never disposed here.
+        // ###########################################################################################
+        public void Initialize(string title, string comment, Bitmap picture)
+        {
+            ArgumentNullException.ThrowIfNull(picture);
+
+            this.Title = string.IsNullOrWhiteSpace(title) ? "Photo" : title;
+            this.FileNameText.Text = title;
+            this.CommentForTests = comment;
+            TextLinkRenderer.SetLinkText(this.CommentText, RichNote.TrimMarkup(comment));
+            this.CommentText.IsVisible = !string.IsNullOrWhiteSpace(comment);
+            this.PhotoImage.Source = picture;
+        }
+
+        internal Bitmap? ShownForTests => this.PhotoImage.Source;
+
+        internal string CommentForTests { get; private set; } = string.Empty;
+
+        internal string? ShownTitleForTests => this.FileNameText.Text;
 
         // ###########################################################################################
         // *** THE WINDOW SHOWS AT ONCE (2026-11-16, performance walkthrough). *** It waited for the photo's whole

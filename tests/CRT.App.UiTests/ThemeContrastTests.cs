@@ -37,7 +37,7 @@ public class ThemeContrastTests
 
         foreach (var pair in On("Fg", Text, "Bg", "Card_Bg", "Form_Bg", "Workbooks_Panel_Bg", "Schematics_Panels_Bg", "Table_Bg",
                      "Table_RowHover_Bg", "Workbooks_SelectedCard_Bg", "Draft_ReferenceBadge_Bg", "Changelog_Code_Bg", "Mode_Selected_Bg",
-                     "Notice_Bg", "BoardTable_Error_Bg", "BoardTable_Warning_Bg", "BoardTable_Notice_Bg"))
+                     "Notice_Bg", "BoardTable_Error_Bg", "BoardTable_Warning_Bg", "BoardTable_Notice_Bg", "CaptureOld_Bg"))
             yield return pair;
 
         foreach (var pair in On("Form_Fg", Text, "Form_Bg", "Form_Selected_Hover_Bg")) yield return pair;

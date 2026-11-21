@@ -56,4 +56,49 @@ public sealed class DialogPlacementTests
         // A screen that tells nothing keeps it simply centred.
         Assert.Equal(new PixelPoint(1640, 850), DialogPlacement.CentredOver(new PixelRect(1700, 900, 400, 200), new Size(520, 300), 1.0, default));
     }
+
+    // ###########################################################################################
+    // A PLACE KEPT FROM LAST TIME IS MADE TO FIT THE SCREEN IT OPENS ON (code review, 2026-11-21: "Capture from oscilloscope
+    // pin-by-pin"'s window, left 1280 x 1000 on a large monitor, opened 1000 high on a laptop of 768, its buttons off the bottom).
+    // ###########################################################################################
+    private static readonly Size Least = new(1100, 640);
+
+    // A place that fits stays as it was kept.
+    [Fact]
+    public void A_kept_place_that_fits_its_screen_is_kept()
+    {
+        Assert.Equal(
+            (new Size(1200, 760), new PixelPoint(40, 50)),
+            DialogPlacement.KeptPlaceOn(new Size(1200, 760), Least, new PixelPoint(40, 50), new PixelRect(0, 0, 1920, 1040), 1.0));
+    }
+
+    // Taller than the working area less the frame: as tall as that, and moved up until the frame's foot is on the screen.
+    [Fact]
+    public void A_kept_size_too_large_for_the_screen_is_made_to_fit_and_moved_onto_it()
+    {
+        // 728 high less the 40 of the frame; 1296 wide with the frame's 16, so no further right than 70.
+        Assert.Equal(
+            (new Size(1280, 688), new PixelPoint(70, 0)),
+            DialogPlacement.KeptPlaceOn(new Size(1280, 1000), Least, new PixelPoint(100, 50), new PixelRect(0, 0, 1366, 728), 1.0));
+
+        // At 150 %: 2400 x 1440 device pixels are 1600 x 960 units, the window and its frame 1944 x 1440 device pixels.
+        Assert.Equal(
+            (new Size(1280, 920), new PixelPoint(456, 0)),
+            DialogPlacement.KeptPlaceOn(new Size(1280, 1000), Least, new PixelPoint(1000, 300), new PixelRect(0, 0, 2400, 1440), 1.5));
+
+        // A second screen to the right of the first: kept on it.
+        Assert.Equal(
+            (new Size(1280, 688), new PixelPoint(1990, 0)),
+            DialogPlacement.KeptPlaceOn(new Size(1280, 1000), Least, new PixelPoint(2000, 100), new PixelRect(1920, 0, 1366, 728), 1.0));
+    }
+
+    // However small the screen, never under the window's least size; and a screen that tells nothing leaves the place as kept.
+    [Fact]
+    public void A_kept_place_is_never_under_the_least_size()
+    {
+        Assert.Equal(new Size(1100, 640), DialogPlacement.KeptPlaceOn(new Size(1280, 1000), Least, new PixelPoint(0, 0), new PixelRect(0, 0, 1024, 600), 1.0).Size);
+        Assert.Equal(
+            (new Size(1100, 1000), new PixelPoint(5000, 5000)),
+            DialogPlacement.KeptPlaceOn(new Size(900, 1000), Least, new PixelPoint(5000, 5000), default, 1.0));
+    }
 }

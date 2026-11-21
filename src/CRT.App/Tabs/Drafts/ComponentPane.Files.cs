@@ -1,8 +1,12 @@
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.VisualTree;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using Handlers.DataHandling;
+using Handlers.Oscilloscope;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -35,8 +39,11 @@ namespace CRT
     //   - A NEW ONE'S SIGNAL NAME COMES WITH ITS PIN (owner request, 2026-11-02: "when adding a new pin and
     //     I give it a number that exists ... it should per default copy the Signal name"): from the
     //     component's pinout, else the board's KiCad data, until somebody types one (FollowNewBaselinePin).
-    //   - "CAPTURE FROM MY OSCILLOSCOPE" while the Oscilloscope tab has a session (ShowScopeConnected):
-    //     the scope's screen as PNG, from the host (TabOscilloscope.CaptureOscilloscopePngAsync).
+    //   - THE OSCILLOSCOPE while the Oscilloscope tab has a session (ShowScopeConnected): "Capture again"
+    //     on a baseline and "Capture from oscilloscope pin-by-pin" - ComponentPane.BaselineRun.cs and its
+    //     window (BaselineCaptureWindow). "Capture from my oscilloscope", on the page and in the new
+    //     baseline's panel, went on 2026-11-20 (owner request: "Remove the button named "Capture from my
+    //     oscilloscope"") - the window does it, pin after pin.
     //   - THUMBNAILS are decoded small and off the UI thread, and never disposed by hand: one still drawn
     //     would take the render thread down (the Workbooks tab's lesson) - the garbage collector takes them.
     // ###########################################################################################
@@ -71,18 +78,13 @@ namespace CRT
         // Every picture read while the pane is open - thumbnails and the Pictures part's previews alike.
         private readonly PaneImageCache thisImages = new();
 
-        // The new baseline's screenshot until it is added: a file picked, or a capture in the temp folder.
+        // The new baseline's screenshot until it is added: the file picked.
         private string? thisNewBaselineSource;
 
-        // Where the new baseline's screenshot waits until it is added - for tests.
+        // The new baseline's screenshot until it is added - for tests.
         internal string? NewBaselineSourceForTests => this.thisNewBaselineSource;
-        private bool thisNewBaselineIsCapture;
 
         private bool thisScopeConnected;
-
-        // The scope's screen as PNG bytes, or null (the reason in the Oscilloscope tab's output) - the
-        // host's, TabOscilloscope.CaptureOscilloscopePngAsync. Null: no capture is offered.
-        internal Func<CancellationToken, Task<byte[]?>>? CaptureScopeImage { get; set; }
 
         // Stands in for the file picker in a test: the kind asked for, the path picked - null, cancelled.
         internal Func<PaneFileKind, Task<string?>>? PickFileOverrideForTests { get; set; }
@@ -123,7 +125,44 @@ namespace CRT
                     this.ShowNewBaselineState();
                 },
                 handledEventsToo: true);
+
+            // ###########################################################################################
+            // A baseline's "Expected reading" offers the board's readings as they are as it takes the focus (ShowReadingChoices) - ENTERED
+            // from outside the box and its list, never the focus coming back from its own list (code review, 2026-11-21; as the package's
+            // list, OnPackageBoxFocused): a press on a row of the list takes the focus to the row, which commits the half-typed reading,
+            // and the box takes the focus straight back while the press is still picking - read again then, the list offered "h" and
+            // changed under the pick, which could be lost.
+            // ###########################################################################################
+            this.BaselinesItemsControl.AddHandler(
+                InputElement.GotFocusEvent,
+                (_, e) =>
+                {
+                    if (e.Source is Visual source &&
+                        (source as AutoCompleteBox ?? source.FindAncestorOfType<AutoCompleteBox>()) is { } box &&
+                        box.Classes.Contains("ExpectedReading") &&
+                        !(e is FocusChangedEventArgs { OldFocusedElement: Visual from } && ComponentPane.IsInBox(box, from)))
+                    {
+                        this.ShowReadingChoices(this.thisSession?.Content.Board);
+                    }
+                },
+                handledEventsToo: true);
         }
+
+        // ###########################################################################################
+        // THE READINGS A BASELINE'S "Expected reading" OFFERS AS IT IS TYPED (owner request, 2026-11-18: "if I already have
+        // typed "High" previously for this board, then when typing "h" it will show the "High" and I can choose that"): those the
+        // board's baselines already give (ComponentVocabulary.ReadingsOf). ONE list every row's box shows, changed in place, and
+        // read again only as the component is shown and as a reading box takes the focus - a list changed under a box being typed
+        // in would take the pick away, and a reading committed by a typing pause would offer itself half typed.
+        // ###########################################################################################
+        public ObservableCollection<string> ExpectedReadingChoices { get; } = new();
+
+        private void ShowReadingChoices(BoardData? board) =>
+            InPlaceList.Sync(
+                this.ExpectedReadingChoices,
+                ComponentVocabulary.ReadingsOf(board),
+                (shown, wanted) => string.Equals(shown, wanted, StringComparison.Ordinal),
+                wanted => wanted);
 
         // ---- showing ----------------------------------------------------------------------------
 
@@ -134,8 +173,10 @@ namespace CRT
             ComponentPane.Fill(this.thisFiles, ComponentPaneEdits.AllFilesOf(board, this.thisLabel).Select(ComponentPaneFileRow.From));
 
             this.ShowMeasuringNotes(board);
+            this.ShowReadingChoices(board);
             this.LoadThumbnails();
             this.ShowCaptureOffer();
+            this.FollowRowsInBaselineRun();
         }
 
         // ###########################################################################################
@@ -309,13 +350,14 @@ namespace CRT
         // ###########################################################################################
         // What belongs to the component shown and to no other, gone as the pane moves on (code review,
         // 2026-11-02). The page stays as another component is picked, on purpose - and a half-filled new
-        // baseline on it stayed too, whose Add then filed U8's pin, signal and picture under U9. A capture
-        // waiting in that panel is deleted with it (ForgetNewBaselineSource). And what the pane said of
-        // it: "Moved to NTSC" stood under the title of the next component.
+        // baseline on it stayed too, whose Add then filed U8's pin, signal and picture under U9. So does
+        // "Capture from oscilloscope pin-by-pin"'s window, whose pins are the component's. And what the pane
+        // said of it: "Moved to NTSC" stood under the title of the next component.
         // ###########################################################################################
         private void LetGoOfWhatIsOfTheComponentShown()
         {
             this.CloseNewBaseline();
+            this.CloseBaselineCaptureWindow();
             this.ShowMessage(null);
         }
 
@@ -327,21 +369,40 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // "Capture from my oscilloscope" while the Oscilloscope tab has a session - from the host, as
-        // the tab's state moves (Main.UpdateComponentInfoWindowsOscilloscopeSessionState).
+        // "Capture again" and "Capture from oscilloscope pin-by-pin" while the Oscilloscope tab has a session - from the host, as the
+        // tab's state moves (Main.UpdateComponentInfoWindowsOscilloscopeSessionState). The session gone, the window going round the
+        // pins stays and says so, capturing nothing until it is back (BaselineCaptureWindow.ShowScopeConnected).
         // ###########################################################################################
-        internal void ShowScopeConnected(bool connected)
+        // `tabTurnedOn`: whether the "Oscilloscope" tab is shown at all ("Enable network connected oscilloscope tab"), for the hint
+        // saying where an oscilloscope is connected.
+        internal void ShowScopeConnected(bool connected, bool tabTurnedOn = true)
         {
             this.thisScopeConnected = connected;
+            this.thisScopeTabTurnedOn = tabTurnedOn;
             this.ShowCaptureOffer();
         }
 
+        private bool thisScopeTabTurnedOn = true;
+
+        private bool IsCaptureOffered => this.thisScopeConnected && this.Scope is not null;
+
         private void ShowCaptureOffer()
         {
-            bool offered = this.thisScopeConnected && this.CaptureScopeImage is not null;
+            bool offered = this.IsCaptureOffered;
 
-            this.CaptureBaselineButton.IsVisible = offered;
-            this.NewBaselineCaptureButton.IsVisible = offered;
+            this.BaselineRunButton.IsVisible = offered && !this.IsSeveral;
+
+            // What an oscilloscope would offer here, while none is connected (owner request, 2026-11-18: "I at first thought it was
+            // not implemented").
+            this.ScopeHintNotice.IsVisible = !offered && this.Scope is not null && !this.IsSeveral;
+            this.ScopeHintText.Text = ComponentPaneWording.ScopeHint(this.thisScopeTabTurnedOn);
+
+            foreach (ComponentPaneBaselineRow row in this.thisBaselines)
+            {
+                row.CaptureOffered = offered;
+            }
+
+            this.thisCaptureWindow?.ShowScopeConnected(offered);
         }
 
         // ---- into the draft ---------------------------------------------------------------------
@@ -376,13 +437,22 @@ namespace CRT
                 }
             }
 
-            this.Apply(
+            bool changed = this.Apply(
                 DraftStepWording.ComponentBaselines(this.thisLabel),
                 board => ComponentPaneEdits.WithBaselines(board, this.thisLabel, this.thisRegion, rows));
 
             foreach ((ComponentPaneBaselineRow row, ComponentImageEntry entry) in taken)
             {
                 row.Committed = entry;
+            }
+
+            // A baseline added, deleted, given another pin or image here: "Capture from oscilloscope pin-by-pin"'s window follows (code
+            // review, 2026-11-21 - it followed only the baselines read again, so such a baseline had no line, or a line of another's).
+            // Only when the draft CHANGED: every box left and typing pause commits the baselines, and the window was built again at
+            // each (second code review, the same day).
+            if (changed)
+            {
+                this.FollowRowsInBaselineRun();
             }
         }
 
@@ -428,9 +498,18 @@ namespace CRT
         // ###########################################################################################
         // Several picked files at once - the board's pictures - each under its name, one step for all.
         // `change` is handed the names actually COPIED: a file that could not be (locked by another
-        // program, gone since it was picked) gets no row (code review, 2026-10-28).
+        // program, gone since it was picked) gets no row (code review, 2026-10-28). Under the "please
+        // wait" of `anchor`'s window (the pane's own when none is given - "Capture from oscilloscope
+        // pin-by-pin"'s window waits in its own), why not said to `sayProblem` (the pane's line). `stillWanted`, asked once the files
+        // are copied, before `change`: false, the copies are taken back and nothing changes - what the change was for moved on while
+        // they were copied (said as ComponentPaneWording.RunCaptureNotPut).
         // ###########################################################################################
-        private async Task<bool> AddToDraftAsync(IReadOnlyList<(string Source, string Name)> files, Action<IReadOnlyList<string>> change)
+        private async Task<bool> AddToDraftAsync(
+            IReadOnlyList<(string Source, string Name)> files,
+            Action<IReadOnlyList<string>> change,
+            Avalonia.StyledElement? anchor = null,
+            Action<string?>? sayProblem = null,
+            Func<bool>? stillWanted = null)
         {
             if (this.thisSession is not { } session)
             {
@@ -438,15 +517,23 @@ namespace CRT
             }
 
             string draftFolder = DraftFolderLayout.GetBoardFolder(session.DraftsRoot, session.ExcelDataFile);
+            Action<string?> say = sayProblem ?? this.ShowMessage;
 
-            return await BusyOverlay.RunLocalAsync(this, CrtWaitWording.AddingFile, async () =>
+            return await BusyOverlay.RunLocalAsync(anchor ?? this, CrtWaitWording.AddingFile, async () =>
             {
                 DraftPickedFiles copies = await Task.Run(() => DraftPickedFiles.CopyInto(draftFolder, files));
 
                 if (!copies.AnyLying)
                 {
                     // Said for what it is: a file of no bytes is not added at all (2026-11-02).
-                    this.ShowMessage(copies.EmptyFiles.Count > 0 ? ComponentPaneWording.FileEmpty : ComponentPaneWording.FileNotCopied);
+                    say(copies.EmptyFiles.Count > 0 ? ComponentPaneWording.FileEmpty : ComponentPaneWording.FileNotCopied);
+                    return false;
+                }
+
+                if (stillWanted is not null && !stillWanted())
+                {
+                    copies.TakeBack();
+                    say(ComponentPaneWording.RunCaptureNotPut);
                     return false;
                 }
 
@@ -464,6 +551,12 @@ namespace CRT
                 finally
                 {
                     this.thisFilesArriving = false;
+                }
+
+                if (this.thisBaselineRunFollowWanted)
+                {
+                    this.thisBaselineRunFollowWanted = false;
+                    this.FollowRowsInBaselineRun();
                 }
 
                 this.LoadThumbnails();
@@ -795,7 +888,7 @@ namespace CRT
         {
             this.CommitHeld();
             this.ShowMessage(null);
-            this.ForgetNewBaselineSource();
+            this.thisNewBaselineSource = null;
 
             ComponentPaneBaselineRow? last = this.thisBaselines.LastOrDefault();
 
@@ -824,29 +917,10 @@ namespace CRT
 
         private void CloseNewBaseline()
         {
-            this.ForgetNewBaselineSource();
+            this.thisNewBaselineSource = null;
             this.NewBaselineThumbnail.Source = null;
             this.NewBaselinePanel.IsVisible = false;
             this.AddBaselineButtons.IsVisible = true;
-        }
-
-        // A capture written to the temp folder is gone once the baseline is added or let go of.
-        private void ForgetNewBaselineSource()
-        {
-            if (this.thisNewBaselineIsCapture && this.thisNewBaselineSource is { } capture)
-            {
-                try
-                {
-                    File.Delete(capture);
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    Logger.Warning($"Could not remove the scope capture [{capture}] - [{ex.Message}]");
-                }
-            }
-
-            this.thisNewBaselineSource = null;
-            this.thisNewBaselineIsCapture = false;
         }
 
         // ###########################################################################################
@@ -923,78 +997,12 @@ namespace CRT
                 return;
             }
 
-            this.UseNewBaselineSource(path, isCapture: false);
+            this.UseNewBaselineSource(path);
         }
 
-        private async void OnCaptureBaselineClick(object? sender, RoutedEventArgs e)
+        private void UseNewBaselineSource(string path)
         {
-            try
-            {
-                this.OpenNewBaseline();
-                await this.CaptureNewBaselineAsync();
-            }
-            catch (Exception ex)
-            {
-                Logger.Critical($"Capturing a new oscilloscope baseline failed - [{ex}]");
-            }
-        }
-
-        private async void OnCaptureNewBaselineClick(object? sender, RoutedEventArgs e)
-        {
-            try
-            {
-                await this.CaptureNewBaselineAsync();
-            }
-            catch (Exception ex)
-            {
-                Logger.Critical($"Capturing a new oscilloscope baseline failed - [{ex}]");
-            }
-        }
-
-        // ###########################################################################################
-        // The oscilloscope's screen as the new baseline's screenshot - through the host, under CRT's
-        // "please wait", written to the user's own folder until the baseline is added
-        // (AppConfig.ScopeCaptureWaitFolder - never the shared temporary one).
-        // ###########################################################################################
-        internal async Task CaptureNewBaselineAsync()
-        {
-            if (this.CaptureScopeImage is not { } capture)
-            {
-                return;
-            }
-
-            this.ShowMessage(null);
-
-            byte[]? png = await BusyOverlay.RunLocalAsync(this, CrtWaitWording.CapturingOscilloscope, () => capture(CancellationToken.None));
-
-            if (png is not { Length: > 0 })
-            {
-                this.ShowMessage(ComponentPaneWording.CaptureFailed);
-                return;
-            }
-
-            string path = Path.Combine(AppConfig.ScopeCaptureWaitFolder, $"{Guid.NewGuid():N}.png");
-
-            try
-            {
-                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-                await File.WriteAllBytesAsync(path, png);
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                Logger.Warning($"Could not keep the scope capture at [{path}] - [{ex.Message}]");
-                this.ShowMessage(ComponentPaneWording.CaptureFailed);
-                return;
-            }
-
-            this.UseNewBaselineSource(path, isCapture: true);
-        }
-
-        private void UseNewBaselineSource(string path, bool isCapture)
-        {
-            this.ForgetNewBaselineSource();
             this.thisNewBaselineSource = path;
-            this.thisNewBaselineIsCapture = isCapture;
             this.ShowNewBaselineState();
 
             this.TrackPreviewLoad(this.LoadNewBaselineThumbnailAsync(path));
@@ -1058,7 +1066,9 @@ namespace CRT
 
             bool added = await this.AddToDraftAsync(source, name, () =>
             {
-                this.thisBaselines.Add(ComponentPaneBaselineRow.From(baseline));
+                ComponentPaneBaselineRow row = ComponentPaneBaselineRow.From(baseline);
+                row.CaptureOffered = this.IsCaptureOffered;
+                this.thisBaselines.Add(row);
                 this.CommitBaselines();
             });
 
@@ -1176,8 +1186,23 @@ namespace CRT
         private string thisProblem = string.Empty;
         private string thisPinProblem = string.Empty;
         private Bitmap? thisThumbnail;
+        private bool thisCaptureOffered;
 
         public ComponentImageEntry Committed { get; set; } = new();
+
+        // "Capture again" offered - while the "Oscilloscope" tab has a session (ComponentPane.ShowCaptureOffer).
+        public bool CaptureOffered
+        {
+            get => this.thisCaptureOffered;
+            set
+            {
+                if (this.thisCaptureOffered != value)
+                {
+                    this.thisCaptureOffered = value;
+                    this.Raise(nameof(this.CaptureOffered));
+                }
+            }
+        }
 
         // Held back, the draft still has it where it was - whatever its "Applies to" says by now.
         public override string RegionInDraft => this.Committed.Region ?? string.Empty;

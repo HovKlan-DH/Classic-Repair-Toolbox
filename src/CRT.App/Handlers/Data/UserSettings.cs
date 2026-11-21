@@ -224,6 +224,13 @@ namespace Handlers.DataHandling
         [JsonPropertyName("componentInfoWindowThumbnailRowHeight")] public double ComponentInfoWindowThumbnailRowHeight { get; set; } = 100.0;
         [JsonPropertyName("componentInfoWindowX")] public int ComponentInfoWindowX { get; set; } = 0;
         [JsonPropertyName("componentInfoWindowY")] public int ComponentInfoWindowY { get; set; } = 0;
+        // "Capture from oscilloscope pin-by-pin"'s window, one place for all (owner request, 2026-11-20: "remember size and position").
+        [JsonPropertyName("hasBaselineCaptureWindowLayout")] public bool HasBaselineCaptureWindowLayout { get; set; } = false;
+        [JsonPropertyName("baselineCaptureWindowState")] public string BaselineCaptureWindowState { get; set; } = "Normal";
+        [JsonPropertyName("baselineCaptureWindowWidth")] public double BaselineCaptureWindowWidth { get; set; } = 1280.0;
+        [JsonPropertyName("baselineCaptureWindowHeight")] public double BaselineCaptureWindowHeight { get; set; } = 820.0;
+        [JsonPropertyName("baselineCaptureWindowX")] public int BaselineCaptureWindowX { get; set; } = 0;
+        [JsonPropertyName("baselineCaptureWindowY")] public int BaselineCaptureWindowY { get; set; } = 0;
         [JsonPropertyName("hasWorklogEntryWindowLayout")] public bool HasWorklogEntryWindowLayout { get; set; } = false;
         [JsonPropertyName("worklogEntryWindowState")] public string WorklogEntryWindowState { get; set; } = "Normal";
         [JsonPropertyName("worklogEntryWindowWidth")] public double WorklogEntryWindowWidth { get; set; } = 1200.0;
@@ -1564,6 +1571,34 @@ namespace Handlers.DataHandling
             Save();
         }
 
+        // ###########################################################################################
+        // "Capture from oscilloscope pin-by-pin"'s window - its state and its Normal size and position, null while never saved
+        // (BaselineCaptureWindow, handed in by TabDrafts.Initialize, so a test's window touches no settings).
+        // ###########################################################################################
+        public static BaselineCaptureWindowPlace? BaselineCaptureWindowPlace =>
+            _data.HasBaselineCaptureWindowLayout
+                ? new BaselineCaptureWindowPlace(
+                    _data.BaselineCaptureWindowState,
+                    _data.BaselineCaptureWindowWidth,
+                    _data.BaselineCaptureWindowHeight,
+                    _data.BaselineCaptureWindowX,
+                    _data.BaselineCaptureWindowY)
+                : null;
+
+        public static void SaveBaselineCaptureWindowPlace(BaselineCaptureWindowPlace place)
+        {
+            ArgumentNullException.ThrowIfNull(place);
+
+            _data.HasBaselineCaptureWindowLayout = true;
+            _data.BaselineCaptureWindowState = place.State;
+            _data.BaselineCaptureWindowWidth = place.Width;
+            _data.BaselineCaptureWindowHeight = place.Height;
+            _data.BaselineCaptureWindowX = place.X;
+            _data.BaselineCaptureWindowY = place.Y;
+            Logger.Info($"Setting changed: [BaselineCaptureWindowLayout] [{place.State}] [{place.Width:F0}x{place.Height:F0}] [Position: {place.X},{place.Y}]");
+            Save();
+        }
+
         // Worklog entry window layout - read-only; written atomically via SaveWorklogEntryWindowLayout.
         // The splitter is stored as the left column's SHARE of the two content columns rather than a
         // pixel width, so reopening at a different window size keeps the same proportions instead of
@@ -1942,6 +1977,7 @@ namespace Handlers.DataHandling
                 Logger.Info($"        [ComponentInfoWindowLayout] [{_data.ComponentInfoWindowState}] [{_data.ComponentInfoWindowWidth:F0}x{_data.ComponentInfoWindowHeight:F0}] [LeftRatio: {_data.ComponentInfoWindowLeftColumnRatio:F3}] [ThumbnailHeight: {_data.ComponentInfoWindowThumbnailRowHeight:F1}] [Position: {_data.ComponentInfoWindowX},{_data.ComponentInfoWindowY}]");
                 Logger.Info($"        [DetachPinoutInComponentPopup] [{DetachPinoutInComponentPopup}]");
                 Logger.Info($"        [PinoutWindowPlace] [Position: {_data.PinoutWindowX},{_data.PinoutWindowY}]");
+                Logger.Info($"        [BaselineCaptureWindowLayout] [{_data.BaselineCaptureWindowState}] [{_data.BaselineCaptureWindowWidth:F0}x{_data.BaselineCaptureWindowHeight:F0}] [Position: {_data.BaselineCaptureWindowX},{_data.BaselineCaptureWindowY}]");
                 Logger.Info($"        [SchematicsThumbnailsWindowLayout] [{_data.SchematicsThumbnailsWindowState}] [{_data.SchematicsThumbnailsWindowWidth:F0}x{_data.SchematicsThumbnailsWindowHeight:F0}] [Position: {_data.SchematicsThumbnailsWindowX},{_data.SchematicsThumbnailsWindowY}]");
                 Logger.Info($"        [ComponentInfoKeyboardHandling] [{ComponentInfoKeyboardHandling}]");
                 Logger.Info($"        [ComponentInfoScrollAction] [{ComponentInfoScrollAction}]");

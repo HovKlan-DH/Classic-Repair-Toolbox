@@ -324,6 +324,15 @@ namespace Handlers.DataHandling
         public static IReadOnlyList<string> PinDirectionsOf(BoardData? board) =>
             ComponentVocabulary.WithWordsOf(ComponentVocabulary.PinDirections, board?.ComponentPins.Select(pin => pin.Direction), lastStaysLast: true);
 
+        // ###########################################################################################
+        // WHAT A BASELINE'S "Expected reading" OFFERS AS IT IS TYPED (owner request, 2026-11-18: "if I already have typed "High"
+        // previously for this board, then when typing "h" it will show the "High" and I can choose that"): every reading the
+        // board's oscilloscope baselines already give - every component, every region - alphabetically, each once, capitals
+        // aside, in the board's first spelling. No usual words: a reading is the board's own.
+        // ###########################################################################################
+        public static IReadOnlyList<string> ReadingsOf(BoardData? board) =>
+            ComponentVocabulary.WithWordsOf([], board?.ComponentImages.Select(row => row.ExpectedOscilloscopeReading), lastStaysLast: false);
+
         private static IReadOnlyList<string> WithWordsOf(IReadOnlyList<string> words, IEnumerable<string?>? used, bool lastStaysLast)
         {
             List<string> extra = (used ?? [])

@@ -579,7 +579,7 @@
 					<TextBlock TextWrapping="Wrap"
 							   FontSize="11"
 							   Opacity="0.8"
-							   Text="Shows the rows of this sheet holding the text as you type it - in the columns ticked under &quot;Columns&quot; - ignoring capitals, and the replacement drawn where it will go. Ctrl+Z undoes a replace." />
+							   Text="Shows the rows of this sheet holding the text as you type it - in the columns checked under &quot;Columns&quot; - ignoring capitals, and the replacement drawn where it will go. Ctrl+Z undoes a replace." />
 					<WrapPanel Orientation="Horizontal" ItemSpacing="12" LineSpacing="6">
 						<StackPanel Orientation="Horizontal" Spacing="6">
 							<TextBlock Text="Find" VerticalAlignment="Center" />

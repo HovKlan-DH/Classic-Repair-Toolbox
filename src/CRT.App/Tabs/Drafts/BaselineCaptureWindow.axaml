@@ -1,0 +1,453 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:CRT"
+        xmlns:theme="clr-namespace:Handlers.Theming"
+        x:Class="CRT.BaselineCaptureWindow"
+        Title="Capture from oscilloscope pin-by-pin"
+        Width="1280"
+        Height="860"
+        MinWidth="1100"
+        MinHeight="640"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource Bg}"
+        Foreground="{DynamicResource Fg}">
+
+	<!-- ###########################################################################################
+	     "CAPTURE FROM OSCILLOSCOPE PIN-BY-PIN" (owner requests, 2026-11-20: "open this in a new window (remember size and position),
+	     where it will display everything related with capturing the image ... It should be more easy to see which images I have
+	     capture ... and then what it the next pin I should do", then "it must stay on the pin, so I can check that it is good",
+	     "see the old baseline image", "click any image or thumbnail I see in this window", "more static for the 3 buttons", and
+	     "use the full height ... align the values ... have the hover/helper text follow the mouse"; BaselineCaptureWindow.axaml.cs):
+	     the component's case, its pins as a list - ticked to capture, each with its picture and how far it is - and the pin shown:
+	     its pictures as tall as the window allows, the old baseline framed beside the new capture, every field in a table; the
+	     buttons in a bar of their own that never moves, the keys along the foot.
+	     ########################################################################################### -->
+	<Window.Styles>
+		<Style Selector="TextBlock.Small">
+			<Setter Property="FontSize" Value="11" />
+			<Setter Property="Opacity" Value="0.8" />
+			<Setter Property="TextWrapping" Value="Wrap" />
+		</Style>
+		<Style Selector="TextBlock.FieldLabel">
+			<Setter Property="VerticalAlignment" Value="Center" />
+			<Setter Property="Margin" Value="0,0,8,0" />
+		</Style>
+		<Style Selector="TextBlock.KeyName">
+			<Setter Property="FontSize" Value="11" />
+			<Setter Property="FontWeight" Value="Bold" />
+		</Style>
+		<!-- A pin not picked to capture stands back. -->
+		<Style Selector="Grid.TargetRow.notPicked">
+			<Setter Property="Opacity" Value="0.5" />
+		</Style>
+		<!-- An accepted pin's check: white on the green of a button that goes ahead, in both themes. -->
+		<Style Selector="Border.AcceptedMark">
+			<Setter Property="Background" Value="{DynamicResource Button_Ok_Bg}" />
+			<Setter Property="CornerRadius" Value="9" />
+			<Setter Property="Width" Value="18" />
+			<Setter Property="Height" Value="18" />
+		</Style>
+		<Style Selector="TextBlock.AcceptedCheck">
+			<Setter Property="FontFamily" Value="{DynamicResource FontAwesomeSolid}" />
+			<Setter Property="FontSize" Value="10" />
+			<Setter Property="Foreground" Value="{DynamicResource Button_Ok_Fg}" />
+			<Setter Property="HorizontalAlignment" Value="Center" />
+			<Setter Property="VerticalAlignment" Value="Center" />
+		</Style>
+		<!-- A capture still to be checked and accepted, in a notice's amber. -->
+		<Style Selector="Border.ToCheckMark">
+			<Setter Property="Background" Value="{DynamicResource Notice_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Notice_Border}" />
+			<Setter Property="BorderThickness" Value="1" />
+			<Setter Property="CornerRadius" Value="8" />
+			<Setter Property="Padding" Value="6,0" />
+		</Style>
+		<Style Selector="Border.ToCheckMark > TextBlock">
+			<Setter Property="Foreground" Value="{DynamicResource Fg}" />
+			<Setter Property="FontSize" Value="11" />
+		</Style>
+		<!-- "Next": the pin "Accept and continue to next pin" goes on to, outlined. -->
+		<Style Selector="Border.NextMark">
+			<Setter Property="BorderBrush" Value="{DynamicResource Fg}" />
+			<Setter Property="BorderThickness" Value="1" />
+			<Setter Property="CornerRadius" Value="8" />
+			<Setter Property="Padding" Value="6,0" />
+		</Style>
+		<!-- Every picture is clicked to see it large (WorklogPhotoViewerWindow). -->
+		<Style Selector="Panel.Picture">
+			<Setter Property="Background" Value="Transparent" />
+			<Setter Property="Cursor" Value="Hand" />
+		</Style>
+		<!-- A picture's frame and the strip over it saying what it is: the old baseline red (owner request, 2026-11-20: "a red'ish
+		     background color"), a new capture amber while it is to be checked and green once accepted - the green of a button that
+		     goes ahead - and a baseline not captured again quiet. -->
+		<Style Selector="Border.PictureFrame">
+			<Setter Property="BorderBrush" Value="{DynamicResource Form_Border}" />
+			<Setter Property="BorderThickness" Value="2" />
+			<Setter Property="CornerRadius" Value="4" />
+			<Setter Property="Background" Value="{DynamicResource Card_Bg}" />
+		</Style>
+		<Style Selector="Border.PictureFrame.Old">
+			<Setter Property="BorderBrush" Value="{DynamicResource CaptureOld_Border}" />
+		</Style>
+		<Style Selector="Border.PictureFrame.ToCheck">
+			<Setter Property="BorderBrush" Value="{DynamicResource Notice_Border}" />
+		</Style>
+		<Style Selector="Border.PictureFrame.Accepted">
+			<Setter Property="BorderBrush" Value="{DynamicResource Button_Ok_Bg}" />
+		</Style>
+		<!-- Rounded as the inside of its frame (the frame's 4 less its 2): square, its corners covered the frame's curve, and the
+		     frame looked a pixel short there (owner report, 2026-11-20: "missing a pixel in its rounding"). -->
+		<Style Selector="Border.PictureHeader">
+			<Setter Property="Padding" Value="10,5" />
+			<Setter Property="CornerRadius" Value="2,2,0,0" />
+			<Setter Property="Background" Value="{DynamicResource Card_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Form_Border}" />
+			<Setter Property="BorderThickness" Value="0,0,0,1" />
+		</Style>
+		<Style Selector="Border.PictureHeader.Old">
+			<Setter Property="Background" Value="{DynamicResource CaptureOld_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource CaptureOld_Border}" />
+		</Style>
+		<Style Selector="Border.PictureHeader > TextBlock">
+			<Setter Property="Foreground" Value="{DynamicResource Fg}" />
+			<Setter Property="FontSize" Value="14" />
+			<Setter Property="TextTrimming" Value="CharacterEllipsis" />
+		</Style>
+		<Style Selector="Border.PictureHeader.ToCheck">
+			<Setter Property="Background" Value="{DynamicResource Notice_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Notice_Border}" />
+		</Style>
+		<Style Selector="Border.PictureHeader.Accepted">
+			<Setter Property="Background" Value="{DynamicResource Button_Ok_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Button_Ok_Bg}" />
+		</Style>
+		<Style Selector="Border.PictureHeader.Accepted > TextBlock">
+			<Setter Property="Foreground" Value="{DynamicResource Button_Ok_Fg}" />
+		</Style>
+		<!-- The fields of the baseline shown: names in one column, values lined up in the next. -->
+		<Style Selector="Grid#FactsGrid > TextBlock">
+			<Setter Property="Margin" Value="0,0,0,4" />
+			<Setter Property="TextWrapping" Value="Wrap" />
+		</Style>
+		<!-- "Click to see it larger", following the pointer over a picture: drawn in the window, taking no click. -->
+		<Style Selector="Border#PictureHint">
+			<Setter Property="Background" Value="{DynamicResource Card_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource Form_Border}" />
+			<Setter Property="BorderThickness" Value="1" />
+			<Setter Property="CornerRadius" Value="3" />
+			<Setter Property="Padding" Value="6,2" />
+		</Style>
+	</Window.Styles>
+
+	<Grid x:Name="RootGrid" RowDefinitions="Auto,*,Auto">
+
+		<!-- What it is for, and whether the oscilloscope is there. -->
+		<StackPanel Grid.Row="0" Margin="16,12,16,8" Spacing="6">
+			<Grid ColumnDefinitions="*,Auto">
+				<TextBlock x:Name="ComponentText" Grid.Column="0" FontSize="16" FontWeight="Bold" VerticalAlignment="Center" />
+				<StackPanel x:Name="ScopeConnectedPanel" Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+					<Ellipse Width="10" Height="10" Fill="{DynamicResource Button_Ok_Bg}" VerticalAlignment="Center" />
+					<TextBlock x:Name="ScopeConnectedText" VerticalAlignment="Center" />
+				</StackPanel>
+			</Grid>
+			<TextBlock x:Name="IntroText" Classes="Small" />
+			<Border x:Name="NoScopeNotice" Classes="Notice" IsVisible="False">
+				<Grid ColumnDefinitions="Auto,*">
+					<TextBlock Grid.Column="0" Classes="NoticeIcon" Text="&#xf05a;" />
+					<TextBlock Grid.Column="1" Classes="NoticeText" x:Name="NoScopeText" />
+				</Grid>
+			</Border>
+		</StackPanel>
+
+		<Grid Grid.Row="1" ColumnDefinitions="Auto,16,340,16,*" Margin="16,0,16,8">
+
+			<!-- The case: a pin clicked is the pin shown, picked to capture. -->
+			<ScrollViewer Grid.Column="0" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+				<local:PinoutDrawing x:Name="CasePinout"
+									 PinsCanBePicked="True"
+									 HorizontalAlignment="Left"
+									 VerticalAlignment="Top" />
+			</ScrollViewer>
+
+			<!-- The pins to go round. -->
+			<DockPanel Grid.Column="2">
+				<WrapPanel DockPanel.Dock="Top" ItemSpacing="6" LineSpacing="6" Margin="0,0,0,6">
+					<Button x:Name="PickWithBaselineButton"
+							Content="Pins with a baseline"
+							ToolTip.Tip="Pick the pins that have a baseline - to capture them again"
+							Click="OnPickWithBaselineClick" />
+					<Button x:Name="PickWithoutBaselineButton"
+							Content="Pins without a baseline"
+							ToolTip.Tip="Pick every pin that has no baseline yet"
+							Click="OnPickWithoutBaselineClick" />
+					<Button x:Name="PickEveryPinButton"
+							Content="Every pin"
+							ToolTip.Tip="Pick every pin of the component"
+							Click="OnPickEveryPinClick" />
+					<Button x:Name="PickNoPinButton"
+							Content="No pins"
+							ToolTip.Tip="Pick none - then select the pins you want"
+							Click="OnPickNoPinsClick" />
+				</WrapPanel>
+				<TextBlock x:Name="ProgressText" DockPanel.Dock="Top" Margin="0,0,0,6" TextWrapping="Wrap" />
+
+				<ListBox x:Name="TargetsList" SelectionMode="Single">
+					<ListBox.ItemTemplate>
+						<DataTemplate x:DataType="local:BaselineCaptureTarget">
+							<Grid Classes="TargetRow"
+								  Classes.notPicked="{Binding IsNotPicked}"
+								  ColumnDefinitions="Auto,8,84,8,*">
+								<CheckBox Grid.Column="0"
+										  IsChecked="{Binding IsPicked, Mode=TwoWay}"
+										  VerticalAlignment="Center"
+										  ToolTip.Tip="Capture this pin" />
+								<Border Grid.Column="2"
+										Width="84"
+										Height="56"
+										Background="{DynamicResource Card_Bg}">
+									<!-- Clicked, its picture large - the line is not picked by it. -->
+									<Panel Classes="Picture Thumbnail"
+										   IsHitTestVisible="{Binding HasPicture}"
+										   PointerPressed="OnThumbnailPressed"
+										   PointerMoved="OnPicturePointerMoved"
+										   PointerExited="OnPicturePointerExited">
+										<Image Source="{Binding Row.Thumbnail}" Stretch="Uniform" IsVisible="{Binding !HasWaitingPicture}" />
+										<!-- A capture not yet accepted, in the baseline's place. -->
+										<Image Source="{Binding WaitingPicture}" Stretch="Uniform" IsVisible="{Binding HasWaitingPicture}" />
+									</Panel>
+								</Border>
+								<StackPanel Grid.Column="4" VerticalAlignment="Center" Spacing="1">
+									<StackPanel Orientation="Horizontal" Spacing="6">
+										<Border Classes="AcceptedMark" IsVisible="{Binding IsAccepted}">
+											<TextBlock Classes="AcceptedCheck" Text="&#xf00c;" />
+										</Border>
+										<TextBlock Text="{Binding Label}" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+										<Border Classes="ToCheckMark" IsVisible="{Binding IsWaiting}" VerticalAlignment="Center">
+											<TextBlock Text="Not yet accepted" />
+										</Border>
+										<Border Classes="NextMark" IsVisible="{Binding IsNext}" VerticalAlignment="Center">
+											<TextBlock Text="Next" FontSize="11" />
+										</Border>
+									</StackPanel>
+									<TextBlock Text="{Binding StateText}" FontSize="11" Opacity="0.8" />
+									<TextBlock Text="{Binding Settings}" FontSize="11" Opacity="0.7" IsVisible="{Binding HasSettings}" />
+								</StackPanel>
+							</Grid>
+						</DataTemplate>
+					</ListBox.ItemTemplate>
+				</ListBox>
+			</DockPanel>
+
+			<!-- The pin shown: its pictures take what height the rest leaves; its buttons a bar of their own at the foot, where they
+			     stay whatever is shown above them. -->
+			<DockPanel Grid.Column="4">
+				<Border DockPanel.Dock="Bottom"
+						Padding="0,8,0,0"
+						BorderBrush="{DynamicResource Form_Border}"
+						BorderThickness="0,1,0,0">
+					<Grid ColumnDefinitions="*,Auto">
+						<StackPanel x:Name="ActionBar" Grid.Column="0" Orientation="Horizontal" Spacing="6">
+							<!-- Plain, as the pane's "Capture again": a capture changes nothing in the draft until it is accepted (code
+							     review, 2026-11-21) - green is "Accept and continue to next pin"'s. -->
+							<Button x:Name="CaptureButton"
+									Content="Capture"
+									ToolTip.Tip="Take the oscilloscope's screen and how it is set, for this pin - it stays shown, to be checked and accepted (Enter)"
+									Click="OnCaptureClick" />
+							<Button x:Name="PreviousButton"
+									Content="Previous pin"
+									ToolTip.Tip="The picked pin before it - what was accepted stays accepted (Left)"
+									Click="OnPreviousClick" />
+							<Button x:Name="AcceptButton"
+									Classes="Accept"
+									Content="Accept and continue to next pin"
+									ToolTip.Tip="Accept the capture of the pin shown, and go on to the next picked pin not accepted yet (Right)"
+									Click="OnAcceptClick" />
+						</StackPanel>
+						<!-- Set apart at the far end: it ends the round (owner request, 2026-11-20) - asking first about a capture not
+						     yet accepted. -->
+						<Button x:Name="CloseCaptureButton"
+								Grid.Column="1"
+								Content="Close capturing"
+								ToolTip.Tip="Close this window - a capture not yet accepted is asked about first (Escape)"
+								Click="OnCloseCaptureClick" />
+					</Grid>
+				</Border>
+
+				<!-- Closing with captures not yet accepted: they are in no draft, so it asks first. Over the bar, which stays put. -->
+				<Border x:Name="NotAcceptedPanel" DockPanel.Dock="Bottom" Classes="Notice" Margin="0,0,0,8" IsVisible="False">
+					<Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
+						<TextBlock Grid.Column="0" Grid.RowSpan="2" Classes="NoticeIcon" Text="&#xf05a;" />
+						<TextBlock x:Name="NotAcceptedText" Grid.Column="1" Grid.Row="0" Classes="NoticeText" />
+						<StackPanel Grid.Column="1" Grid.Row="1" Orientation="Horizontal" Spacing="6" Margin="0,8,0,0">
+							<Button x:Name="AcceptAndCloseButton"
+									Classes="Accept"
+									Content="Accept and close"
+									ToolTip.Tip="Put every capture not yet accepted into your draft, then close this window"
+									Click="OnAcceptAndCloseClick" />
+							<Button x:Name="DiscardAndCloseButton"
+									Classes="Danger"
+									Content="Discard and close"
+									ToolTip.Tip="Throw away every capture not yet accepted, then close this window - your draft keeps what was accepted"
+									Click="OnDiscardAndCloseClick" />
+							<Button x:Name="KeepCapturingButton"
+									Content="Keep capturing"
+									ToolTip.Tip="Stay in this window (Escape)"
+									Click="OnKeepCapturingClick" />
+						</StackPanel>
+					</Grid>
+				</Border>
+
+				<Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto,*,Auto,Auto">
+					<Border x:Name="NextBorder"
+							Grid.Row="0"
+							Margin="0,0,0,8"
+							Padding="10,6"
+							CornerRadius="4"
+							Background="{DynamicResource Card_Bg}"
+							BorderBrush="{DynamicResource Form_Border}"
+							BorderThickness="1">
+						<TextBlock x:Name="NextText" FontSize="14" TextWrapping="Wrap" />
+					</Border>
+
+					<Grid Grid.Row="1" ColumnDefinitions="*,Auto" Margin="0,0,0,4">
+						<TextBlock x:Name="CurrentText" Grid.Column="0" FontSize="22" TextWrapping="Wrap" />
+						<!-- The number being typed - the number keys go to its pin, as the popup's do. In a selection's colors, a pair
+						     ThemeContrastTests holds (Form_Selected_Fg on Form_Selected_Bg). -->
+						<Border x:Name="TypedPinBorder"
+								Grid.Column="1"
+								Padding="10,4"
+								CornerRadius="4"
+								VerticalAlignment="Center"
+								Background="{DynamicResource Form_Selected_Bg}"
+								IsVisible="False">
+							<TextBlock x:Name="TypedPinText" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource Form_Selected_Fg}" />
+						</Border>
+					</Grid>
+					<TextBlock x:Name="CurrentDetails" Grid.Row="2" Margin="0,0,0,8" TextWrapping="Wrap" />
+
+					<StackPanel x:Name="NamePanel" Grid.Row="3" Orientation="Horizontal" Margin="0,0,0,8">
+						<TextBlock Classes="FieldLabel" Text="Signal name" />
+						<TextBox x:Name="NameBox" PlaceholderText="PA3, /IRQ, PHI2" Width="260" />
+					</StackPanel>
+
+					<TextBlock x:Name="ProblemText"
+							   Grid.Row="4"
+							   Margin="0,0,0,8"
+							   Foreground="{DynamicResource Text_Warning_Fg}"
+							   TextWrapping="Wrap"
+							   IsVisible="False" />
+
+					<!-- The pictures, as tall as the window allows: the baseline alone, or - captured again - the old one framed beside
+					     the new capture. -->
+					<Panel Grid.Row="5" MinHeight="120" Margin="0,0,0,10">
+						<Border x:Name="SingleFrame" Classes="PictureFrame">
+							<DockPanel>
+								<Border x:Name="SingleHeader" Classes="PictureHeader" DockPanel.Dock="Top">
+									<TextBlock x:Name="SingleHeaderText" />
+								</Border>
+								<Panel x:Name="SinglePicture"
+									   Classes="Picture"
+									   Margin="6"
+									   PointerPressed="OnShownPicturePressed"
+									   PointerMoved="OnPicturePointerMoved"
+									   PointerExited="OnPicturePointerExited">
+									<Image x:Name="CurrentImage" Stretch="Uniform" />
+									<TextBlock x:Name="NoImageText"
+											   Classes="Small"
+											   Text="No baseline yet - press Enter to capture one."
+											   HorizontalAlignment="Center"
+											   VerticalAlignment="Center" />
+								</Panel>
+							</DockPanel>
+						</Border>
+
+						<Grid x:Name="ComparePanel" ColumnDefinitions="*,12,*" IsVisible="False">
+							<Border x:Name="OldFrame" Grid.Column="0" Classes="PictureFrame Old">
+								<DockPanel>
+									<Border x:Name="OldHeader" Classes="PictureHeader Old" DockPanel.Dock="Top">
+										<TextBlock x:Name="OldHeaderText" />
+									</Border>
+									<Panel x:Name="OldPicture"
+										   Classes="Picture"
+										   Margin="6"
+										   PointerPressed="OnOldPicturePressed"
+										   PointerMoved="OnPicturePointerMoved"
+										   PointerExited="OnPicturePointerExited">
+										<Image x:Name="OldImage" Stretch="Uniform" />
+										<TextBlock x:Name="NoOldImageText"
+												   Classes="Small"
+												   HorizontalAlignment="Center"
+												   VerticalAlignment="Center"
+												   IsVisible="False" />
+									</Panel>
+								</DockPanel>
+							</Border>
+							<Border x:Name="NewFrame" Grid.Column="2" Classes="PictureFrame">
+								<DockPanel>
+									<Border x:Name="NewHeader" Classes="PictureHeader" DockPanel.Dock="Top">
+										<TextBlock x:Name="NewHeaderText" />
+									</Border>
+									<Panel x:Name="NewPicture"
+										   Classes="Picture"
+										   Margin="6"
+										   PointerPressed="OnShownPicturePressed"
+										   PointerMoved="OnPicturePointerMoved"
+										   PointerExited="OnPicturePointerExited">
+										<Image x:Name="NowImage" Stretch="Uniform" />
+									</Panel>
+								</DockPanel>
+							</Border>
+						</Grid>
+					</Panel>
+
+					<!-- Every field the component info window shows of the baseline: the pin's on the left, how the oscilloscope was
+					     set on the right, the names in a column of their own so the values line up (BaselineCaptureWindow.ShowFacts). -->
+					<Grid x:Name="FactsGrid"
+						  Grid.Row="6"
+						  Margin="0,0,0,8"
+						  ColumnDefinitions="Auto,12,*,32,Auto,12,*"
+						  RowDefinitions="Auto,Auto,Auto,Auto,Auto" />
+
+					<StackPanel Grid.Row="7" Orientation="Horizontal" Margin="0,0,0,8">
+						<TextBlock Classes="FieldLabel" Text="Machine state of the new baselines" />
+						<TextBox x:Name="MachineStateBox" PlaceholderText="At the READY prompt, running a game" Width="360" />
+					</StackPanel>
+				</Grid>
+			</DockPanel>
+		</Grid>
+
+		<!-- The keys, the component info window's with an oscilloscope connected. -->
+		<Border Grid.Row="2"
+				Padding="16,8"
+				BorderBrush="{DynamicResource Form_Border}"
+				BorderThickness="0,1,0,0">
+			<ItemsControl x:Name="KeysList">
+				<ItemsControl.ItemsPanel>
+					<ItemsPanelTemplate>
+						<WrapPanel ItemSpacing="18" LineSpacing="4" />
+					</ItemsPanelTemplate>
+				</ItemsControl.ItemsPanel>
+				<ItemsControl.ItemTemplate>
+					<DataTemplate x:DataType="local:BaselineCaptureKey">
+						<StackPanel Orientation="Horizontal" Spacing="6">
+							<TextBlock Classes="KeyName" Text="{Binding Keys}" />
+							<TextBlock Text="{Binding What}" FontSize="11" />
+						</StackPanel>
+					</DataTemplate>
+				</ItemsControl.ItemTemplate>
+			</ItemsControl>
+		</Border>
+
+		<!-- "Click to see it larger" following the pointer over a picture - in the window, never a tooltip (a tooltip's own window
+		     under the pointer takes the next click), and taking no click itself. -->
+		<Canvas x:Name="HintLayer" Grid.RowSpan="3" IsHitTestVisible="False">
+			<Border x:Name="PictureHint" IsVisible="False">
+				<TextBlock x:Name="PictureHintText" FontSize="12" />
+			</Border>
+		</Canvas>
+
+		<!-- Taking the screen and saving it into the draft are waits the contributor watches (BusyOverlay). -->
+		<local:BusyOverlay Grid.RowSpan="3" />
+	</Grid>
+</Window>

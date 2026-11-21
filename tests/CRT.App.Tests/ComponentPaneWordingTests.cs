@@ -31,7 +31,7 @@ public sealed class ComponentPaneWordingTests
         Assert.Equal(
             "<b>1</b> row of this board has it applied, so it stays until that row applies to another region or to all of them.",
             ComponentPaneWording.RegionInUse(1));
-        Assert.StartsWith("<b>10</b> rows of this board have a region applied, so this stays ticked", ComponentPaneWording.RegionsInUse(10), StringComparison.Ordinal);
+        Assert.StartsWith("<b>10</b> rows of this board have a region applied, so this stays checked", ComponentPaneWording.RegionsInUse(10), StringComparison.Ordinal);
 
         // What goes with a region deleted is said too (code review, 2026-11-09: it went without a word).
         Assert.Equal(
@@ -331,5 +331,206 @@ public sealed class ComponentPaneWordingTests
             Assert.DoesNotContain("Excel", sentence, StringComparison.Ordinal);
             Assert.DoesNotContain("component editor", sentence, StringComparison.Ordinal);
         });
+    }
+
+    // ###########################################################################################
+    // In "Capture from oscilloscope pin-by-pin"'s window, every field the popup shows of a baseline (owner request, 2026-11-18: "Everything
+    // that will be shown, should also be shown here, so I can validate it"), in the popup's order, an empty one said as such -
+    // a setting the oscilloscope did not answer is what is to be checked. THE VALUE BOLD, NOT ITS NAME (owner request, 2026-11-20:
+    // "I want the value to be the important one here"). The note as its words, what it applies to only on a board with regions,
+    // and what the data says never read as a bold mark.
+    // ###########################################################################################
+    [Fact]
+    public void A_capture_is_shown_with_every_field_the_popup_shows_its_value_bold_an_empty_one_said()
+    {
+        var baseline = new ComponentImageEntry
+        {
+            Pin = "3",
+            Name = "<b>1Y</b>",
+            ExpectedOscilloscopeReading = "Pulsing",
+            TimeDiv = "100us",
+            VoltsDiv = "2V",
+            MachineState = "At the READY prompt",
+            Note = "Measured **twice**",
+            Region = "PAL",
+        };
+
+        IReadOnlyList<(string Name, string Value)> facts = ComponentPaneWording.RunFacts(baseline, boardHasRegions: false);
+
+        Assert.Equal(
+            ["Pin: 3", "Signal name: 1Y", "Expected reading: Pulsing", "T/DIV: 100us", "V/DIV: 2V", "Trigger level: (none)", "Machine state: At the READY prompt", "Note: Measured twice"],
+            facts.Select(fact => $"{fact.Name}: {Handlers.Theming.BoldRuns.Plain(fact.Value)}"));
+        Assert.Equal(("Pin", "<b>3</b>"), facts[0]);
+        Assert.Equal(("Signal name", "<b>1Y</b>"), facts[1]);
+        Assert.Equal(("Trigger level", "(none)"), facts[5]);
+
+        Assert.Equal((ComponentPaneWording.FactAppliesTo, "<b>PAL</b>"), ComponentPaneWording.RunFacts(baseline, boardHasRegions: true)[^1]);
+        Assert.Equal(
+            $"<b>{ComponentPaneWording.AllRegions}</b>",
+            ComponentPaneWording.RunFacts(new ComponentImageEntry { Pin = "1" }, boardHasRegions: true)[^1].Value);
+    }
+
+    // ###########################################################################################
+    // A baseline captured again says what each changed value was in the baseline it replaced (owner request, 2026-11-20: "maybe
+    // there can be a comparison, so I can easily see the diff?") - a value that stayed says nothing more, one emptied or newly
+    // given says so.
+    // ###########################################################################################
+    [Fact]
+    public void A_capture_says_what_each_changed_value_was_before()
+    {
+        var before = new ComponentImageEntry { Pin = "3", Name = "1Y", TimeDiv = "50us", VoltsDiv = "1V", MachineState = "At the READY prompt" };
+        var now = new ComponentImageEntry { Pin = "3", Name = "1Y", TimeDiv = "100us", VoltsDiv = "1V", TriggerLevelVolts = "1.25V" };
+
+        IReadOnlyList<(string Name, string Value)> facts = ComponentPaneWording.RunFacts(now, boardHasRegions: false, before);
+
+        Assert.Equal(
+            ["Pin: 3", "Signal name: 1Y", "Expected reading: (none)", "T/DIV: 100us  (was 50us)", "V/DIV: 1V", "Trigger level: 1.25V  (was none)", "Machine state: (none)  (was At the READY prompt)", "Note: (none)"],
+            facts.Select(fact => $"{fact.Name}: {Handlers.Theming.BoldRuns.Plain(fact.Value)}"));
+        Assert.Equal("<b>100us</b>  (was 50us)", facts[3].Value);
+    }
+
+    // ###########################################################################################
+    // While no oscilloscope is connected, the baselines' page says what one offers there (owner request, 2026-11-18: "I at first
+    // thought it was not implemented") - and, the "Oscilloscope" tab turned off, the setting that turns it on.
+    // ###########################################################################################
+    [Fact]
+    public void The_hint_names_what_an_oscilloscope_offers_and_where_its_tab_is_turned_on()
+    {
+        string on = ComponentPaneWording.ScopeHint(tabTurnedOn: true);
+        string off = ComponentPaneWording.ScopeHint(tabTurnedOn: false);
+
+        Assert.All(new[] { on, off }, hint =>
+        {
+            Assert.Contains("\"Capture from oscilloscope pin-by-pin\"", hint, StringComparison.Ordinal);
+            Assert.Contains("\"Capture again\"", hint, StringComparison.Ordinal);
+            Assert.Contains("\"Oscilloscope\" tab", hint, StringComparison.Ordinal);
+            Assert.DoesNotContain("Capture from my oscilloscope", hint, StringComparison.Ordinal);
+            Assert.All(hint, character => Assert.True(character < 128, $"[{hint}] is not plain ASCII"));
+
+            // A capture is a baseline only once accepted - never "straight into" one (code review, 2026-11-21).
+            Assert.Contains("once you accept it", hint, StringComparison.Ordinal);
+        });
+
+        Assert.DoesNotContain("Configuration", on, StringComparison.Ordinal);
+        Assert.Contains("\"Enable network connected oscilloscope tab\" in the \"Configuration\" tab", off, StringComparison.Ordinal);
+    }
+
+    // ###########################################################################################
+    // The capture window says how far it is - the picked baselines accepted, singular or plural - what is next, or that every
+    // picked pin is accepted, and what to do with the pin shown: capture it, check and accept its capture, or retake it (owner
+    // requests, 2026-11-20: "and then what it the next pin I should do", "it must stay on the pin, so I can check that it is good").
+    // ###########################################################################################
+    [Fact]
+    public void The_capture_window_says_how_far_it_is_what_is_next_and_what_to_do_with_the_pin_shown()
+    {
+        var pin = new BaselineRunPin("3", 3, "1Y", "Output", 1);
+        var update = new BaselineRunStep(pin, "3", "1Y", "Scope baseline/U27_3.png");
+        var fresh = new BaselineRunStep(new BaselineRunPin("7", 7, "", "Ground", 0), "7", "", "");
+
+        Assert.Equal("1 of 2 picked baselines accepted", Handlers.Theming.BoldRuns.Plain(ComponentPaneWording.RunProgress(2, 1)));
+        Assert.Equal("0 of 1 picked baseline accepted", Handlers.Theming.BoldRuns.Plain(ComponentPaneWording.RunProgress(1, 0)));
+        Assert.Equal(ComponentPaneWording.RunNothingPicked, ComponentPaneWording.RunProgress(0, 0));
+
+        Assert.Equal("Next: pin <b>3</b> - <b>1Y</b>", ComponentPaneWording.RunNext(update));
+        Assert.Equal("Next: pin 7", Handlers.Theming.BoldRuns.Plain(ComponentPaneWording.RunNext(fresh)));
+        Assert.Equal("Every picked pin is accepted.", ComponentPaneWording.RunNext(null));
+
+        Assert.Equal(("3  1Y", "Has a baseline"), (ComponentPaneWording.RunTargetLabel(update), ComponentPaneWording.RunTargetState(update)));
+        Assert.Equal(("7", "No baseline yet"), (ComponentPaneWording.RunTargetLabel(fresh), ComponentPaneWording.RunTargetState(fresh)));
+        Assert.Equal("Enter captures its baseline again.", ComponentPaneWording.RunStepDetails(update, " "));
+        Assert.Equal("No baseline yet - Enter captures one, to be accepted. Machine state: Running", ComponentPaneWording.RunStepDetails(fresh, " Running "));
+
+        // Captured, it is not yet accepted - so not in the draft (owner request, 2026-11-20: "so it is clear this must be accepted
+        // before it will be used").
+        update.Captured();
+        Assert.Equal("Captured - not yet accepted", ComponentPaneWording.RunTargetState(update));
+        Assert.Equal(
+            "Captured - not yet accepted, so not in your draft. Check it, then \"Accept and continue to next pin\". Enter captures it again.",
+            ComponentPaneWording.RunStepDetails(update, ""));
+
+        update.Accepted("Scope baseline/U27_3_1Y.png");
+        Assert.Equal("Accepted", ComponentPaneWording.RunTargetState(update));
+        Assert.Equal("Accepted. Enter captures it again.", ComponentPaneWording.RunStepDetails(update, ""));
+
+        // The viewer's title: the pin, and which of its pictures.
+        Assert.Equal("Pin 3 - 1Y - Old baseline", ComponentPaneWording.RunPictureTitle(update, ComponentPaneWording.PictureOld));
+        Assert.Equal("Pin 7", ComponentPaneWording.RunPictureTitle(fresh, null));
+
+        // A signal name typed with a mark in it is its words, never a bold run of its own.
+        Assert.Equal("Pin 3 - 1Y", Handlers.Theming.BoldRuns.Plain(ComponentPaneWording.RunCurrent(new BaselineRunStep(pin, "3", "<b>1Y</b>", ""))));
+
+        // Right is the button that was "Next pin".
+        Assert.Contains(ComponentPaneWording.RunKeys, key => key == ("Right", "Accept and continue to the next pin"));
+        Assert.All(ComponentPaneWording.RunKeys, key => Assert.All(key.Keys + key.What, character => Assert.True(character < 128, $"[{key}] is not plain ASCII")));
+    }
+
+    // ###########################################################################################
+    // Over each picture a strip says which it is - the old baseline, a baseline not captured again, or the new capture and whether
+    // it is accepted (owner requests, 2026-11-20: "have it more clear/visible what is the old and new image", "Rename the "New capture
+    // - to check" to "New capture - not yet accepted"") - its name bold, the oscilloscope's settings after it.
+    // ###########################################################################################
+    [Fact]
+    public void A_pictures_strip_names_it_bold_with_its_settings()
+    {
+        Assert.Equal("<b>Old baseline</b>   50us, 1V, 1.5V", ComponentPaneWording.RunPictureHeader(ComponentPaneWording.PictureOld, "50us, 1V, 1.5V"));
+        Assert.Equal("<b>New capture - not yet accepted</b>", ComponentPaneWording.RunPictureHeader(ComponentPaneWording.PictureNewTitle(accepted: false), " "));
+        Assert.Equal("New capture - accepted", ComponentPaneWording.PictureNewTitle(accepted: true));
+        Assert.Equal("Baseline", ComponentPaneWording.PictureBaseline);
+
+        // The settings are the data's words: a "<b>" typed in a T/DIV cell is no mark (code review, 2026-11-21).
+        string header = ComponentPaneWording.RunPictureHeader(ComponentPaneWording.PictureBaseline, "<b>50us, 1V");
+        Assert.Equal([("Baseline", true), ("   50us, 1V", false)], Handlers.Theming.BoldRuns.Marked(header));
+    }
+
+    // ###########################################################################################
+    // A baseline with no image yet is a line of its own - captured into it, not added beside it (code review, 2026-11-21: it read
+    // "No baseline yet", and its capture went in as a second baseline).
+    // ###########################################################################################
+    [Fact]
+    public void A_baseline_with_no_image_says_so_and_that_Enter_captures_one()
+    {
+        var step = new BaselineRunStep(new BaselineRunPin("2", 2, "1B", "Input", 1), "2", "1B", "", hadBaseline: true);
+
+        Assert.Equal("Baseline with no image", ComponentPaneWording.RunTargetState(step));
+        Assert.Equal("Its baseline has no image yet - Enter captures one, to be accepted.", ComponentPaneWording.RunStepDetails(step, ""));
+    }
+
+    // A line of "Capture from oscilloscope pin-by-pin"'s list, and the strip over each picture: the settings the baseline has, short,
+    // as the data spells them - one not set left out, spaces round a value taken away, none at all nothing.
+    [Fact]
+    public void The_short_settings_are_those_the_baseline_has_in_order()
+    {
+        Assert.Equal("100us, 2V, 1.25V", ComponentPaneWording.RunSettings(new ComponentImageEntry { TimeDiv = "100us", VoltsDiv = "2V", TriggerLevelVolts = "1.25V" }));
+        Assert.Equal("50us, 0.75V", ComponentPaneWording.RunSettings(new ComponentImageEntry { TimeDiv = " 50us ", VoltsDiv = " ", TriggerLevelVolts = "0.75V" }));
+        Assert.Equal(string.Empty, ComponentPaneWording.RunSettings(new ComponentImageEntry()));
+    }
+
+    // ###########################################################################################
+    // Under a picture seen large, its settings named, the VALUES bold (owner requests, 2026-11-20: "have the headers show also", then
+    // "again do remember to have the values "bold"") - a note with formatting, so a "*" or "__" in a value stays a character, never
+    // a mark; a value not set says so, not bold.
+    // ###########################################################################################
+    [Fact]
+    public void The_settings_under_a_picture_are_named_their_values_bold_and_a_mark_in_one_stays_a_character()
+    {
+        string line = ComponentPaneWording.RunSettingsNamed(new ComponentImageEntry { TimeDiv = "100us", VoltsDiv = "2**V", TriggerLevelVolts = " " });
+        RichNoteText note = RichNote.Parse(line);
+
+        Assert.Equal("T/DIV: 100us   |   V/DIV: 2**V   |   Trigger level: (none)", note.Text);
+
+        string Styled(RichNoteStyle style) =>
+            new(note.Text.Where((_, index) => note.Styles[index].HasFlag(style)).ToArray());
+
+        Assert.Equal("100us2**V", Styled(RichNoteStyle.Bold));
+    }
+
+    // Closing with captures not yet accepted asks first - they are in no draft - the count bold, one or several.
+    [Fact]
+    public void Closing_with_captures_not_yet_accepted_says_they_are_in_no_draft()
+    {
+        Assert.Equal(
+            "1 capture is not yet accepted, so it is not in your draft. Accept it before closing, or discard it?",
+            Handlers.Theming.BoldRuns.Plain(ComponentPaneWording.RunNotAcceptedOnClose(1)));
+        Assert.StartsWith("<b>3</b> captures are not yet accepted, so they are not in your draft.", ComponentPaneWording.RunNotAcceptedOnClose(3), StringComparison.Ordinal);
     }
 }

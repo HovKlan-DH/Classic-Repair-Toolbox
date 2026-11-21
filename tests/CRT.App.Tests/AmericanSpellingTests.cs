@@ -21,6 +21,17 @@ public sealed class AmericanSpellingTests
     [Fact]
     public void No_string_a_person_reads_spells_colour_the_British_way()
     {
+        List<string> offenders = AmericanSpellingTests.OffendersOf(British);
+
+        Assert.True(offenders.Count == 0, "\"color\", not \"colour\", in what a person reads (owner request, 2026-10-30):\n" + string.Join("\n", offenders));
+    }
+
+    // ###########################################################################################
+    // Every string literal in src/ and every text attribute of the markup that `word` is found in - "file:line: text". Shared with
+    // CheckNotTickTests, which holds another word out of what a person reads the same way.
+    // ###########################################################################################
+    internal static List<string> OffendersOf(Regex word)
+    {
         var offenders = new List<string>();
 
         foreach (string file in AmericanSpellingTests.SourceFiles("*.cs"))
@@ -32,7 +43,7 @@ public sealed class AmericanSpellingTests
                 string code = AmericanSpellingTests.WithoutComment(lines[index]);
 
                 offenders.AddRange(Literal.Matches(code)
-                    .Where(literal => British.IsMatch(literal.Value))
+                    .Where(literal => word.IsMatch(literal.Value))
                     .Select(literal => $"{AmericanSpellingTests.Relative(file)}:{index + 1}: {literal.Value}"));
             }
         }
@@ -44,13 +55,20 @@ public sealed class AmericanSpellingTests
             for (int index = 0; index < lines.Length; index++)
             {
                 offenders.AddRange(Attribute.Matches(lines[index])
-                    .Where(attribute => AmericanSpellingTests.IsText(attribute.Groups[1].Value, attribute.Groups[2].Value) && British.IsMatch(attribute.Groups[2].Value))
+                    .Where(attribute => AmericanSpellingTests.IsText(attribute.Groups[1].Value, attribute.Groups[2].Value) && word.IsMatch(attribute.Groups[2].Value))
                     .Select(attribute => $"{AmericanSpellingTests.Relative(file)}:{index + 1}: {attribute.Value}"));
             }
         }
 
-        Assert.True(offenders.Count == 0, "\"color\", not \"colour\", in what a person reads (owner request, 2026-10-30):\n" + string.Join("\n", offenders));
+        return offenders;
     }
+
+    // Whether `line` of code has a string literal holding `word` - for a detector's own cases.
+    internal static bool LiteralHolds(string line, Regex word) =>
+        Literal.Matches(AmericanSpellingTests.WithoutComment(line)).Any(literal => word.IsMatch(literal.Value));
+
+    // Whether a markup attribute is text a person reads holding `word`.
+    internal static bool MarkupHolds(string name, string value, Regex word) => AmericanSpellingTests.IsText(name, value) && word.IsMatch(value);
 
     // The detector finds what it is for, and leaves code names, comments and bindings alone.
     [Theory]

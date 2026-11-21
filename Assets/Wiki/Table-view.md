@@ -56,7 +56,7 @@ On macOS use **Cmd** where this page says **Ctrl**.
   out the rows that have it.
 * **Ctrl+H**, or the **Replace** button, opens the replace bar under the toolbar. **Find** narrows the table and marks
   every place it finds, exactly as typed (capitals ignored); what you type under **Replace with** is shown in their
-  place, in another color, so you see the result before anything changes. Under **Columns** you can tick which columns
+  place, in another color, so you see the result before anything changes. Under **Columns** you can check which columns
   it works in. **Replace all** says how many places it will change. **Cancel** closes the bar.
 
 Replace works only in the rows the table shows on the part you are looking at.

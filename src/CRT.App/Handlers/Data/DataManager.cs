@@ -529,7 +529,7 @@ namespace Handlers.DataHandling
 
             if (behind.Count > 0)
             {
-                Logger.Info($"Not downloaded, as unticked under \"Visible hardware and boards\": [{behind.Count}] board files behind the {AppConfig.GetOnlineSourceLabel()} - [{string.Join(" | ", behind)}]");
+                Logger.Info($"Not downloaded, as unchecked under \"Visible hardware and boards\": [{behind.Count}] board files behind the {AppConfig.GetOnlineSourceLabel()} - [{string.Join(" | ", behind)}]");
             }
         }
 

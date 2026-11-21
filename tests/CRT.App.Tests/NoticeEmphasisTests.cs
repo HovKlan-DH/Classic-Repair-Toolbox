@@ -43,10 +43,10 @@ public sealed class NoticeEmphasisTests
     [Fact]
     public void A_quoted_label_is_left_as_it_reads_on_its_control()
     {
-        string text = $"Commodore / C64 / 250407 is now in the BETA source. To try it before everyone else, tick \"{ConfigurationWording.BetaSourceCheckBox}\" on the \"Configuration\" tab.";
+        string text = $"Commodore / C64 / 250407 is now in the BETA source. To try it before everyone else, check \"{ConfigurationWording.BetaSourceCheckBox}\" on the \"Configuration\" tab.";
 
         Assert.Equal(
-            $"Commodore / C64 / 250407 is now in the *BETA* source. To try it before everyone else, tick \"{ConfigurationWording.BetaSourceCheckBox}\" on the \"Configuration\" tab.",
+            $"Commodore / C64 / 250407 is now in the *BETA* source. To try it before everyone else, check \"{ConfigurationWording.BetaSourceCheckBox}\" on the \"Configuration\" tab.",
             Marked(text));
         Assert.Contains("source", ConfigurationWording.BetaSourceCheckBox, StringComparison.Ordinal);
     }
@@ -88,7 +88,7 @@ public sealed class NoticeEmphasisTests
     [InlineData("[3] files updated in background - please refresh board")]
     [InlineData("Downloading update...")]
     [InlineData("Line one\r\n\r\nLine two from the BETA source [7]")]
-    [InlineData("tick \"Download data from the BETA source\" now")]
+    [InlineData("check \"Download data from the BETA source\" now")]
     public void The_pieces_are_the_words_exactly(string text)
     {
         Assert.Equal(text, string.Concat(NoticeEmphasis.Runs(text).Select(run => run.Text)));

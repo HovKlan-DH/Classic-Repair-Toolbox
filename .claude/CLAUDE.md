@@ -246,6 +246,8 @@ log names the cause (".NET Runtime", event 1023). **Since 2026-11-02 this machin
 then with an internal error, 0x80131506** - the test processes of every project and the compiler server (VBCSCompiler)
 alike, so no test's doing: a garbage collection finding its heap damaged (a dump of one that hung instead: a GC thread
 looping in `plan_phase`/`find_next_marked`, the frames of dotnet/runtime#122528, whose reporter traced it to faulty RAM).
+**On .NET 10.0.15 (2026-11-18) the same comes as event 1026, an access violation (c0000005) inside coreclr.dll** - the
+runtime walking the stack to handle an ordinary exception - in both UI projects, in unrelated tests, at one offset.
 Run the suite again; the Stop hook says so when it sees one.
 
 **Performance, measured - keep all four:** every `ExcelPackage` is made by CRT.Data's
@@ -697,6 +699,13 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
   stored names (`PictureColours`, `traceHighlightColor`) are not text anybody reads. **Machine-checked:**
   `AmericanSpellingTests` (string literals in `src/`, and the markup's text attributes); grep the Wiki
   by hand.
+- **"Select" or "Check", NEVER "tick", in every word a person reads** (owner request, 2026-11-20: "Never use this term "tick" and
+  instead use "Select" or "Check" depending on the situation. Do that always, and check everywhere if there are other places this
+  is mentioned"): "check"/"uncheck"/"checked" for a checkbox, "select" for what is picked from a list ("Select the pins to
+  capture") - the app, the tours, the server's mails and the Wiki. Code names and comments are not read by anybody.
+  **Machine-checked:** `CheckNotTickTests` (every string literal in `src/` and the markup's text, as `AmericanSpellingTests`
+  holds "colour" - an interpolation hole is part of the literal, though a name right after its "{" or after a dot is code and left
+  alone, so `{ticked}` passes and `{flag ? "ticked" : ""}` fails); grep the Wiki by hand. CHANGELOG.md is the owner's.
 - **A component, a trace or a net is HIGHLIGHTED in every word a person reads, never "lit up" or "lights up"** (owner
   request, 2026-11-11: "Please always use the term "highlight" for it") - the app, the tours and the Wiki; "can NOT be
   highlighted" where a heading said "will NOT light up". Code comments and names (`LitColor`, "Lit" classes) are not
@@ -1130,6 +1139,10 @@ there, and `await` on a finished task looped for ever on the UI thread. A tool f
 - **"Package" and a pin's "Direction" offer the usual words AND every other word the board's components use** (owner request, 2026-11-11:
   "Diskette" typed in the table is offered in the pane too; `ComponentVocabulary.PackagesOf`/`PinDirectionsOf` - after the usual ones,
   alphabetically, "Unknown" staying the last direction; `ComponentPane.ShowWordsOfBoard`, never under the package box's caret).
+  **A baseline's "Expected reading" offers the readings the board's baselines already give, as it is typed** (owner request,
+  2026-11-18: "when typing "h" it will show the "High""; `ComponentVocabulary.ReadingsOf`, ONE list for every row's box,
+  `ComponentPane.ExpectedReadingChoices`, read again only as the component is shown and as a reading box takes the focus - never
+  under a box being typed in, where a typing pause's commit would offer the half-typed word).
 - **"BOARD: CATEGORIES"** (owner request, 2026-11-01; `ComponentPane.RegionsAndCategories.cs`, `BoardCategoryEdits`):
   rename, add, delete. **No list is stored** (owner decision: "kept until first used"): a category is the word its
   components carry, so a rename or delete is one step changing those rows - named as another it joins it, under its
@@ -1214,17 +1227,106 @@ there, and `await` on a finished task looped for ever on the UI thread. A tool f
   take one away is held back - the draft keeps it as it was, the reason under it. **A new one's signal name comes with its pin**
   (owner request, 2026-11-02; `KiCadComponentPins.NameOfPin`, the pinout's, else the board's KiCad data's; `FollowNewBaselinePin`
   never over a name typed). T/DIV and V/DIV are `ComponentVocabulary`'s
-  1-2-5 steps spelt as the data spells them ("50us", "1V"). **"Capture from my oscilloscope"** shows
-  while the Oscilloscope tab has a session (`TabDrafts.UseScopeCapture`/`ShowScopeConnected`, from
-  Main with the popups') and takes `TabOscilloscope.CaptureOscilloscopePngAsync` - no image folder
-  needed; the capture waits for "Add oscilloscope image" in the user's OWN app data folder
-  (`AppConfig.ScopeCaptureWaitFolder` - never the shared temporary one, where another account could
-  swap it). Thumbnails decode small on the pool and are never disposed by hand (one still drawn takes the
-  render thread down). **How the board's baselines were measured is its board files of the category
+  1-2-5 steps spelt as the data spells them ("50us", "1V"). **"Capture from my oscilloscope" is GONE**
+  (owner request, 2026-11-20: "Remove the button named "Capture from my oscilloscope"" - the page's and the
+  new baseline's panel's): an oscilloscope's screen goes into a baseline only through "Capture from
+  oscilloscope pin-by-pin" and a row's "Capture again" (below), offered while the Oscilloscope tab has a
+  session (`TabDrafts.UseScope`/`ShowScopeConnected`, from Main with the popups'). A capture waits until
+  it is in the draft in the user's OWN app data folder (`AppConfig.ScopeCaptureWaitFolder` - never the
+  shared temporary one, where another account could swap it). Thumbnails decode small on the pool and are
+  never disposed by hand (one still drawn takes the render thread down). **How the board's baselines were measured is its board files of the category
   "Scope measurements"** (owner decision, 2026-10-26: "Do what you recommend" - the live trees already
   keep it so, five boards with "Introduction to ... scope measurements" texts; NO board field, no wire
   or server change; `ScopeMeasurementFiles`): linked above a component's baselines in the pane and
   under a baseline in the popup, edited under Files like any board file.
+  **"CAPTURE FROM OSCILLOSCOPE PIN-BY-PIN" GOES ROUND A COMPONENT'S PINS WITH THE OSCILLOSCOPE, IN A WINDOW OF ITS OWN** (owner
+  requests, 2026-11-18: "how I easily can take an entire oscilloscope baseline in one go - e.g. for updating it", "Maybe the user
+  can easily select the pins in scope?", each pin its own undo step, the settings read back what the baseline stores; and
+  2026-11-20: "open this in a new window (remember size and position) ... support the same keyboard options as available in the
+  component info window ... more easy to see which images I have capture (and quickly navigate back to it to see it again), and
+  then what it the next pin I should do ... without needing to doublecheck from multiple windows or loosing focus from the
+  oscilloscope"; "Capture pin by pin" in the pane until then; `BaselineCaptureWindow`, opened and closed by
+  `ComponentPane.BaselineRun.cs`, every rule of pins, steps and going round them CRT.Data's `BaselineRunPins`). **ONE view, no
+  start**: the case (`PinoutDrawing.ShowChosen` frames the pins picked and those accepted, `MarkPin` the one shown), a line per
+  baseline of each pin - a pin with none one line, a new baseline - with its checkbox, thumbnail (a capture waiting in its
+  place), settings, a "Not yet accepted" mark or an accepted one's check, and the pin shown large with every field the popup
+  shows of it (`ComponentPaneWording.RunFacts`, an empty one said). The
+  pins with a baseline picked to start, else every pin; four quick picks - **none leaving a ground, supply or unconnected pin out**
+  (owner report, 2026-11-18: "also those pins should be measured") **and each going to the first pin it picks**, the oscilloscope
+  set for it (owner request, 2026-11-20: "it should automatically jump to the first entry in that scope"; "No pins" leaves the pin
+  shown) - a checkbox, or a pin clicked on the case. **CAPTURE, CHECK, ACCEPT - AND ONLY THEN THE DRAFT** (owner requests,
+  2026-11-20: "When I have captured an image with e.g. ENTER, then it must stay on the pin, so I can check that it is good and its
+  data looks good ... "Accept and continue to next pin". The "Previous pin" should not "unmark" it as accepted", then "Rename the
+  "New capture - to check" to "New capture - not yet accepted", so it is clear this must be accepted before it will be used";
+  `BaselineRunStep.Captured`/`Accepted`, `IsWaiting`): **Enter (a footswitch) captures the pin shown and STAYS on it, "not yet
+  accepted": the capture waits in the user's own folder (`AppConfig.ScopeCaptureWaitFolder`), IN NO DRAFT** - its picture, its
+  data as it would be and, for a new pin, its signal name still to be typed; Enter again takes it again, the one before let go of.
+  **"Accept and continue to next pin" (Right) puts it into its baseline or a new one - ONE step, saved, under the window's
+  BusyOverlay, the waiting screen gone** - and shows the next PICKED pin not accepted (`BaselineRunPins.NextToAccept`), the
+  oscilloscope set as its baseline was measured; with nothing captured it only goes on, and a new pin with no signal name is not
+  accepted (`RunNeedsName`). Going back accepts and un-accepts nothing. "Next:" names that pin over the pin shown, marked in the
+  list, or says the pin shown is the last; the count is of the picked baselines ACCEPTED, an accepted pin checked in the list and
+  tinted on the case, one waiting marked "Not yet accepted". ("Next pin" and the last capture under the pin shown went that day -
+  "Previous pin" goes back to it.) **CLOSING WITH CAPTURES NOT YET ACCEPTED ASKS FIRST** - "Close capturing", Escape, the window's
+  own close (`WindowCloseReason.WindowClosing`) - in a panel over the button bar: "Accept and close", "Discard and close", "Keep
+  capturing" (Escape too); **closed by the pane - another component or region shown, the pane letting go (`LetGo`) - or with CRT,
+  they are let go of without asking**, their screens deleted. **"Capture again" on a baseline OPENS THE WINDOW ON ITS PIN AND
+  CAPTURES THERE** (owner request, the same day: "this button should open the "Capture from oscilloscope pin-by-pin" window and go to
+  that pin and capture the image from scope and then show it in this view instead ... better than just do an instant-capture";
+  `ComponentPane.CaptureAgainInWindowAsync`, `BaselineCaptureWindow.GoToBaseline`) - the oscilloscope set as it was measured, the
+  capture not yet accepted; a plain button since, as it changes nothing in the draft. **A pin captured again stands beside the
+  baseline the run started from** (owner requests, the same day: "I want also to see the old baseline image", then "Remove the
+  functionality for the "Differences" button, as this is too weird to look at and gives little value ... have it more
+  clear/visible what is the old and new image"): "Old baseline" on the left, the capture on the right, each in a frame with a
+  strip over it naming it, bold, with its settings - the old one RED (owner request, the same day: "a red'ish background
+  color", `CaptureOld_Bg`/`CaptureOld_Border`, the table's deleted-row shade), the capture AMBER while "not yet accepted" and GREEN
+  once "accepted" (a baseline not captured again is "Baseline", quiet; colors the notice's and an Accept button's), **each strip
+  rounded as the inside of its frame** (the frame's radius less its edge - square, it covered the frame's curve: "missing a
+  pixel in its rounding") - and **each field's value says what it was where it changed** ("T/DIV: **100us** (was 50us)").
+  ("Differences", the two laid over each other in orange and blue, lasted one round - in git history should it come back.) **The
+  old picture's BYTES are read at the first capture** (`BaselineCaptureTarget.BeforeBytes`): once a capture is accepted the draft
+  lists the old file no more, and nothing would find it. **The pictures take the height the rest leaves** (owner request, the same
+  day: "use the full height"; a `*` row, the window at least 1100 x 640). **The fields stand in a table, names in a column, values
+  lined up beside them, BOLD** (owner requests, the same day: "I want the value to be the important one here", "align the values";
+  `ComponentPaneWording.RunFacts`, placed once by `BaselineCaptureWindow.FactPlaces` - the pin's down the left, the oscilloscope's
+  settings down the right - in a grid whose rows and columns are the markup's). **Every picture is clicked to see it large** in the
+  worklogs' zooming viewer (`WorklogPhotoViewerWindow`, which takes a picture in memory too - the old baseline, a capture waiting),
+  its settings each NAMED under it, **the values bold** ("T/DIV: **100us** | V/DIV: **2V** | Trigger level: **1V**", owner
+  request, the same day: "again do remember to have the values "bold""; `ComponentPaneWording.RunSettingsNamed`, a note with
+  formatting written by `RichNote.Serialize`, so a "*" in a value stays a character), and **it goes at a click outside it** as at
+  Escape and "Close" (owner request, the same day; `WorklogPhotoViewerWindow.ClosesWhenLeft` - on its Deactivated, so it is SHOWN
+  beside the window, never a dialog, which refuses that click; the worklogs' viewers keep their dialog); **a thumbnail's press is
+  the picture's alone**, picking no line and setting no oscilloscope. **"Close capturing"** at the bar's far end closes the window,
+  as Escape does. **"Click to see it larger" FOLLOWS THE POINTER over a picture** (owner request, the same day: "have the
+  hover/helper text follow the mouse") - drawn in the window's own `HintLayer`, beside the pointer and clear of it
+  (`PointerHintGeometry`), taking no click: NEVER a tooltip, whose own window under the pointer takes the next click (the tooltip
+  rule below). **The three buttons stand in a bar of their own at the foot of the column** (owner request, the same day: "it can
+  jump up and down, depending if it has image or not"; `The_buttons_stand_in_the_same_place_whatever_the_pin_shown`). **The
+  component info window's keys** (Controlling-oscilloscope-with-keyboard, listed along the window's foot -
+  `ComponentPaneWording.RunKeys`): Left the picked pin before (`Neighbour`), Right "Accept and continue to next pin", the number keys
+  to a pin (`IndexOfPin`, 600 ms between digits), Space the first picked, Up/Down the trigger level, numpad +/- the time per
+  division, numpad 1/2 the volts, "." "*" "/" clear statistics, single, run; Escape closes. In a text box only Enter and Escape are
+  the window's. **Its size, position and maximized state are kept** (`UserSettings.BaselineCaptureWindowPlace`, handed in by
+  `TabDrafts.Initialize` as `CaptureWindowPlace`/`RememberCaptureWindowPlace` - a test's window keeps none; a place on no screen
+  opens over CRT's window). **The oscilloscope gone, the window STAYS and says so** - nothing captured or sent, a capture waiting
+  kept - and back, it is set for the pin shown. **ITS LINES FOLLOW THE DRAFT, EVERY RULE CRT.Data's `BaselineRunPins.Follow`** (code
+  reviews, 2026-11-21): the pane's baselines read again (an Undo, another editor) or changed in the pane (a baseline, a pin or the
+  package), each line finds its baseline ONE-TO-ONE and of its own pin - by file, the file it started from, then its very pin text
+  and signal name - an Undo of an accepted capture takes the line back (a Redo accepts it again), a baseline with no line gets one,
+  a baseline with no image is a line of its own captured into it, and a capture waiting is never dropped. **A capture goes in only
+  while its component and row are still the pane's** (else taken back, `RunCaptureNotPut`), the component gone or several picked
+  closing the window. **Nothing moves to another pin while a capture is taken or put in** (`IsBusy` - by key or mouse; the wait for
+  the oscilloscope to be set is under the window's "please wait" too), **and Enter is the capture wherever the keyboard is** - the
+  footswitch's key, a click leaving the keyboard on a button - but for the close question, whose own buttons take Enter and Space.
+  **The page's buttons and the panels they open stand OVER the baselines** (owner request: "they will
+  be hidden if it has any capture"), and **while no oscilloscope is connected a notice says what one offers there** (owner: "I at
+  first thought it was not implemented"; `ComponentPaneWording.ScopeHint`, naming the "Configuration" setting while the tab is
+  turned off). **Every capture is the pane's, in two halves - `TakeCaptureAsync` (the screen, waiting) and `PutCaptureAsync` (once
+  accepted, into the draft) - and READS T/DIV, V/DIV AND THE TRIGGER LEVEL BACK** (each only when its model has the Read command:
+  a palette with no command text ENDS THE SESSION; `TabOscilloscope.Baselines.cs`), written as the data spells them
+  (`BaselineSettingWords`: "50us", "500mV", "0.75V"), a value not answered leaving the row's as it was. **The pane and the window
+  reach the oscilloscope only through `IBaselineScope`** (the "Oscilloscope" tab implements it - the popup's own key handlers
+  behind it; a test hands `FakeBaselineScope`) - never a delegate of their own beside it.
   **The component as a whole is the pane's too; the component editor's window is GONE** (slice 3c,
   2026-10-26; `ComponentPane.Whole.cs` - the plan: "The 2,200-line component editor is replaced, not
   adapted"). **"Add component" opens the pane's form** (`TabDrafts.AddComponentAsync` ->

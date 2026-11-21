@@ -15,7 +15,7 @@ nothing is tested in-circuit.
 ## Enable it in CRT
 
 * Go to the "Configuration" tab:
-  * Make sure `Enable MiniPro programmer functionality` is ticked - it is on by default
+  * Make sure `Enable MiniPro programmer functionality` is checked - it is on by default
   * There is no need for you to enable `Enable MiniPro programmer simulated demo mode (only
     required for CRT development)`, as this is used for CRT development only
 

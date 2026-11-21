@@ -39,6 +39,8 @@ namespace CRT
         //   TabOscilloscope.ModelEditor.cs - "My scope is not listed": a model of the user's own,
         //                                   made from a similar one, edited with Try it per command
         //   TabOscilloscope.ModelSubmit.cs - "Submit this model": an own model sent in for everybody
+        //   TabOscilloscope.Baselines.cs   - the oscilloscope for the component pane's baselines (IBaselineScope),
+        //                                   and its settings read back
         // ###########################################################################################
 
         private double? thisLastTriggerLevelVolts;

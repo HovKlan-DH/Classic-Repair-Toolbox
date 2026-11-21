@@ -74,14 +74,14 @@ main file at or below its own version.
 
 ## How CRT keeps it up to date
 
-When CRT starts, and **Check for new or updated data at application launch** is ticked on the
+When CRT starts, and **Check for new or updated data at application launch** is checked on the
 "Configuration" tab, it fetches the list of every file in the online data with its checksum
 (`dataChecksums.json`), and downloads what is new or changed: the main file and the board files
 first, everything else in the background while you work. **Delete orphan and non-used files** removes
 files the online data no longer has.
 
 "Online data" is the stable source, or the BETA source when **Download data from the BETA source
-instead of the stable source** is ticked - the BETA source carries what maintainers have accepted,
+instead of the stable source** is checked - the BETA source carries what maintainers have accepted,
 before it is published to everybody.
 
 ## Your drafts

@@ -89,11 +89,11 @@ It arrives as an email to me. CRT's own log, crash log, settings and traces file
 
 ## Checking for a new version
 
-With "Check for new version at application launch" ticked in the "Configuration" tab (it is by default), CRT asks GitHub at launch (and at once when you tick it) whether a newer release exists. That request goes to GitHub, not to my server. Untick it, and CRT does not ask.
+With "Check for new version at application launch" checked in the "Configuration" tab (it is by default), CRT asks GitHub at launch (and at once when you check it) whether a newer release exists. That request goes to GitHub, not to my server. Uncheck it, and CRT does not ask.
 
 ## Downloading the data
 
-With "Check for new or updated data at application launch" ticked in the "Configuration" tab (it is by default), CRT fetches the list of data files from `classic-repair-toolbox.dk` at launch and downloads what is new or changed. Those requests carry the CRT version and nothing else.
+With "Check for new or updated data at application launch" checked in the "Configuration" tab (it is by default), CRT fetches the list of data files from `classic-repair-toolbox.dk` at launch and downloads what is new or changed. Those requests carry the CRT version and nothing else.
 
 ## Which CRT versions use which part of the server
 

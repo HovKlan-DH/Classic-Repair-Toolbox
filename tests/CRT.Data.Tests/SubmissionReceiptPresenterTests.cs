@@ -1198,7 +1198,7 @@ public sealed class SubmissionReceiptPresenterTests
     {
         Assert.Equal(
             "Your submission for Commodore C128 310378 Open128 is now in the BETA source. To try it before everyone else, " +
-            "tick \"Download data from the BETA source instead of the stable source\" on the \"Configuration\" tab.",
+            "check \"Download data from the BETA source instead of the stable source\" on the \"Configuration\" tab.",
             SubmissionReceiptPresenter.DescribeBetaTryNotice([InBeta(8)], checkDataOnLaunch: true));
 
         Assert.StartsWith(
@@ -1213,7 +1213,7 @@ public sealed class SubmissionReceiptPresenterTests
     public void With_data_checks_off_the_BETA_notice_says_to_tick_that_box_first()
     {
         Assert.Contains(
-            "tick \"Check for new or updated data at application launch\" and then \"Download data from the BETA source instead of the stable source\"",
+            "check \"Check for new or updated data at application launch\" and then \"Download data from the BETA source instead of the stable source\"",
             SubmissionReceiptPresenter.DescribeBetaTryNotice([InBeta(8)], checkDataOnLaunch: false),
             StringComparison.Ordinal);
     }

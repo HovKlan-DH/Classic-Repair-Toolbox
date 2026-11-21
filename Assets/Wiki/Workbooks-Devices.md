@@ -103,7 +103,7 @@ As with workbooks, a deleted device's number is never handed out again, and copy
 | No bar at the top at all | The Workbooks feature is off in "Configuration" |
 | No **Region** in the device's form | The board picked does not come in regional versions |
 | A device is not offered in **Add workbook** | It is on another board - only devices with the board shown are offered |
-| Picking a device opens its page instead of a workbook | It has no workbook yet, or only on a board unticked in the "Configuration" tab's list of boards shown |
+| Picking a device opens its page instead of a workbook | It has no workbook yet, or only on a board unchecked in the "Configuration" tab's list of boards shown |
 | The **Device** drop-down went back to **Show workbooks for all devices** | You worked in a workbook on no device, or switched to a board with none of the device's workbooks |
 | **Add worklog** is gone | The device picked has no workbook on the board shown - **Add workbook** makes one, or pick **Show workbooks for all devices** (or **Clear** under "My devices"). Or **Clear** under the workbooks was clicked - click a workbook |
 | **Hardware** and **Board** are greyed out in **Edit device** | The device has workbooks - they stay on its board |

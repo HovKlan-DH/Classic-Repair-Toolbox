@@ -77,7 +77,7 @@ SUMMARY="$(printf '%s\n' "$OUTPUT" |
 CRASHED=""
 case "$OUTPUT" in
     *'[FATAL ERROR]'*)
-        CRASHED="A test process DIED (the [FATAL ERROR] line): its \"Passed!\" line counts only the tests that ran before. Its cause is in Windows' Application log, \".NET Runtime\" event 1023 (an \"internal error\", 0x80131506, has hit this machine's .NET processes since 2026-11-02 - the compiler server too - so it may be no test's fault: run the suite again)."
+        CRASHED="A test process DIED (the [FATAL ERROR] line): its \"Passed!\" line counts only the tests that ran before. Its cause is in Windows' Application log, \".NET Runtime\" event 1023 or 1026 (an \"internal error\", 0x80131506, has hit this machine's .NET processes since 2026-11-02 - the compiler server too - and on .NET 10.0.15 an access violation, c0000005, inside coreclr.dll since 2026-11-18 - so it may be no test's fault: run the suite again)."
         ;;
 esac
 

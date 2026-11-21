@@ -174,7 +174,7 @@ pull request. If you add or change logic, add or update the tests in the same ch
 
 The ~1 GB in `Assets/Data` is **not** copied into the build output - official installers bundle it, but a
 source build does not. On first launch CRT creates its data folder and downloads from its stable source,
-`classic-repair-toolbox.dk` - as long as "Check for new or updated data at application launch" is ticked in
+`classic-repair-toolbox.dk` - as long as "Check for new or updated data at application launch" is checked in
 the "Configuration" tab, which it is by default.
 
 | Platform | Data folder |
@@ -196,12 +196,12 @@ On Linux and macOS, install `minipro` yourself, but please view [MiniPro program
   * Run `dotnet --list-sdks`. No `10.x` entry means it is not installed or not on `PATH`. On Gentoo,
 check you ran `eselect dotnet set` and re-sourced `/etc/profile`.
 * **`--simulate-update` shows no update notice**
-  * Tick "Check for new version at application launch" in the "Configuration" tab. Without it no update
+  * Make sure "Check for new version at application launch" is checked in the "Configuration" tab. Without it no update
 check runs, so there is nothing for the simulation to answer. The log states this at startup.
 * **Builds on Linux but exits immediately**
   * Avalonia needs fonts and ICU. On a minimal or container install add `fontconfig` and your distro's
 `libicu` package. Check the log for the real error.
 * **Application launches but there is no hardware data**
   * Expected on a first run from source - it is downloading. If nothing arrives, check that "Check for
-new or updated data at application launch" is ticked. See
+new or updated data at application launch" is checked. See
 [Where the hardware data comes from](#where-the-hardware-data-comes-from).

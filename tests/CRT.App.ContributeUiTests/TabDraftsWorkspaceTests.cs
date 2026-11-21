@@ -2755,7 +2755,7 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
     }
 
     // ###########################################################################################
-    // The component pane's "Capture from my oscilloscope" (slice 3b) follows the Oscilloscope tab's
+    // The component pane's "Capture from oscilloscope pin-by-pin" follows the Oscilloscope tab's
     // session as Main hands it to the tab - offered while connected, gone when not.
     // ###########################################################################################
     [Fact]
@@ -2770,10 +2770,10 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             tab.ShowBoard(entry, Board(), "PAL", null);
             await tab.OpenComponentAsync("U8");
 
-            Button capture = tab.ComponentPaneForTests.GetControl<Button>("CaptureBaselineButton");
+            Button capture = tab.ComponentPaneForTests.GetControl<Button>("BaselineRunButton");
             Assert.False(capture.IsVisible);
 
-            tab.UseScopeCapture(_ => Task.FromResult<byte[]?>(null), connected: true);
+            tab.UseScope(new FakeBaselineScope { Screen = null }, connected: true);
             Assert.True(capture.IsVisible);
 
             tab.ShowScopeConnected(false);

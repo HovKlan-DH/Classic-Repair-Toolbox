@@ -1292,81 +1292,105 @@ public sealed class ComponentPaneTests : IDisposable
     }
 
     // ###########################################################################################
-    // "CAPTURE FROM MY OSCILLOSCOPE" is offered while the Oscilloscope tab has a session, and its
-    // screen becomes the new baseline's screenshot; a capture that brings nothing says so.
+    // A baseline's "Expected reading" offers the readings the board's baselines already give as it is typed (owner request,
+    // 2026-11-18: "if I already have typed "High" previously for this board, then when typing "h" it will show the "High"") -
+    // read as the component is shown, and again as a reading box takes the focus, so one just typed elsewhere is offered.
     // ###########################################################################################
     [Fact]
-    public async Task Capture_from_the_oscilloscope_is_offered_while_connected_and_starts_a_baseline()
+    public void Expected_reading_offers_the_boards_readings_read_again_as_the_box_takes_the_focus()
     {
         DraftSession session = this.OpenDraftWithFiles();
-        byte[]? screen = ComponentPaneTests.Png;
 
-        await UiTest.RunAsync(async () =>
+        UiTest.Run(() =>
         {
             (ComponentPane pane, Window window) = Shown(session);
+            pane.ShowPage(ComponentPage.Baselines);
+            Dispatcher.UIThread.RunJobs();
 
-            Assert.False(Get<Button>(pane, "CaptureBaselineButton").IsVisible);
+            Assert.Empty(pane.ExpectedReadingChoices);
 
-            pane.CaptureScopeImage = _ => Task.FromResult<byte[]?>(screen);
-            pane.ShowScopeConnected(true);
-            Assert.True(Get<Button>(pane, "CaptureBaselineButton").IsVisible);
+            AutoCompleteBox reading = Get<ItemsControl>(pane, "BaselinesItemsControl")
+                .GetRealizedContainers()
+                .SelectMany(container => container.GetVisualDescendants().OfType<AutoCompleteBox>())
+                .Single(box => box.Classes.Contains("ExpectedReading"));
 
-            pane.OpenNewBaseline();
-            Assert.True(Get<Button>(pane, "NewBaselineCaptureButton").IsVisible);
+            Assert.Same(pane.ExpectedReadingChoices, reading.ItemsSource);
+            Assert.Equal(AutoCompleteFilterMode.StartsWith, reading.FilterMode);
 
-            screen = null;
-            await pane.CaptureNewBaselineAsync();
-            Assert.Equal(ComponentPaneWording.CaptureFailed, Get<TextBlock>(pane, "PaneMessageText").Text);
-            Assert.False(Get<Button>(pane, "AddNewBaselineButton").IsEnabled);
+            // Typed and committed: the pane's own change reads nothing again - the list follows as a reading box takes the focus.
+            pane.BaselinesForTests[0].ExpectedReading = "High";
+            pane.CommitHeld();
+            Assert.Equal("High", ComponentPaneEdits.BaselinesOf(session.Content.Board, "U8", "PAL")[0].ExpectedOscilloscopeReading);
+            Assert.Empty(pane.ExpectedReadingChoices);
 
-            screen = ComponentPaneTests.Png;
-            Get<TextBox>(pane, "NewBaselinePinBox").Text = "3";
-            Get<TextBox>(pane, "NewBaselineNameBox").Text = "PA1";
-            await pane.CaptureNewBaselineAsync();
+            reading.Focus();
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(["High"], pane.ExpectedReadingChoices);
 
-            // Adding it deletes the capture, which its thumbnail may still be reading - left in the
-            // user's own folder, the delete being refused on Windows.
-            await pane.ThumbnailsLoadedForTests;
-            await pane.AddNewBaselineAsync();
-
-            Assert.Equal("Scope baseline/U8_3_PA1.png", ComponentPaneEdits.BaselinesOf(session.Content.Board, "U8", "PAL")[^1].File);
-
-            pane.ShowScopeConnected(false);
-            Assert.False(Get<Button>(pane, "CaptureBaselineButton").IsVisible);
+            // Shown again, the component reads the board's readings at once.
+            pane.Show(session, "U1", "PAL", PublishedWithFiles());
+            Assert.Equal(["High"], pane.ExpectedReadingChoices);
 
             window.Close();
         });
     }
 
     // ###########################################################################################
-    // A capture waits for "Add oscilloscope image" in the user's OWN app data folder (code review,
-    // 2026-10-26): under the temporary folder - the shared /tmp on Linux, at a path anyone can work
-    // out - another account could swap the screenshot before it was added to the draft and sent.
+    // A READING PICKED WITH THE MOUSE IS PICKED, AND THE HALF-TYPED WORD IS NOT OFFERED (code review, 2026-11-21). The press takes the
+    // focus to the list's row - the half-typed reading committed as the box is left - and the box takes it straight back while the
+    // press is still picking: the list read again then offered "h" in place of "High" and changed under the pick. Read again only for
+    // the focus coming from outside the box and its list (as the package's list, ComponentPane.OnPackageBoxFocused).
     // ###########################################################################################
     [Fact]
-    public async Task A_capture_waits_in_the_users_own_folder_not_the_shared_temporary_one()
+    public void A_reading_picked_with_the_mouse_is_picked_and_the_half_typed_word_is_not_offered()
     {
         DraftSession session = this.OpenDraftWithFiles();
 
-        await UiTest.RunAsync(async () =>
+        UiTest.Run(() =>
         {
             (ComponentPane pane, Window window) = Shown(session);
-            pane.CaptureScopeImage = _ => Task.FromResult<byte[]?>(ComponentPaneTests.Png);
-            pane.ShowScopeConnected(true);
-            pane.OpenNewBaseline();
+            pane.ShowPage(ComponentPage.Baselines);
+            Dispatcher.UIThread.RunJobs();
 
-            await pane.CaptureNewBaselineAsync();
+            // The board's one baseline reads "High".
+            pane.BaselinesForTests[0].ExpectedReading = "High";
+            pane.CommitHeld();
 
-            string waiting = pane.NewBaselineSourceForTests!;
-            string ownFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppConfig.AppFolderName);
-            Assert.StartsWith(ownFolder + Path.DirectorySeparatorChar, waiting, StringComparison.Ordinal);
-            Assert.False(waiting.StartsWith(Path.GetTempPath(), StringComparison.OrdinalIgnoreCase));
+            AutoCompleteBox reading = Get<ItemsControl>(pane, "BaselinesItemsControl")
+                .GetRealizedContainers()
+                .SelectMany(container => container.GetVisualDescendants().OfType<AutoCompleteBox>())
+                .Single(box => box.Classes.Contains("ExpectedReading"));
+            TextBox text = reading.GetVisualDescendants().OfType<TextBox>().First();
 
-            // Its thumbnail is read off the UI thread, and on Windows a file being read cannot be deleted.
-            await pane.ThumbnailsLoadedForTests;
+            text.Focus();
+            Dispatcher.UIThread.RunJobs();
+            Assert.Equal(["High"], pane.ExpectedReadingChoices);
+
+            // "h" typed: the list offers "High".
+            text.Text = "h";
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(reading.IsDropDownOpen);
+
+            ListBox list = reading.GetVisualDescendants().OfType<Avalonia.Controls.Primitives.Popup>().Single().Child!
+                .GetVisualDescendants().OfType<ListBox>().First();
+            Dispatcher.UIThread.RunJobs();
+
+            ListBoxItem item = list.GetVisualDescendants().OfType<ListBoxItem>().Single(row => Equals(row.DataContext, "High"));
+            TopLevel listWindow = TopLevel.GetTopLevel(item)!;
+            Point at = item.TranslatePoint(new Point(4, 4), listWindow)!.Value;
+
+            listWindow.MouseDown(at, MouseButton.Left);
+            Dispatcher.UIThread.RunJobs();
+            listWindow.MouseUp(at, MouseButton.Left);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal("High", reading.Text);
+            Assert.Equal(["High"], pane.ExpectedReadingChoices);
+
+            pane.CommitHeld();
+            Assert.Equal("High", ComponentPaneEdits.BaselinesOf(session.Content.Board, "U8", "PAL")[0].ExpectedOscilloscopeReading);
 
             window.Close();
-            File.Delete(waiting);
         });
     }
 
@@ -5893,42 +5917,6 @@ public sealed class ComponentPaneTests : IDisposable
             Assert.True(Get<StackPanel>(pane, "AddBaselineButtons").IsVisible);
 
             window.Close();
-        });
-    }
-
-    // A capture is held by that panel in the user's own folder until it is added - let go of with it.
-    [Fact]
-    public async Task A_capture_waiting_in_a_new_baseline_is_deleted_as_another_component_is_shown()
-    {
-        DraftSession session = this.OpenDraftWithFiles();
-
-        await UiTest.RunAsync(async () =>
-        {
-            (ComponentPane pane, Window window) = Shown(session);
-            pane.CaptureScopeImage = _ => Task.FromResult<byte[]?>(ComponentPaneTests.Png);
-            pane.ShowScopeConnected(true);
-            pane.OpenNewBaseline();
-
-            await pane.CaptureNewBaselineAsync();
-
-            string waiting = pane.NewBaselineSourceForTests!;
-            Assert.True(File.Exists(waiting));
-
-            // Its thumbnail is read off the UI thread, and on Windows a file being read cannot be deleted.
-            await pane.ThumbnailsLoadedForTests;
-
-            try
-            {
-                pane.Show(session, "U1", "PAL", PublishedWithFiles());
-
-                Assert.Null(pane.NewBaselineSourceForTests);
-                Assert.False(File.Exists(waiting));
-            }
-            finally
-            {
-                File.Delete(waiting);
-                window.Close();
-            }
         });
     }
 

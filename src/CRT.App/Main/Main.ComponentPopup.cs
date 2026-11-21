@@ -1316,8 +1316,9 @@ namespace CRT
                     hasActiveOscilloscopeSession);
             }
 
-            // The Contribute tab's component pane offers "Capture from my oscilloscope" while it can.
-            this.TabDrafts.ShowScopeConnected(hasActiveOscilloscopeSession);
+            // The Contribute tab's component pane offers "Capture from oscilloscope pin-by-pin" while it can - and says, while it cannot,
+            // where an oscilloscope is connected (ApplyOscilloscopeTabVisibility calls this as the tab is turned on or off).
+            this.TabDrafts.ShowScopeConnected(hasActiveOscilloscopeSession, UserSettings.EnableNetworkConnectedOscilloscopeTab);
         }
     }
 }

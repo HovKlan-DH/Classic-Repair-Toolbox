@@ -221,17 +221,18 @@ namespace CRT
         internal Action<BoardData, string, string>? PreviewOverrideForTests { get; set; }
 
         // ###########################################################################################
-        // The oscilloscope, for the pane's "Capture from my oscilloscope" (slice 3b): the capture, from
-        // Main's Oscilloscope tab (TabOscilloscope.CaptureOscilloscopePngAsync), and whether the tab has
-        // a session now - Main says so as it changes (UpdateComponentInfoWindowsOscilloscopeSessionState).
+        // The oscilloscope, for the pane's "Capture again" and "Capture from oscilloscope pin-by-pin" (2026-11-18, its window
+        // 2026-11-20): Main's Oscilloscope tab (IBaselineScope - TabOscilloscope.Baselines.cs), and whether the tab has a
+        // session now - Main says so as it changes (UpdateComponentInfoWindowsOscilloscopeSessionState).
         // ###########################################################################################
-        internal void UseScopeCapture(Func<System.Threading.CancellationToken, Task<byte[]?>> capture, bool connected)
+        // `tabTurnedOn`: whether the "Oscilloscope" tab is shown - the pane's hint says where an oscilloscope is connected.
+        internal void UseScope(Handlers.Oscilloscope.IBaselineScope scope, bool connected, bool tabTurnedOn = true)
         {
-            this.ComponentPane.CaptureScopeImage = capture;
-            this.ComponentPane.ShowScopeConnected(connected);
+            this.ComponentPane.Scope = scope;
+            this.ComponentPane.ShowScopeConnected(connected, tabTurnedOn);
         }
 
-        internal void ShowScopeConnected(bool connected) => this.ComponentPane.ShowScopeConnected(connected);
+        internal void ShowScopeConnected(bool connected, bool tabTurnedOn = true) => this.ComponentPane.ShowScopeConnected(connected, tabTurnedOn);
 
         // ###########################################################################################
         // Opens `label` of the board shown in the pane - its draft made first when it has none

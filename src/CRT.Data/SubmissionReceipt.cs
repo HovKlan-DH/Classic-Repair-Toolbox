@@ -722,11 +722,11 @@ namespace Handlers.DataHandling
         {
             (string named, string verb) = SubmissionReceiptPresenter.NameBoards(receipts);
 
-            string tick = checkDataOnLaunch
-                ? $"tick \"{ConfigurationWording.BetaSourceCheckBox}\""
-                : $"tick \"{ConfigurationWording.CheckDataOnLaunchCheckBox}\" and then \"{ConfigurationWording.BetaSourceCheckBox}\"";
+            string checkBoxes = checkDataOnLaunch
+                ? $"check \"{ConfigurationWording.BetaSourceCheckBox}\""
+                : $"check \"{ConfigurationWording.CheckDataOnLaunchCheckBox}\" and then \"{ConfigurationWording.BetaSourceCheckBox}\"";
 
-            return $"{named} {verb} now in the BETA source. To try it before everyone else, {tick} on the \"Configuration\" tab.";
+            return $"{named} {verb} now in the BETA source. To try it before everyone else, {checkBoxes} on the \"Configuration\" tab.";
         }
 
         // ###########################################################################################

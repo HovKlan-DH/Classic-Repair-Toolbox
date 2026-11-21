@@ -149,10 +149,15 @@ namespace CRT
             // a tab a test builds has no Main and no timer.
             this.StartDraftSaveTimer();
 
-            // The component pane's "Capture from my oscilloscope" (TabDrafts.Component.cs).
-            this.UseScopeCapture(
-                mainWindow.TabOscilloscopeControl.CaptureOscilloscopePngAsync,
-                mainWindow.TabOscilloscopeControl.HasActiveEstablishedOscilloscopeSessionForTitleState());
+            // The component pane's captures from the oscilloscope (TabDrafts.Component.cs).
+            this.UseScope(
+                mainWindow.TabOscilloscopeControl,
+                mainWindow.TabOscilloscopeControl.HasActiveEstablishedOscilloscopeSessionForTitleState(),
+                UserSettings.EnableNetworkConnectedOscilloscopeTab);
+
+            // Where "Capture from oscilloscope pin-by-pin"'s window was left (owner request, 2026-11-20: "remember size and position").
+            this.ComponentPane.CaptureWindowPlace = () => UserSettings.BaselineCaptureWindowPlace;
+            this.ComponentPane.RememberCaptureWindowPlace = UserSettings.SaveBaselineCaptureWindowPlace;
 
             // The widths dragged on the tab, kept per board (TabDrafts.Splitters.cs, 2026-10-29).
             this.NavWidthFor = UserSettings.ContributeNavWidthFor;

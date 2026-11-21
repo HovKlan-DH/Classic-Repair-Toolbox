@@ -67,6 +67,10 @@ public sealed class BusyOverlayHostsTests : IDisposable
             // camera photos froze CRT's window with nothing said).
             Assert.NotNull(BusyOverlay.For(new OwnedDeviceWindow()));
 
+            // "Capture from oscilloscope pin-by-pin" waits for the oscilloscope's screen and saves the draft at every Enter
+            // (2026-11-20), in a window of its own over CRT's.
+            Assert.NotNull(BusyOverlay.For(new BaselineCaptureWindow()));
+
             // (The Maintainer tab's "Your account" window was here from 2026-10-03, with an overlay
             // of its own. Since 2026-10-04 it is "My account", a panel of the tab, whose waits run
             // under Main's like the rest of the tab - MyAccount_waits_under_the_tabs_window_overlay.)
