@@ -397,6 +397,203 @@ public sealed class ComponentPaneBaselineRunTests : IDisposable
     }
 
     // ###########################################################################################
+    // CAPTURES NOT YET ACCEPTED HOLD THE PANE ON THEIR COMPONENT (code review, 2026-11-22: another component, a part of the board,
+    // "Table" or a region picked in CRT's window closed the capture window, every screen deleted unasked): the host asks the pane
+    // (KeepsItselfOpen) and is refused while any waits, the window brought forward asking what its own close asks. Another region
+    // is no reason while it is the one they were taken in. Answered, the pane is free again.
+    // ###########################################################################################
+    [Fact]
+    public async Task Captures_not_yet_accepted_hold_the_pane_on_their_component_and_the_window_asks()
+    {
+        DraftSession session = this.OpenDraft();
+
+        await UiTest.RunAsync(async () =>
+        {
+            (ComponentPane pane, Window host) = Shown(session, new FakeBaselineScope());
+            BaselineCaptureWindow window = Open(pane);
+
+            // Nothing captured: nothing holds the pane.
+            Assert.False(pane.KeepsItselfOpen());
+
+            string? waiting = null;
+            pane.CaptureWrittenForTests = path => waiting = path;
+            await window.CaptureCurrentAsync();
+            await Settled(pane, window);
+
+            Assert.True(pane.KeepsItselfOpen());
+            Assert.True(window.IsAskingAboutWaitingForTests);
+            Assert.Same(window, pane.CaptureWindowForTests);
+            Assert.True(File.Exists(waiting));
+
+            // Another region than theirs holds it too; their own does not.
+            Assert.True(pane.KeepsWaitingCaptures("NTSC"));
+            Assert.False(pane.KeepsWaitingCaptures("PAL"));
+
+            // "Keep capturing": still held, asked again at the next pick.
+            Click(In<Button>(window, "KeepCapturingButton"));
+            Assert.False(window.IsAskingAboutWaitingForTests);
+            Assert.True(pane.KeepsItselfOpen());
+            Assert.True(window.IsAskingAboutWaitingForTests);
+
+            // "Discard and close": the pane is free.
+            Click(In<Button>(window, "DiscardAndCloseButton"));
+            Assert.Null(pane.CaptureWindowForTests);
+            Assert.False(pane.KeepsItselfOpen());
+            Assert.False(File.Exists(waiting));
+
+            host.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // THE REGION CHANGED UNDER CAPTURES NOT YET ACCEPTED LETS NONE GO (second code review, 2026-11-22): a region picked is held while
+    // any waits, so it changes only by an edit - "Board: Regions", or its "Undo" - and the window closed with them. It follows the
+    // region the pane shows, where they would go in, and asks; with none waiting it closes as before.
+    // ###########################################################################################
+    [Fact]
+    public async Task The_region_changed_under_captures_not_yet_accepted_keeps_the_window_and_asks()
+    {
+        DraftSession session = this.OpenDraft();
+
+        await UiTest.RunAsync(async () =>
+        {
+            (ComponentPane pane, Window host) = Shown(session, new FakeBaselineScope());
+            BaselineCaptureWindow window = Open(pane);
+
+            string? waiting = null;
+            pane.CaptureWrittenForTests = path => waiting = path;
+            await window.CaptureCurrentAsync();
+            await Settled(pane, window);
+
+            pane.UseRegion("NTSC");
+
+            Assert.Same(window, pane.CaptureWindowForTests);
+            Assert.Equal("NTSC", window.RunRegion);
+            Assert.True(window.IsAskingAboutWaitingForTests);
+            Assert.True(window.TargetsForTests[0].IsWaiting);
+            Assert.True(File.Exists(waiting));
+
+            // Accepted, it goes in as the pane shows the component now.
+            await window.AcceptAndContinueAsync();
+            Assert.StartsWith("Scope baseline/U27_1_1A", Baselines(session)[0].File, StringComparison.Ordinal);
+
+            // Nothing waiting: another region closes the window, as before.
+            await Settled(pane, window);
+            pane.UseRegion("PAL");
+            Assert.Null(pane.CaptureWindowForTests);
+
+            host.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // ONE FILE GOES INTO THE DRAFT AT A TIME, EACH UNDER A NAME OF ITS OWN (code review, 2026-11-22): a capture accepted in the window
+    // goes in under the window's "please wait" alone, so the pane could add a file at the same moment - a baseline of the same pin and
+    // signal was given the very name the capture was, one copy replacing the other. The pane's waits for the capture, under a name of
+    // its own.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_baseline_added_in_the_pane_while_a_capture_goes_in_waits_and_takes_a_name_of_its_own()
+    {
+        DraftSession session = this.OpenDraft();
+        string screenshot = this.thisDraft.Pickable("IMG_0042.png", Png);
+
+        await UiTest.RunAsync(async () =>
+        {
+            (ComponentPane pane, Window host) = Shown(session, new FakeBaselineScope());
+            BaselineCaptureWindow window = Open(pane);
+            await window.CaptureCurrentAsync();
+
+            pane.PickFileOverrideForTests = _ => Task.FromResult<string?>(screenshot);
+            pane.OpenNewBaseline();
+            Get<TextBox>(pane, "NewBaselinePinBox").Text = "1";
+            Get<TextBox>(pane, "NewBaselineNameBox").Text = "1A";
+            await pane.ChooseNewBaselineScreenshotAsync();
+
+            // Pin 1's capture goes in - and while it is copied in, a baseline of pin 1 is added in the pane.
+            Task accepting = window.AcceptAndContinueAsync();
+            Task adding = pane.AddNewBaselineAsync();
+            await Task.WhenAll(accepting, adding);
+
+            List<string> files = Baselines(session).Where(baseline => baseline.Pin == "1").Select(baseline => baseline.File).ToList();
+            Assert.Equal(2, files.Count);
+            Assert.Equal(2, files.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+            Assert.All(files, file => Assert.True(session.ListedFiles.ContainsKey(file), file));
+            Assert.True(window.TargetsForTests[0].IsAccepted);
+
+            await Settled(pane, window);
+            window.LetGo();
+            host.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // "CAPTURE AGAIN" WHILE THE WINDOW IS BUSY SAYS WHY NOTHING HAPPENS (code review, 2026-11-22: the window came to the front, and
+    // nothing was captured or said).
+    // ###########################################################################################
+    [Fact]
+    public async Task Capture_again_while_the_window_is_busy_says_why()
+    {
+        DraftSession session = this.OpenDraft();
+        var scope = new FakeBaselineScope();
+
+        await UiTest.RunAsync(async () =>
+        {
+            (ComponentPane pane, Window host) = Shown(session, scope);
+            BaselineCaptureWindow window = Open(pane);
+
+            scope.CaptureGate = new TaskCompletionSource<byte[]?>();
+            Task capturing = window.CaptureCurrentAsync();
+            await Until(() => window.IsBusy && scope.Captures == 1, "the capture asked of the oscilloscope");
+
+            await pane.CaptureAgainInWindowAsync(pane.BaselinesForTests[1]);
+            Assert.Equal(ComponentPaneWording.RunWindowBusy, Get<TextBlock>(pane, "PaneMessageText").Text);
+            Assert.Equal(1, scope.Captures);
+
+            scope.CaptureGate.SetResult(Png);
+            await capturing;
+
+            await Settled(pane, window);
+            window.LetGo();
+            host.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // THE WINDOW SAYS THE COMPONENT AS THE PANE NOW NAMES IT (code review, 2026-11-22: renamed U27A in the pane, the window still said
+    // U27 while its captures went in under U27A) - and a baseline's pin written otherwise in the pane is the line's pin text.
+    // ###########################################################################################
+    [Fact]
+    public void The_window_follows_a_rename_in_the_pane_and_a_baselines_pin_text()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window host) = Shown(session, new FakeBaselineScope());
+            BaselineCaptureWindow window = Open(pane);
+            Assert.Equal(ComponentPaneWording.CaptureWindowTitle("U27"), window.Title);
+
+            Get<TextBox>(pane, "BoardLabelBox").Text = "U27A";
+            pane.CommitHeld();
+
+            Assert.Same(window, pane.CaptureWindowForTests);
+            Assert.Equal(ComponentPaneWording.CaptureWindowTitle("U27A"), window.Title);
+            Assert.Equal(pane.ShownTitle, In<TextBlock>(window, "ComponentText").Text);
+            Assert.Contains("U27A", In<TextBlock>(window, "ComponentText").Text, StringComparison.Ordinal);
+
+            // Pin 3's baseline written "3 [running]" in the pane: its line says so.
+            pane.BaselinesForTests[1].Pin = "3 [running]";
+            pane.CommitHeld();
+
+            Assert.Equal("3 [running]", window.TargetsForTests.Single(target => ReferenceEquals(target.Row, pane.BaselinesForTests[1])).Step.PinText);
+
+            window.LetGo();
+            host.Close();
+        });
+    }
+
+    // ###########################################################################################
     // A COMMIT IN THE PANE THAT CHANGES NOTHING LEAVES THE WINDOW ALONE (code review, 2026-11-21): every box left and typing pause
     // commits the pins and the baselines, and each built the window's lines again - twice - and wrote its "Signal name" box back
     // trimmed, the space just typed gone with the caret. Only a change reaches it, and the box keeps what is typed in it still.

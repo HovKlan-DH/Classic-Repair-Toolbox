@@ -505,6 +505,7 @@ namespace CRT
             }
 
             this.ShowChangedState();
+            this.ShowNamesInBaselineRun();
         }
 
         // ###########################################################################################

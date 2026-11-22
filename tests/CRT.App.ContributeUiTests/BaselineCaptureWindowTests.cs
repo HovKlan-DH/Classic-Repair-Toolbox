@@ -1011,12 +1011,13 @@ public sealed class BaselineCaptureWindowTests : IDisposable
     }
 
     // ###########################################################################################
-    // CRT'S OWN CLOSE CALLED OFF KEEPS THE CAPTURES (code review, 2026-11-21): CRT asks this window first as it quits, and may still
-    // call the quitting off (a table with changes not saved) - the captures were let go of as it was asked, and the window stayed open
-    // saying "Not yet accepted" with nothing behind it. They go only once it is closed.
+    // QUITTING CRT WITH CAPTURES NOT YET ACCEPTED ASKS FIRST, AND IS CALLED OFF (code review, 2026-11-22: they were deleted without a
+    // word, though the window's own close asks): CRT asks this window before its own Closing, and the window holds the quitting and
+    // asks what its own close asks. The captures stay to be accepted (code review, 2026-11-21: a quitting called off had let them
+    // go). Discarded, CRT quits.
     // ###########################################################################################
     [Fact]
-    public async Task Quitting_called_off_keeps_the_captures_not_yet_accepted()
+    public async Task Quitting_with_captures_not_yet_accepted_asks_first_and_keeps_them()
     {
         DraftSession session = this.OpenDraft();
         var scope = new FakeBaselineScope { Settings = new ScopeSettingsReading(0.0002, null, null) };
@@ -1030,11 +1031,14 @@ public sealed class BaselineCaptureWindowTests : IDisposable
             pane.CaptureWrittenForTests = path => waiting = path;
             await window.CaptureCurrentAsync();
 
-            bool callOff = true;
-            host.Closing += (_, e) => e.Cancel = callOff;
+            bool crtAsked = false;
+            host.Closing += (_, _) => crtAsked = true;
             host.Close();
 
+            Assert.True(host.IsVisible);
             Assert.True(window.IsVisible);
+            Assert.True(window.IsAskingAboutWaitingForTests);
+            Assert.False(crtAsked);
             Assert.True(File.Exists(waiting));
 
             // Still there to be accepted.
@@ -1042,15 +1046,22 @@ public sealed class BaselineCaptureWindowTests : IDisposable
             Assert.StartsWith("Scope baseline/U27_1_1A", Baselines(session)[0].File, StringComparison.Ordinal);
             Assert.Equal("200us", Baselines(session)[0].TimeDiv);
 
-            // And closed with CRT for real, a capture waiting goes.
+            // Another waiting: asked again; discarded, CRT quits.
             await window.CaptureCurrentAsync();
             string second = waiting!;
             await Settled(pane, window);
-            callOff = false;
             host.Close();
 
+            Assert.True(host.IsVisible);
+            Assert.True(File.Exists(second));
+
+            Click(In<Button>(window, "DiscardAndCloseButton"));
             Assert.False(window.IsVisible);
             Assert.False(File.Exists(second));
+
+            host.Close();
+            Assert.False(host.IsVisible);
+            Assert.True(crtAsked);
         });
     }
 
@@ -1389,6 +1400,158 @@ public sealed class BaselineCaptureWindowTests : IDisposable
             Assert.Equal(16, drawing.LayoutForTests!.Pins.Count);
 
             await Settled(pane, window);
+            window.LetGo();
+            host.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // THE WINDOW FITS THE SCREEN OF CRT'S WINDOW THE FIRST TIME TOO (code review, 2026-11-22: at its 1280 x 860, a laptop of 768 had
+    // its button bar and keys under the screen's edge) - and a place kept on no screen any more is fitted to that screen.
+    // ###########################################################################################
+    [Fact]
+    public void The_window_fits_the_screen_it_opens_on_with_no_place_kept_or_one_on_no_screen()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window host) = Shown(session, new FakeBaselineScope());
+
+            // A laptop's 1366 x 728 working area: 728 high less the frame's 40, as wide as it was.
+            pane.CaptureWindowScreenForTests = (new PixelRect(0, 0, 1366, 728), 1.0);
+            BaselineCaptureWindow window = Open(pane);
+            Assert.Equal((1280d, 688d), (window.Width, window.Height));
+            window.Close();
+
+            pane.CaptureWindowPlace = () => new BaselineCaptureWindowPlace("Normal", 1200, 1000, 1_000_000, 1_000_000);
+            window = Open(pane);
+            Assert.Equal((1200d, 688d), (window.Width, window.Height));
+            window.Close();
+
+            host.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // ONLY THE LAST PIN SHOWN GOES TO THE OSCILLOSCOPE (code review, 2026-11-22: each pin passed - Left held, "1" then "2" typed - queued
+    // a set-up of its own, and a capture waited for them all while the oscilloscope stepped through pins nobody looked at): one set-up
+    // at a time, the latest waiting, and a capture takes the pin shown last.
+    // ###########################################################################################
+    [Fact]
+    public async Task Only_the_last_pin_shown_is_sent_to_the_oscilloscope()
+    {
+        DraftSession session = this.OpenDraft();
+        var scope = new FakeBaselineScope();
+
+        await UiTest.RunAsync(async () =>
+        {
+            (ComponentPane pane, Window host) = Shown(session, scope);
+            BaselineCaptureWindow window = Open(pane);
+            int before = scope.Applied.Count;
+
+            // Pins 1 and 3 - the two with a baseline - shown in turn while the first set-up is still going out.
+            var applying = new TaskCompletionSource();
+            scope.ApplyGate = applying;
+            window.GoTo(2, setScope: true);
+            window.GoTo(0, setScope: true);
+            window.GoTo(2, setScope: true);
+            window.GoTo(0, setScope: true);
+            window.GoTo(2, setScope: true);
+
+            Assert.Equal(before + 1, scope.Applied.Count);
+
+            scope.ApplyGate = null;
+            applying.SetResult();
+            await window.CaptureCurrentAsync();
+
+            Assert.Equal(before + 2, scope.Applied.Count);
+            Assert.Equal(("3", "1us"), (scope.Applied[^1].Pin, scope.Applied[^1].TimeDiv));
+            Assert.True(window.TargetsForTests[2].IsWaiting);
+
+            await Settled(pane, window);
+            window.LetGo();
+            host.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // ANOTHER LINE SHOWN IN PLACE OF ONE GONE IS SET FOR (code review, 2026-11-22): the baseline shown taken away - deleted, or given
+    // another pin - the window showed the pin's other baseline, but the oscilloscope stayed set for the one gone, and Enter captured it
+    // with those settings.
+    // ###########################################################################################
+    [Fact]
+    public void Another_line_shown_in_place_of_one_gone_sets_the_oscilloscope_for_it()
+    {
+        DraftSession session = this.OpenDraft();
+        var scope = new FakeBaselineScope();
+
+        UiTest.Run(() =>
+        {
+            // Pin 3 with a second baseline, at 2us.
+            AddBaseline(session, new ComponentImageEntry { BoardLabel = "U27", Pin = "3", Name = "1Y", File = "Scope baseline/U27_1.png", TimeDiv = "2us", VoltsDiv = "1V", TriggerLevelVolts = "1.5V" });
+
+            (ComponentPane pane, Window host) = Shown(session, scope);
+            BaselineCaptureWindow window = Open(pane);
+
+            int first = window.TargetsForTests.ToList().FindIndex(target => target.Row?.Committed.TimeDiv == "1us");
+            window.GoTo(first, setScope: true);
+            Assert.Equal("1us", scope.Applied[^1].TimeDiv);
+
+            // The 1us baseline taken away by another editor: the 2us one is shown, and the oscilloscope set for it.
+            session.Apply("Another editor", content => content with
+            {
+                Board = content.Board.WithComponentSections(
+                    componentImages: content.Board.ComponentImages.Where(image => !(image.Pin == "3" && image.TimeDiv == "1us")).ToList()),
+            });
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal("2us", window.CurrentForTests!.Row!.Committed.TimeDiv);
+            Assert.Equal(("3", "2us"), (scope.Applied[^1].Pin, scope.Applied[^1].TimeDiv));
+
+            window.LetGo();
+            host.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // WITH NO LINE LEFT, NO PIN IS SHOWN (code review, 2026-11-22: every pin and baseline taken away in the pane, the window kept the
+    // pin before - its heading, fields, picture and name box), and there is nothing to capture.
+    // ###########################################################################################
+    [Fact]
+    public void With_no_line_left_no_pin_is_shown_and_nothing_can_be_captured()
+    {
+        DraftSession session = this.OpenDraft();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window host) = Shown(session, new FakeBaselineScope());
+            BaselineCaptureWindow window = Open(pane);
+            Assert.NotEqual(string.Empty, Said(window, "CurrentText"));
+
+            // Another editor takes its case, its type number, its pins and its baselines away: nothing to go round.
+            session.Apply("Another editor", content =>
+            {
+                BoardData board = ComponentPaneEdits.WithField(content.Board, "U27", "PAL", ComponentField.Package, string.Empty);
+                board = ComponentPaneEdits.WithField(board, "U27", "PAL", ComponentField.TechnicalNameOrValue, string.Empty);
+
+                return content with
+                {
+                    Board = board.WithComponentSections(
+                        componentPins: board.ComponentPins.Where(pin => pin.BoardLabel != "U27").ToList(),
+                        componentImages: board.ComponentImages.Where(image => image.BoardLabel != "U27").ToList()),
+                };
+            });
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Empty(window.TargetsForTests);
+            Assert.Equal(string.Empty, Said(window, "CurrentText"));
+            Assert.Equal(string.Empty, In<TextBlock>(window, "CurrentDetails").Text);
+            Assert.False(In<StackPanel>(window, "NamePanel").IsVisible);
+            Assert.Null(window.FactShownForTests(ComponentPaneWording.FactPin));
+            Assert.Null(In<Image>(window, "CurrentImage").Source);
+            Assert.False(In<Button>(window, "CaptureButton").IsEnabled);
+
             window.LetGo();
             host.Close();
         });

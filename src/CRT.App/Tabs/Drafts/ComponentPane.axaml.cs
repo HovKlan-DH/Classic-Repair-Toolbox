@@ -54,6 +54,8 @@ namespace CRT
     // The file map:
     //   ComponentPane.axaml.cs  - showing a component, the fields, pins, replacement parts and links,
     //                             committing and saving, Undo changes
+    //   ComponentPane.Typing.cs - a pause in typing, a box left, a list picked, Enter and the wheel
+    //   ComponentPane.Rows.cs   - the rows of a component's pins, replacement parts and links
     //   ComponentPane.Pages.cs  - a component's pages (the left column picks them), the region shown and
     //                             "Applies to", its label, what Submit would refuse marked where it is, and
     //                             the temporary tool making pinouts of oscilloscope baselines
@@ -62,7 +64,7 @@ namespace CRT
     //                             pictures and files: adding, changing, moving, thumbnails
     //   ComponentPane.BaselineRun.cs - the baselines with the oscilloscope: "Capture from oscilloscope pin-by-pin"
     //                             opening its window (BaselineCaptureWindow), every capture into the draft,
-    //                             and "Capture again" on a baseline
+    //                             "Capture again" on a baseline, and captures not yet accepted holding the pane
     //   ComponentPane.Whole.cs  - the new-component form, Delete component and "Bring back", the
     //                             buttons that ask the host to show the component on the board or
     //                             preview its popup
@@ -915,6 +917,7 @@ namespace CRT
                 ComponentPaneEdits.RowShown(session.Content.Board, this.thisLabel, this.thisRegion) is { } row)
             {
                 this.TitleText.Text = ComponentPaneWording.Title(row);
+                this.ShowNamesInBaselineRun();
             }
 
             // Another case: "Capture from oscilloscope pin-by-pin"'s window draws it and goes round its pins (code review, 2026-11-21).
@@ -1062,122 +1065,6 @@ namespace CRT
 
         private bool IsOwnEdit(DraftSessionChange change) =>
             change.Kind == DraftSessionChangeKind.Edit && ReferenceEquals(change.Origin, this.thisOrigin);
-
-        // ---- typing, leaving a box, picking ------------------------------------------------------
-
-        private void OnAnyTextChanged(object? sender, TextChangedEventArgs e)
-        {
-            if (this.thisShowing || this.thisSession is null)
-            {
-                return;
-            }
-
-            // The new-component form is judged as it is typed in, and goes into the draft only when added.
-            if (this.thisIsNew)
-            {
-                this.OnNewComponentTextChanged();
-                return;
-            }
-
-            if (ReferenceEquals(e.Source, this.DescriptionBox))
-            {
-                this.ShowCounter();
-            }
-
-            // A picture's name waits for Enter or its box being left - typing it starts no pause. So do
-            // a component's label and a category's name (2026-11-01). Nor does a net typed into the new
-            // signal's picker: it is no part of the draft until "Add signal", and the commit a pause
-            // made swapped the picker's list under it (code review, 2026-10-30).
-            if (e.Source is TextBox { DataContext: ComponentPaneBoardPictureRow or ComponentPaneCategoryRow } ||
-                ReferenceEquals(e.Source, this.BoardLabelBox) ||
-                ReferenceEquals(e.Source, this.NewCategoryNameBox) ||
-                (e.Source is Visual typedIn && ReferenceEquals(typedIn.FindAncestorOfType<AutoCompleteBox>(), this.NewSignalNetBox)))
-            {
-                return;
-            }
-
-            // Typed into a field several components differ in: the list of their values narrows to it, and what is typed
-            // waits for Enter, a pick or the box being left - a pause would set half a word on all of them while the list
-            // is still being read (ComponentPane.Several.cs).
-            if (this.FollowTypingInDifferingField(e.Source))
-            {
-                return;
-            }
-
-            this.thisTypingTimer.Stop();
-            this.thisTypingTimer.Start();
-        }
-
-        private void OnAnyLostFocus(object? sender, RoutedEventArgs e)
-        {
-            this.thisTypingTimer.Stop();
-            this.CommitHeld(leftABox: true);
-            this.ShowPinout();
-        }
-
-        // A drop-down list picked (a pin's direction, a part's kind) - into the draft once the pick
-        // has reached the row.
-        private void OnAnySelectionChanged(object? sender, SelectionChangedEventArgs e)
-        {
-            // Which component "Make all like" copies is no data of the draft (code review, 2026-11-09: each refill of its list
-            // posted a commit of every list of every component picked, which changed nothing).
-            if (this.thisShowing || this.thisSession is null || e.Source is not ComboBox || ReferenceEquals(e.Source, this.MakeAllLikeSourceBox))
-            {
-                return;
-            }
-
-            // The new-component form holds what it holds until it is added - judged as it is picked in.
-            if (this.thisIsNew)
-            {
-                this.OnNewComponentTextChanged();
-                return;
-            }
-
-            Dispatcher.UIThread.Post(() => this.CommitHeld(), DispatcherPriority.Background);
-        }
-
-        // ###########################################################################################
-        // THE WHEEL NEVER CHANGES A CLOSED DROP-DOWN LIST HERE (code review, 2026-11-04). A ComboBox with the
-        // focus steps its selection under the wheel, so scrolling the page with the pointer over the category
-        // just picked gave the component another one, a step of the draft nobody meant - and over the clone
-        // panel's board, each notch read another board's file. A pick is made from the open list, as on Main's
-        // device picker. The page scrolls on, by the wheel's own step (Avalonia's ScrollContentPresenter), as it
-        // does over any other box; an open list keeps its wheel, and one without the focus never took it.
-        // ###########################################################################################
-        private const double WheelStep = 50;
-
-        private void OnPaneWheel(object? sender, PointerWheelEventArgs e)
-        {
-            if (e.Source is not Visual source ||
-                source.FindAncestorOfType<ComboBox>(includeSelf: true) is not { IsDropDownOpen: false, IsFocused: true } box)
-            {
-                return;
-            }
-
-            e.Handled = true;
-
-            if (box.FindAncestorOfType<ScrollViewer>() is { } page)
-            {
-                page.Offset = page.Offset.WithY(page.Offset.Y - e.Delta.Y * ComponentPane.WheelStep);
-            }
-        }
-
-        // Enter in a one-line box takes what it says into the draft at once - unless the list of what several components
-        // have takes the key first (ComponentPane.Several.cs: Enter there picks the line lit).
-        private void OnPaneKeyDown(object? sender, KeyEventArgs e)
-        {
-            if (this.TakeDifferingListKey(e) || this.AddOnEnter(e))
-            {
-                return;
-            }
-
-            if (e.Key == Key.Enter && e.Source is TextBox { AcceptsReturn: false })
-            {
-                this.thisTypingTimer.Stop();
-                this.CommitHeld();
-                this.ShowPinout();
-            }
-        }
 
         // ---- buttons ----------------------------------------------------------------------------
 
@@ -1451,215 +1338,5 @@ namespace CRT
 
             return outcome;
         }
-    }
-
-    // ###########################################################################################
-    // One pin as the pane holds it. A drop-down list's empty write (a list built before its value
-    // arrived) is not a change: a direction is picked, never cleared, in the pane.
-    // ###########################################################################################
-    public sealed class ComponentPanePinRow : INotifyPropertyChanged
-    {
-        private string thisPin = string.Empty;
-        private string thisName = string.Empty;
-        private string thisDirection = string.Empty;
-
-        public event PropertyChangedEventHandler? PropertyChanged;
-
-        public string Region { get; init; } = string.Empty;
-
-        public string Pin { get => this.thisPin; set => this.Set(ref this.thisPin, value ?? string.Empty); }
-
-        public string Name { get => this.thisName; set => this.Set(ref this.thisName, value ?? string.Empty); }
-
-        public string? Direction
-        {
-            get => this.thisDirection.Length == 0 ? null : this.thisDirection;
-            set
-            {
-                if (value is not null)
-                {
-                    this.Set(ref this.thisDirection, value);
-                }
-            }
-        }
-
-        // The vocabulary with every other direction the board's pins use (ComponentVocabulary.PinDirectionsOf - owner request,
-        // 2026-11-11), and this pin's own word when it is still not among them.
-        public IReadOnlyList<string> DirectionChoices =>
-            ComponentVocabulary.IsKnownOrEmpty(this.thisBoardDirections, this.thisDirection)
-                ? this.thisBoardDirections
-                : [.. this.thisBoardDirections, this.thisDirection];
-
-        private IReadOnlyList<string> thisBoardDirections = ComponentVocabulary.PinDirections;
-
-        // The directions the board offers, as the pane last read them - the list changed only when its words did, as a list
-        // replaced under a drop-down lets go of what it shows.
-        public void UseBoardDirections(IReadOnlyList<string> directions)
-        {
-            ArgumentNullException.ThrowIfNull(directions);
-
-            if (directions.SequenceEqual(this.thisBoardDirections, StringComparer.Ordinal))
-            {
-                return;
-            }
-
-            this.thisBoardDirections = directions;
-            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(this.DirectionChoices)));
-
-            // A list replaced lets go of its selection and writes "nothing" back, which Direction ignores - so the box is told
-            // the direction again, or it would show none (CLAUDE.md, the picture cards' drop-downs).
-            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(this.Direction)));
-        }
-
-        // The net the pin is on on this board, from its KiCad data - shown, never part of the entry.
-        public string Net { get; private set; } = string.Empty;
-
-        public bool HasNet => this.Net.Length > 0;
-
-        public void UseNet(string? net)
-        {
-            string wanted = net ?? string.Empty;
-
-            if (string.Equals(this.Net, wanted, StringComparison.Ordinal))
-            {
-                return;
-            }
-
-            this.Net = wanted;
-            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(this.Net)));
-            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(this.HasNet)));
-        }
-
-        // A pin the component's case does not have - an error, marked on its box (ShowPinProblems).
-        public bool PinOutside => this.PinProblem.Length > 0;
-
-        public string PinProblem { get; private set; } = string.Empty;
-
-        // The case that has no such pin - null when it can be on it.
-        public void UseCaseThatRefuses(string? package)
-        {
-            string wanted = package is null ? string.Empty : BoardDataChecks.PinNotOnPackage(this.thisPin, package);
-
-            if (!string.Equals(this.PinProblem, wanted, StringComparison.Ordinal))
-            {
-                this.PinProblem = wanted;
-                this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(this.PinProblem)));
-                this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(this.PinOutside)));
-            }
-        }
-
-        public static ComponentPanePinRow From(ComponentPinEntry pin) => new()
-        {
-            Region = pin.Region ?? string.Empty,
-            Pin = pin.Pin ?? string.Empty,
-            Name = pin.Name ?? string.Empty,
-            Direction = string.IsNullOrWhiteSpace(pin.Direction) ? null : pin.Direction.Trim(),
-        };
-
-        public ComponentPinEntry ToEntry() => new()
-        {
-            Region = this.Region,
-            Pin = this.thisPin,
-            Name = this.thisName,
-            Direction = this.thisDirection,
-        };
-
-        private void Set(ref string field, string value, [CallerMemberName] string? name = null)
-        {
-            if (string.Equals(field, value, StringComparison.Ordinal))
-            {
-                return;
-            }
-
-            field = value;
-            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
-        }
-    }
-
-    // One replacement part as the pane holds it - the kind picked as a pin's direction is, its note of
-    // several lines.
-    public sealed class ComponentPaneReplacementRow : ComponentPaneRegionalRow
-    {
-        private string thisPartNumber = string.Empty;
-        private string thisKind = string.Empty;
-        private string thisNote = string.Empty;
-
-        public string PartNumber { get => this.thisPartNumber; set => this.Set(ref this.thisPartNumber, value ?? string.Empty); }
-
-        public string? Kind
-        {
-            get => this.thisKind.Length == 0 ? null : this.thisKind;
-            set
-            {
-                if (value is not null)
-                {
-                    this.Set(ref this.thisKind, value);
-                }
-            }
-        }
-
-        public string Note { get => this.thisNote; set => this.Set(ref this.thisNote, value ?? string.Empty); }
-
-        // ComponentPaneEdits.WithReplacements' rule for a row it leaves out.
-        public override bool HoldsNothingYet =>
-            string.IsNullOrWhiteSpace(this.thisPartNumber) && string.IsNullOrWhiteSpace(this.thisKind) && string.IsNullOrWhiteSpace(this.thisNote);
-
-        public IReadOnlyList<string> KindChoices =>
-            ComponentVocabulary.IsKnownOrEmpty(ComponentVocabulary.ReplacementKinds, this.thisKind)
-                ? ComponentVocabulary.ReplacementKinds
-                : [.. ComponentVocabulary.ReplacementKinds, this.thisKind];
-
-        public static ComponentPaneReplacementRow From(ComponentReplacementEntry row) => new()
-        {
-            Region = row.Region ?? string.Empty,
-            PartNumber = row.PartNumber ?? string.Empty,
-            Kind = string.IsNullOrWhiteSpace(row.Kind) ? null : row.Kind.Trim(),
-            Note = row.Note ?? string.Empty,
-        };
-
-        public ComponentReplacementEntry ToEntry() => new()
-        {
-            Region = this.Region,
-            PartNumber = this.thisPartNumber,
-            Kind = this.thisKind,
-            Note = this.thisNote,
-        };
-    }
-
-    // One link as the pane holds it.
-    public sealed class ComponentPaneLinkRow : ComponentPaneRegionalRow
-    {
-        private string thisName = string.Empty;
-        private string thisUrl = string.Empty;
-
-        public string Name { get => this.thisName; set => this.Set(ref this.thisName, value ?? string.Empty); }
-
-        public string Url
-        {
-            get => this.thisUrl;
-            set
-            {
-                this.Set(ref this.thisUrl, value ?? string.Empty);
-                this.Raise(nameof(this.UrlNotWeb));
-                this.Raise(nameof(this.CanOpen));
-            }
-        }
-
-        // "Open link" is on while the address is one a browser can be sent to (LinkTarget) - a board link's rule.
-        public bool CanOpen => LinkTarget.For(this.thisUrl) is not null;
-
-        // An address the checks refuse, marked on its box (ComponentPaneBoardLinkRow says why).
-        public bool UrlNotWeb => BoardDataChecks.IsRefusedLink(this.thisUrl);
-
-        public string NotWebText => ComponentPaneWording.LinkNotWeb;
-
-        public static ComponentPaneLinkRow From(ComponentLinkEntry row) => new()
-        {
-            Region = row.Region ?? string.Empty,
-            Name = row.Name ?? string.Empty,
-            Url = row.Url ?? string.Empty,
-        };
-
-        public ComponentLinkEntry ToEntry() => new() { Region = this.Region, Name = this.thisName, Url = this.thisUrl };
     }
 }

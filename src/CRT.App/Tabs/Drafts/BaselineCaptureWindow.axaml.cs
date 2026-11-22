@@ -218,13 +218,27 @@ namespace CRT
             this.thisPane = pane;
             this.thisRememberPlace = rememberPlace;
             this.thisRunRegion = pane.ShownRegion;
-            this.Title = ComponentPaneWording.CaptureWindowTitle(pane.ShownLabel);
-            this.ComponentText.Text = pane.ShownTitle;
+            this.ShowComponentNames();
             this.MachineStateBox.Text = pane.BaselineRows.Select(row => row.MachineState.Trim()).LastOrDefault(state => state.Length > 0) ?? string.Empty;
+
+            // Fitted to its screen whether or not a place is kept (code review, 2026-11-22: the first time, at its 1280 x 860, a
+            // laptop's screen had its button bar and keys under the screen's edge) - the screen of CRT's window it opens over, when
+            // no place is kept or the place kept is on no screen.
+            (PixelRect WorkingArea, double Scaling)? ownerScreen = this.OwnerScreenOf(pane);
 
             if (place is not null)
             {
-                this.UsePlace(place);
+                this.UsePlace(place, ownerScreen);
+            }
+            else if (ownerScreen is { } screen)
+            {
+                (Size size, _) = DialogPlacement.KeptPlaceOn(
+                    new Size(this.Width, this.Height), new Size(this.MinWidth, this.MinHeight), default, screen.WorkingArea, screen.Scaling);
+
+                this.Width = size.Width;
+                this.Height = size.Height;
+                this.thisNormalWidth = this.Width;
+                this.thisNormalHeight = this.Height;
             }
 
             var picked = BaselineRunPins.FirstChoice(pins).ToHashSet();
@@ -247,8 +261,27 @@ namespace CRT
             this.GoTo(first >= 0 ? first : 0, setScope: true);
         }
 
-        // The region the run's steps are of - another one shown, the pane closes the window.
+        // The region the run's steps are of - another one shown, the pane closes the window, or, captures waiting, has it follow.
         internal string RunRegion => this.thisRunRegion;
+
+        // The region the pane shows now, its captures waiting - an edit changed it under them (ComponentPane.FollowRowsInBaselineRun).
+        internal void FollowRegion(string region) => this.thisRunRegion = region ?? string.Empty;
+
+        // ###########################################################################################
+        // The component's label and names as the pane shows them now - in the title and over the pins - read as it opens, as its lines
+        // follow the pane, and as the pane renames it or changes a name (code review, 2026-11-22: renamed U27A in the pane, the
+        // window still said U27 while its captures went in under U27A).
+        // ###########################################################################################
+        internal void ShowComponentNames()
+        {
+            if (this.thisPane is not { } pane)
+            {
+                return;
+            }
+
+            this.Title = ComponentPaneWording.CaptureWindowTitle(pane.ShownLabel);
+            this.ComponentText.Text = pane.ShownTitle;
+        }
 
         // ###########################################################################################
         // A capture being taken - from the moment it waits for the oscilloscope to be set for its pin, before any "please wait" is up -
@@ -260,12 +293,25 @@ namespace CRT
         // Where a new baseline goes - what a capture of a pin with none is shown as, before it is accepted (WaitingEntry).
         private string CapturedBaselineRegion => this.thisPane?.RegionForCapturedBaseline ?? string.Empty;
 
-        private void UsePlace(BaselineCaptureWindowPlace place)
+        // The screen of CRT's window it opens over - its working area and scaling - null when none is known.
+        private (PixelRect WorkingArea, double Scaling)? OwnerScreenOf(ComponentPane pane)
         {
-            // A place no screen shows any more - a screen taken away - is given up: it opens over CRT's window, as the first time.
+            if (pane.CaptureWindowScreenForTests is { } given)
+            {
+                return given;
+            }
+
+            return TopLevel.GetTopLevel(pane) is Window owner && this.Screens.ScreenFromWindow(owner) is { Scaling: > 0 } screen
+                ? (screen.WorkingArea, screen.Scaling)
+                : null;
+        }
+
+        private void UsePlace(BaselineCaptureWindowPlace place, (PixelRect WorkingArea, double Scaling)? ownerScreen)
+        {
+            // A place no screen shows any more - a screen taken away - is given up: it opens over CRT's window, as the first time,
+            // fitted to that window's screen.
             var saved = new PixelPoint(place.X, place.Y);
             Screen? onScreen = this.Screens.ScreenFromPoint(saved);
-            Screen? screen = onScreen ?? this.Screens.Primary;
 
             // Made to fit the screen it opens on - a smaller one than where it was left kept its buttons off the bottom (code review,
             // 2026-11-21).
@@ -273,8 +319,8 @@ namespace CRT
                 new Size(place.Width, place.Height),
                 new Size(this.MinWidth, this.MinHeight),
                 saved,
-                screen?.WorkingArea ?? default,
-                screen?.Scaling ?? 1.0);
+                onScreen?.WorkingArea ?? ownerScreen?.WorkingArea ?? default,
+                onScreen?.Scaling ?? ownerScreen?.Scaling ?? 1.0);
 
             this.Width = size.Width;
             this.Height = size.Height;
@@ -407,15 +453,26 @@ namespace CRT
                 }
             }
 
+            // Each line's label too: a baseline's pin text or signal name changed in the pane is the line's now (BaselineRunPins.Follow).
             foreach (BaselineCaptureTarget target in this.thisTargets)
             {
                 target.ShowState(this.IsNextTarget(target));
+                target.ShowLabel();
             }
+
+            this.ShowComponentNames();
 
             // The case drawn as the pane's package and pins now read - a pin added there is one to click (ShowCase frames it again).
             pane.ShowCaseOn(this.CasePinout);
             this.ShowCurrent();
             this.ShowProgress();
+
+            // Another line shown in place of one gone - its baseline deleted, or given another pin, in the pane: the oscilloscope set as
+            // ITS baseline was measured (code review, 2026-11-22: Enter captured it with the settings of the line before).
+            if (this.CurrentForTests is { Row: { } shownRow } nowShown && !ReferenceEquals(nowShown, shown))
+            {
+                this.SetScopeFor(shownRow);
+            }
         }
 
         // ---- closing ----------------------------------------------------------------------------
@@ -447,17 +504,21 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // Closing - "Close capturing", Escape, the window's own close - with captures not yet accepted is held, and the panel over the
-        // buttons asks: accept them, discard them, or keep capturing. Closed with CRT, or by the pane, they are let go of - once CLOSED
-        // (OnClosed), never as it is closing: CRT's own close is asked of this window first and may still be called off (an unsaved
-        // table), and the window then stayed open with its captures gone (code review, 2026-11-21).
+        // Closing - "Close capturing", Escape, the window's own close, AND CRT QUITTING - with captures not yet accepted is held, and
+        // the panel over the buttons asks: accept them, discard them, or keep capturing. CRT asks this window first as it quits
+        // (Avalonia asks an owned window before its owner's Closing), so held here, the quitting is called off (code review,
+        // 2026-11-22: quitting deleted them without a word, every pin to be probed again). Closed by the pane - another board, the
+        // draft let go of, the component gone - they are let go of, once CLOSED (OnClosed), never as it is closing (code review,
+        // 2026-11-21: a close called off left the window open with its captures gone).
         // ###########################################################################################
         private void OnClosing(object? sender, WindowClosingEventArgs e)
         {
+            bool asksFirst = !this.thisLettingGo && e.CloseReason is WindowCloseReason.WindowClosing or WindowCloseReason.OwnerWindowClosing;
+
             // A capture going into the draft finishes first - the window's own close is covered by no "please wait" (code review,
-            // 2026-11-21) - and the window closes once it is in (thisCloseWanted, AcceptCaptureAsync). The pane letting go, or CRT
-            // closing, closes it at once: the capture is let go of as the put ends.
-            if (this.thisPutting && !this.thisLettingGo && e.CloseReason == WindowCloseReason.WindowClosing)
+            // 2026-11-21) - and the window closes once it is in (thisCloseWanted, AcceptCaptureAsync). The pane letting go closes it
+            // at once: the capture is let go of as the put ends.
+            if (this.thisPutting && asksFirst)
             {
                 e.Cancel = true;
                 this.thisCloseWanted = true;
@@ -466,18 +527,51 @@ namespace CRT
 
             int waiting = this.WaitingTargets().Count;
 
-            if (!this.thisLettingGo && waiting > 0 && e.CloseReason == WindowCloseReason.WindowClosing)
+            if (asksFirst && waiting > 0)
             {
                 e.Cancel = true;
-                BoldRuns.ShowMarked(this.NotAcceptedText, ComponentPaneWording.RunNotAcceptedOnClose(waiting));
-                this.NotAcceptedPanel.IsVisible = true;
 
-                // The keyboard on the safe answer: Enter - the footswitch too - keeps capturing.
-                this.KeepCapturingButton.Focus();
+                // Asked as CRT quits: brought before CRT's window, which had the front.
+                if (e.CloseReason == WindowCloseReason.OwnerWindowClosing)
+                {
+                    this.Activate();
+                }
+
+                this.ShowCloseQuestion(waiting);
                 return;
             }
 
             this.RememberPlace();
+        }
+
+        // The panel over the buttons asking about `waiting` captures not yet accepted - accept, discard, or keep capturing.
+        private void ShowCloseQuestion(int waiting)
+        {
+            BoldRuns.ShowMarked(this.NotAcceptedText, ComponentPaneWording.RunNotAcceptedOnClose(waiting));
+            this.NotAcceptedPanel.IsVisible = true;
+
+            // The keyboard on the safe answer: Enter - the footswitch too - keeps capturing.
+            this.KeepCapturingButton.Focus();
+        }
+
+        // Whether captures not yet accepted wait in it - the pane stays on their component while any does (ComponentPane
+        // .KeepsWaitingCaptures).
+        internal bool HoldsCaptures => !this.thisClosed && this.thisTargets.Any(target => target.Waiting is not null);
+
+        // ###########################################################################################
+        // Asked before the pane leaves their component (code review, 2026-11-22): brought to the front, asking what its own close asks.
+        // A capture going into the draft finishes first, under its "please wait" - asked then, the question would go with it.
+        // ###########################################################################################
+        internal void AskAboutWaitingCaptures()
+        {
+            this.Activate();
+
+            int waiting = this.WaitingTargets().Count;
+
+            if (!this.thisPutting && waiting > 0)
+            {
+                this.ShowCloseQuestion(waiting);
+            }
         }
 
         // Closed: every capture not accepted goes from the user's folder, and one still being taken goes as it comes (CaptureCurrentAsync).
@@ -904,6 +998,7 @@ namespace CRT
         {
             if (this.thisCurrentIndex < 0 || this.thisCurrentIndex >= this.thisTargets.Count)
             {
+                this.ShowNoLine();
                 return;
             }
 
@@ -927,6 +1022,26 @@ namespace CRT
 
             this.ShowFacts(target.WaitingEntry(row, machineState, this.CapturedBaselineRegion) ?? row?.Committed, target.IsComparable ? target.BeforeEntry : null);
             this.ShowPictures(target);
+            this.ShowCase();
+            this.ShowNext();
+            this.ShowButtons();
+        }
+
+        // ###########################################################################################
+        // No line shown - none left, every pin and baseline taken away in the pane (code review, 2026-11-22: the window kept showing the
+        // pin before, its fields, its picture and its name box): nothing of a pin shown, and nothing to capture (ShowButtons).
+        // ###########################################################################################
+        private void ShowNoLine()
+        {
+            BoldRuns.ShowMarked(this.CurrentText, string.Empty);
+            this.CurrentDetails.Text = string.Empty;
+            this.NamePanel.IsVisible = false;
+            this.ShowFacts(null, null);
+            this.SingleFrame.IsVisible = false;
+            this.ComparePanel.IsVisible = false;
+            this.ShowImage(this.CurrentImage, null);
+            this.ShowImage(this.NowImage, null);
+            this.OldImage.Source = null;
             this.ShowCase();
             this.ShowNext();
             this.ShowButtons();
@@ -1008,7 +1123,31 @@ namespace CRT
                 TriggerLevelVolts = measured.TriggerLevelVolts,
             };
 
-            this.thisScopeSet = BaselineCaptureWindow.SetScopeAsync(scope, baseline);
+            // ###########################################################################################
+            // *** THE LAST PIN SHOWN, NEVER EVERY PIN PASSED (code review, 2026-11-22). *** Each pin went to the oscilloscope as it was
+            // shown - Left held, or "1" then "2" typed, queued five to thirty set-ups, and a capture waited for them all while the
+            // oscilloscope stepped through pins nobody looked at. One set-up is sent at a time; what waits is only the latest, and a
+            // capture waits for that (thisScopeSet).
+            // ###########################################################################################
+            this.thisScopeWanted = baseline;
+
+            if (this.thisScopeSet.IsCompleted)
+            {
+                this.thisScopeSet = this.SendScopeWantedAsync(scope);
+            }
+        }
+
+        // The settings of the pin shown last, waiting for the set-up under way to end - null with none waiting.
+        private ComponentImageEntry? thisScopeWanted;
+
+        // The latest pin's settings sent, one set-up after another until none waits - on the UI thread, so the field needs no lock.
+        private async Task SendScopeWantedAsync(IBaselineScope scope)
+        {
+            while (this.thisScopeWanted is { } baseline)
+            {
+                this.thisScopeWanted = null;
+                await BaselineCaptureWindow.SetScopeAsync(scope, baseline);
+            }
         }
 
         private static async Task SetScopeAsync(IBaselineScope scope, ComponentImageEntry baseline)

@@ -1269,8 +1269,17 @@ there, and `await` on a finished task looped for ever on the UI thread. A tool f
   tinted on the case, one waiting marked "Not yet accepted". ("Next pin" and the last capture under the pin shown went that day -
   "Previous pin" goes back to it.) **CLOSING WITH CAPTURES NOT YET ACCEPTED ASKS FIRST** - "Close capturing", Escape, the window's
   own close (`WindowCloseReason.WindowClosing`) - in a panel over the button bar: "Accept and close", "Discard and close", "Keep
-  capturing" (Escape too); **closed by the pane - another component or region shown, the pane letting go (`LetGo`) - or with CRT,
-  they are let go of without asking**, their screens deleted. **"Capture again" on a baseline OPENS THE WINDOW ON ITS PIN AND
+  capturing" (Escape too); asked to close while a capture goes in, it closes once that is in. **WHILE ANY WAITS, THEY HOLD THE PANE
+  ON THEIR COMPONENT** (code review, 2026-11-22: CRT's window stays clickable, and another component, a part of the board, "Table",
+  "Clear" or a region picked closed the window, every screen deleted unasked): the host asks `ComponentPane.KeepsItselfOpen` where it
+  asks about a picture name it cannot take, `Main.PickRegion` asks `TabDrafts.KeepsRegionShown`, and the window comes forward asking
+  that same question - the pick is made again once it is answered; the very component shown asked for again ("Edit component" on its
+  popup) is no such pick. **Quitting CRT asks too**: Avalonia asks an owned window before its owner's Closing, so the window holds
+  the quitting (`WindowCloseReason.OwnerWindowClosing`), and installing an update asks in `Main.ConfirmLeavingTablesAsync`. A region
+  changed under them by an edit ("Board: Regions", its "Undo") keeps the window, following the region the pane shows, and asks.
+  **Closed by the pane - another board shown, the draft let go of, the component gone - they are let go of without asking**, their
+  screens deleted: none of those can be called off.
+  **"Capture again" on a baseline OPENS THE WINDOW ON ITS PIN AND
   CAPTURES THERE** (owner request, the same day: "this button should open the "Capture from oscilloscope pin-by-pin" window and go to
   that pin and capture the image from scope and then show it in this view instead ... better than just do an instant-capture";
   `ComponentPane.CaptureAgainInWindowAsync`, `BaselineCaptureWindow.GoToBaseline`) - the oscilloscope set as it was measured, the

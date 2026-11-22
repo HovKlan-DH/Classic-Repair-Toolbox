@@ -219,9 +219,12 @@ namespace CRT
                 return;
             }
 
-            // Not while a picture's name holds the pane open: the page stays what it was.
-            if (this.IsComponentOpen && this.ComponentPane.KeepsRefusedPictureName())
+            // Not while a picture's name, or captures not yet accepted, hold the pane open: the page stays what it was - and the pick
+            // follows the pane back (code review, 2026-11-22: a problem's "Open [U7]" left U7 picked, the pane on U8, and the next
+            // page clicked opened U7).
+            if (this.IsComponentOpen && this.ComponentPane.KeepsItselfOpen())
             {
+                this.ShowNavSelection();
                 return;
             }
 
@@ -232,8 +235,9 @@ namespace CRT
 
         private async Task ShowNoComponentPageAsync(ComponentPage page)
         {
-            if (this.IsComponentOpen && this.ComponentPane.KeepsRefusedPictureName())
+            if (this.IsComponentOpen && this.ComponentPane.KeepsItselfOpen())
             {
+                this.ShowNavSelection();
                 return;
             }
 
@@ -332,6 +336,13 @@ namespace CRT
         // ###########################################################################################
         internal void LetGoOfPickedComponent()
         {
+            // Captures not yet accepted keep the pane on their component, its capture window asking (code review, 2026-11-22).
+            if (this.IsComponentOpen && this.ComponentPane.KeepsWaitingCaptures())
+            {
+                this.ShowNavSelection();
+                return;
+            }
+
             this.thisPickedComponent = string.Empty;
             this.thisPickedSeveral = [];
             this.thisPickGeneration++;

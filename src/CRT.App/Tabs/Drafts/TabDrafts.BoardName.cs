@@ -53,7 +53,7 @@ namespace CRT
 
             if (this.IsComponentOpen)
             {
-                if (this.ComponentPane.KeepsRefusedPictureName())
+                if (this.ComponentPane.KeepsItselfOpen())
                 {
                     return;
                 }

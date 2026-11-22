@@ -531,6 +531,11 @@ namespace Handlers.DataHandling
         public const string RunBaselineNotFound =
             "That baseline changed meanwhile - pick its pin in the \"Capture from oscilloscope pin-by-pin\" window.";
 
+        // "Capture again" while the window is taking a capture or putting one into the draft - it moves to no other pin meanwhile
+        // (code review, 2026-11-22: it came to the front, and nothing was captured or said).
+        public const string RunWindowBusy =
+            "The \"Capture from oscilloscope pin-by-pin\" window is still busy with a capture - press \"Capture again\" once it is done.";
+
         public const string RunNothingPicked = "No pins picked - select the pins to capture, or pick them with the buttons over the list.";
 
         // How many of the picked baselines are accepted (bold, BoldRuns) - a pin may have several.

@@ -80,7 +80,8 @@
 		</Style>
 		<!-- A picture's frame and the strip over it saying what it is: the old baseline red (owner request, 2026-11-20: "a red'ish
 		     background color"), a new capture amber while it is to be checked and green once accepted - the green of a button that
-		     goes ahead - and a baseline not captured again quiet. -->
+		     goes ahead - and a baseline not captured again quiet. Each frame in a color of its own, a shade off the notice's and the
+		     button's where those are not seen at 3:1 on the window and the card (ThemeContrastTests; code review, 2026-11-22). -->
 		<Style Selector="Border.PictureFrame">
 			<Setter Property="BorderBrush" Value="{DynamicResource Form_Border}" />
 			<Setter Property="BorderThickness" Value="2" />
@@ -91,10 +92,10 @@
 			<Setter Property="BorderBrush" Value="{DynamicResource CaptureOld_Border}" />
 		</Style>
 		<Style Selector="Border.PictureFrame.ToCheck">
-			<Setter Property="BorderBrush" Value="{DynamicResource Notice_Border}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource CaptureToCheck_Border}" />
 		</Style>
 		<Style Selector="Border.PictureFrame.Accepted">
-			<Setter Property="BorderBrush" Value="{DynamicResource Button_Ok_Bg}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource CaptureAccepted_Border}" />
 		</Style>
 		<!-- Rounded as the inside of its frame (the frame's 4 less its 2): square, its corners covered the frame's curve, and the
 		     frame looked a pixel short there (owner report, 2026-11-20: "missing a pixel in its rounding"). -->
@@ -116,7 +117,7 @@
 		</Style>
 		<Style Selector="Border.PictureHeader.ToCheck">
 			<Setter Property="Background" Value="{DynamicResource Notice_Bg}" />
-			<Setter Property="BorderBrush" Value="{DynamicResource Notice_Border}" />
+			<Setter Property="BorderBrush" Value="{DynamicResource CaptureToCheck_Border}" />
 		</Style>
 		<Style Selector="Border.PictureHeader.Accepted">
 			<Setter Property="Background" Value="{DynamicResource Button_Ok_Bg}" />

@@ -1387,7 +1387,66 @@ public sealed class ComponentPaneTests : IDisposable
             Assert.Equal("High", reading.Text);
             Assert.Equal(["High"], pane.ExpectedReadingChoices);
 
+            // The focus going into the list was no box left: "h" never went into the draft (code review, 2026-11-22: a step of its
+            // own, one "Undo" leaving a reading nobody chose).
+            Assert.Equal("High", ComponentPaneEdits.BaselinesOf(session.Content.Board, "U8", "PAL")[0].ExpectedOscilloscopeReading);
+
             pane.CommitHeld();
+            Assert.Equal("High", ComponentPaneEdits.BaselinesOf(session.Content.Board, "U8", "PAL")[0].ExpectedOscilloscopeReading);
+
+            session.Undo();
+            Assert.Equal(string.Empty, ComponentPaneEdits.BaselinesOf(session.Content.Board, "U8", "PAL")[0].ExpectedOscilloscopeReading);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // THE KEYS PICK NO ROW OF A READING'S LIST (code review, 2026-11-22, measured on Avalonia 12.1.6): Down highlights none, so Enter
+    // only closes the list and commits what is typed, as ONE step - the half-typed word committed before a pick made by Enter, which
+    // the review feared, cannot happen. Should an Avalonia update let the keys pick, this fails: the pane's Enter, on the tunnel route
+    // before the box takes its pick, would then commit the half-typed word as a step of its own.
+    // ###########################################################################################
+    [Fact]
+    public void The_keys_pick_no_row_of_a_readings_list_so_enter_commits_what_is_typed_once()
+    {
+        DraftSession session = this.OpenDraftWithFiles();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = Shown(session);
+            pane.ShowPage(ComponentPage.Baselines);
+            Dispatcher.UIThread.RunJobs();
+
+            pane.BaselinesForTests[0].ExpectedReading = "High";
+            pane.CommitHeld();
+
+            AutoCompleteBox reading = Get<ItemsControl>(pane, "BaselinesItemsControl")
+                .GetRealizedContainers()
+                .SelectMany(container => container.GetVisualDescendants().OfType<AutoCompleteBox>())
+                .Single(box => box.Classes.Contains("ExpectedReading"));
+            TextBox text = reading.GetVisualDescendants().OfType<TextBox>().First();
+
+            text.Focus();
+            Dispatcher.UIThread.RunJobs();
+            text.Text = "h";
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(reading.IsDropDownOpen);
+
+            window.KeyPress(Key.Down, RawInputModifiers.None, PhysicalKey.ArrowDown, keySymbol: null);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Null(reading.SelectedItem);
+            Assert.Equal("h", reading.Text);
+
+            window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, keySymbol: null);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal("h", reading.Text);
+            Assert.Equal("h", ComponentPaneEdits.BaselinesOf(session.Content.Board, "U8", "PAL")[0].ExpectedOscilloscopeReading);
+
+            // One "Undo" goes back to the "High" before it: what Enter committed was one step.
+            session.Undo();
             Assert.Equal("High", ComponentPaneEdits.BaselinesOf(session.Content.Board, "U8", "PAL")[0].ExpectedOscilloscopeReading);
 
             window.Close();

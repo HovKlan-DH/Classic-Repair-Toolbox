@@ -519,50 +519,95 @@ namespace CRT
             string draftFolder = DraftFolderLayout.GetBoardFolder(session.DraftsRoot, session.ExcelDataFile);
             Action<string?> say = sayProblem ?? this.ShowMessage;
 
-            return await BusyOverlay.RunLocalAsync(anchor ?? this, CrtWaitWording.AddingFile, async () =>
+            // ###########################################################################################
+            // *** ONE ADD AT A TIME, ITS NAMES HELD FROM THE MOMENT THEY WERE CHOSEN (code review, 2026-11-22). *** A capture accepted
+            // in "Capture from oscilloscope pin-by-pin" goes in under that window's "please wait" alone, so the pane could add a file
+            // at the same moment: both were named before either was listed - a baseline of the same pin and signal took the very name,
+            // one copy replacing the other - and the first to end read the thumbnails while the other's file was still on its way
+            // (thisFilesArriving). The names are taken from here on (TakenNames - they were chosen with nothing awaited since), and
+            // each add waits for the one before it to end.
+            // ###########################################################################################
+            List<string> names = files.Select(file => file.Name).ToList();
+            this.thisNamesComingIn.AddRange(names);
+
+            Task before = this.thisAddsInTurn;
+            var mine = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            this.thisAddsInTurn = mine.Task;
+
+            try
             {
-                DraftPickedFiles copies = await Task.Run(() => DraftPickedFiles.CopyInto(draftFolder, files));
-
-                if (!copies.AnyLying)
+                return await BusyOverlay.RunLocalAsync(anchor ?? this, CrtWaitWording.AddingFile, async () =>
                 {
-                    // Said for what it is: a file of no bytes is not added at all (2026-11-02).
-                    say(copies.EmptyFiles.Count > 0 ? ComponentPaneWording.FileEmpty : ComponentPaneWording.FileNotCopied);
-                    return false;
+                    await before;
+                    return await this.CopyIntoDraftAsync(draftFolder, files, change, say, stillWanted);
+                });
+            }
+            finally
+            {
+                foreach (string name in names)
+                {
+                    this.thisNamesComingIn.Remove(name);
                 }
 
-                if (stillWanted is not null && !stillWanted())
-                {
-                    copies.TakeBack();
-                    say(ComponentPaneWording.RunCaptureNotPut);
-                    return false;
-                }
+                mine.SetResult();
+            }
+        }
 
-                List<string> copied = copies.Copied.ToList();
-                copies.Keep();
+        // The files being added, named, not in the draft's list yet - no other file is given one of their names (TakenNames).
+        private readonly List<string> thisNamesComingIn = [];
 
-                this.thisFilesArriving = true;
+        // The add under way, the next waiting for it to end (AddToDraftAsync).
+        private Task thisAddsInTurn = Task.CompletedTask;
 
-                try
-                {
-                    change(copied);
-                    this.ShowEmptyLines();
-                    await this.SaveNowAsync();
-                }
-                finally
-                {
-                    this.thisFilesArriving = false;
-                }
+        // The files copied into the draft folder, then `change` and the save - AddToDraftAsync's work, its turn come.
+        private async Task<bool> CopyIntoDraftAsync(
+            string draftFolder,
+            IReadOnlyList<(string Source, string Name)> files,
+            Action<IReadOnlyList<string>> change,
+            Action<string?> say,
+            Func<bool>? stillWanted)
+        {
+            DraftPickedFiles copies = await Task.Run(() => DraftPickedFiles.CopyInto(draftFolder, files));
 
-                if (this.thisBaselineRunFollowWanted)
-                {
-                    this.thisBaselineRunFollowWanted = false;
-                    this.FollowRowsInBaselineRun();
-                }
+            if (!copies.AnyLying)
+            {
+                // Said for what it is: a file of no bytes is not added at all (2026-11-02).
+                say(copies.EmptyFiles.Count > 0 ? ComponentPaneWording.FileEmpty : ComponentPaneWording.FileNotCopied);
+                return false;
+            }
 
-                this.LoadThumbnails();
-                this.LoadPreviews();
-                return true;
-            });
+            if (stillWanted is not null && !stillWanted())
+            {
+                copies.TakeBack();
+                say(ComponentPaneWording.RunCaptureNotPut);
+                return false;
+            }
+
+            List<string> copied = copies.Copied.ToList();
+            copies.Keep();
+
+            this.thisFilesArriving = true;
+
+            try
+            {
+                change(copied);
+                this.ShowEmptyLines();
+                await this.SaveNowAsync();
+            }
+            finally
+            {
+                this.thisFilesArriving = false;
+            }
+
+            if (this.thisBaselineRunFollowWanted)
+            {
+                this.thisBaselineRunFollowWanted = false;
+                this.FollowRowsInBaselineRun();
+            }
+
+            this.LoadThumbnails();
+            this.LoadPreviews();
+            return true;
         }
 
         // ###########################################################################################
@@ -576,11 +621,11 @@ namespace CRT
         private bool thisFilesArriving;
 
         // The names the board's files have, or an undo can bring back - none of them is given to a file
-        // added here (DraftSession.FileNamesInUse).
+        // added here (DraftSession.FileNamesInUse) - and those of files on their way in (AddToDraftAsync).
         private List<string> TakenNames() =>
             this.thisSession is not { } session
                 ? []
-                : session.FileNamesInUse.ToList();
+                : [.. session.FileNamesInUse, .. this.thisNamesComingIn];
 
         private async Task<string?> PickFileAsync(PaneFileKind kind)
         {

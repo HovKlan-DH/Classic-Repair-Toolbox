@@ -75,6 +75,15 @@ internal static class BaselineCaptureTesting
             return DraftSession.Open(this.DraftsRoot, BoardKey)!;
         }
 
+        // A file of `bytes` the contributor picks, outside the draft - its path.
+        internal string Pickable(string name, byte[] bytes)
+        {
+            string path = Path.Combine(this.thisWorkspace.Root, "Picked", name);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllBytes(path, bytes);
+            return path;
+        }
+
         // `name`'s bytes in the draft's own store, and its entry.
         private BoardDocument.StoredFileRow Stored(string name, byte[] bytes)
         {

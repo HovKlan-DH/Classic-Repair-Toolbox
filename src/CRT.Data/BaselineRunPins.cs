@@ -12,7 +12,8 @@ namespace Handlers.DataHandling
     // for a pin that has none - and going round them. The window shows and drives it (BaselineCaptureWindow, opened by
     // ComponentPane.BaselineRun.cs); every rule is here.
     //
-    //   - THE PINS: the case's (1 to its count), every pin the pinout lists, and every pin a baseline names - one per NUMBER
+    //   - THE PINS: the case's (1 to its count), every pin the pinout lists, the datasheet's CRT holds of the chip, and every pin a
+    //     baseline names - one per NUMBER
     //     ("2 [64K]" is pin 2, ComponentVocabulary.PinNumberOf), in number order; a pin named rather than numbered (a
     //     regulator's "12V") after them, in the order they come. Each with its name and direction: the pinout's, else the
     //     datasheet's, else (a name) the first baseline's of it.
@@ -63,6 +64,13 @@ namespace Handlers.DataHandling
             }
 
             foreach (ComponentPinEntry pin in pins)
+            {
+                Take(pin.Pin);
+            }
+
+            // The datasheet's pins too - a chip CRT holds the datasheet of, typed with no case, is drawn whole, and every pin drawn is
+            // one to go round (code review, 2026-11-22: it had no pins to go round, or only those with a baseline).
+            foreach (KiCadPin pin in datasheet ?? [])
             {
                 Take(pin.Pin);
             }
@@ -235,7 +243,8 @@ namespace Handlers.DataHandling
         // THE RUN'S LINES AS THEY STAND NOW, THE BASELINES READ AGAIN (code review, 2026-11-21: an "Undo" of an accepted capture
         // left its line "Accepted", and a baseline added, deleted or given another pin in the pane while the window was open had no
         // line, or one that captured into the wrong row). `steps` the lines as they were, `pins` the pins a run can go round now.
-        //   - A capture accepted that the draft no longer has is no longer accepted: its line is as it was before it.
+        //   - A capture accepted that the draft no longer has is no longer accepted - its line is as it was before it - unless the
+        //     draft holds another capture of the line accepted in this run, which it is then accepted as (FollowAccepted).
         //   - Every line finds its baseline (Match), and says its signal name as the baseline now does; a baseline no line holds - one
         //     added, or given another pin - gets a new line in its pin's place, in place of the pin's new line with nothing captured.
         //   - A line of a baseline gone goes, unless a capture of it waits to be accepted - that stays, to go in as a new baseline;
@@ -254,15 +263,10 @@ namespace Handlers.DataHandling
 
             var files = baselines.Select(row => (row.File ?? string.Empty).Trim()).Where(file => file.Length > 0).ToHashSet(StringComparer.Ordinal);
 
-            foreach (BaselineRunStep step in steps.Where(step => step.IsAccepted && !files.Contains(step.File)))
+            // Each line accepted as the draft now holds its accepted captures - an "Undo" or a "Redo" moved them.
+            foreach (BaselineRunStep step in steps)
             {
-                step.LostAcceptance();
-            }
-
-            // ... and one a "Redo" brought back is accepted again (code review, 2026-11-21: it stayed "Has a baseline", uncounted).
-            foreach (BaselineRunStep step in steps.Where(step => step.LostFile.Length > 0 && files.Contains(step.LostFile)))
-            {
-                step.RegainAcceptance();
+                step.FollowAccepted(files);
             }
 
             IReadOnlyList<int> rowOf = BaselineRunPins.Match(steps, baselines);
@@ -275,10 +279,16 @@ namespace Handlers.DataHandling
             {
                 used.Add(steps[index]);
 
-                // Renamed in the pane: the line says so, and a capture of it is filed under the name it has.
+                // Renamed in the pane, or its pin written otherwise ("3" now "3 [running]"): the line says so, and a capture of it is
+                // filed under the name and pin text it has (code review, 2026-11-22: the pin text kept its old spelling).
                 if (rowOf[index] >= 0 && (baselines[rowOf[index]].Name ?? string.Empty).Trim() is { Length: > 0 } name)
                 {
                     steps[index].Name = name;
+                }
+
+                if (rowOf[index] >= 0 && (baselines[rowOf[index]].Pin ?? string.Empty).Trim() is { Length: > 0 } pinText)
+                {
+                    steps[index].PinText = pinText;
                 }
 
                 return new BaselineRunLine(steps[index], rowOf[index]);
@@ -419,7 +429,8 @@ namespace Handlers.DataHandling
     {
         public BaselineRunPin Pin { get; } = pin;
 
-        public string PinText { get; } = pinText;
+        // As the baseline writes it - following the baseline as it is changed in the pane (Follow; code review, 2026-11-22).
+        public string PinText { get; set; } = pinText;
 
         public string Name { get; set; } = name;
 
@@ -447,16 +458,15 @@ namespace Handlers.DataHandling
         // Picked to go round - the window's checkbox, its quick picks and the case's pins set it.
         public bool IsPicked { get; set; }
 
-        // The file of an accepted capture an "Undo" took out of the draft - "" while there is none. A "Redo" that brings it back
-        // accepts it again (RegainAcceptance); a capture taken since lets go of it.
-        public string LostFile { get; private set; } = string.Empty;
+        // Every file a capture of it was accepted as in this run, the latest last - which of them the draft holds decides whether it is
+        // accepted, and as which, as an "Undo" or a "Redo" moves them (FollowAccepted).
+        private readonly List<string> thisAcceptedFiles = [];
 
         // A capture taken: waiting to be accepted - again, when one was before.
         public void Captured()
         {
             this.IsCaptured = true;
             this.IsAccepted = false;
-            this.LostFile = string.Empty;
         }
 
         // Its capture accepted, in the draft as `acceptedFile` - false, and nothing changed, when it has none in this run.
@@ -471,40 +481,48 @@ namespace Handlers.DataHandling
 
             this.File = acceptedFile.Trim();
             this.IsAccepted = true;
+            this.thisAcceptedFiles.Remove(this.File);
+            this.thisAcceptedFiles.Add(this.File);
             return true;
         }
 
         // ###########################################################################################
-        // Its accepted capture no longer in the draft - an "Undo" took it (code review, 2026-11-21): as it was before it, its baseline
-        // the one the run started from, nothing captured. False, and nothing changed, when it had none accepted.
+        // ACCEPTED AS THE DRAFT HOLDS ITS ACCEPTED CAPTURES NOW (`filesNow`, the baselines' files) - an "Undo" or a "Redo" moved them:
+        //   - Accepted, its file gone: accepted still as the latest capture of this run the draft has - the first, after an "Undo" of
+        //     the second of two (code review, 2026-11-22: it read as never accepted, its check gone and "Next" sending the contributor
+        //     back to a pin done) - else as it was before the run, its baseline the one it started from, nothing captured (code review,
+        //     2026-11-21: an "Undo" left it "Accepted").
+        //   - Not accepted, one of them back - a "Redo": accepted as it again (code review, 2026-11-21: it stayed "Has a baseline").
+        //   - A capture waiting stays as it is: taken since, it is the one to accept.
+        // True when anything changed.
         // ###########################################################################################
-        public bool LostAcceptance()
+        public bool FollowAccepted(IReadOnlySet<string> filesNow)
         {
+            ArgumentNullException.ThrowIfNull(filesNow);
+
+            if (this.IsWaiting || (this.IsAccepted && filesNow.Contains(this.File)))
+            {
+                return false;
+            }
+
+            if (this.thisAcceptedFiles.LastOrDefault(filesNow.Contains) is { } held)
+            {
+                bool changed = !this.IsAccepted || !string.Equals(this.File, held, StringComparison.Ordinal);
+
+                this.File = held;
+                this.IsCaptured = true;
+                this.IsAccepted = true;
+                return changed;
+            }
+
             if (!this.IsAccepted)
             {
                 return false;
             }
 
-            this.LostFile = this.File;
             this.File = this.OriginalFile;
             this.IsAccepted = false;
             this.IsCaptured = false;
-            return true;
-        }
-
-        // Its accepted capture back in the draft - a "Redo" of the step an "Undo" took: accepted again. False, and nothing changed,
-        // when it lost none, or a capture was taken since.
-        public bool RegainAcceptance()
-        {
-            if (this.LostFile.Length == 0 || this.IsCaptured)
-            {
-                return false;
-            }
-
-            this.File = this.LostFile;
-            this.LostFile = string.Empty;
-            this.IsCaptured = true;
-            this.IsAccepted = true;
             return true;
         }
     }

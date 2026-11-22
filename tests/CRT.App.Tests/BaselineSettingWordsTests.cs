@@ -50,6 +50,34 @@ public sealed class BaselineSettingWordsTests
         Assert.Equal(expected, BaselineSettingWords.TriggerLevel(volts));
     }
 
+    // ###########################################################################################
+    // SCPI'S "NOT A NUMBER" (9.91E+37) AND ITS OVERRANGE (9.9E+37) ARE NO SETTING (code review, 2026-11-22: an oscilloscope answering
+    // so for a setting that does not apply had a 38-digit number stored on the baseline) - nor is a value no oscilloscope's setting
+    // reaches. Each is "not answered", so the baseline keeps what it had; the largest real ones are still settings.
+    // ###########################################################################################
+    [Theory]
+    [InlineData(9.9e37)]
+    [InlineData(9.91e37)]
+    [InlineData(-9.9e37)]
+    public void SCPIs_not_a_number_is_no_setting(double answer)
+    {
+        Assert.Null(BaselineSettingWords.TimeDiv(answer));
+        Assert.Null(BaselineSettingWords.VoltsDiv(answer));
+        Assert.Null(BaselineSettingWords.TriggerLevel(answer));
+    }
+
+    [Fact]
+    public void A_value_no_setting_reaches_is_none_and_the_largest_real_ones_are_settings()
+    {
+        Assert.Null(BaselineSettingWords.TimeDiv(5000));
+        Assert.Null(BaselineSettingWords.VoltsDiv(50000));
+        Assert.Null(BaselineSettingWords.TriggerLevel(-500000));
+
+        Assert.Equal("1000s", BaselineSettingWords.TimeDiv(1000));
+        Assert.Equal("10000V", BaselineSettingWords.VoltsDiv(10000));
+        Assert.Equal("100000V", BaselineSettingWords.TriggerLevel(100000));
+    }
+
     // A value the oscilloscope did not answer - or one no setting can be - is none, so the baseline keeps what it had.
     [Fact]
     public void A_value_not_answered_or_impossible_is_none()

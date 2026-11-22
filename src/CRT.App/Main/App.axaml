@@ -281,9 +281,15 @@
 					<SolidColorBrush x:Key="Notice_Fg">#5C3A00</SolidColorBrush>
 
 					<!-- Light, "Capture from oscilloscope pin-by-pin": the old baseline's strip and frame - a soft red, the one a row
-					     deleted from the table has, beside the new capture's amber (owner request, 2026-11-20: "a red'ish background color"). -->
+					     deleted from the table has, beside the new capture's amber (owner request, 2026-11-20: "a red'ish background color").
+					     The frame a shade deeper than it was, so it is seen at 3:1 on the window and the card (ThemeContrastTests; code review,
+					     2026-11-22: #DE6E6E was 2.99:1 on the card). -->
 					<SolidColorBrush x:Key="CaptureOld_Bg">#F6C4C4</SolidColorBrush>
-					<SolidColorBrush x:Key="CaptureOld_Border">#DE6E6E</SolidColorBrush>
+					<SolidColorBrush x:Key="CaptureOld_Border">#DA6666</SolidColorBrush>
+					<!-- The new capture's frame: amber while not yet accepted, a shade deeper than a notice's edge (#E8B866, 1.8:1 on the
+					     window), and green once accepted - an Accept button's, seen as it is (code review, 2026-11-22). -->
+					<SolidColorBrush x:Key="CaptureToCheck_Border">#B07A1A</SolidColorBrush>
+					<SolidColorBrush x:Key="CaptureAccepted_Border">#497F54</SolidColorBrush>
 
 					<!-- Light, the credit sent with a submission on "Board: Credits" (2026-11-15): its frame, and the strip saying
 					     so - green, the color of what goes ahead. -->
@@ -573,9 +579,14 @@
 				<SolidColorBrush x:Key="Notice_Border">#7A5A1E</SolidColorBrush>
 				<SolidColorBrush x:Key="Notice_Fg">#F7D9A0</SolidColorBrush>
 
-				<!-- Dark, "Capture from oscilloscope pin-by-pin": the old baseline's strip and frame. -->
+				<!-- Dark, "Capture from oscilloscope pin-by-pin": the old baseline's strip and frame - the frame lighter than it was,
+				     seen at 3:1 on the window and the card (code review, 2026-11-22: #B05050 was 2.7:1 on the card). -->
 				<SolidColorBrush x:Key="CaptureOld_Bg">#5A2222</SolidColorBrush>
-				<SolidColorBrush x:Key="CaptureOld_Border">#B05050</SolidColorBrush>
+				<SolidColorBrush x:Key="CaptureOld_Border">#C45555</SolidColorBrush>
+				<!-- The new capture's frame, lighter than a notice's edge (#7A5A1E) and an Accept button's (#497F54), which are 2.2:1
+				     and 2.9:1 on the card (code review, 2026-11-22). -->
+				<SolidColorBrush x:Key="CaptureToCheck_Border">#A8741A</SolidColorBrush>
+				<SolidColorBrush x:Key="CaptureAccepted_Border">#4F9A60</SolidColorBrush>
 
 				<!-- Dark, the credit sent with a submission on "Board: Credits". -->
 				<SolidColorBrush x:Key="SubmittedCredit_Bg">#1D3A24</SolidColorBrush>

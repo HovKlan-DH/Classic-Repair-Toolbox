@@ -237,6 +237,55 @@ public sealed class TabDraftsEntriesTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // CAPTURES NOT YET ACCEPTED HOLD THE PANE ON THEIR COMPONENT - ONLY WHERE IT WOULD BE LEFT (code reviews, 2026-11-22): another
+    // component picked is refused, the capture window asking, and the pick follows the pane back; "Edit component" on the very
+    // component shown replaces nothing and goes ahead unasked (it was refused, and the edit dropped); and a refused "Open" of another
+    // - a problem's, or "Board: Regions"' - leaves the pick on the component shown, so the page clicked once the captures are dealt
+    // with is that component's (it opened the other).
+    // ###########################################################################################
+    [Fact]
+    public async Task Captures_waiting_hold_the_pane_on_their_component_but_never_against_editing_it()
+    {
+        WriteDraft();
+
+        await UiTest.RunAsync(async () =>
+        {
+            (TabDrafts tab, ListBox list) = Tab();
+            tab.UseScope(new FakeBaselineScope(), connected: true);
+
+            tab.PickComponentForTests("U8");
+            await Until(() => tab.IsComponentOpen, "The component never opened.");
+
+            BaselineCaptureWindow window = tab.ComponentPaneForTests.OpenBaselineCaptureWindow()!;
+            await window.CaptureCurrentAsync();
+            Assert.True(window.TargetsForTests[0].IsWaiting);
+
+            // "Edit component" on U8's own popup: no question, on "Basics".
+            await tab.EditComponentAsync("U8");
+            Assert.False(window.IsAskingAboutWaitingForTests);
+            Assert.Equal(("U8", ComponentPage.Basics), (tab.ComponentPaneForTests.Label, tab.ComponentPaneForTests.Page));
+
+            // Another component picked: refused, the window asking, the pick back on U8.
+            tab.PickComponentForTests("U1");
+            await Until(() => window.IsAskingAboutWaitingForTests && (list.SelectedItem as ComponentListItem)?.BoardLabel == "U8", "The pick never went back to U8.");
+            Assert.Equal("U8", tab.ComponentPaneForTests.Label);
+
+            // A refused "Open" of U1: the pick stays U8.
+            window.GetControl<Button>("KeepCapturingButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await tab.OpenComponentInRegionAsync("U1", "PAL");
+            Assert.True(window.IsAskingAboutWaitingForTests);
+            Assert.Equal("U8", (list.SelectedItem as ComponentListItem)?.BoardLabel);
+
+            // Discarded, a page clicked is U8's.
+            await window.ImagesReadForTests;
+            window.GetControl<Button>("DiscardAndCloseButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await tab.ShowEntryAsync(ContributeEntry.ComponentPinout);
+            await Until(() => tab.ComponentPaneForTests.Page == ComponentPage.Pinout, "The page never opened.");
+            Assert.Equal("U8", tab.ComponentPaneForTests.Label);
+        });
+    }
+
     // Overview closes it again, as anything else open.
     [Fact]
     public async Task Overview_goes_back_from_the_page_with_no_component()

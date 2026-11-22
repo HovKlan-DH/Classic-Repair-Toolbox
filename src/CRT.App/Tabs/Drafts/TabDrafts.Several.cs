@@ -153,6 +153,14 @@ namespace CRT
                 return;
             }
 
+            // Captures not yet accepted keep the pane on their component, its capture window asking (code review, 2026-11-22) - the
+            // pick here stays the pane's.
+            if (this.IsComponentOpen && this.ComponentPane.KeepsWaitingCaptures())
+            {
+                this.ShowNavSelection();
+                return;
+            }
+
             if (wanted.Count == 0)
             {
                 this.LetGoOfPickedComponent();

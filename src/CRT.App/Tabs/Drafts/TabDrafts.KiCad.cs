@@ -76,7 +76,7 @@ namespace CRT
             }
 
             // A picture's name the Pictures part cannot take keeps it open (OpenPaneAsync has why).
-            if (this.IsComponentOpen && this.ComponentPane.KeepsRefusedPictureName())
+            if (this.IsComponentOpen && this.ComponentPane.KeepsItselfOpen())
             {
                 return;
             }

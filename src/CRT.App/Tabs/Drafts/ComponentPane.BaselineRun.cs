@@ -41,6 +41,10 @@ namespace CRT
 
         internal Action<BaselineCaptureWindowPlace>? RememberCaptureWindowPlace { get; set; }
 
+        // For a test: the screen of CRT's window the capture window opens over - its working area and scaling - in place of the
+        // headless platform's one large screen.
+        internal (PixelRect WorkingArea, double Scaling)? CaptureWindowScreenForTests { get; set; }
+
         private BaselineCaptureWindow? thisCaptureWindow;
 
         // The window to follow the baselines once the files being added are in the draft (FollowRowsInBaselineRun).
@@ -158,7 +162,27 @@ namespace CRT
             return window;
         }
 
-        // The window closed by the pane - another component or region shown, or the pane letting go: a capture there not yet
+        // ###########################################################################################
+        // *** CAPTURES NOT YET ACCEPTED HOLD THE PANE ON THEIR COMPONENT (code review, 2026-11-22). *** The window is one of its own, so
+        // CRT's stays clickable - and another component, a part of the board, "Table" or a region picked closed it, every screen
+        // captured deleted unasked: each pin to be probed again. While any waits the host is refused (KeepsItselfOpen) and the window,
+        // brought to the front, asks what its own close asks - accept them and close, discard them and close, or keep capturing;
+        // answered, the pick is made again. Another board shown, or the draft discarded, still let them go: neither can be called off.
+        // ###########################################################################################
+        // `region`: asked for another region to be shown - one the window's captures were taken in is no reason to hold.
+        internal bool KeepsWaitingCaptures(string? region = null)
+        {
+            if (this.thisCaptureWindow is not { HoldsCaptures: true } window ||
+                (region is not null && string.Equals(region.Trim(), window.RunRegion, StringComparison.OrdinalIgnoreCase)))
+            {
+                return false;
+            }
+
+            window.AskAboutWaitingCaptures();
+            return true;
+        }
+
+        // The window closed by the pane - another board shown, the draft let go of, the component gone: a capture there not yet
         // accepted goes with it, asked about by nobody (it is in no draft, and the component it was of is no longer shown).
         internal void CloseBaselineCaptureWindow()
         {
@@ -191,12 +215,28 @@ namespace CRT
 
             if (!string.Equals(window.RunRegion, this.thisRegion, StringComparison.OrdinalIgnoreCase))
             {
+                // ###########################################################################################
+                // Captures not yet accepted are never let go of unasked (code review, 2026-11-22): a region picked is held while any
+                // waits (KeepsRegionShown), so the region changed under them by an edit - "Board: Regions", or an "Undo" of it. The
+                // window follows the region the pane shows now, where they would go in, and asks what to do with them.
+                // ###########################################################################################
+                if (window.HoldsCaptures)
+                {
+                    window.FollowRegion(this.thisRegion);
+                    window.FollowRows();
+                    window.AskAboutWaitingCaptures();
+                    return;
+                }
+
                 this.CloseBaselineCaptureWindow();
                 return;
             }
 
             window.FollowRows();
         }
+
+        // The component renamed, or a name of it changed, in the pane: the window's title and heading say it (code review, 2026-11-22).
+        private void ShowNamesInBaselineRun() => this.thisCaptureWindow?.ShowComponentNames();
 
         // ---- the capture, for the window ----------------------------------------------------------
 
@@ -234,9 +274,11 @@ namespace CRT
                 return;
             }
 
-            // A capture under way there: it is not moved to another pin meanwhile (BaselineCaptureWindow.IsBusy) - only brought forward.
+            // A capture under way there: it is not moved to another pin meanwhile (BaselineCaptureWindow.IsBusy) - brought forward, and
+            // why nothing more happens said (code review, 2026-11-22).
             if (window.IsBusy)
             {
+                this.ShowMessage(ComponentPaneWording.RunWindowBusy);
                 return;
             }
 

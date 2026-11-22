@@ -95,6 +95,11 @@ public class ThemeContrastTests
         foreach (var pair in On("BoardTable_CurrentCell_Border", Edge, "Table_Bg")) yield return pair;
         foreach (var pair in On("SubmittedCredit_Border", Edge, "Bg")) yield return pair;
 
+        // The pictures' frames in "Capture from oscilloscope pin-by-pin" - the old baseline's, a capture not yet accepted and one
+        // accepted - between the window and the card each frames (code reviews, 2026-11-22).
+        foreach (string frame in new[] { "CaptureOld_Border", "CaptureToCheck_Border", "CaptureAccepted_Border" })
+            foreach (var pair in On(frame, Edge, "Bg", "Card_Bg")) yield return pair;
+
         // A chip drawn with its insides (2026-11-16), per pin direction (2026-11-17): its ink - the edge of a pin's square on the
         // window's ground and of its badge on the case's card, and of the "Schematics" tab's legend swatches on that tab's
         // panel ground (PinDirectionLegend, 2026-11-17) - its wires on that card, and the number on the square's tint.

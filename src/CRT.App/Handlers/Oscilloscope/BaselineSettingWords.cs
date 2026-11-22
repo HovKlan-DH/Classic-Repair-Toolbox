@@ -14,21 +14,34 @@ namespace Handlers.Oscilloscope
     // ###########################################################################################
     public static class BaselineSettingWords
     {
+        // ###########################################################################################
+        // *** SCPI'S "NOT A NUMBER" IS NO SETTING (code review, 2026-11-22). *** An oscilloscope answers 9.91E+37 - SCPI's NaN - or
+        // its overrange, 9.9E+37, for a setting that does not apply, and it went into the baseline as a 38-digit number. So is a
+        // value no oscilloscope's setting reaches: over 1000 s a division (the slowest roll mode), 10 kV a division (behind a
+        // high-voltage probe) or a trigger level of 100 kV. Each is "not answered" - the baseline keeps what it had.
+        // ###########################################################################################
+        private const double NotANumber = 9.9e37;
+        private const double MostSecondsPerDivision = 1000;
+        private const double MostVoltsPerDivision = 1e4;
+        private const double MostTriggerVolts = 1e5;
+
         public static string? TimeDiv(double? seconds) =>
-            seconds is double value && double.IsFinite(value) && value > 0
+            seconds is double value && BaselineSettingWords.IsAnswer(value) && value > 0 && value <= MostSecondsPerDivision
                 ? BaselineSettingWords.InUnits(value, [(1, "s"), (1e-3, "ms"), (1e-6, "us"), (1e-9, "ns")])
                 : null;
 
         public static string? VoltsDiv(double? volts) =>
-            volts is double value && double.IsFinite(value) && value > 0
+            volts is double value && BaselineSettingWords.IsAnswer(value) && value > 0 && value <= MostVoltsPerDivision
                 ? BaselineSettingWords.InUnits(value, [(1, "V"), (1e-3, "mV")])
                 : null;
 
         // A trigger level may be at or below 0 V - always in volts, as every published one is.
         public static string? TriggerLevel(double? volts) =>
-            volts is double value && double.IsFinite(value)
+            volts is double value && BaselineSettingWords.IsAnswer(value) && Math.Abs(value) <= MostTriggerVolts
                 ? BaselineSettingWords.Number(value) + "V"
                 : null;
+
+        private static bool IsAnswer(double value) => double.IsFinite(value) && Math.Abs(value) < NotANumber;
 
         // The largest unit the value is at least one of - a hair under it counting (5e-05 reads back as 4.9999999999e-05).
         private static string InUnits(double value, (double Size, string Name)[] units)

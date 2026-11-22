@@ -203,6 +203,19 @@ namespace CRT
         }
 
         // ###########################################################################################
+        // Whether `region` picked must wait - asked by Main before a region button changes anything (code review, 2026-11-22):
+        // captures "Capture from oscilloscope pin-by-pin" holds not yet accepted are of the region they were taken in, and another
+        // shown closed the window with them. Its window asks about them meanwhile (ComponentPane.KeepsWaitingCaptures) - asked
+        // whichever tab is shown, as the window stands open whichever it is.
+        // ###########################################################################################
+        internal bool KeepsRegionShown(string region) =>
+            this.IsComponentOpen && this.ComponentPane.KeepsWaitingCaptures(region);
+
+        // Whether captures not yet accepted call CRT's leaving off - installing an update - their window asking about them
+        // (Main.ConfirmLeavingTablesAsync; code review, 2026-11-22).
+        internal bool KeepsWaitingCaptures() => this.ComponentPane.KeepsWaitingCaptures();
+
+        // ###########################################################################################
         // The region CRT shows, from the buttons under its component list: the list and what is open on
         // the right follow.
         // ###########################################################################################
@@ -248,7 +261,8 @@ namespace CRT
                     {
                         this.ComponentPane.Show(session, label, this.thisCurrentRegion, published, publishedBoardFile);
                     }
-                }));
+                },
+                componentAskedFor: label));
 
         // Several components, edited as one in the pane (ComponentPane.Several.cs; owner request, 2026-11-08).
         internal Task OpenSeveralAsync(IReadOnlyList<string> labels, Func<bool>? stillWanted = null) =>
@@ -435,21 +449,30 @@ namespace CRT
         // The pane opened on `entry`'s draft - `show` hands it the session, the board as published and
         // that board's file - the table closed first when it is open (what it holds saved).
         // ###########################################################################################
-        private async Task OpenPaneAsync(HardwareBoardEntry entry, Action<DraftSession, BoardData?, string> show)
+        // `componentAskedFor`: the one component it opens on - the pane on it already, nothing it shows is replaced.
+        private async Task OpenPaneAsync(HardwareBoardEntry entry, Action<DraftSession, BoardData?, string> show, string? componentAskedFor = null)
         {
             // What closes on the way hands the draft over - never lets it go (OpeningOn).
             using (this.OpeningOn(entry))
             {
-                await this.OpenPaneOnDraftAsync(entry, show);
+                await this.OpenPaneOnDraftAsync(entry, show, componentAskedFor);
             }
         }
 
-        private async Task OpenPaneOnDraftAsync(HardwareBoardEntry entry, Action<DraftSession, BoardData?, string> show)
+        private async Task OpenPaneOnDraftAsync(HardwareBoardEntry entry, Action<DraftSession, BoardData?, string> show, string? componentAskedFor)
         {
             // A picture's name the Pictures part cannot take keeps it open, the reason under its
             // heading - another part or component in its place threw the name away (code review,
-            // 2026-10-28). Another board shown still closes it: that cannot be called off.
-            if (this.IsComponentOpen && this.ComponentPane.KeepsRefusedPictureName())
+            // 2026-10-28) - and so do captures "Capture from oscilloscope pin-by-pin" holds not yet
+            // accepted, its window asking about them (code review, 2026-11-22). The pick then follows
+            // the pane back (FollowPickedComponent). Another board shown still closes it: that cannot
+            // be called off. The very component shown asked for again - "Edit component" on its
+            // popup - replaces nothing, and is never held (second code review, 2026-11-22: the
+            // window jumped forward asking, and the edit was dropped).
+            bool replacesNothing = componentAskedFor is not null && this.IsPaneOnComponent(componentAskedFor) &&
+                                   this.thisComponentEntry is { } shownOn && TabDrafts.SameBoard(shownOn, entry);
+
+            if (this.IsComponentOpen && !replacesNothing && this.ComponentPane.KeepsItselfOpen())
             {
                 return;
             }

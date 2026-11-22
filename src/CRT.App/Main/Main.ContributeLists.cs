@@ -835,9 +835,16 @@ namespace CRT
             }
         }
 
-        // "Clear" on the tab: back to how it starts - nothing narrowed, and no component picked.
+        // "Clear" on the tab: back to how it starts - nothing narrowed, and no component picked. Not while captures not yet accepted
+        // hold the pane on their component, its capture window asking - none of it, so the lists are never cleared with the component
+        // still picked (code review, 2026-11-22).
         private void ClearContributeLists()
         {
+            if (this.TabDrafts.KeepsWaitingCaptures())
+            {
+                return;
+            }
+
             this._contributeSearchTimer?.Stop();
 
             ContributeListState state = this.ContributeListStateOf(this._contributeListsBoard);

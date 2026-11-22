@@ -1280,6 +1280,14 @@ namespace CRT
         // ###########################################################################################
         internal async Task<bool> ConfirmLeavingTablesAsync()
         {
+            // Captures "Capture from oscilloscope pin-by-pin" holds not yet accepted call the leaving off, its window asking about them
+            // (code review, 2026-11-22) - installing an update restarts with no Closing event for that window to ask in. Quitting is
+            // called off by the window itself, asked before CRT's own Closing.
+            if (this.TabDrafts.KeepsWaitingCaptures())
+            {
+                return false;
+            }
+
             // A cell still being typed in counts (code review, 2026-10-13) - committed first.
             if (this.TabDrafts.CommitCellsAndHasUnsavedTableEdits() && !await this.TabDrafts.SaveDraftEditorsNowAsync())
             {

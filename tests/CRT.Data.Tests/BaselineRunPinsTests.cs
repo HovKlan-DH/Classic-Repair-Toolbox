@@ -59,6 +59,26 @@ public sealed class BaselineRunPinsTests
         Assert.Null(pins[2].Number);
     }
 
+    // ###########################################################################################
+    // A CHIP CRT HOLDS THE DATASHEET OF, TYPED WITH NO CASE, GOES ROUND EVERY PIN OF IT (code review, 2026-11-22: the pane draws its
+    // whole case, but the run had no pins - or only those with a baseline - and a pin clicked on the case found no line).
+    // ###########################################################################################
+    [Fact]
+    public void With_no_case_typed_the_datasheets_pins_are_gone_round()
+    {
+        KiCadPin[] datasheet = [.. Enumerable.Range(1, 14).Select(number => new KiCadPin(number.ToString(), $"P{number}", "Input", string.Empty))];
+
+        IReadOnlyList<BaselineRunPin> pins = BaselineRunPins.Of(
+            package: null,
+            [],
+            datasheet,
+            [Baseline("3", "1Y", "a.png"), Baseline("6", "2Y", "b.png")]);
+
+        Assert.Equal(Enumerable.Range(1, 14).Select(number => number.ToString()), pins.Select(pin => pin.Pin));
+        Assert.Equal(("P1", "Input", 0), (pins[0].Name, pins[0].Direction, pins[0].Baselines));
+        Assert.Equal(1, pins[2].Baselines);
+    }
+
     // A pin the pinout does not name takes the datasheet's name and direction, else - its name - its first baseline's.
     [Fact]
     public void A_pin_the_pinout_leaves_out_takes_the_datasheets_name_and_direction_else_a_baselines_name()
@@ -355,11 +375,11 @@ public sealed class BaselineRunPinsTests
         Assert.Equal((false, false, ""), (pin5.IsAccepted, pin5.IsCaptured, pin5.File));
         Assert.Equal(-1, undone.Single(line => ReferenceEquals(line.Step, pin5)).Row);
         Assert.Equal(14, undone.Count);
-        Assert.False(pin5.LostAcceptance());
+        Assert.False(pin5.FollowAccepted(new HashSet<string>(StringComparer.Ordinal) { "Scope baseline/U27_1.png" }));
 
         // A "Redo" brings it back: accepted again, held by its baseline (code review, 2026-11-21).
         IReadOnlyList<BaselineRunLine> redone = BaselineRunPins.Follow(steps, BaselineRunPins.Of("DIP-14", Pinout, null, with), with);
-        Assert.Equal((true, "Scope baseline/U27_5.png", ""), (pin5.IsAccepted, pin5.File, pin5.LostFile));
+        Assert.Equal((true, "Scope baseline/U27_5.png"), (pin5.IsAccepted, pin5.File));
         Assert.Equal(1, redone.Single(line => ReferenceEquals(line.Step, pin5)).Row);
 
         // Captured again after an "Undo", a "Redo" leaves the capture waiting alone.
@@ -367,6 +387,62 @@ public sealed class BaselineRunPinsTests
         pin5.Captured();
         BaselineRunPins.Follow(steps, BaselineRunPins.Of("DIP-14", Pinout, null, with), with);
         Assert.True(pin5.IsWaiting);
+    }
+
+    // ###########################################################################################
+    // A BASELINE'S PIN WRITTEN OTHERWISE IN THE PANE IS THE LINE'S PIN TEXT (code review, 2026-11-22: "3" made "3 [running]" kept its
+    // old spelling in the window's heading and in the names of new captures) - the very line, found by its file.
+    // ###########################################################################################
+    [Fact]
+    public void A_baselines_pin_written_otherwise_is_the_lines_pin_text()
+    {
+        ComponentImageEntry[] started = [Baseline("3", "1Y", "Scope baseline/U27_3.png")];
+        IReadOnlyList<BaselineRunPin> pins = BaselineRunPins.Of("DIP-14", Pinout, null, started);
+        List<BaselineRunStep> steps = Steps(pins, started).ToList();
+        BaselineRunStep pin3 = steps.Single(step => step.HadBaseline);
+
+        ComponentImageEntry[] written = [Baseline("3 [running]", "1Y", "Scope baseline/U27_3.png")];
+        IReadOnlyList<BaselineRunLine> lines = BaselineRunPins.Follow(steps, BaselineRunPins.Of("DIP-14", Pinout, null, written), written);
+
+        Assert.Same(pin3, lines.Single(line => line.Row == 0).Step);
+        Assert.Equal("3 [running]", pin3.PinText);
+    }
+
+    // ###########################################################################################
+    // ACCEPTED TWICE, ONE "UNDO" LEAVES IT ACCEPTED AS THE FIRST (code review, 2026-11-22: the line read as never accepted though its
+    // baseline held the first capture accepted - its check gone, the count down, "Next" sending the contributor back to a pin done).
+    // A "Redo" accepts the second again; undone back past both, it is the line it was before the run.
+    // ###########################################################################################
+    [Fact]
+    public void Accepted_twice_an_undo_of_the_second_leaves_it_accepted_as_the_first()
+    {
+        ComponentImageEntry[] started = [Baseline("1", "1A", "Scope baseline/U27_1.png")];
+        IReadOnlyList<BaselineRunPin> pins = BaselineRunPins.Of("DIP-14", Pinout, null, started);
+        List<BaselineRunStep> steps = Steps(pins, started).ToList();
+        BaselineRunStep pin1 = steps[0];
+
+        pin1.Captured();
+        pin1.Accepted("Scope baseline/U27_1_1A.png");
+        pin1.Captured();
+        pin1.Accepted("Scope baseline/U27_1_1A_2.png");
+
+        ComponentImageEntry[] Holding(string file) => [Baseline("1", "1A", file)];
+
+        // The second taken back by an "Undo": the baseline holds the first - accepted, as it.
+        IReadOnlyList<BaselineRunLine> undone = BaselineRunPins.Follow(steps, pins, Holding("Scope baseline/U27_1_1A.png"));
+        Assert.Equal((true, "Scope baseline/U27_1_1A.png"), (pin1.IsAccepted, pin1.File));
+        Assert.Equal(0, undone.Single(line => ReferenceEquals(line.Step, pin1)).Row);
+
+        // A "Redo": the second again.
+        BaselineRunPins.Follow(steps, pins, Holding("Scope baseline/U27_1_1A_2.png"));
+        Assert.Equal((true, "Scope baseline/U27_1_1A_2.png"), (pin1.IsAccepted, pin1.File));
+
+        // Undone back past both: the baseline the run started from, nothing accepted - and a "Redo" accepts the first again.
+        BaselineRunPins.Follow(steps, pins, started);
+        Assert.Equal((false, "Scope baseline/U27_1.png"), (pin1.IsAccepted, pin1.File));
+
+        BaselineRunPins.Follow(steps, pins, Holding("Scope baseline/U27_1_1A.png"));
+        Assert.Equal((true, "Scope baseline/U27_1_1A.png"), (pin1.IsAccepted, pin1.File));
     }
 
     // ###########################################################################################

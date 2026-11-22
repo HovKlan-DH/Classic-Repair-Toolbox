@@ -115,6 +115,14 @@ namespace CRT
         // ###########################################################################################
         internal void PickRegion(string region)
         {
+            // Captures "Capture from oscilloscope pin-by-pin" holds not yet accepted keep the region they were taken in, its window
+            // asking about them (TabDrafts.KeepsRegionShown; code review, 2026-11-22) - the buttons stay as they were.
+            if (this.TabDrafts.KeepsRegionShown(region))
+            {
+                this.UpdateRegionButtonsState();
+                return;
+            }
+
             this.RememberRegionPicked(region);
             this.ShowRegion(region);
         }

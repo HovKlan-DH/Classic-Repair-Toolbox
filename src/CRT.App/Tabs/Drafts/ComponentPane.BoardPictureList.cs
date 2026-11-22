@@ -287,6 +287,13 @@ namespace CRT
         internal bool KeepsRefusedPictureName() =>
             this.thisBoardPart == PaneBoardPart.Pictures && !this.CommitPictureNames();
 
+        // ###########################################################################################
+        // Whether the pane stays on what it shows - asked by the host before another part, a component or the table replaces it, and
+        // before another region is shown: a picture's name it cannot take (KeepsRefusedPictureName), or captures "Capture from
+        // oscilloscope pin-by-pin" holds not yet accepted (KeepsWaitingCaptures; code review, 2026-11-22).
+        // ###########################################################################################
+        internal bool KeepsItselfOpen() => this.KeepsRefusedPictureName() || this.KeepsWaitingCaptures();
+
         // Every name typed and not saved yet - what the pane holds handed over (CommitBoardPart). False
         // when one of them was refused.
         private bool CommitPictureNames()
