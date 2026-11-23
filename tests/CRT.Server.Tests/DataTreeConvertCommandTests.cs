@@ -92,7 +92,7 @@ namespace CRT.Server.Tests
             {
                 SourceDataRoot = "/srv/app-data/Data",
                 Generation = new Version(3, 0, 0),
-                Main = new MainDocument { Oscilloscopes = [new() { Brand = "Rigol", SeriesOrModel = "DHO800" }] },
+                Main = new MainDocument { BoardsRevisionDate = "2026-November-22", Oscilloscopes = [new() { Brand = "Rigol", SeriesOrModel = "DHO800" }] },
                 Boards =
                 [
                     new ConvertedBoard("Commodore/C64/250407", "Commodore/C64/250407/Data C64 250407 v3.0.0.xlsx",
@@ -114,6 +114,7 @@ namespace CRT.Server.Tests
 
             Assert.Contains("Generation converted: 3.0.0", report);
             Assert.Contains("Boards: 1", report);
+            Assert.Contains("Dated: 2026-November-22", report);
             Assert.Contains("Oscilloscopes: 1", report);
             Assert.Contains("Files the boards name: 1 (1.5 MB)", report);
             Assert.Contains("Stored once: 1 file(s) (1.5 MB)", report);

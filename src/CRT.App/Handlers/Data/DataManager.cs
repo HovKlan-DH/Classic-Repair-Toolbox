@@ -14,8 +14,13 @@ namespace Handlers.DataHandling
         private const string DataRootArg = "--data-root=";
         private static string _dataRoot = string.Empty;
 
-        // CRT 3.x's Excel data folder at a real launch (FindLegacyDataRoot), never in a test (LoadFrom).
+        // CRT 3.x's Excel data folder at a real launch (DataFolders), never in a test (LoadFrom) - read
+        // while what is in it is taken over, and "" once it is being deleted.
         private static string _legacyDataRoot = string.Empty;
+
+        // Whether this launch may delete CRT 3's folder once everything in it is taken over: it is the
+        // set-aside "Data CRT 3", and the data and drafts folders are the default ones (DataFolders).
+        private static bool _crt3FolderMayGo;
 
         // The user's own oscilloscope models (OwnOscilloscopeFile) at a real launch, never in a test.
         private static string _ownOscilloscopesPath = string.Empty;
@@ -297,8 +302,7 @@ namespace Handlers.DataHandling
                 ? $"Commandline parameters: [{string.Join(" ", args)}]"
                 : "No commandline parameters given");
 
-            _dataRoot = ResolveDataRoot(args);
-            _legacyDataRoot = DataManager.FindLegacyDataRoot();
+            DataManager.ArrangeDataFolders(args);
             DataManager.UseOwnOscilloscopesPath(Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
                 AppConfig.AppFolderName,
@@ -432,6 +436,106 @@ namespace Handlers.DataHandling
                     RaiseStatus,
                     RaiseFileDownload,
                     label: "board data files");
+            }
+
+            await Task.Run(DataManager.LetGoOfCrt3FolderIfTakenOver);
+        }
+
+        // ###########################################################################################
+        // The folders this launch works in (DataFolders): "--data-root=" moves and deletes nothing, and
+        // reads CRT 3's folder wherever it is; otherwise the folders are put in order first. CRT 3's
+        // folder may go only when the drafts are in the default folder too - another drafts folder says
+        // nothing of the drafts CRT 3 left. A capture folder chosen inside CRT 3's "Data" follows it.
+        // ###########################################################################################
+        private static void ArrangeDataFolders(string[] args)
+        {
+            string appFolder = DataManager.AppFolder;
+
+            if (DataManager.ExplicitDataRoot(args) is string explicitRoot)
+            {
+                _dataRoot = explicitRoot;
+                _legacyDataRoot = DataFolders.Crt3RootToRead(appFolder);
+                _crt3FolderMayGo = false;
+                return;
+            }
+
+            DataFolders.Layout layout = DataFolders.Arrange(appFolder);
+            string defaultDrafts = DraftManager.ResolveDraftsRoot([]);
+            bool draftsInDefaultFolder =
+                OscilloscopeCaptureRelocation.IsSameOrInside(DraftManager.DraftsRoot, defaultDrafts) &&
+                OscilloscopeCaptureRelocation.IsSameOrInside(defaultDrafts, DraftManager.DraftsRoot);
+
+            _dataRoot = layout.DataRoot;
+            _legacyDataRoot = layout.Crt3Root;
+            _crt3FolderMayGo = layout.Crt3MayGo && draftsInDefaultFolder;
+
+            if (layout.Crt3SetAsideNow &&
+                DataFolders.CaptureFolderAfterSettingAside(
+                    UserSettings.OscilloscopeImageFolder,
+                    Path.Combine(appFolder, AppConfig.DataFolderName),
+                    layout.Crt3Root) is string followed)
+            {
+                Logger.Info($"The oscilloscope capture folder went with CRT 3's data folder - it is [{followed}] now");
+                UserSettings.OscilloscopeImageFolder = followed;
+            }
+
+            if (layout.LeftToDelete.Length > 0)
+                _ = Task.Run(() => DataFolders.Delete(layout.LeftToDelete));
+        }
+
+        // ###########################################################################################
+        // Deletes CRT 3's set-aside folder once nothing in it is needed any more - asked at the end of
+        // every launch that may (ArrangeDataFolders), after its drafts, boards and own oscilloscope
+        // models were taken over (LoadMainExcel). Captures 3.0.0 saved at its top are moved out first,
+        // as from CRT's own data folder. A main file not read lists no board, so nothing would say
+        // which boards are published: then it stays.
+        // ###########################################################################################
+        private static void LetGoOfCrt3FolderIfTakenOver()
+        {
+            string crt3Root = _legacyDataRoot;
+
+            if (!_crt3FolderMayGo || string.IsNullOrWhiteSpace(crt3Root) || !Directory.Exists(crt3Root))
+                return;
+
+            try
+            {
+                if (HardwareBoards.Count == 0)
+                {
+                    Logger.Info($"CRT 3's data folder [{crt3Root}] is kept for now - the main data file was not read");
+                    return;
+                }
+
+                string captureFolder = UserSettings.OscilloscopeImageFolder?.Trim() ?? string.Empty;
+                var captures = OscilloscopeCaptureRelocation.Plan.ForFolder(captureFolder, crt3Root);
+
+                if (captures.MoveTarget is not null)
+                    OscilloscopeCaptureRelocation.MoveCapturesOutOfDataRoot(crt3Root, captures.MoveTarget, _ => false);
+
+                IReadOnlyList<string> keep = DataFolders.ReasonsToKeep(
+                    crt3Root,
+                    DraftManager.DraftsRoot,
+                    _ownOscilloscopesPath,
+                    HardwareBoards
+                        .Where(board => board.IsPublished)
+                        .Select(board => BoardDescriptorRules.BoardIdFromExcelDataFile(board.ExcelDataFile))
+                        .ToList(),
+                    captureFolder);
+
+                if (keep.Count > 0)
+                {
+                    Logger.Info($"CRT 3's data folder [{crt3Root}] is kept for now - {string.Join("; ", keep)}");
+                    return;
+                }
+
+                if (DataFolders.SetAsideForDeleting(crt3Root) is not string deleting)
+                    return;
+
+                _legacyDataRoot = string.Empty;
+                _ = Task.Run(() => DataFolders.Delete(deleting));
+            }
+            catch (Exception ex)
+            {
+                Logger.Warning($"Whether CRT 3's data folder [{crt3Root}] can go could not be told - [{ex.Message}] - it stays for now");
             }
         }
 
@@ -816,10 +920,16 @@ namespace Handlers.DataHandling
         }
 
         // ###########################################################################################
-        // Parses --data-root from args, or falls back to a persistent AppData folder that survives
-        // Velopack updates (which replace the install directory but leave AppData untouched).
+        // CRT's own app data folder, which survives Velopack updates (they replace the install
+        // directory but leave AppData untouched): its "Data" folder is the data root unless
+        // "--data-root=" says otherwise (DataFolders).
         // ###########################################################################################
-        internal static string ResolveDataRoot(string[] args)
+        internal static string AppFolder =>
+            Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppConfig.AppFolderName);
+
+        // The "--data-root=" value, or null when none was given: case-insensitive, surrounding quotes
+        // stripped, the first match wins.
+        internal static string? ExplicitDataRoot(string[] args)
         {
             foreach (var arg in args)
             {
@@ -827,22 +937,7 @@ namespace Handlers.DataHandling
                     return arg[DataRootArg.Length..].Trim('"', '\'');
             }
 
-            var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            return Path.Combine(appData, AppConfig.AppFolderName, AppConfig.DataFolderName);
-        }
-
-        // ###########################################################################################
-        // CRT 3.x's Excel data folder, when it is there - "" otherwise. Only read: the shared files
-        // an Excel-era draft cites are found in it while that draft is converted (DraftConversion).
-        // ###########################################################################################
-        internal static string FindLegacyDataRoot()
-        {
-            string folder = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                AppConfig.AppFolderName,
-                AppConfig.LegacyDataFolderName);
-
-            return Directory.Exists(folder) ? folder : string.Empty;
+            return null;
         }
 
         // ###########################################################################################

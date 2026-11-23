@@ -7,18 +7,18 @@ these files: every change to a board is made in CRT, on the "Contribute" tab.
 
 ## The data folder
 
-CRT keeps the downloaded data in a `Data v4` folder:
+CRT keeps the downloaded data in a `Data` folder:
 
-* Windows: `%LocalAppData%\Classic-Repair-Toolbox\Data v4`
-* Linux: `~/.local/share/Classic-Repair-Toolbox/Data v4`
-* macOS: `~/Library/Application Support/Classic-Repair-Toolbox/Data v4`
+* Windows: `%LocalAppData%\Classic-Repair-Toolbox\Data`
+* Linux: `~/.local/share/Classic-Repair-Toolbox/Data`
+* macOS: `~/Library/Application Support/Classic-Repair-Toolbox/Data`
 
 **Open data folder** on the "Configuration" tab opens it, and `--data-root` moves it - see
-[Command-line parameters](Commandline-parameters). A folder called `Data` beside it is CRT 3's,
-which CRT 4 only reads (to take over your CRT 3 drafts and scope models) and never changes.
+[Command-line parameters](Commandline-parameters). A folder called `Data CRT 3` beside it is what
+CRT 3 left: CRT 4 takes over your CRT 3 drafts, boards and scope models from it, then deletes it.
 
 ```
-Data v4/
+Data/
 ├── Classic-Repair-Toolbox.v4.0.0.json     <- the main file: every board, every oscilloscope
 ├── Commodore/
 │   └── C64/

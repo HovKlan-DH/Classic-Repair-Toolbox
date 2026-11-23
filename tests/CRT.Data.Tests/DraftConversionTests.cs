@@ -36,10 +36,22 @@ public sealed class DraftConversionTests
 
         public Situation()
         {
-            DataTreeConversionPlan plan = DataTreeConversion.Plan(this.Excel.DataRoot);
+            this.ConvertTree();
+        }
+
+        // The published Excel tree converted into the 4.0 tree again - after it changed, say.
+        public void ConvertTree()
+        {
+            DataTreeConversionPlan plan = DataTreeConversion.Plan(this.Excel.DataRoot, DataTreeConversionTests.ConvertedOn);
             DataTreeConversion.Write(plan, this.Tree, publicBaseUrl: null);
             this.BoardIds = plan.Main.Boards.Select(board => board.BoardId).ToList();
         }
+
+        public string PublishedPath => Path.Combine(this.Content, "Commodore", "C64", "250407", "board.json");
+
+        public DraftMarker Marker() => DraftMarkerStore.Load(Path.Combine(this.DraftFolder, DraftFolderLayout.DraftMarkerFileName))!;
+
+        public BoardDocument Base() => DataTreeJson.ReadBoard(File.ReadAllText(Path.Combine(this.DraftFolder, DraftFolderLayout.DraftBaseFileName)));
 
         public void Seed() => LegacyDrafts.Seed(this.Drafts, this.Excel.DataRoot, WorkbookA);
 
@@ -57,7 +69,7 @@ public sealed class DraftConversionTests
 
         public BoardDocument Draft() => DataTreeJson.ReadBoard(File.ReadAllText(Path.Combine(this.DraftFolder, DataTreeLayout.BoardFileName)));
 
-        public BoardDocument Published() => DataTreeJson.ReadBoard(File.ReadAllText(Path.Combine(this.Content, "Commodore", "C64", "250407", "board.json")));
+        public BoardDocument Published() => DataTreeJson.ReadBoard(File.ReadAllText(this.PublishedPath));
 
         public void Dispose()
         {
@@ -273,9 +285,79 @@ public sealed class DraftConversionTests
 
         Assert.Equal(DataTreeLayout.BoardFilePath(BoardA), after.BoardKey);
         Assert.Equal(situation.DraftFolder, DraftFolderLayout.GetBoardFolder(situation.Drafts, after.BoardKey));
-        Assert.Equal(before.BaseRevision, after.BaseRevision);
         Assert.Equal(before.CreatedUtc, after.CreatedUtc);
-        Assert.Empty(after.BaseContentHash);
+    }
+
+    private static DraftDriftState DriftOf(Situation situation) =>
+        DraftDriftCheck.Resolve(
+            new DraftStatus
+            {
+                BaseRevision = situation.Marker().BaseRevision,
+                BaseContentHash = situation.Marker().BaseContentHash,
+                DriftSeenRevision = situation.Marker().DriftSeenRevision,
+                DriftSeenContentHash = situation.Marker().DriftSeenContentHash,
+                HasBase = true,
+            },
+            situation.Published().RevisionDate,
+            DraftBaseStore.PublishedContentHash(situation.PublishedPath));
+
+    // ###########################################################################################
+    // A DRAFT STARTED FROM THE BOARD PUBLISHED NOW IS UP TO DATE WITH IT (2026-11-22). The tree's conversion
+    // dates the board the day it runs (owner request: "this is when the JSON files are generated"), so the
+    // draft's own revision - its workbook's, 2026-October-4 - is older than the published board's, which never
+    // changed: judged by those dates the contributor was told the board had been updated. Its base holds what
+    // the published board holds, so the draft takes the published revision and content, as a draft seeded today
+    // does - whatever the contributor's own changes are.
+    // ###########################################################################################
+    [Fact]
+    public void A_draft_started_from_the_board_published_now_is_up_to_date_with_it()
+    {
+        using var situation = new Situation();
+        situation.Seed();
+        situation.WriteInDraft("Board layout.png", "a better photo of 250407");
+        situation.Edit(board => WithImagesAndComponents(
+            board,
+            board.ComponentImages,
+            [.. board.Components, new ComponentEntry { BoardLabel = "U9", FriendlyName = "SID", TechnicalNameOrValue = "6581", Category = "IC" }]));
+
+        Assert.Equal("2026-October-4", situation.Marker().BaseRevision);
+
+        situation.Convert();
+
+        Assert.Equal("2026-November-22", situation.Published().RevisionDate);
+        Assert.Equal("2026-November-22", situation.Marker().BaseRevision);
+        Assert.Equal("2026-November-22", situation.Base().RevisionDate);
+        Assert.Equal(DraftBaseStore.PublishedContentHash(situation.PublishedPath), situation.Marker().BaseContentHash);
+        Assert.Equal(DraftDriftState.InSync, DriftOf(situation));
+    }
+
+    // ...and one started from an earlier publish is still told the board has moved on: published since, the
+    // board has a component its base has not, so the draft keeps its own revision, judged by it as before.
+    [Fact]
+    public void A_draft_started_from_an_earlier_publish_keeps_its_revision_and_reads_as_behind()
+    {
+        using var situation = new Situation();
+        situation.Seed();
+
+        string workbook = situation.Excel.Full(WorkbookA);
+        BoardData published = BoardDataReader.ReadWorkbookUncached(workbook)!;
+
+        situation.Excel.WriteBoard(
+            WorkbookA,
+            WithImagesAndComponents(
+                published,
+                published.ComponentImages,
+                [.. published.Components, new ComponentEntry { BoardLabel = "U9", FriendlyName = "SID", TechnicalNameOrValue = "6581", Category = "IC" }]),
+            BoardComponentHighlightStorage.LoadAllKiCadCalibrations(workbook),
+            BoardComponentHighlightStorage.LoadSchematicRenames(workbook));
+        situation.ConvertTree();
+
+        situation.Convert();
+
+        Assert.Equal("2026-October-4", situation.Marker().BaseRevision);
+        Assert.Empty(situation.Marker().BaseContentHash);
+        Assert.Equal("2026-October-4", situation.Base().RevisionDate);
+        Assert.Equal(DraftDriftState.OfficialIsNewer, DriftOf(situation));
     }
 
     // Nothing is lost: every file of the Excel-era draft is kept, as it was.

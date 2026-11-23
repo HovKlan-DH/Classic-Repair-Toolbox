@@ -479,7 +479,8 @@ public sealed class IcTestCatalogueShippedDataTests
     private static Task<IcTestResult> RunAsync(IcTestEntry entry, IMiniproRunner runner) =>
         new IcTestService(runner).RunAsync(entry, mode: null, output: null, ct: CancellationToken.None);
 
-    // The catalogue as it ships: Assets/Data plus the folder CRT reads it from.
+    // The catalogue as it ships: the installers' data pack (Assets/Data, the CRT 4.0 tree since 2026-11-22)
+    // plus the folder CRT 4 reads it from (DataTreeLayout's - the Excel tree had it under "Generic shared files").
     private static string CatalogueFolder()
     {
         string? folder = AppContext.BaseDirectory;
@@ -488,7 +489,7 @@ public sealed class IcTestCatalogueShippedDataTests
 
         Assert.NotNull(folder);
 
-        string relative = DataTreeUsage.MiniProTestsFolder.Replace('/', Path.DirectorySeparatorChar);
+        string relative = DataTreeLayout.MiniProTestsFolder.Replace('/', Path.DirectorySeparatorChar);
         return Path.Combine(folder!, "Assets", "Data", relative, "Catalogue");
     }
 }

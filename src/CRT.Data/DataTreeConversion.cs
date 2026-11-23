@@ -93,6 +93,12 @@ namespace Handlers.DataHandling
     // undated (owner decision, 2026-11-15: "the existing credits should actually have NO date at all"):
     // the history begins with the first credit a publish dates (CreditOrder).
     //
+    // *** IT DATES EVERY FILE IT WRITES THE DAY IT RUNS (owner request, 2026-11-22: "the 'last revisioned
+    // date' must state todays date, as this is when the JSON files are generated"). *** Every board file's
+    // revision date and the main file's two are the conversion's day, never the workbooks' "# Revision
+    // date:" lines - as a publish dates what it writes (PublishMerge, MainFileListing). A converted
+    // Excel-era draft whose base is the board as converted takes that date with it (DraftConversion).
+    //
     // *** IT ONLY READS THE SOURCE, AND WRITES ONLY INTO ITS OWN KIND OF FOLDER. *** Write refuses
     // a target inside the source (or the source inside it), and a non-empty target that is not a
     // tree this converter wrote. Into its own tree it writes exactly the plan: files already there
@@ -104,17 +110,19 @@ namespace Handlers.DataHandling
         private const string GenericSharedMiniProFolder = DataTreeUsage.MiniProTestsFolder;
 
         // ###########################################################################################
-        // Works out the conversion of the tree at `sourceDataRoot` (its "Data" folder). Reads the
-        // source and hashes every file it carries; writes nothing.
+        // Works out the conversion of the tree at `sourceDataRoot` (its "Data" folder), every file
+        // dated the day of `convertedUtc` (see the class header). Reads the source and hashes every
+        // file it carries; writes nothing.
         // ###########################################################################################
-        public static DataTreeConversionPlan Plan(string sourceDataRoot)
+        public static DataTreeConversionPlan Plan(string sourceDataRoot, DateTimeOffset convertedUtc)
         {
             var problems = new List<string>();
             var notes = new List<string>();
             var boards = new List<ConvertedBoard>();
             var stored = new Dictionary<string, DataTreeSourceFile>(StringComparer.Ordinal);
             var copied = new Dictionary<string, DataTreeSourceFile>(StringComparer.Ordinal);
-            var main = new MainDocument();
+            string dated = BoardWorkbookStyle.FormatRevisionDate(convertedUtc);
+            var main = new MainDocument { BoardsRevisionDate = dated, OscilloscopesRevisionDate = dated };
 
             string root = string.IsNullOrWhiteSpace(sourceDataRoot) ? string.Empty : Path.GetFullPath(sourceDataRoot);
 
@@ -175,7 +183,7 @@ namespace Handlers.DataHandling
 
             foreach (BoardRead read in reads)
             {
-                if (DataTreeConversion.NameFiles(read, boardIds, hashes, stored, carried, problems) is ConvertedBoard board)
+                if (DataTreeConversion.NameFiles(read, boardIds, dated, hashes, stored, carried, problems) is ConvertedBoard board)
                     boards.Add(board);
             }
 
@@ -299,14 +307,13 @@ namespace Handlers.DataHandling
                 {
                     if (string.Equals(sheet.Name, MasterWorkbookSchema.SheetName, StringComparison.OrdinalIgnoreCase))
                     {
-                        SheetText? listing = DataTreeConversion.ReadSheet(
+                        // Read for what CRT would skip in it; the rows are MasterListing's (above).
+                        DataTreeConversion.ReadSheet(
                             sheet,
                             [MasterWorkbookSchema.ColHardwareName, MasterWorkbookSchema.ColBoardName, MasterWorkbookSchema.ColExcelDataFile],
                             [MasterWorkbookSchema.ColHardwareName, MasterWorkbookSchema.ColBoardName, MasterWorkbookSchema.ColExcelDataFile, MasterWorkbookSchema.ColHardwareNotes],
                             $"The main workbook [{masterName}]",
                             problems);
-
-                        main.BoardsRevisionDate = listing?.RevisionDate ?? string.Empty;
                     }
                     else if (string.Equals(sheet.Name, MasterWorkbookSchema.OscilloscopeSheetName, StringComparison.OrdinalIgnoreCase))
                     {
@@ -317,8 +324,7 @@ namespace Handlers.DataHandling
                             $"The main workbook [{masterName}]",
                             problems);
 
-                        main.OscilloscopesRevisionDate = scopes?.RevisionDate ?? string.Empty;
-                        main.Oscilloscopes = scopes is null ? [] : DataTreeConversion.Oscilloscopes(scopes, masterName, problems);
+                        main.Oscilloscopes =scopes is null ? [] : DataTreeConversion.Oscilloscopes(scopes, masterName, problems);
                     }
                     else if (DataTreeConversion.HasAnyText(sheet))
                     {
@@ -612,11 +618,12 @@ namespace Handlers.DataHandling
 
         // ###########################################################################################
         // Names a read board's files (BoardFileNames, in the order it cites them), records each
-        // file's bytes as stored under its checksum, and builds the board file.
+        // file's bytes as stored under its checksum, and builds the board file - dated `dated`.
         // ###########################################################################################
         private static ConvertedBoard? NameFiles(
             BoardRead read,
             IReadOnlyList<string> boardIds,
+            string dated,
             Dictionary<string, DataTreeSourceFile> hashes,
             Dictionary<string, DataTreeSourceFile> stored,
             HashSet<string> carried,
@@ -652,6 +659,8 @@ namespace Handlers.DataHandling
                 problems.Add($"Board [{read.BoardId}]: {ex.Message}");
                 return null;
             }
+
+            document.RevisionDate = dated;
 
             return new ConvertedBoard(read.BoardId, read.Workbook, document, new Dictionary<string, string>(names.NamesByPath, StringComparer.OrdinalIgnoreCase));
         }
@@ -779,9 +788,9 @@ namespace Handlers.DataHandling
 
         // ---- reading a sheet -------------------------------------------------------------------
 
-        // A sheet's rows under its header row, keyed by the known headings, and the date on its
-        // "# Revision date:" line above the header.
-        private sealed record SheetText(string RevisionDate, IReadOnlyList<(int SheetRow, IReadOnlyDictionary<string, string> Cells)> Rows);
+        // A sheet's rows under its header row, keyed by the known headings. Its "# Revision date:" line
+        // is not carried: the converted files are dated the day of the conversion (Plan).
+        private sealed record SheetText(IReadOnlyList<(int SheetRow, IReadOnlyDictionary<string, string> Cells)> Rows);
 
         // ###########################################################################################
         // Finds the header row as CRT's readers do (the first row carrying every required heading),
@@ -848,30 +857,13 @@ namespace Handlers.DataHandling
                         rows.Add((dataRow, cells));
                 }
 
-                return new SheetText(DataTreeConversion.RevisionDateAbove(sheet, row, maxColumn), rows);
+                return new SheetText(rows);
             }
 
             if (DataTreeConversion.HasAnyText(sheet, skipMarkers: true))
                 problems.Add($"{who}: sheet [{sheet.Name}] has values but no header row CRT can find.");
 
             return null;
-        }
-
-        // "# Revision date: 2026-October-4" in the rows above the header, as the readers find it.
-        private static string RevisionDateAbove(ExcelWorksheet sheet, int headerRow, int maxColumn)
-        {
-            for (int row = 1; row < headerRow; row++)
-            {
-                for (int column = 1; column <= maxColumn; column++)
-                {
-                    string text = WorkbookCellText.Trimmed(sheet, row, column);
-
-                    if (text.StartsWith(MasterWorkbookSchema.RevisionDatePrefix, StringComparison.OrdinalIgnoreCase))
-                        return text[MasterWorkbookSchema.RevisionDatePrefix.Length..].Trim();
-                }
-            }
-
-            return string.Empty;
         }
 
         // A heading as the readers compare it: Alt+Enter line breaks folded into one space.

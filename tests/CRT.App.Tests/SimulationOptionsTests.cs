@@ -74,7 +74,7 @@ public class SimulationOptionsTests
         Assert.True(SimulationOptions.Parse(new[] { arg }).SimulateUpdate);
     }
 
-    // Shells hand quoted values through with the quotes attached; ResolveDataRoot strips them and
+    // Shells hand quoted values through with the quotes attached; ExplicitDataRoot strips them and
     // so does this, or the banner would read: Version ["2.7.0"] is available.
     [Theory]
     [InlineData("--simulate-update=\"2.7.0\"")]
@@ -117,7 +117,7 @@ public class SimulationOptionsTests
         Assert.Equal("1.2.3", options.SimulatedUpdateVersion);
     }
 
-    // First wins, matching DataManager.ResolveDataRoot's documented behaviour for duplicates.
+    // First wins, matching DataManager.ExplicitDataRoot's documented behaviour for duplicates.
     [Fact]
     public void The_first_occurrence_wins_when_the_switch_is_repeated()
     {

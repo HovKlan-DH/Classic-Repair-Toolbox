@@ -25,11 +25,11 @@ Puts the downloaded data (schematics, board data, images - close to 1 GB) somewh
 
 Default if you do not use it:
 
-* Windows: `%LocalAppData%\Classic-Repair-Toolbox\Data v4`
-* Linux: `~/.local/share/Classic-Repair-Toolbox/Data v4`
-* macOS: `~/Library/Application Support/Classic-Repair-Toolbox/Data v4`
+* Windows: `%LocalAppData%\Classic-Repair-Toolbox\Data`
+* Linux: `~/.local/share/Classic-Repair-Toolbox/Data`
+* macOS: `~/Library/Application Support/Classic-Repair-Toolbox/Data`
 
-CRT 4 keeps its data in `Data v4`, beside the `Data` folder CRT 3 used. CRT 4 only reads that older folder - to take over what you made in CRT 3: your drafts, and oscilloscope models you added - and you can delete it once you no longer use CRT 3.
+CRT 4 keeps its data in the `Data` folder, as CRT 3 did. The first time CRT 4 starts, it renames CRT 3's `Data` folder to `Data CRT 3` and makes a new `Data` folder for its own data. It takes over what you made in CRT 3 - your drafts, boards you added, oscilloscope models you added and oscilloscope captures - and then deletes `Data CRT 3` by itself. If something in it cannot be taken over yet, the folder stays until it can. With `--data-root`, CRT renames and deletes none of these folders.
 
 Good to know:
 

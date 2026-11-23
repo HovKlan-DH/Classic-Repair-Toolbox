@@ -12,7 +12,8 @@ namespace CRT.Data.Tests
     // THE SHIPPED DATA HAS NO ORPHAN FILES (owner decision, 2026-09-25: "there must be no
     // orphan files").
     //
-    // Runs DataTreeUsage over the real Assets/Data. The first run found 50 files nothing used
+    // Runs DataTreeUsage over the real CRT 3 Excel tree ("tests/CRT 3 Excel data", Assets/Data until
+    // 2026-11-22, when the installers' pack became the 4.0 tree). The first run found 50 files nothing used
     // (image-editor .fsc files, annotation projects, component images and PDFs no board cites,
     // uncited scope captures and readme texts), and the project owner approved removing all of them.
     // A file added to the tree without a row citing it now fails here, naming the file - before it
@@ -33,7 +34,7 @@ namespace CRT.Data.Tests
 
             Assert.NotNull(folder);
 
-            return Path.Combine(folder!, "Assets", "Data");
+            return Path.Combine(folder!, "tests", "CRT 3 Excel data");
         }
 
         [Fact]

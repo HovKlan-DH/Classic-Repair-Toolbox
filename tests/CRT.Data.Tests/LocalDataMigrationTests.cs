@@ -49,7 +49,7 @@ public sealed class LocalDataMigrationTests : IDisposable
     {
         using DataTreeConversionTests.ExcelTree tree = DataTreeConversionTests.ExcelTree.Standard();
         string treeRoot = Path.Combine(this.thisSpace.Root, "app-data-v4");
-        DataTreeConversionPlan plan = DataTreeConversion.Plan(tree.DataRoot);
+        DataTreeConversionPlan plan = DataTreeConversion.Plan(tree.DataRoot, DataTreeConversionTests.ConvertedOn);
         DataTreeConversion.Write(plan, treeRoot, publicBaseUrl: null);
         string content = Path.Combine(treeRoot, DataTreeLayout.ContentFolder);
         List<string> boardIds = plan.Main.Boards.Select(board => board.BoardId).ToList();
@@ -202,6 +202,92 @@ public sealed class LocalDataMigrationTests : IDisposable
     {
         Assert.Empty(LocalDataMigration.CarryUserContributionBoards(this.Drafts, string.Empty, [], []));
         Assert.Empty(LocalDataMigration.CarryUserContributionBoards(this.Drafts, Path.Combine(this.thisSpace.Root, "nowhere"), [], []));
+    }
+
+    // ------------------------------------------------------------------ what is still to take over
+
+    // ###########################################################################################
+    // CRT 3's data folder is deleted once StillToTakeOver says nothing (owner request, 2026-11-22;
+    // DataFolders) - so every step of a board made the old way keeps it: not carried yet, carried
+    // but not taken in as a draft yet. Taken in, nothing of it is needed any more.
+    // ###########################################################################################
+    [Fact]
+    public void A_board_made_in_CRT_3_keeps_the_folder_until_it_is_carried_and_taken_in_as_a_draft()
+    {
+        using DataTreeConversionTests.ExcelTree tree = TreeWithOwnBoard();
+        Directory.CreateDirectory(this.Drafts);
+
+        Assert.Contains(
+            LocalDataMigration.StillToTakeOver(this.Drafts, tree.DataRoot, ["Commodore/C64/250407"]),
+            reason => reason.Contains($"the board [{OwnBoard}] is not carried", StringComparison.Ordinal));
+
+        LocalDataMigration.CarryUserContributionBoards(this.Drafts, tree.DataRoot, [], []);
+
+        Assert.Contains(
+            LocalDataMigration.StillToTakeOver(this.Drafts, tree.DataRoot, []),
+            reason => reason.Contains("is not taken in as a draft yet", StringComparison.Ordinal));
+
+        DraftFolderImport.ImportUnmarkedFolders(this.Drafts, [], DateTimeOffset.UtcNow, oldDataRoot: tree.DataRoot, treeContentRoot: string.Empty);
+
+        Assert.Empty(LocalDataMigration.StillToTakeOver(this.Drafts, tree.DataRoot, []));
+    }
+
+    // A published board's own copy is the published one - nothing to carry, nothing kept for it.
+    [Fact]
+    public void A_board_the_main_file_lists_is_nothing_still_to_take_over()
+    {
+        using DataTreeConversionTests.ExcelTree tree = TreeWithOwnBoard();
+        Directory.CreateDirectory(this.Drafts);
+
+        Assert.Empty(LocalDataMigration.StillToTakeOver(this.Drafts, tree.DataRoot, [OwnBoard]));
+    }
+
+    [Fact]
+    public void A_CRT_3_draft_not_converted_yet_keeps_the_folder_and_a_converted_one_does_not()
+    {
+        using DataTreeConversionTests.ExcelTree tree = DataTreeConversionTests.ExcelTree.Standard();
+        string folder = this.DraftFolder("Commodore/C64/250407");
+        Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder, "Data C64 250407.xlsx"), "not a workbook");
+        DraftMarkerStore.Save(Path.Combine(folder, DraftFolderLayout.DraftMarkerFileName), new DraftMarker { BoardKey = "Commodore/C64/250407/Data C64 250407.xlsx" });
+
+        Assert.False(DraftConversion.IsConverted(folder));
+        Assert.Contains(
+            LocalDataMigration.StillToTakeOver(this.Drafts, tree.DataRoot, []),
+            reason => reason.Contains("is not converted yet", StringComparison.Ordinal));
+
+        Directory.Delete(folder, recursive: true);
+        Assert.True(DraftSeeder.CreateNewBoard(this.Drafts, new NewBoardRegistration
+        {
+            HardwareName = "VIC-20",
+            BoardName = "250403",
+            ExcelDataFile = "Commodore/VIC-20/250403/board.json",
+        }).Created);
+
+        Assert.True(DraftConversion.IsConverted(this.DraftFolder("Commodore/VIC-20/250403")));
+        Assert.Empty(LocalDataMigration.StillToTakeOver(this.Drafts, tree.DataRoot, []));
+    }
+
+    // Unreadable now - held open by another program, say - its boards are carried at a later start.
+    [Fact]
+    public void A_UserContribution_workbook_that_cannot_be_read_keeps_the_folder()
+    {
+        using DataTreeConversionTests.ExcelTree tree = DataTreeConversionTests.ExcelTree.Standard();
+        tree.WriteFile(ContributionName, "not a workbook");
+        Directory.CreateDirectory(this.Drafts);
+
+        Assert.Contains(
+            LocalDataMigration.StillToTakeOver(this.Drafts, tree.DataRoot, []),
+            reason => reason.Contains($"[{ContributionName}] could not be read", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Without_a_drafts_folder_nothing_counts_as_taken_over_and_without_a_CRT_3_folder_nothing_is_left()
+    {
+        using DataTreeConversionTests.ExcelTree tree = DataTreeConversionTests.ExcelTree.Standard();
+
+        Assert.NotEmpty(LocalDataMigration.StillToTakeOver(Path.Combine(this.thisSpace.Root, "no drafts"), tree.DataRoot, []));
+        Assert.Empty(LocalDataMigration.StillToTakeOver(this.Drafts, Path.Combine(this.thisSpace.Root, "nowhere"), []));
     }
 
     // ------------------------------------------------------------------ own scope models

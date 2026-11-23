@@ -1,0 +1,41 @@
+{
+  "schema": 1,
+  "id": "906114-01",
+  "match": [
+    "906114-01"
+  ],
+  "description": "Commodore 64 PLA (Signetics 82S100)",
+  "kind": "pla",
+  "support": "testable",
+  "coverage": "exhaustive",
+  "inputs": 16,
+  "pinCount": 28,
+  "voltage": 5,
+  "deviceName": "C64 PLA 906114-01",
+  "modes": [
+    {
+      "name": "quick",
+      "label": "Quick (25)",
+      "coverage": "sample",
+      "vectorCount": 25,
+      "vectorsFile": "Vectors/906114-01-quick.logicic.xml",
+      "vectorsCompressed": false
+    },
+    {
+      "name": "standard",
+      "label": "Standard (512)",
+      "coverage": "sample",
+      "vectorCount": 512,
+      "vectorsFile": "Vectors/906114-01-standard.logicic.xml",
+      "vectorsCompressed": false
+    },
+    {
+      "name": "full",
+      "label": "Full (65536)",
+      "coverage": "exhaustive",
+      "vectorCount": 65536,
+      "vectorsFile": "Vectors/906114-01-full.logicic.xml",
+      "vectorsCompressed": false
+    }
+  ]
+}

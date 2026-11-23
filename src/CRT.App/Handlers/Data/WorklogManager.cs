@@ -319,7 +319,7 @@ namespace Handlers.DataHandling
 
         // ###########################################################################################
         // Parses "--workbooks-root=" out of the command line, following the same conventions
-        // DataManager.ResolveDataRoot uses for "--data-root=": case-insensitive, surrounding quotes
+        // DataManager.ExplicitDataRoot uses for "--data-root=": case-insensitive, surrounding quotes
         // stripped, first match wins. Returns null when not given, so Load() can fall back to its
         // AppData default.
         // ###########################################################################################

@@ -12,7 +12,7 @@
 		<InformationalVersion>$(AssemblyVersion)</InformationalVersion>
 		-->
 		<InformationalVersion>4.0.0-beta.1</InformationalVersion>
-		
+
 		<OutputType>WinExe</OutputType>
 		<TargetFrameworks>net10.0</TargetFrameworks>
 		<RollForward>LatestMajor</RollForward>

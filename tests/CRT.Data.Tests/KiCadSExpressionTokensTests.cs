@@ -41,7 +41,7 @@ namespace CRT.Data.Tests
 
             Assert.NotNull(folder);
 
-            return Path.Combine(folder!, "Assets", "Data");
+            return Path.Combine(folder!, "tests", "CRT 3 Excel data");
         }
 
         // ###########################################################################################

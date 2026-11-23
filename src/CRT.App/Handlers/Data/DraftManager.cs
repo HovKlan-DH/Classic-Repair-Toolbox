@@ -79,7 +79,7 @@ namespace Handlers.DataHandling
 
         // ###########################################################################################
         // Parses "--drafts-root=" out of the command line, following the same conventions
-        // DataManager.ResolveDataRoot and WorklogManager.ResolveExplicitWorkbookRoot use. Unlike
+        // DataManager.ExplicitDataRoot and WorklogManager.ResolveExplicitWorkbookRoot use. Unlike
         // those two, this always returns a usable path (never null) because there is no separate
         // "explicit vs default" caller-visible distinction needed here yet - Load() is the only
         // caller. internal, so tests can point it at a temp folder without going through Load().

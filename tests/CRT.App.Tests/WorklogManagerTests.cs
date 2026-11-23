@@ -2606,7 +2606,7 @@ public sealed class WorklogManagerTests : IDisposable
     }
 
     // ###########################################################################################
-    // "--workbooks-root=" - the same idea as DataManager.ResolveDataRoot's "--data-root=", but for
+    // "--workbooks-root=" - the same idea as DataManager.ExplicitDataRoot's "--data-root=", but for
     // the purely-local Workbooks folder. ResolveExplicitWorkbookRoot is pure (no statics touched, no
     // AppData read), so it is safe to call directly without going through Load().
     // ###########################################################################################

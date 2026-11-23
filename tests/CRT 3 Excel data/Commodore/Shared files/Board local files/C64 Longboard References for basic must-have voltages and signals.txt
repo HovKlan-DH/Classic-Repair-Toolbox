@@ -1,0 +1,91 @@
+----------------------------
+Hardware      : Commodore 64
+Board(s)      : 250407 + 250425 + 250466 (all "longboards")
+Revision date : 2025-December-31
+--------------------------------
+
+Below is my default troubleshooting guide for myself, so I do not forget. In most cases it covers the basics only, and it is for sure not a methodotical checklist that will check everything. I will add or change, once I repair more. The troubleshooting can be used, if you get anything else than a standard blue BASIC screen.
+
+There is a slight change between the longboards and the shortboard. In the "longboards" there are two different "rails" for +5VDC - one directly from the external power supply and one from the "CAN".
+
+--------------------
+Tooling requirements
+--------------------
+- Oscilloscope
+- Multimeter
+
+
+------------------------------
+Very first inspection : Step 1
+------------------------------
+Do a thorough visual inspection of the board. Check for obvious faults like loose wires or components, components with bent or broken pins, short circuits, oxidation, user modifications or anything else that looks weird.
+Many times the board has previously been repaired by someone else, so do check the backside for rework, and if it looks horrible, then it could be a good place to start troubleshooting.
+Also do check that IC's are oriented correctly, and that e.g. SID and PLA has not been swapped.
+
+
+------------------------------
+Very first inspection : Step 2
+------------------------------
+Another way of inspection is touching every IC with a finger. Some IC's run very hot by nature - especially the VIC, but also and SID becomes very warm. Other chips will be warm also, but none should be so hot that you cannot hold your finger for a couple of seconds or alike. If it is too hot to touch, then most likely there is an issue with it and you should probably just replace the IC (make sure the below voltages are all okay first).
+
+
+-----------------
+Voltages : Step 1
+-----------------
+Recommended reading for understanding C64 voltages:
+https://refurbished-commodore.com/checking-c64-voltages
+
+If only one pin is mentioned, then the other pin is "ground", which is whereever you can find a common ground - this could be e.g. the chassis of the RF modulator, the expansion/cartridge metal frame or the "GND" pin of the IC/component.
+
+User port:
+    +5VDC between pin 1+2 (one on each side of gap)
+    9VAC between pin 10+11 (one on each side of gap)
+CPU:
+    +5VDC pin 6: coming from external PSU
+VIC-II:
+    +5VDC pin 40: coming from internal "CAN"
+    +12VDC pin 13: coming from internal
+
+Also, traces or components could be broken elsewhere, so it is of course not bullet-proof, and you may need to check other places also, but above gives a good indication if the power rails are in good shape.
+
+
+-----------------
+Voltages : Step 2
+-----------------
+If any of the above voltages fails or looks off then check these.
+
+Fuse:
+    ---> MEASURING THE FUSE MUST BE DONE WHEN C64 IS POWERED OFF!! <---
+    In multimeter continuity mode then measure between the two ends - it should beep
+Also check the two "internal" power supplies:
+    7805:
+        +5VDC pin 2 (right-most pin): this is the internal "CAN" source
+    7812:
+        +12VDC pin 2 (right-most pin)
+
+
+-----------
+Frequencies
+-----------
+CPU:
+    pin 1 = 985 kHz: "Φ0" clock input
+    pin 39 = 985 kHz: "Φ2" clock output from CPU
+VIC-II:
+    pin 17 = 985 kHz: "Φ0" clock output from VIC-II
+    pin 21 = 17.72 MHz: ΦCOLOR clock input
+    pin 22 = 7.88 MHz: ΦDOT clock input
+
+
+-------
+Signals
+-------
+Reset:
+    CPU:
+        pin 40 = at power-on it stays LOW for ~100–800ms, then goes HIGH and stays HIGH
+Video output:
+    VIC-II:
+        pin 15 = view "SYNC/LUM explanation" in CRT for pin 15 (the next image after)
+
+
+This is written by the "Commodore Repair Toolbox" developer.
+Connect with me via the "Feedback" tab, if you see need for changes or have a better approach.

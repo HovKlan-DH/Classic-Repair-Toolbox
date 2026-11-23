@@ -1,0 +1,144 @@
+                   C128 CHIPS AND COMMON SYMPTOMS 
+               latest updates or corrections 8-8-2013
+
+U1        906108-02 (6526 & A) CIA (interchanges with 8521)
+          # unknown (8521) CIA later version C128 
+     C64 startup screen normal, but no cursor. May not start up in 128
+mode. No keyboard, joyport, or cassette access. Partial failure: some keys
+or joystick positions don't work or random characters appear after power 
+up. Cartridge works. Swap U1 with U4 to check. See KEYBOARD. Shorted chip 
+can produce blank screen and chip can get hot to the touch.
+
+U4        901108-02 (6526 & A) CIA 
+     Startup screens normal (64 & 128), but no serial or user port access. 
+Drive resets on power up but "File not found" error when drive accessed.
+Cartridge works. Swap U4 with U1 to check. Check also buffer IC U30.
+
+U5        906112-02 (6581) early 128 SID: 12 volt VDD
+          318013-01 (8580) late 128 SID: 9 volt VDD 
+     No sound (check also transistor Q2), weak or bad sound of one or more
+voices. Proportional mouse or graphics tablet doesn't work, or mouse
+pointer frozen or jitters. If chip is shorted, will produce blank screen.
+Remove chip to check. 
+
+U6        315020-01 (8502) MPU (Microprocessor) 
+     No bootup in any mode. Blank screen with no border. Cartridge don't
+work. If intermittant, screen freezes after warmup or running programs
+lock up. 
+
+U7        310389-01 (8722) MMU (Memory Management Unit) 
+     No bootup in any mode. Blank screen with no border. Partial failure: 
+CP/M inoperative. 
+                  
+U10       906150-02 (Z80B) CPU (Microprocessor)
+     No bootup in any mode. Blank screen with no border. Partial failure:
+CP/M inoperative.
+
+U11       315012-01 (8721) PLA (Programable Logic Array) 
+     No bootup in any mode. In 40 columns: blank screen, white screen,
+light blue screen (no border), random checkerboard pattern or flashing
+"garbage" characters. 
+
+U14 & 15  74LS257  logic, RAM interface
+     Can cause blank screen. Partial failure can cause abnormal bytes 
+free at startup or "garbage" screen (lots of odd characters).
+
+U18       390059-01 CHARACTER ROM
+     No characters. Startup has border, but "garbage" where characters
+belong. Entire area inside border just lines or blocks. 
+
+U19       generic SRAM (6116 - LC3517A) COLOR RAM 2K X 8
+     128 startup screen and colors normal. C64 screen characters & colors
+flash rapidly. 
+
+U21       315009-03 (8564) VIC (40 column screen) 
+     Dead chip: Blank white screen in 40 columns and black screen in 80
+columns. Partial failure: 80 column OK but weak or garbled 40 column
+video, no video or no color. Check also U28 and crystal Y2.
+
+U22       315014-09 (8563) VDC for C128 80 column screen.
+          315092-01 (8568) VDC for C128DCR 80 column screen. 
+     40 column screen OK. 80 column screen: Blank screen. Entire screen
+shifts horizontally. May not switch from 128 to 64 mode with reset switch.
+Check also crystal oscillator Y1. If one or more colors missing, check
+U24.
+
+U23 & U25    generic 4416 Video RAM (16K)
+             generic 4464 Video RAM (64K VRAM upgrade) 
+     In 80 column mode only: blank screen or some characters garbled.
+Shorted chips may get hot. 
+
+U24       generic 74LS244 Buffer 
+One color (such as red) missing from 80 column screen. Check also U22.
+
+U28       251527-09 (8701) Clock gen. (Master oscillator) 
+     Dead chip: no bootup in any mode. Partial failure: diagonal lines on
+monitor or TV (horizontal sync bad), no color in 40 column mode, or
+"barber pole" colors. Check also crystal Y2. 
+
+U32       251913-01  C64 Kernal/Basic ROM.
+     Blank screen at startup in C64 mode only. Cartridge works.
+
+U33       318018-02  C128 BASIC LO ROM
+     No BASIC startup screen in 128 mode only. Computer goes into
+"monitor" mode. 
+
+U34       318019-02  C128 BASIC HI ROM
+     Blank screen with border at 128 mode startup. Lines or "garbage"
+inside border. 
+
+U35       318020-03  C128 Kernal ROM
+     Comes up in C64 mode, but cartridge doesn't work. Partial failure:
+blank screen in 128 mode only. 
+
+U36       socket empty from factory... for "upgrades".
+
+U38 THRU U45    8 RAM chips (4164) in Bank 0 (used in 64 and 128 modes)
+U46 THRU U52    8 RAM chips (4164) in Bank 1 (used in 128 mode only)
+                4 RAM chips (4464) in later C128DCR (USA version). 
+     Blank screen, no border. Shorted chips may get hot. Will sometimes
+produce "garbage" screen, abnormal number of bytes free (check also U14 
+and U15) or "out of memory" error on startup screen, and program crashes 
+when loading (depends on what part of memory is bad).
+
+Y1       16 MHz Crystal Oscillator
+     Blank screen in 80 column only.
+
+Y2       14.31818 MHz crystal (Master osc. reference)
+     See U21 VIC.
+
+M1       251917-02 RF Modulator (tin can "module"). 
+     TV output only: no picture, no sound, snowy picture, no color, weak
+video or sound, interference, etc. Note: direct A/V outputs still work
+normally. 
+
+KEYBOARD: 
+     Stuck (shorted) keys will show up when another key is pressed... it
+either will not work, or both appear on screen. Character may repeat,
+depending on which key is bad. If keyboard is suspected, unplug it...
+the computer will start up normally without it. Check also U1 CIA chip.
+
+POWER SUPPLY: 
+     Most common problem is "dead" computer, but can produce many symptoms
+like blank screen (power LED on or off), screen freeze-up, "garbage
+screen", hum bars moving up screen, intermittant operation, etc. 
+
+     For intermittant operation or "glitches" on screen, random
+characters, etc. check solder of power supply connector and power switch
+on motherboard. Also, reseat socketed chips: lift up slightly at each end
+(but do not remove) and press back down. Reseat suspected chips first for
+any problem, especially intermittants. 
+
+     For in-depth troubleshooting, Sams Photofact (schematic and parts
+list) has flow charts and step by step diagnostics. It requires an
+oscilloscope and the necessary skills to interpret the readings. The Sams
+book for the C128 is CC18 and CSCS25 for the 128DCR. They are available at
+electronic parts distributors. Copies may be viewed at the main branch of
+the Public Library. 
+
+Ray Carlsen CET 
+CARLSEN ELECTRONICS 
+
+Your questions or comments are always welcome, especially if you spot any 
+errors here. Thanks! 
+

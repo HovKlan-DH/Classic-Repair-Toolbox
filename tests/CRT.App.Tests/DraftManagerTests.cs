@@ -6,7 +6,7 @@ namespace ClassicRepairToolbox.Tests;
 // Characterisation tests for DraftManager - resolving the "Drafts/" root (NewContributeStrategy.md
 // Phase 2, session 2a) and mapping a board's ExcelDataFile to its folder under it. Mirrors
 // WorklogManagerTests' own coverage of WorklogManager.ResolveExplicitWorkbookRoot and
-// DataManagerTests' coverage of DataManager.ResolveDataRoot - same switch-parsing rules, so the
+// DataManagerTests' coverage of DataManager.ExplicitDataRoot - same switch-parsing rules, so the
 // same cases: the argument itself, quote-stripping, case-insensitivity, first-match-wins,
 // unrelated arguments ignored, and no argument given at all.
 //

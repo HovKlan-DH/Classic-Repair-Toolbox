@@ -19,6 +19,9 @@ public sealed class DataTreeConversionTests : IClassFixture<DataTreeConversionTe
     private const string WorkbookA = BoardA + "/Data C64 250407 v3.0.0.xlsx";
     private const string WorkbookB = BoardB + "/Data C64 250425 v3.0.0.xlsx";
 
+    // The day every conversion in the tests runs - late in the UTC day, as a publish's date is UTC's.
+    internal static readonly DateTimeOffset ConvertedOn = new(2026, 11, 22, 23, 30, 0, TimeSpan.Zero);
+
     private readonly StandardTree thisTree;
 
     public DataTreeConversionTests(StandardTree tree)
@@ -38,7 +41,7 @@ public sealed class DataTreeConversionTests : IClassFixture<DataTreeConversionTe
 
         public StandardTree()
         {
-            this.Plan = DataTreeConversion.Plan(this.Tree.DataRoot);
+            this.Plan = DataTreeConversion.Plan(this.Tree.DataRoot, DataTreeConversionTests.ConvertedOn);
         }
 
         public void Dispose() => this.Tree.Dispose();
@@ -110,7 +113,25 @@ public sealed class DataTreeConversionTests : IClassFixture<DataTreeConversionTe
         Assert.Equal(new[] { 100, 200, 30, 40 }, new[] { a.Highlights[0].X, a.Highlights[0].Y, a.Highlights[0].Width, a.Highlights[0].Height });
         Assert.Equal(0.75, a.KiCadCalibrations.Single().ScaleX);
         Assert.Equal("Board layout.png", a.SchematicRenames.Single().File);
-        Assert.Equal("2026-October-4", a.RevisionDate);
+    }
+
+    // ###########################################################################################
+    // EVERY FILE IS DATED THE DAY OF THE CONVERSION (owner request, 2026-11-22: "the 'last revisioned date'
+    // must state todays date, as this is when the JSON files are generated"): the workbooks say
+    // 2026-October-4 and the main workbook's sheets 2026-October-11 and 2026-October-4, and none of that
+    // is carried - each board file and both of the main file's dates are the conversion's day, in UTC.
+    // ###########################################################################################
+    [Fact]
+    public void Every_board_file_and_the_main_file_are_dated_the_day_of_the_conversion()
+    {
+        Assert.All(this.Plan.Boards, board => Assert.Equal("2026-November-22", board.Document.RevisionDate));
+        Assert.Equal("2026-November-22", this.Plan.Main.BoardsRevisionDate);
+        Assert.Equal("2026-November-22", this.Plan.Main.OscilloscopesRevisionDate);
+
+        DataTreeConversionPlan nextDay = DataTreeConversion.Plan(this.thisTree.Tree.DataRoot, DataTreeConversionTests.ConvertedOn.AddHours(1));
+
+        Assert.All(nextDay.Boards, board => Assert.Equal("2026-November-23", board.Document.RevisionDate));
+        Assert.Equal("2026-November-23", nextDay.Main.BoardsRevisionDate);
     }
 
     // A note-only image row stays a picture with no file.
@@ -131,8 +152,6 @@ public sealed class DataTreeConversionTests : IClassFixture<DataTreeConversionTe
         Assert.Equal([BoardA, BoardB], main.Boards.Select(board => board.BoardId));
         Assert.Equal("Commodore 64", main.Boards[0].HardwareName);
         Assert.Equal("Long board", main.Boards[0].HardwareNotes);
-        Assert.Equal("2026-October-11", main.BoardsRevisionDate);
-        Assert.Equal("2026-October-4", main.OscilloscopesRevisionDate);
 
         // The second row left its brand blank, as the sheet does; CRT carried it down.
         Assert.Equal(["Rigol", "Rigol"], main.Oscilloscopes.Select(scope => scope.Brand));
@@ -164,7 +183,7 @@ public sealed class DataTreeConversionTests : IClassFixture<DataTreeConversionTe
     {
         using ExcelTree tree = ExcelTree.Standard();
         spoil(tree);
-        return DataTreeConversion.Plan(tree.DataRoot).Problems;
+        return DataTreeConversion.Plan(tree.DataRoot, DataTreeConversionTests.ConvertedOn).Problems;
     }
 
     [Fact]
@@ -320,7 +339,7 @@ public sealed class DataTreeConversionTests : IClassFixture<DataTreeConversionTe
     [Fact]
     public void A_missing_data_folder_is_a_problem()
     {
-        DataTreeConversionPlan plan = DataTreeConversion.Plan(Path.Combine(Path.GetTempPath(), "crt-no-such-folder-" + Guid.NewGuid().ToString("N")));
+        DataTreeConversionPlan plan = DataTreeConversion.Plan(Path.Combine(Path.GetTempPath(), "crt-no-such-folder-" + Guid.NewGuid().ToString("N")), DataTreeConversionTests.ConvertedOn);
 
         Assert.False(plan.CanWrite);
         Assert.Contains(plan.Problems, problem => problem.Contains("could not be found", StringComparison.Ordinal));
@@ -417,7 +436,7 @@ public sealed class DataTreeConversionTests : IClassFixture<DataTreeConversionTe
     {
         using ExcelTree tree = ExcelTree.Standard();
         File.Delete(tree.Full(WorkbookB));
-        DataTreeConversionPlan spoiled = DataTreeConversion.Plan(tree.DataRoot);
+        DataTreeConversionPlan spoiled = DataTreeConversion.Plan(tree.DataRoot, DataTreeConversionTests.ConvertedOn);
 
         using var output = new TempWorkspace();
         string target = Path.Combine(output.Root, "app-data-v4");
@@ -466,7 +485,7 @@ public sealed class DataTreeConversionTests : IClassFixture<DataTreeConversionTe
     public void A_source_file_changed_since_the_plan_stops_the_write()
     {
         using ExcelTree tree = ExcelTree.Standard();
-        DataTreeConversionPlan plan = DataTreeConversion.Plan(tree.DataRoot);
+        DataTreeConversionPlan plan = DataTreeConversion.Plan(tree.DataRoot, DataTreeConversionTests.ConvertedOn);
         File.WriteAllText(tree.Full(BoardA + "/Board layout.png"), "repainted");
 
         using var output = new TempWorkspace();

@@ -17,7 +17,7 @@ namespace Handlers.DataHandling
     // Nothing here is persisted. A launch with no arguments is always the real behaviour, so a
     // simulation can never be left switched on by accident the way an edited constant could.
     //
-    // Parsing follows the conventions DataManager.ResolveDataRoot already established for
+    // Parsing follows the conventions DataManager.ExplicitDataRoot already established for
     // "--data-root=": case-insensitive, surrounding quotes stripped from a value, first match
     // wins, unrecognised arguments ignored.
     //

@@ -1371,7 +1371,7 @@ public sealed class BoardWorkbookWriterTests : IDisposable
 
         Assert.NotNull(folder);
 
-        string reference = Path.Combine(folder!, "Assets", "Data", "Commodore", "C128", "310378", "Data C128 310378 v2.0.0.xlsx");
+        string reference = Path.Combine(folder!, "tests", "CRT 3 Excel data", "Commodore", "C128", "310378", "Data C128 310378 v2.0.0.xlsx");
 
         EpplusLicense.Ensure();
         using var package = new OfficeOpenXml.ExcelPackage(new FileInfo(reference));

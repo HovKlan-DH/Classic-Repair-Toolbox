@@ -196,7 +196,7 @@ Wiki describes what everybody runs.
 - **Command-line switches**, all parsed once at startup the same way (case-insensitive, surrounding
   quotes stripped, first match wins, unknown arguments ignored):
   - `--data-root=<path>` - another `Data` folder (default: an AppData folder that survives Velopack
-    updates). `DataManager.ResolveDataRoot`.
+    updates). `DataManager.ExplicitDataRoot`; with it no data folder is renamed or deleted (`DataFolders`).
   - `--workbooks-root=<path>` - another folder for worklog workbooks. `WorklogManager.ResolveExplicitWorkbookRoot`.
   - `--drafts-root=<path>` - another folder for drafts. `DraftManager`.
   - `--simulate-update[=<version>]` - offer a fake update (default `99.0.0`), fake the download and
@@ -3165,6 +3165,14 @@ in CRT.App (Avalonia types, 21 call sites).
 
 ### Content (`Assets/Data/`)
 
+**`Assets/Data` is the installers' data pack: the live CRT 4.0 tree, BYTE FOR BYTE** (2026-11-22 - the project owner
+copies `app-data-v4/Data` in by hand before a release; `.gitattributes` marks it `-text`, since a line ending git rewrote
+would fail its SHA-256 against the manifest and be downloaded again). **The CRT 3 Excel tree the shipped-data tests read
+is `tests/CRT 3 Excel data`** (`DataTreeConversionShippedDataTests`, `SubmissionRulesShippedDataTests`,
+`DataTreeUsageShippedDataTests`, `KiCadSExpressionTokensTests`, `BoardWorkbookWriterTests`, `BoardSidecarWriterTests`,
+`RequestBodyLimitsTests`); the MiniPro catalogue test reads the 4.0 pack's (`IcTestCatalogueShippedDataTests`). What
+follows describes that Excel tree, the generations CRT 2.x and 3.x read.
+
 Hardware reference content is data, not code: `<Manufacturer>/<Hardware>/<Board>/...`, with
 per-manufacturer `Shared files` and a top-level `Generic shared files`. A master workbook
 (`Classic-Repair-Toolbox.v<version>.xlsx`, sheets `Hardware & Board` and `Oscilloscope`) lists all
@@ -3198,9 +3206,19 @@ service to the 4.0 trees"). CRT reads a main file only at or below its own versi
   skips a draft whose FOLDER is listed (`DataManager.MergeDraftOnlyBoards`). The shared readers read
   a `board.json` as a 4.0 board and anything else as Excel (`DataTreeLayout.IsBoardFile`) - the
   converter and the server still read Excel through them.
-- **CRT's data folder is "Data v4"** (`AppConfig.DataFolderName`), beside 3.x's "Data", which is left
-  as it was (a new folder is seeded from the install package; `DataManager.FindLegacyDataRoot` lets a
-  hand-placed Excel-era draft find 3.x's shared files while it is converted). The manifest is
+- **CRT's data folder is "Data", as in CRT 3** (`AppConfig.DataFolderName`; owner request, 2026-11-22: "we
+  keep using that folder" - the 4.0 pre-releases used "Data v4" beside it until then; every rule `DataFolders`):
+  at a launch with no `--data-root`, 3.x's Excel tree in "Data" (`DataFolders.IsCrt3Data`: a main workbook at
+  its top and no 4.0 main file) is RENAMED to "Data CRT 3", a pre-release's "Data v4" takes the name "Data",
+  and a new "Data" is seeded from the install package. "Data CRT 3" is read while what is in it is taken over
+  (its drafts, "_UserContribution" boards and own scope models - `LocalDataMigration`; 3.0.0's captures at its
+  top - `OscilloscopeCaptureRelocation`) and **deleted once nothing in it is needed**
+  (`DataManager.LetGoOfCrt3FolderIfTakenOver`, `DataFolders.ReasonsToKeep` and
+  `LocalDataMigration.StillToTakeOver` - until then it stays, the log saying why): renamed "... (deleting)"
+  first, deleted off the UI thread, finished at the next launch. Only "Data CRT 3" is ever deleted, and only
+  on the default data and drafts folders; a "Data" that could not be renamed (a file in it held open) runs
+  that launch on "Data v4" as the pre-releases did, and is tried again next time. A capture folder chosen
+  inside 3.x's "Data" follows it (`CaptureFolderAfterSettingAside`), and keeps "Data CRT 3". The manifest is
   `app-data-v4`'s. The launch syncs the main file, then the listed board files; everything else (the
   store, the MiniPro tests) syncs in the background (`DataManager.IsListFile`). **A board unchecked under
   "Visible hardware, boards and schematics" - or its hardware - is not downloaded** (owner request,
@@ -3287,7 +3305,8 @@ service to the 4.0 trees"). CRT reads a main file only at or below its own versi
 - **`DataTreeConversionShippedDataTests` is the proof** the release day's conversion rests on: every
   shipped board's board file holds exactly what CRT reads from its workbook today, file by file as the
   same bytes. A new column on a BoardData row type must be carried by `BoardDocumentMapping`
-  (`BoardDocumentMappingTests` counts them). `Assets/Data` is still the Excel tree until the release.
+  (`BoardDocumentMappingTests` counts them). It reads the Excel tree from `tests/CRT 3 Excel data` -
+  `Assets/Data` is the 4.0 tree since 2026-11-22 (above, "Content").
 - **A 4.0 draft** is its board's folder laid out like the tree: `board.json` (the complete board, the
   published KiCad files included), `Files/` holding only bytes the tree lacks, `.crt-draft.json` naming
   the board by its board file, `.crt-base.json` as a BoardDocument. Seeding copies the published board
@@ -3379,7 +3398,7 @@ service to the 4.0 trees"). CRT reads a main file only at or below its own versi
   to trees of its own") - and a pre-release's manifest is there (`ContributionServer.ChecksumsUrlFor`,
   `AppConfig.LiveDataRootUrl`/`TestDataRootUrl`, properties for the same reason), its BETA source the
   test BETA tree. Its unit can write those two and nothing of the live service's (`TestInstanceUnitTests`).
-  So nothing is moved on release day, and the test instance stays after it. The local "Data v4" folder is
+  So nothing is moved on release day, and the test instance stays after it. The local "Data" folder is
   shared, as the BETA source shares it: a release launched after a pre-release syncs it back by its manifest,
   as switching the BETA source does. **Only the contribution service and the data move**: submissions, the
   Maintainer tab, the health check and the data use the test instance's, while the check-in, feedback and
@@ -3617,8 +3636,9 @@ another pin-out than the 7451's and 74S51's. The Kickstart mask ROMs have no dat
   under the contribution service below.
 - `MiniPro/` - `IMiniproRunner` (`MiniproProcessRunner` spawns the bundled `minipro.exe`, Windows
   only; `MockMiniproRunner` simulates). **The demo mode proves nothing about a test's vectors** -
-  `MockMiniproRunner` passes whatever they say. The IC test catalogue (`Assets/Data/.../MiniPro/IC
-  tests`, read by released 2.5.0 too) is proven by `IcTestCatalogueShippedDataTests`: every runnable
+  `MockMiniproRunner` passes whatever they say. The IC test catalogue (`MiniPro/IC tests` in the 4.0 tree -
+  `Assets/Data/MiniPro/IC tests` - and `Generic shared files/MiniPro/IC tests` in the Excel tree, read by
+  released 2.5.0 too) is proven by `IcTestCatalogueShippedDataTests`: every runnable
   logic part against its datasheet model (`LogicIcReferenceModels`, typed in from the datasheet, never
   from the vectors) and through `IcTestService` against a simulated T48 (`SimulatedT48Runner`, the
   bundled minipro's two-pass pull-up/pull-down test) - a good chip passes, one broken pin fails. **A

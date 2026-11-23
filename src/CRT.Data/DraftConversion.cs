@@ -78,9 +78,7 @@ namespace Handlers.DataHandling
             string originals = Path.Combine(draftFolder, DraftConversion.OriginalsFolder);
             bool setAside = File.Exists(Path.Combine(originals, DraftConversion.SetAsideMarker));
 
-            if (File.Exists(Path.Combine(draftFolder, DataTreeLayout.BoardFileName)) &&
-                !Directory.Exists(working) &&
-                (!Directory.Exists(originals) || setAside))
+            if (DraftConversion.IsConverted(draftFolder))
             {
                 return new DraftConversionResult(false, true, [], null);
             }
@@ -119,6 +117,25 @@ namespace Handlers.DataHandling
             {
                 return DraftConversionResult.Failed($"The draft could not be converted: {ex.Message}");
             }
+        }
+
+        // ###########################################################################################
+        // Whether the draft in `draftFolder` is a CRT 4.0 draft with nothing of a conversion left to
+        // do - the very test Convert starts with: its board file there, no conversion half-way, and
+        // the Excel-era files, when there were any, wholly set aside. Also asked before CRT 3's data
+        // folder is deleted (LocalDataMigration.StillToTakeOver): a draft not converted yet may still
+        // need the shared files in it.
+        // ###########################################################################################
+        public static bool IsConverted(string draftFolder)
+        {
+            if (string.IsNullOrWhiteSpace(draftFolder))
+                return false;
+
+            string originals = Path.Combine(draftFolder, DraftConversion.OriginalsFolder);
+
+            return File.Exists(Path.Combine(draftFolder, DataTreeLayout.BoardFileName)) &&
+                   !Directory.Exists(Path.Combine(draftFolder, DraftConversion.WorkingFolder)) &&
+                   (!Directory.Exists(originals) || File.Exists(Path.Combine(originals, DraftConversion.SetAsideMarker)));
         }
 
         private sealed record Built(IReadOnlyList<string> Notes);
@@ -249,16 +266,26 @@ namespace Handlers.DataHandling
             Directory.CreateDirectory(working);
             DraftConversion.WriteText(Path.Combine(working, DataTreeLayout.BoardFileName), DataTreeJson.Write(document));
 
-            if (DraftConversion.BaseDocument(draftBase, publishedBoard, excelDataFile, oldDataRoot, source, namer, hashes) is BoardDocument baseDocument)
+            BoardDocument? baseDocument = DraftConversion.BaseDocument(draftBase, publishedBoard, excelDataFile, oldDataRoot, source, namer, hashes);
+            bool upToDate = baseDocument is not null && published is not null && DraftConversion.HoldsWhatIsPublished(baseDocument, published);
+
+            if (baseDocument is not null)
+            {
+                if (upToDate)
+                    baseDocument.RevisionDate = published!.RevisionDate;
+
                 DraftConversion.WriteText(Path.Combine(working, DraftFolderLayout.DraftBaseFileName), DataTreeJson.Write(baseDocument));
+            }
 
             // The marker names the board by its board file now ("<id>/board.json", the identity the
             // main file gives it); the content hashes it kept were of the Excel files, which a 4.0
-            // draft is never compared with.
+            // draft is never compared with. A draft started from the board published now is up to date
+            // with it - its revision and content, as a draft seeded from it today has (DraftSeeder).
             DraftMarkerStore.Save(Path.Combine(working, DraftFolderLayout.DraftMarkerFileName), marker with
             {
                 BoardKey = DataTreeLayout.BoardFilePath(boardId),
-                BaseContentHash = string.Empty,
+                BaseRevision = upToDate ? published!.RevisionDate : marker.BaseRevision,
+                BaseContentHash = upToDate ? DraftBaseStore.PublishedContentHash(DraftConversion.PublishedPath(treeContentRoot, boardId)) : string.Empty,
                 DriftSeenContentHash = string.Empty,
             });
 
@@ -315,6 +342,66 @@ namespace Handlers.DataHandling
             document.RevisionDate = string.IsNullOrWhiteSpace(document.RevisionDate) ? draftBase.Revision : document.RevisionDate;
 
             return document;
+        }
+
+        // ###########################################################################################
+        // *** A DRAFT STARTED FROM THE BOARD PUBLISHED NOW IS UP TO DATE WITH IT (2026-11-22). *** The tree's
+        // conversion dates every board the day it runs (owner request: "the 'last revisioned date' must state
+        // todays date, as this is when the JSON files are generated"), so the revision an Excel-era draft
+        // kept - its workbook's - is older than the published board's, which never changed. Judged by those
+        // dates (DraftDriftCheck) every converted draft read as behind, told the board had been updated.
+        //
+        // So the base is compared with the published board by what they hold: the rows and their order, the
+        // regions and their colors, the KiCad calibrations, and the bytes of every file the rows cite. The
+        // KiCad files are left out - an Excel-era base never recorded them, and a 3.x draft's drift never
+        // asked about them. Anything else that differs leaves the draft judged by its own revision, as before.
+        // ###########################################################################################
+        private static bool HoldsWhatIsPublished(BoardDocument baseDocument, BoardDocument published)
+        {
+            BoardContent before = BoardDocumentMapping.ToContent(baseDocument);
+            BoardContent now = BoardDocumentMapping.ToContent(published);
+
+            if (BoardDataDiffer.CountChanges(now.Board, before.Board) > 0 ||
+                BoardRowOrder.DiffersFrom(now.Board, before.Board) ||
+                BoardRegions.Differ(now.Board, before.Board) ||
+                RegionColors.Differ(now.Board, before.Board) ||
+                !DraftConversion.SameCalibrations(before.Calibrations, now.Calibrations))
+            {
+                return false;
+            }
+
+            Dictionary<string, string> mine = DraftConversion.CitedFiles(baseDocument);
+            Dictionary<string, string> theirs = DraftConversion.CitedFiles(published);
+
+            return mine.Count == theirs.Count &&
+                   mine.All(file => theirs.TryGetValue(file.Key, out string? sha) && string.Equals(sha, file.Value, StringComparison.OrdinalIgnoreCase));
+        }
+
+        // A board file's files but its KiCad files, by name, with their checksums.
+        private static Dictionary<string, string> CitedFiles(BoardDocument document) =>
+            document.Files
+                .Where(file => !DraftFiles.IsKiCad(file))
+                .GroupBy(file => file.Name, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.First().Sha256, StringComparer.OrdinalIgnoreCase);
+
+        // The same calibrations, by schematic name - the rule DraftStatusReader counts changed ones by.
+        private static bool SameCalibrations(IReadOnlyList<KiCadCalibrationEntry> before, IReadOnlyList<KiCadCalibrationEntry> now)
+        {
+            static Dictionary<string, KiCadCalibrationEntry> ByName(IEnumerable<KiCadCalibrationEntry> entries)
+            {
+                var byName = new Dictionary<string, KiCadCalibrationEntry>(StringComparer.OrdinalIgnoreCase);
+
+                foreach (KiCadCalibrationEntry entry in entries)
+                    byName.TryAdd(entry.SchematicName?.Trim() ?? string.Empty, entry);
+
+                return byName;
+            }
+
+            Dictionary<string, KiCadCalibrationEntry> mine = ByName(before);
+            Dictionary<string, KiCadCalibrationEntry> theirs = ByName(now);
+
+            return mine.Count == theirs.Count &&
+                   mine.All(entry => theirs.TryGetValue(entry.Key, out KiCadCalibrationEntry? other) && BoardDataDiffer.SameValues(other, entry.Value));
         }
 
         // ###########################################################################################
@@ -469,14 +556,17 @@ namespace Handlers.DataHandling
 
         // ---- reading and writing ---------------------------------------------------------------
 
+        // The published board file of `boardId` in the 4.0 tree's content folder, "" without one.
+        private static string PublishedPath(string treeContentRoot, string boardId) =>
+            string.IsNullOrWhiteSpace(treeContentRoot)
+                ? string.Empty
+                : Path.Combine(treeContentRoot, DataTreeLayout.BoardFilePath(boardId).Replace('/', Path.DirectorySeparatorChar));
+
         private static BoardDocument? ReadPublished(string treeContentRoot, string boardId, List<string> notes)
         {
-            if (string.IsNullOrWhiteSpace(treeContentRoot))
-                return null;
+            string path = DraftConversion.PublishedPath(treeContentRoot, boardId);
 
-            string path = Path.Combine(treeContentRoot, DataTreeLayout.BoardFilePath(boardId).Replace('/', Path.DirectorySeparatorChar));
-
-            if (!File.Exists(path))
+            if (path.Length == 0 || !File.Exists(path))
                 return null;
 
             try

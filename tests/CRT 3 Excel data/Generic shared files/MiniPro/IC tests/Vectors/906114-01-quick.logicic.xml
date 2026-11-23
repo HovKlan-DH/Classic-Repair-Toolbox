@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<logicic>
+  <database type="LOGIC" device="LOGIC">
+    <manufacturer name="Logic Ic">
+      <ic name="C64 PLA 906114-01" pins="28" voltage="5V" type="5">
+        <vector id="0"> 0 0 0 0 1 1 1 1 1 H H H H G H H H H 0 0 0 1 1 1 0 1 0 V </vector>
+        <vector id="1"> 0 1 1 1 1 1 1 1 1 H H H H G H H H H 0 1 1 1 1 1 1 1 1 V </vector>
+        <vector id="2"> 0 1 0 1 1 1 1 1 0 H H H H G H H L H 0 0 0 1 1 1 0 1 0 V </vector>
+        <vector id="3"> 0 1 0 1 1 1 1 0 0 H H H H G H H H L 0 0 0 1 1 1 0 1 0 V </vector>
+        <vector id="4"> 0 1 1 1 1 1 1 1 0 H H H H G H L H H 0 0 0 1 1 1 0 1 0 V </vector>
+        <vector id="5"> 0 1 1 1 1 1 0 1 0 H H H H G H H H L 0 0 0 1 1 1 0 1 0 V </vector>
+        <vector id="6"> 0 0 1 1 1 0 1 1 0 H H H H G L H H H 0 0 0 1 1 1 0 1 1 V </vector>
+        <vector id="7"> 0 0 1 1 1 1 1 1 0 H H L H G H H H H 0 0 0 1 1 1 0 1 1 V </vector>
+        <vector id="8"> 0 0 1 1 1 1 1 1 0 H H L L G H H H H 0 0 0 1 1 0 0 1 1 V </vector>
+        <vector id="9"> 0 0 0 0 1 1 1 1 0 H H H H G H H H L 0 0 0 1 1 1 0 1 0 V </vector>
+        <vector id="10"> 0 0 0 0 1 1 1 1 0 H H H H G H H H L 0 0 0 1 1 0 0 1 0 V </vector>
+        <vector id="11"> 0 0 1 1 1 1 1 1 0 H H L L G H H H H 0 0 0 1 1 0 0 1 1 V </vector>
+        <vector id="12"> 0 0 1 1 1 1 1 1 0 H H L H G H H H H 0 0 0 1 1 1 0 1 1 V </vector>
+        <vector id="13"> 0 0 0 1 1 1 1 1 0 H L H H G H H H H 0 0 0 1 0 1 0 1 0 V </vector>
+        <vector id="14"> 0 0 0 1 1 1 1 1 0 H H H H G H H H L 0 0 0 1 1 1 0 1 0 V </vector>
+        <vector id="15"> 0 1 0 1 1 1 1 1 0 L H H H G H H H H 0 0 0 0 0 1 0 1 0 V </vector>
+        <vector id="16"> 0 1 1 1 1 1 1 1 0 L H H H G H H H H 0 0 0 0 1 1 0 1 0 V </vector>
+        <vector id="17"> 0 0 0 0 0 1 1 1 0 H H H H G H H H L 0 1 0 1 1 1 1 1 1 V </vector>
+        <vector id="18"> 0 0 0 0 1 1 1 1 0 H H H H G H H H L 0 0 0 1 1 1 1 1 0 V </vector>
+        <vector id="19"> 0 0 1 1 1 1 1 1 0 H H L H G H H H H 0 0 0 0 1 1 0 1 1 V </vector>
+        <vector id="20"> 0 0 0 0 1 1 1 1 0 H H H H G H H H L 0 0 0 0 1 1 0 1 0 V </vector>
+        <vector id="21"> 0 1 0 1 1 1 1 1 0 L H H H G H H H H 0 0 0 0 0 1 0 1 0 V </vector>
+        <vector id="22"> 0 0 0 1 1 1 1 1 0 H L H H G H H H H 0 0 0 1 0 1 0 1 0 V </vector>
+        <vector id="23"> 0 1 1 1 1 1 1 1 0 H H H H G H H H L 0 0 0 1 1 1 1 1 0 V </vector>
+        <vector id="24"> 0 0 0 0 1 1 1 1 0 H H H H G H H H L 0 0 0 1 1 1 0 1 0 V </vector>
+      </ic>
+    </manufacturer>
+  </database>
+</logicic>

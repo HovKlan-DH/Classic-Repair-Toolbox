@@ -1,0 +1,76 @@
+----------------------------
+Hardware      : Commodore 64
+Board(s)      : 250469 ("shortboard")
+Revision date : 2025-December-20
+--------------------------------
+
+Below is my default troubleshooting guide for myself, so I do not forget. In most cases it covers the basics only, and it is for sure not a methodotical checklist that will check everything. I will add or change, once I repair more.
+
+There is a slight change between the longboards and the shortboard. In the shortboard there is no "CAN" +5VDC rail, and all +5VDC comes from the external power supply.
+
+
+--------------------
+Tooling requirements
+--------------------
+- Oscilloscope
+- Multimeter
+
+
+-----------------
+Voltages : Step 1
+-----------------
+Recommended reading for understanding C64 voltages:
+https://refurbished-commodore.com/checking-c64-voltages
+
+There are two different "rails" for +5VDC - one directly from the external power supply and one from the "CAN".
+
+User port:
+    +5VDC between pin 1+2 (one on each side of gap)
+    9VAC between pin 10+11 (one on each side of gap)
+CPU:
+    +5VDC pin 6
+VIC-II:
+    +5VDC pin 40
+    +5VDC pin 13
+
+Also, traces or components could be broken elsewhere, so it is of course not bullet-proof, and you may need to check other places also, but above gives a good indication if the power rails are in good shape.
+
+
+-----------------
+Voltages : Step 2
+-----------------
+If any of the above voltages fails or looks off then check these.
+
+Fuse:
+    ---> THIS ONE MUST BE DONE WHEN C64 IS OFF!! <---
+    In multimeter continuity mode then measure between the two ends - it should beep
+Power switch:
+    +5VDC between pin 5 and GND when C64 is off (it is expected voltage can be slightly higher due to no load)
+    +5VDC between pin 4 and GND when C64 is on
+
+
+-----------
+Frequencies
+-----------
+CPU:
+    pin 1 = 985 kHz: "Φ0" clock input
+    pin 39 = 985 kHz: "Φ2" clock output from CPU
+VIC-II:
+    pin 17 = 985 kHz: "Φ0" clock output from VIC-II
+    pin 21 = 17.72 MHz: ΦCOLOR clock input
+    pin 22 = 7.88 MHz: ΦDOT clock input
+
+
+-------
+Signals
+-------
+Reset:
+    CPU:
+        pin 40 = at power-on it stays LOW for ~100–800ms, then goes HIGH and stays HIGH
+Video output:
+    VIC-II:
+        pin 15 = view "SYNC/LUN explanation" in CRT for pin 15 (the next image after)
+
+
+This is written by the "Commodore Repair Toolbox" developer.
+Connect with me via the "Feedback" tab, if you see need for changes or have a better approach.

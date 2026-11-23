@@ -1,5 +1,6 @@
 ﻿using System.Text.Json;
 using System.Text.Json.Nodes;
+using CRT;
 using Handlers.DataHandling;
 
 namespace ClassicRepairToolbox.Tests;
@@ -239,7 +240,7 @@ public sealed class UserSettingsTests : IDisposable
         this.LoadSettings("{}");
 
         string folder = UserSettings.OscilloscopeImageFolder;
-        string dataRoot = DataManager.ResolveDataRoot([]);
+        string dataRoot = Path.Combine(DataManager.AppFolder, AppConfig.DataFolderName);
 
         Assert.Equal(UserSettings.DefaultOscilloscopeImageFolder, folder);
         Assert.Equal("Oscilloscope images", Path.GetFileName(folder));

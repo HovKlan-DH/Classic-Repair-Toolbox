@@ -27,56 +27,55 @@ public sealed class DataManagerTests : IDisposable
     // ------------------------------------------------------------------ data root
 
     [Fact]
-    public void ResolveDataRoot_uses_the_data_root_command_line_argument()
+    public void ExplicitDataRoot_uses_the_data_root_command_line_argument()
     {
         // windows-path-literal: command-line TEXT, parsed and compared as text - no path API sees it.
         Assert.Equal(
             @"D:\somewhere\Data",
-            DataManager.ResolveDataRoot(new[] { @"--data-root=D:\somewhere\Data" }));
+            DataManager.ExplicitDataRoot(new[] { @"--data-root=D:\somewhere\Data" }));
     }
 
     [Fact]
-    public void ResolveDataRoot_strips_surrounding_quotes()
+    public void ExplicitDataRoot_strips_surrounding_quotes()
     {
         // Shells and shortcuts quote paths that contain spaces.
         // windows-path-literal: command-line TEXT, parsed and compared as text - no path API sees it.
         Assert.Equal(
             @"D:\my data\Data",
-            DataManager.ResolveDataRoot(new[] { "--data-root=\"D:\\my data\\Data\"" }));
+            DataManager.ExplicitDataRoot(new[] { "--data-root=\"D:\\my data\\Data\"" }));
     }
 
     [Fact]
-    public void ResolveDataRoot_matches_the_argument_case_insensitively()
+    public void ExplicitDataRoot_matches_the_argument_case_insensitively()
     {
-        Assert.Equal("X", DataManager.ResolveDataRoot(new[] { "--DATA-ROOT=X" }));
+        Assert.Equal("X", DataManager.ExplicitDataRoot(new[] { "--DATA-ROOT=X" }));
     }
 
     [Fact]
-    public void ResolveDataRoot_takes_the_first_matching_argument()
+    public void ExplicitDataRoot_takes_the_first_matching_argument()
     {
         Assert.Equal(
             "first",
-            DataManager.ResolveDataRoot(new[] { "--data-root=first", "--data-root=second" }));
+            DataManager.ExplicitDataRoot(new[] { "--data-root=first", "--data-root=second" }));
     }
 
     [Fact]
-    public void ResolveDataRoot_ignores_unrelated_arguments()
+    public void ExplicitDataRoot_ignores_unrelated_arguments()
     {
         Assert.Equal(
             "X",
-            DataManager.ResolveDataRoot(new[] { "--verbose", "--data-root=X", "somefile.txt" }));
+            DataManager.ExplicitDataRoot(new[] { "--verbose", "--data-root=X", "somefile.txt" }));
     }
 
-    // CRT 4.0 keeps its tree in a folder of its own beside 3.x's "Data" (2026-10-24): a new folder
-    // is seeded from the install package, and 3.x's is left as it was.
+    // With no "--data-root=" the folders in CRT's own app data folder decide (DataFolders) - "Data", as
+    // in CRT 3 (owner request, 2026-11-22).
     [Fact]
-    public void ResolveDataRoot_falls_back_to_the_4_0_data_folder_under_local_appdata()
+    public void Without_the_argument_the_data_folder_is_Data_in_the_app_folder_under_local_appdata()
     {
-        string resolved = DataManager.ResolveDataRoot(Array.Empty<string>());
-
-        Assert.EndsWith(Path.Combine("Classic-Repair-Toolbox", AppConfig.DataFolderName), resolved);
-        Assert.NotEqual(AppConfig.LegacyDataFolderName, AppConfig.DataFolderName);
-        Assert.True(Path.IsPathRooted(resolved));
+        Assert.Null(DataManager.ExplicitDataRoot(["--verbose"]));
+        Assert.Equal("Data", AppConfig.DataFolderName);
+        Assert.EndsWith("Classic-Repair-Toolbox", DataManager.AppFolder);
+        Assert.True(Path.IsPathRooted(DataManager.AppFolder));
     }
 
     // ------------------------------------------------------------ main file

@@ -1,0 +1,113 @@
+(kicad_sch
+	(version 20260306)
+	(generator "eeschema")
+	(generator_version "10.0")
+	(uuid "86ca0144-15b9-4b60-81dc-f7aec5eb0cea")
+	(paper "A3")
+	(title_block
+		(title "C64 Motherboard KU-14194HB")
+		(date "2020-01-23")
+		(rev "1.4")
+		(company "Commodore 1982")
+		(comment 1 "layout retraced and schematics drawn by bwack 2019")
+	)
+	(lib_symbols)
+	(sheet
+		(at 130.81 38.1)
+		(size 38.1 30.48)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke
+			(width 0)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0)
+		)
+		(uuid "00000000-0000-0000-0000-00005d659bbe")
+		(property "Sheetname" "Sheet5D659BBD"
+			(at 130.81 37.3884 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "file5D659BBD.kicad_sch"
+			(at 130.81 69.1646 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(instances
+			(project "KU-14194HB-REV-B-KiCad"
+				(path "/86ca0144-15b9-4b60-81dc-f7aec5eb0cea"
+					(page "3")
+				)
+			)
+		)
+	)
+	(sheet
+		(at 63.5 38.1)
+		(size 39.37 30.48)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(stroke
+			(width 0)
+			(type solid)
+		)
+		(fill
+			(color 0 0 0 0)
+		)
+		(uuid "00000000-0000-0000-0000-00005d940af4")
+		(property "Sheetname" "Sheet1"
+			(at 63.5 37.3884 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left bottom)
+			)
+		)
+		(property "Sheetfile" "file5D940AF3.kicad_sch"
+			(at 63.5 69.1646 0)
+			(show_name no)
+			(do_not_autoplace no)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left top)
+			)
+		)
+		(instances
+			(project "KU-14194HB-REV-B-KiCad"
+				(path "/86ca0144-15b9-4b60-81dc-f7aec5eb0cea"
+					(page "2")
+				)
+			)
+		)
+	)
+	(sheet_instances
+		(path "/"
+			(page "1")
+		)
+	)
+	(embedded_fonts no)
+)

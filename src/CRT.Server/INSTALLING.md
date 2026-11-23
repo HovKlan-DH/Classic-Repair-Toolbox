@@ -1027,7 +1027,9 @@ direction** - the 74, 40 and 55 series logic chips and the boards' CPUs, CIAs, V
 chips, ROMs, RAMs and PLAs - but a pin the board says is not connected stays so; **any other pin gets its
 KiCad type**, unless KiCad calls every signal pin of that chip an input. **The expected oscilloscope
 readings are written in plain words** - "HIGH" as "High", "LOW" as "Low", "FLOAT" as "Floating", "VIDEO"
-as "Video" - a `Note:` line per board saying how many (both since server 11.1.0).
+as "Video" - a `Note:` line per board saying how many (both since server 11.1.0). **Every board and the
+main file are dated the day the conversion runs** (UTC, as a publish dates them; since server 12.1.0) -
+the date CRT's "About" tab shows as "Board data last revisioned" - and the report's `Dated:` line says it.
 
 Then convert each tree into its own 4.0 folder, with that folder's public address so its manifest is
 written:
@@ -1044,7 +1046,7 @@ sudo -u crt-server dotnet $APP/CRT.Server.dll convert-data-tree \
 - **Run it as `crt-server`**, so the files belong to the service that will write these trees later.
 - **Run it again whenever you like.** A second run keeps every file that is already right and removes
   whatever the new conversion no longer holds, so a folder is always exactly one conversion of its tree
-  as it is now. On release day it runs once more, from the final Excel trees, just before the service
+  as it is now - on another day every board file is rewritten, with that day's date. On release day it runs once more, from the final Excel trees, just before the service
   switches to the 4.0 folders.
 - **It refuses** a target holding anything else (an Excel tree, a folder of other files), a target
   inside the tree it converts or around it, and a target that already has a manifest when

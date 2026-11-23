@@ -16,9 +16,9 @@ namespace CRT.Data.Tests
     // rejected correct, already-published data - region-variant labels, then note-only image rows
     // - each found only when the project owner's first real submission of a board failed. The file
     // rules added in the security review are stricter still (allowed types, cited by a row, content
-    // signatures), so every one of them is run here over every board in Assets/Data, exactly as a
-    // client would submit it - since 2026-10-25 as the CRT 4.0 tree holds it (the converter's own
-    // plan of Assets/Data), so the files are the board's names.
+    // signatures), so every one of them is run here over every board of the CRT 3 Excel tree ("tests/CRT 3
+    // Excel data", Assets/Data until 2026-11-22), exactly as a client would submit it - since 2026-10-25 as
+    // the CRT 4.0 tree holds it (the converter's own plan of that tree), so the files are the board's names.
     //
     // Reads the real shipped tree - no network, no display - so it runs on CI like any other test.
     // In the "BoardData" collection because BoardDataReader's cache is shared static state.
@@ -35,7 +35,7 @@ namespace CRT.Data.Tests
 
             Assert.NotNull(folder);
 
-            return Path.Combine(folder!, "Assets", "Data");
+            return Path.Combine(folder!, "tests", "CRT 3 Excel data");
         }
 
         // Every shipped board's newest-generation workbook, as (relative folder, workbook path).

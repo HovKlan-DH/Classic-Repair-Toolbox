@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "id": "556",
+  "match": [
+    "556"
+  ],
+  "description": "Dual timer (static set/reset test, no timing)",
+  "kind": "logic-sequential",
+  "support": "testable",
+  "coverage": "functional",
+  "inputs": 6,
+  "pinCount": 14,
+  "voltage": 5,
+  "deviceName": "556 (CRT)",
+  "vectors": [
+    "L0X0L1G1L1X1LV",
+    "L0X1L1G1L1X0LV",
+    "Z0X1H0G0H1X0ZV",
+    "Z0X1H1G0L0X0LV",
+    "L1X1L1G0H1X0ZV",
+    "L0X1L1G1H1X0ZV",
+    "Z0X1H0G1L0X0LV",
+    "Z1X1H0G1L1X0LV",
+    "L1X1L1G1L0X0LV",
+    "L0X1L1G1L1X0LV",
+    "Z0X1H0G0H1X0ZV",
+    "L0X0L0G1H1X0ZV",
+    "Z0X1H0G1L1X1LV",
+    "Z0X1H1G1L1X0LV",
+    "L0X0L1G0H1X0ZV",
+    "L0X1L1G0H1X1ZV"
+  ],
+  "note": "Static test of each timer: set by trigger, reset by threshold and by reset, hold, output and discharge, with inputs at 0 V and 5 V. Thresholds, timing and output current are not tested."
+}

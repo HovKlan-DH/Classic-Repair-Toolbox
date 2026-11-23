@@ -321,7 +321,7 @@ namespace Handlers.DataHandling
         // Filtered by hand rather than by a "*.xlsx" pattern, whose matching is case-insensitive on
         // Windows and case-sensitive elsewhere.
         // ###########################################################################################
-        private static List<string> BoardWorkbooksIn(string boardFolder)
+        internal static List<string> BoardWorkbooksIn(string boardFolder)
         {
             return Directory.GetFiles(boardFolder)
                 .Where(path => path.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase))

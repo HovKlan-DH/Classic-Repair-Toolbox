@@ -7,20 +7,22 @@ namespace ClassicRepairToolbox.Tests;
 // THE SHIPPED DATA CONVERTS TO THE CRT 4.0 TREE WITH NOTHING LOST (owner decision, 2026-10-24:
 // "I do expect you also will migrate all existing data").
 //
-// Plans the conversion of the real Assets/Data - nothing is written - and checks, board by board,
+// Plans the conversion of the real CRT 3 Excel tree - "tests/CRT 3 Excel data", which was Assets/Data
+// until CRT 4.0's installers carried the 4.0 tree there (2026-11-22) - nothing is written - and checks, board by board,
 // that the board file holds exactly what CRT reads from the workbook and its JSON file today:
 // every value of every row, every highlight, calibration and rename, and every file a row cites
 // as the same BYTES under the board's own name. It is the proof the release day's conversion of
 // BETA and stable rests on, and it fails the moment a board, a column or a sidecar gains
 // something the conversion would not carry. What the conversion ADDS - the pinouts of each board's
-// scope baselines and KiCad data (owner decision, 2026-11-06) - may only fill in what was empty.
+// scope baselines and KiCad data (owner decision, 2026-11-06) - may only fill in what was empty, and
+// the revision date is the conversion's day (owner request, 2026-11-22).
 // ###########################################################################################
 [Collection("BoardData")]
 public sealed class DataTreeConversionShippedDataTests
 {
     // The plan, made once for the run - SubmissionRulesShippedDataTests puts the same converted
     // boards through the server's rules.
-    internal static readonly Lazy<DataTreeConversionPlan> Planned = new(() => DataTreeConversion.Plan(DataTreeConversionShippedDataTests.DataRoot()));
+    internal static readonly Lazy<DataTreeConversionPlan> Planned = new(() => DataTreeConversion.Plan(DataTreeConversionShippedDataTests.DataRoot(), DataTreeConversionTests.ConvertedOn));
 
     private static string DataRoot()
     {
@@ -31,7 +33,7 @@ public sealed class DataTreeConversionShippedDataTests
 
         Assert.NotNull(folder);
 
-        return Path.Combine(folder!, "Assets", "Data");
+        return Path.Combine(folder!, "tests", "CRT 3 Excel data");
     }
 
     [Fact]
@@ -85,7 +87,9 @@ public sealed class DataTreeConversionShippedDataTests
                 Assert.Equal(shaBefore, sha);
             }
 
-            Assert.Equal(before.RevisionDate, after.Board.RevisionDate);
+            // A deliberate change: the board is dated the day of the conversion, never the workbook's date
+            // (owner request, 2026-11-22: "this is when the JSON files are generated").
+            Assert.Equal(BoardWorkbookStyle.FormatRevisionDate(DataTreeConversionTests.ConvertedOn), after.Board.RevisionDate);
             Assert.Equal(before.HardwareName, after.Board.HardwareName);
             Assert.Equal(before.BoardName, after.Board.BoardName);
 

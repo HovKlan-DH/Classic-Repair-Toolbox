@@ -47,10 +47,20 @@ internal static class LegacyDrafts
             File.Copy(source, destination, overwrite: true);
         }
 
+        // 3.1.0's base read the calibrations from the published workbook's sidecar; today's Capture looks
+        // for them beside the board's 4.0 board file, which an Excel tree has not, and finds none.
+        DraftBase captured = DraftBaseStore.Capture(dataRoot, excelDataFile, published, draftsRoot, draftCopiesAreFresh: true);
+
         DraftBaseStore.Save(
             draftsRoot,
             excelDataFile,
-            DraftBaseStore.Capture(dataRoot, excelDataFile, published, draftsRoot, draftCopiesAreFresh: true));
+            new DraftBase
+            {
+                Revision = captured.Revision,
+                Board = captured.Board,
+                Calibrations = [.. DraftBoardSource.CollectCalibrations(publishedPath, published)],
+                Files = captured.Files,
+            });
 
         DraftMarkerStore.Save(DraftFolderLayout.GetMarkerPath(draftsRoot, excelDataFile), new DraftMarker
         {

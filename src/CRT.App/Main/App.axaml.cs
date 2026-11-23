@@ -37,7 +37,7 @@ namespace CRT
         public const string AppShortName = "CRT";
 
         // Name of the local AppData subfolder used for data and log storage.
-        // Used by: DataManager.ResolveDataRoot, Logger.Initialize
+        // Used by: DataManager.AppFolder, Logger.Initialize
         public const string AppFolderName = "Classic-Repair-Toolbox";
 
         // Name of the log file written inside the AppFolderName directory.
@@ -77,18 +77,21 @@ namespace CRT
         // Used by: DraftManager.Load
         public const string DraftsFolderName = "Drafts";
 
-        // Name of the local data folder - the synced copy of the online data tree. CRT 4.0 keeps its
-        // tree in a folder of its own (2026-10-24): a new folder is seeded from the install package
-        // instead of downloading a gigabyte, and the 3.x folder ("Data", LegacyDataFolderName) is
-        // left as it was - its user-made boards are taken in as drafts at the first 4.0 launch.
+        // Name of the local data folder - the synced copy of the online data tree. "Data", as in CRT 3
+        // (owner request, 2026-11-22: "we keep using that folder" - the 4.0 pre-releases used "Data v4"
+        // beside it). At the first 4.0 launch CRT 3's Excel tree in it is set aside as
+        // Crt3DataFolderName, a pre-release's "Data v4" (PreReleaseDataFolderName) takes its place,
+        // and the set-aside folder is deleted once everything in it is taken over (DataFolders).
+        // A new "Data" is seeded from the install package instead of downloading a gigabyte.
         // Overridden entirely by "--data-root=".
-        // Used by: DataManager.ResolveDataRoot
-        public const string DataFolderName = "Data v4";
-        public const string LegacyDataFolderName = "Data";
+        // Used by: DataFolders
+        public const string DataFolderName = "Data";
+        public const string PreReleaseDataFolderName = "Data v4";
+        public const string Crt3DataFolderName = "Data CRT 3";
 
         // Where a board's KiCad files are copied under their own names for the loaders - a cache,
         // rebuilt from the data whenever it is missing (BoardKiCadFolder). In the user's OWN app
-        // data folder, beside "Data v4" (code review, 2026-10-25): under the temporary folder - the
+        // data folder, beside "Data" (code review, 2026-10-25): under the temporary folder - the
         // shared /tmp on Linux - another account could make the copy's folder a link, and the copy
         // deletes every file there it does not want.
         // How much the renderer may keep on the graphics card - a large board's schematic image is about

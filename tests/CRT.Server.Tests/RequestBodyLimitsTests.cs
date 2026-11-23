@@ -317,7 +317,7 @@ namespace CRT.Server.Tests
 
             Assert.NotNull(folder);
 
-            return Path.Combine(folder!, "Assets", "Data");
+            return Path.Combine(folder!, "tests", "CRT 3 Excel data");
         }
 
         // The biggest board workbook in the shipped tree by bytes - the board with the most rows.

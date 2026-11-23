@@ -606,13 +606,24 @@ public class WorkbookZipExportTests : IDisposable
 
     // The temp PDF WriteZip generates on its way to the archive is cleaned up, rather than left
     // accumulating in the user's temp folder on every export.
+    //
+    // The temp folder is shared with the other test projects, which run at the same moment and export
+    // too (the "Workbooks" UI tests), so only a PDF that APPEARED during this export counts, and only
+    // once any other export has had the time to take its own away (2026-11-22: counting the folder,
+    // a PDF another process deleted meanwhile failed the test - it would have stopped a release).
     [Fact]
     public void No_temp_pdf_is_left_behind()
     {
-        var before = Directory.GetFiles(Path.GetTempPath(), "*.pdf").Length;
+        var before = new HashSet<string>(Directory.GetFiles(Path.GetTempPath(), "*.pdf"), StringComparer.OrdinalIgnoreCase);
 
         WorkbookPdfExporter.WriteZip(this.BuildDocument(Entry(1, "Just a note")), this.ZipPath());
 
-        Assert.Equal(before, Directory.GetFiles(Path.GetTempPath(), "*.pdf").Length);
+        var waited = System.Diagnostics.Stopwatch.StartNew();
+        string[] appeared;
+        while ((appeared = Directory.GetFiles(Path.GetTempPath(), "*.pdf").Where(path => !before.Contains(path)).ToArray()).Length > 0 &&
+               waited.Elapsed < TimeSpan.FromSeconds(10))
+            Thread.Sleep(100);
+
+        Assert.Empty(appeared);
     }
 }

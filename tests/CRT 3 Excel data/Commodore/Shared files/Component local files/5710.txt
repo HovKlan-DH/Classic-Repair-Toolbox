@@ -1,0 +1,46 @@
+
+     C128DCR MOS5710 Custom Floppy Controller and Gate Array
+
+                                          _____________
+Floppy Drive Controller (*)              |     |_|     |
+1541/1571 Mode Control (#)       SRQ OUT | 1        48 |-DATA OUT
+CIA Serial Port                      TED |#2        47 | SRQ IN
+16 MHz Clock & phi0                 phi0 | 3        46 |-DATA IN
+RAM & VIA Select                      CK |#4        45 |-IRQ
+                                   -ACCL |#5        44 |-RESET
+                                VIA1 PA5 |#6        43 |
+                                    phi2 | 7        42 |
+      Address Decode                  D7 | 8        41*|-INDEX
+                                      D6 | 9        40*| WG
+   A 15 14 13 12 10  4  3             D5 | 10       39*|-WPRT
+RAM   0  0  0  0  x  x  x             D4 | 11       38*|-RD
+VIA1  0  0  0  1  0  x  x            Vss | 12       37*| WD
+VIA2  0  0  0  1  1  x  x            Vcc | 13       36 | Vcc
+FDC   0  0  1  0  x  0  0             D3 | 14       35 | Vss
+CIA   0  1  0  0  x  0  x             D2 | 15       34 |-VIA1
+FDC2  0  1  0  0  0  1  x             D1 | 16       33 |-RAM
+RAM   0  1  1  x  x  x  x             D0 | 17       32 |-VIA2
+                                     A15 | 18       31 | R/W
+                                     A14 | 19       30 | 16MHz
+                                     A13 | 20       29 | XTL1
+        Registers                    A12 | 21       28 | XTL2
+                                     A10 | 22       27 | A0
+2000  FDC Status Register             A4 | 23       26 | A1
+2001  FDC Track Register              A3 | 24       25 | A2
+2002  FDC Sector Register                |_____________|
+2003  FDC Data Register
+2004  FDC Control for 2001, 2002
+2005  FDC Control/Counter for 2001, 2002
+
+400C  CIA Serial Data Register
+400D  CIA Interrupt Control Register
+400D  CIA Control Register A
+
+4010  FDC2 used in 2002, 2004
+4011  FDC2 used in 2002
+4012  FDC2 used in 2001
+4013  FDC2 used in 2001
+4014  FDC2 used in 2002
+4015  FDC2 used in 2002
+4016  FDC2 used in 2003
+4017  FDC2

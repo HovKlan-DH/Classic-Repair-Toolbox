@@ -25,7 +25,9 @@ namespace Handlers.DataHandling
     //   - OSCILLOSCOPE MODELS added to the 3.x copy of the main workbook (OwnOscilloscopeModels),
     //     kept in a file of the user's own (OwnOscilloscopeFile).
     //
-    // The 3.x data folder is only READ - it stays as it was, for a 3.x CRT and for this.
+    // The 3.x data folder is only READ here. CRT.App sets it aside as "Data CRT 3" at the first 4.0
+    // launch, so 4.0 keeps using "Data", and deletes it once StillToTakeOver says nothing in it is
+    // still needed (owner request, 2026-11-22; DataFolders).
     // ###########################################################################################
     public static class LocalDataMigration
     {
@@ -94,6 +96,109 @@ namespace Handlers.DataHandling
             string recordPath = Path.Combine(draftsRoot, LocalDataMigration.CarriedRecordFileName);
             HashSet<string> record = LocalDataMigration.ReadRecord(recordPath);
 
+            foreach (BoardToCarry board in LocalDataMigration.BoardsToCarry(draftsRoot, oldDataRoot, listed, record, notes, unreadable: null))
+            {
+                try
+                {
+                    LocalDataMigration.CopyBoardFolder(draftsRoot, board.Source, board.Target, board.WorkbookName);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    notes.Add($"[{board.BoardId}] could not be copied into the drafts folder ({ex.Message}) - tried again at the next start.");
+                    continue;
+                }
+
+                record.Add(board.BoardId);
+                carried.Add(board.BoardId);
+
+                // After each, so a stop keeps what was done.
+                LocalDataMigration.WriteRecord(recordPath, record);
+            }
+
+            return carried;
+        }
+
+        // ###########################################################################################
+        // WHAT OF CRT 3's DATA FOLDER `oldDataRoot` IS STILL TO BE TAKEN OVER (owner request,
+        // 2026-11-22: once CRT 3's "Data" folder is taken over, CRT 4 uses that folder again and the
+        // old one goes - DataFolders) - one sentence each, empty when nothing is:
+        //
+        //   - a draft in `draftsRoot` not converted yet (DraftConversion.IsConverted) - its conversion
+        //     reads the shared files the Excel-era draft cites from that folder;
+        //   - a board folder in `draftsRoot` with a board workbook and no marker - put there by hand, or
+        //     carried in from that folder - not taken in as a draft yet, for the same reason;
+        //   - a board a "_UserContribution" workbook there lists that CarryUserContributionBoards would
+        //     still carry in, by the very same walk (BoardsToCarry), and such a workbook it cannot read.
+        //
+        // The oscilloscope models a user added to 3.x's main workbook, and captures in that folder, are
+        // CRT.App's to judge (OwnOscilloscopeFile's file, OscilloscopeCaptureRelocation).
+        // ###########################################################################################
+        public static IReadOnlyList<string> StillToTakeOver(
+            string draftsRoot,
+            string oldDataRoot,
+            IReadOnlyCollection<string> listedBoardIds)
+        {
+            var left = new List<string>();
+
+            if (string.IsNullOrWhiteSpace(oldDataRoot) || !Directory.Exists(oldDataRoot))
+                return left;
+
+            if (string.IsNullOrWhiteSpace(draftsRoot) || !Directory.Exists(draftsRoot))
+            {
+                left.Add("there is no drafts folder to take CRT 3's drafts and boards into");
+                return left;
+            }
+
+            try
+            {
+                foreach (string folder in DraftFolderImport.EnumerateBoardFolders(draftsRoot))
+                {
+                    if (File.Exists(Path.Combine(folder, DraftFolderLayout.DraftMarkerFileName)))
+                    {
+                        if (!DraftConversion.IsConverted(folder))
+                            left.Add($"the CRT 3 draft in [{folder}] is not converted yet");
+                    }
+                    else if (!File.Exists(Path.Combine(folder, DataTreeLayout.BoardFileName)) &&
+                             DraftFolderImport.BoardWorkbooksIn(folder).Count > 0)
+                    {
+                        left.Add($"the board folder [{folder}] in the drafts folder is not taken in as a draft yet");
+                    }
+                }
+
+                var listed = new HashSet<string>(listedBoardIds ?? [], StringComparer.OrdinalIgnoreCase);
+                HashSet<string> record = LocalDataMigration.ReadRecord(Path.Combine(draftsRoot, LocalDataMigration.CarriedRecordFileName));
+                var unreadable = new List<string>();
+
+                foreach (BoardToCarry board in LocalDataMigration.BoardsToCarry(draftsRoot, oldDataRoot, listed, record, notes: [], unreadable))
+                    left.Add($"the board [{board.BoardId}] is not carried into the drafts folder yet");
+
+                left.AddRange(unreadable.Select(workbook => $"[{workbook}] could not be read, so its boards are not carried into the drafts folder yet"));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                left.Add($"the drafts could not be looked through ({ex.Message})");
+            }
+
+            return left;
+        }
+
+        // One board a "_UserContribution" workbook lists that is still to be carried into the drafts folder.
+        private sealed record BoardToCarry(string BoardId, string Source, string Target, string WorkbookName);
+
+        // ###########################################################################################
+        // THE ONE WALK over the "_UserContribution" workbooks in `oldDataRoot`: every board still to be
+        // carried in - not published (`listed`), not carried before (`record`), with no draft folder,
+        // and its workbook in the folder. Why any other was passed over goes into `notes`, and a
+        // workbook that could not be read into `unreadable` too, when given.
+        // ###########################################################################################
+        private static IEnumerable<BoardToCarry> BoardsToCarry(
+            string draftsRoot,
+            string oldDataRoot,
+            HashSet<string> listed,
+            HashSet<string> record,
+            List<string> notes,
+            List<string>? unreadable)
+        {
             foreach (string workbook in Directory.EnumerateFiles(oldDataRoot, "*" + LocalDataMigration.UserContributionSuffix)
                          .Where(path => path.EndsWith(LocalDataMigration.UserContributionSuffix, StringComparison.OrdinalIgnoreCase))
                          .Order(StringComparer.Ordinal))
@@ -101,6 +206,7 @@ namespace Handlers.DataHandling
                 if (!MasterListing.TryRead(workbook, out IReadOnlyList<MasterListingRow> rows, out string why))
                 {
                     notes.Add($"[{Path.GetFileName(workbook)}] could not be read ({why}), so its boards were not carried over.");
+                    unreadable?.Add(Path.GetFileName(workbook));
                     continue;
                 }
 
@@ -134,25 +240,9 @@ namespace Handlers.DataHandling
                         continue;
                     }
 
-                    try
-                    {
-                        LocalDataMigration.CopyBoardFolder(draftsRoot, source, target, workbookName);
-                    }
-                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                    {
-                        notes.Add($"[{boardId}] could not be copied into the drafts folder ({ex.Message}) - tried again at the next start.");
-                        continue;
-                    }
-
-                    record.Add(boardId);
-                    carried.Add(boardId);
-
-                    // After each, so a stop keeps what was done.
-                    LocalDataMigration.WriteRecord(recordPath, record);
+                    yield return new BoardToCarry(boardId, source, target, workbookName);
                 }
             }
-
-            return carried;
         }
 
         // ###########################################################################################

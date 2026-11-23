@@ -11,6 +11,11 @@ every push of that version, so a section reworded later reaches the release with
 - Plain ASCII punctuation.
 -->
 
+# 12.1.0, 2026-November-22
+--------------------------
+- Converting a data tree for CRT 4.0 dates every board and the list of boards and oscilloscopes on the day of the conversion, as a publish dates what it writes
+- The conversion's report says the date it gave
+
 # 12.0.1, 2026-November-20
 --------------------------
 - The mails ask you to "check" a checkbox in CRT, as CRT's own words do

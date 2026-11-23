@@ -135,7 +135,7 @@ public sealed class BoardSidecarWriterTests : IDisposable
 
         Assert.NotNull(folder);
 
-        return Path.Combine(folder!, "Assets", "Data", "Commodore", "C128", "310378", "Data C128 310378 v2.0.0.json");
+        return Path.Combine(folder!, "tests", "CRT 3 Excel data", "Commodore", "C128", "310378", "Data C128 310378 v2.0.0.json");
     }
 
     // ###########################################################################################

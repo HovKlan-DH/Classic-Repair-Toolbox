@@ -6,7 +6,7 @@ change is made in CRT, on the "Contribute" tab, which writes this file for you.
 ---
 
 ```
-Data v4/Commodore/C64/250407/board.json
+Data/Commodore/C64/250407/board.json
 ```
 
 The file opens with the board's names and the date of its last change - and, on a board set to come

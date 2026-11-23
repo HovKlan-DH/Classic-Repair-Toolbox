@@ -1,2 +1,6 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# The data pack the installers carry is the live 4.0 tree, byte for byte: every file is checked against
+# the server's SHA-256 manifest, so a line ending git rewrote would be downloaded again at first launch.
+Assets/Data/** -text

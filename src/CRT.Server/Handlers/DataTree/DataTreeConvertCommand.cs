@@ -17,6 +17,7 @@ namespace CRT.Server.Handlers.DataTree
     // data. It only reads the source. It writes only the target, and only when the conversion
     // has no problem; `--plan-only` reports what it would do and writes nothing. Given the
     // public address, it writes the target's manifest too, which a tree CRTs sync from needs.
+    // Every board file and the main file are dated the day it runs (UTC, as a publish dates them).
     //
     // Exit codes: 0 done, 1 refused (a problem, or a target it may not write - the report says
     // which), 2 the command line was wrong.
@@ -124,7 +125,8 @@ namespace CRT.Server.Handlers.DataTree
 
             output.WriteLine($"Reading [{options.Source}] - every file it carries is hashed, which takes a while on a full tree.");
 
-            DataTreeConversionPlan plan = DataTreeConversion.Plan(options.Source);
+            // Dated today, as a publish dates what it writes (owner request, 2026-11-22).
+            DataTreeConversionPlan plan = DataTreeConversion.Plan(options.Source, DateTimeOffset.UtcNow);
 
             foreach (string line in DataTreeConvertCommand.Report(plan))
                 output.WriteLine(line);
@@ -169,6 +171,7 @@ namespace CRT.Server.Handlers.DataTree
             {
                 $"Generation converted: {(plan.Generation is null ? "none found" : plan.Generation.ToString())}",
                 $"Boards: {plan.Boards.Count}",
+                $"Dated: {plan.Main.BoardsRevisionDate}",
                 $"Oscilloscopes: {plan.Main.Oscilloscopes.Count}",
                 $"Files the boards name: {plan.Boards.Sum(board => board.Document.Files.Count)} ({DataTreeConvertCommand.Megabytes(plan.BoardFileBytes)})",
                 $"Stored once: {plan.StoredFiles.Count} file(s) ({DataTreeConvertCommand.Megabytes(plan.StoredBytes)})",
