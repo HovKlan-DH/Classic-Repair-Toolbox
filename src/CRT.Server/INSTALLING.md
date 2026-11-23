@@ -829,7 +829,8 @@ systemctl is-active crt-server && curl -s http://127.0.0.1:5199/api/health
 `active` and a line of JSON: it is working. If not:
 
 ```bash
-journalctl -u crt-server -n 20 --no-pager -p warning     # only problems - a healthy service prints nothing
+journalctl -u crt-server --no-pager -p warning --since "$(systemctl show -p ActiveEnterTimestamp --value crt-server)"
+                                                         # only problems since it last started - a healthy service prints nothing
 journalctl -u crt-server -n 30 --no-pager | grep -v '^ '  # recent activity, without a crash's core dump
 journalctl -u crt-server -f | grep -v '^ '                # follow it live
 ```

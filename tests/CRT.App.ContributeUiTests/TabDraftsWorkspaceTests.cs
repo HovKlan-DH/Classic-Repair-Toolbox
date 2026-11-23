@@ -1755,6 +1755,11 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
             Dispatcher.UIThread.RunJobs();
             Assert.True(tab.IsKiCadOpen);
 
+            // What the panel reads as it opens, read first - as the contributor waits for it under "please wait",
+            // which takes every click: Windows refuses to delete a file a read still holds open, and under the full
+            // suite's load the draft was still there after the discard (2026-11-23; the same as 2026-11-16 above).
+            await tab.KiCadPanelForTests!.Opening;
+
             int discards = 0;
             tab.DiscardOverrideForTests = identity =>
             {

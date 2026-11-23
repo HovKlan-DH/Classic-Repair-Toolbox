@@ -42,6 +42,11 @@ namespace CRT
         // encoding there to act while it is under way.
         internal Action? BeforeEncodingForTests { get; set; }
 
+        // Run on the pool thread just before a pasted picture's alpha is mended, so before it is
+        // shown - a test holds the paste there to act while it is still under way (unheld, a small
+        // picture was mended before the paste returned, and it was in at once; Linux CI, 2026-11-23).
+        internal Action? BeforeShowingForTests { get; set; }
+
         // ###########################################################################################
         // *** PASTES AND DROPS STILL PUTTING THINGS IN (code review, 2026-10-16). *** A dropped
         // photo is decoded before it is shown, one after another, and files that are no pictures
@@ -359,7 +364,14 @@ namespace CRT
             ArgumentNullException.ThrowIfNull(bitmap);
 
             // Before it is shown: Windows' clipboard hands many pictures over as nothing to see.
-            bitmap = await Task.Run(() => FeedbackComposer.WithOpaqueAlpha(bitmap));
+            Action? beforeShowing = this.BeforeShowingForTests;
+            Bitmap pasted = bitmap;
+
+            bitmap = await Task.Run(() =>
+            {
+                beforeShowing?.Invoke();
+                return FeedbackComposer.WithOpaqueAlpha(pasted);
+            });
 
             (string name, int number) = FeedbackComposition.NextPastedName(
                 this.thisNextPastedNumber, this.thisPictures.Select(block => block.Picture.Name));

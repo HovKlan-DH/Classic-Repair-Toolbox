@@ -620,26 +620,36 @@ public sealed class FeedbackComposerTests
     [Fact]
     public async Task A_pasted_picture_removed_while_its_PNG_is_encoded_is_let_go_only_once_the_encoding_is_done()
     {
-        await UiTest.RunAsync(async () =>
+        using var hold = new ManualResetEventSlim();
+
+        try
         {
-            var (_, composer) = Show();
-            using var hold = new ManualResetEventSlim();
-            composer.BeforeEncodingForTests = () => hold.Wait(TimeSpan.FromSeconds(30));
+            await UiTest.RunAsync(async () =>
+            {
+                var (_, composer) = Show();
+                composer.BeforeEncodingForTests = () => hold.Wait(TimeSpan.FromSeconds(30));
 
-            await composer.AddPastedBitmapAsync(new Avalonia.Media.Imaging.WriteableBitmap(new PixelSize(4, 4), new Vector(96, 96)));
-            FeedbackPicture picture = Assert.Single(composer.Pictures);
-            Avalonia.Media.Imaging.Bitmap shown = picture.Thumbnail!;
+                await composer.AddPastedBitmapAsync(new Avalonia.Media.Imaging.WriteableBitmap(new PixelSize(4, 4), new Vector(96, 96)));
+                FeedbackPicture picture = Assert.Single(composer.Pictures);
+                Avalonia.Media.Imaging.Bitmap shown = picture.Thumbnail!;
 
-            composer.RemovePicture(picture);
-            Dispatcher.UIThread.RunJobs();
+                composer.RemovePicture(picture);
+                Dispatcher.UIThread.RunJobs();
 
-            // Still there for the encoder, which then finishes without reading a disposed bitmap.
-            Assert.False(IsDisposed(shown));
+                // Still there for the encoder, which then finishes without reading a disposed bitmap.
+                Assert.False(IsDisposed(shown));
+                hold.Set();
+                await picture.ReadBytesAsync();
+
+                await WaitUntil(() => IsDisposed(shown));
+            });
+        }
+        finally
+        {
+            // A failure before the hold was let go leaves no pool thread waiting out its 30 seconds
+            // (disposing the event does not wake it).
             hold.Set();
-            await picture.ReadBytesAsync();
-
-            await WaitUntil(() => IsDisposed(shown));
-        });
+        }
     }
 
     // Excel, LibreOffice Calc and Numbers put a picture of copied cells on the clipboard beside
@@ -823,25 +833,45 @@ public sealed class FeedbackComposerTests
 
     // A paste still putting its picture in (the bitmap is mended off the UI thread first) is what
     // a send waits for - code review, 2026-10-16.
+    //
+    // The paste is HELD on the pool thread until the test lets it go (BeforeShowingForTests):
+    // unheld, the headless clipboard answers at once and a 4x4 picture's mending could be done
+    // before the await looked, so the picture was in before Paste() returned and the test failed
+    // (Linux CI, 2026-11-23).
     [Fact]
     public async Task A_paste_still_putting_a_picture_in_is_waited_for()
     {
-        await UiTest.RunAsync(async () =>
+        using var hold = new ManualResetEventSlim();
+
+        try
         {
-            var (window, composer) = Show();
-            var item = new DataTransferItem();
-            item.SetBitmap(new Avalonia.Media.Imaging.WriteableBitmap(new PixelSize(4, 4), new Vector(96, 96)));
-            await SetClipboard(window, item);
+            await UiTest.RunAsync(async () =>
+            {
+                var (window, composer) = Show();
+                composer.BeforeShowingForTests = () => hold.Wait(TimeSpan.FromSeconds(30));
+                var item = new DataTransferItem();
+                item.SetBitmap(new Avalonia.Media.Imaging.WriteableBitmap(new PixelSize(4, 4), new Vector(96, 96)));
+                await SetClipboard(window, item);
 
-            TextBox part = composer.PartsForTests[0];
-            PutCaret(part, 0);
-            part.Paste();
-            Assert.Empty(composer.Pictures);
+                TextBox part = composer.PartsForTests[0];
+                PutCaret(part, 0);
+                part.Paste();
+                Task settled = composer.WhenSettledAsync();
 
-            await composer.WhenSettledAsync();
+                Assert.Empty(composer.Pictures);
+                Assert.False(settled.IsCompleted);
 
-            Assert.Single(composer.Pictures);
-        });
+                hold.Set();
+                await settled;
+
+                Assert.Single(composer.Pictures);
+            });
+        }
+        finally
+        {
+            // A failure before the hold was let go leaves no pool thread waiting out its 30 seconds.
+            hold.Set();
+        }
     }
 
     // Code review, 2026-10-16: a click in the empty space beside a picture in the middle of the
