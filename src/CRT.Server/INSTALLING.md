@@ -62,6 +62,32 @@ dotnet --list-runtimes | grep -i aspnetcore      # a line with Microsoft.AspNetC
 
 Keep it patched like Apache and MariaDB: `sudo dnf upgrade` carries it.
 
+**Restart the service after every .NET update.** An update removes the old runtime's files, and a
+service still running on them fails the first time it needs a part it had not loaded yet - until it
+is restarted. On 24 October and 2 November 2026 the box's own morning `dnf-automatic` did exactly
+that: every connection failed the first time, sending from the "Feedback" tab the second, each until
+the box next rebooted. dnf's post-transaction-actions plugin restarts both instances whenever a .NET
+runtime package is installed or updated, by hand or by `dnf-automatic`:
+
+```bash
+sudo dnf install python3-dnf-plugin-post-transaction-actions
+sudo tee /etc/dnf/plugins/post-transaction-actions.d/crt-server.action <<'EOF'
+dotnet-runtime-10.0:in:/usr/bin/systemctl try-restart crt-server.service crt-server-test.service
+aspnetcore-runtime-10.0:in:/usr/bin/systemctl try-restart crt-server.service crt-server-test.service
+EOF
+```
+
+`try-restart` restarts only a service that is running; on a box without the test instance, leave
+`crt-server-test.service` out. When the service moves to a newer .NET, change `10.0` in both lines.
+
+**Check** - a reinstall of the same runtime restarts both at once:
+
+```bash
+grep enabled /etc/dnf/plugins/post-transaction-actions.conf          # enabled = 1
+sudo dnf reinstall -y aspnetcore-runtime-10.0
+systemctl show -p ActiveEnterTimestamp crt-server crt-server-test   # both: just now
+```
+
 ## 2. Users and groups
 
 ```bash

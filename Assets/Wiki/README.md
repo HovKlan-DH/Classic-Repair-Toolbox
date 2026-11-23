@@ -27,7 +27,7 @@ A Wiki page's name comes from its filename, so the two must match **exactly**, c
 
 | This file | Wiki page |
 | --- | --- |
-| `Board-Excel.md` | `.../wiki/Board-Excel` |
+| `Board-JSON.md` | `.../wiki/Board-JSON` |
 | `MiniPro-programmer.md` | `.../wiki/MiniPro-programmer` |
 | `Home.md` | the Wiki's front page |
 
