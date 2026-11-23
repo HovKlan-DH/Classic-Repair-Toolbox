@@ -1,5 +1,5 @@
-# 4.0.0, 2026-November-?
-------------------------
+# 4.0.0, 2026-November-23
+-------------------------
 - **Application**
   - Fixed `ENTER` will toggle blinking of components and traces in "Schematics" tab
   - Reimplemented UI and functionalities for contribution of data
@@ -11,11 +11,9 @@
     - Workbooks can be associated to a device
   - Added an "Introduction tour" to display how-to use most important parts of application
     - It can be seen again via "Configration" tab
-  - Added new component data, shown in the component info popup and in "Overview" tab
+  - Added new component data:
     - Package, pinout image, pin info and replacement parts
-    - Drawn image of component for some types; e.g. resistor, diodes and capacitors etc.
-    - "Capture from my oscilloscope" when adding a scope baseline (when an oscilloscope is connected) <========================== HVOR ???????????
-  - Added pins and direction when holding SHIFT in "Schematics" tab and hovering a component
+  - Added pins and direction when holding SHIFT in "Schematics" tab and hovering or selected a component (requires KiCad data)
   - Added basic text formatting to various text fields (bold, italic, bullets etc.)
   - Added "Files" and "Links" can be regionalized for both board and component
   - Added possibility to zoom in/out in worklog photo
@@ -35,10 +33,11 @@
   - Changed themes colors for various parts
   - Changed "KiCad nets" panel shows more info about component
   - Changed help buttons opening the GitHub Wiki now shows as "Learn more"
-  - Change "Credits" is now a cronological list of changes done
+  - Change "Credits" is now a chronological list of changes done
   - Removed user defined color themes, and now only supporting `Light` and `Dark` themes
     - Moved theme selector to be always visible, next to the "Update data" icon
   - Removed "Enable contributor mode" in "Global settings" panel
+  - Removed "Mark first pin on component" in "Global settings" panel, as it is now enabled by default
   - Various other minor UI and functionality changes and other places where performance has been optimized
 - **Data**
   - Changed all board data from Excel to JSON format

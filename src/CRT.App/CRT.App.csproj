@@ -8,10 +8,10 @@
 		<Copyright>©2025-2026</Copyright>
 		<AssemblyName>Classic-Repair-Toolbox</AssemblyName>
 		<AssemblyVersion>4.0.0</AssemblyVersion>
-		<!--
 		<InformationalVersion>$(AssemblyVersion)</InformationalVersion>
-		-->
+		<!--
 		<InformationalVersion>4.0.0-beta.1</InformationalVersion>
+		-->
 
 		<OutputType>WinExe</OutputType>
 		<TargetFrameworks>net10.0</TargetFrameworks>
