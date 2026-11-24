@@ -95,6 +95,10 @@ namespace Handlers.DataHandling
         // The credit for the draft's work, put back before Submit when it was taken away (SubmissionCredit.Ensure, 2026-11-15).
         public const string CreditForYourChanges = "Credit for your changes";
 
+        // The credit for the draft's work taken away from "Board: Credits"'s "No credit for my changes" (2026-11-24): none is
+        // wanted, and none is added again (SubmissionCredit.NoCreditAfter).
+        public const string NoCreditForYourChanges = "No credit for your changes";
+
         // "Important KiCad signals" wherever the part is named since 2026-11-01 (owner request) - the
         // sheet keeps its stored name, "Important signals".
         public const string ImportantSignals = "Important KiCad signals";

@@ -260,9 +260,16 @@ namespace CRT
         // screenshot of them; Finder puts a copied file's name as text and its icon as a picture
         // beside the file.
         // ###########################################################################################
+        // *** ONLY THE CLIPBOARD (Avalonia 12.2.0, 2026-11-24). *** A middle click on Linux pastes the PRIMARY SELECTION -
+        // the text last selected anywhere - and raises this too, naming that clipboard (PastingFromClipboardEventArgs). Read
+        // here, the clipboard's own picture, files or text went in instead of the words the click was for: the TextBox
+        // pastes the primary selection itself, text as it always is.
         private void OnPartPasting(object? sender, RoutedEventArgs e)
         {
             if (this.thisPassingPasteThrough || sender is not TextBox part)
+                return;
+
+            if (e is PastingFromClipboardEventArgs { Clipboard: { } from } && !ReferenceEquals(from, TopLevel.GetTopLevel(this)?.Clipboard))
                 return;
 
             e.Handled = true;

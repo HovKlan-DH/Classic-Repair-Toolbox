@@ -392,8 +392,9 @@ namespace CRT.Server.Tests.ApiCompatibility
 
         // ###########################################################################################
         // The version CRT.App.csproj builds - its InformationalVersion, the one place a release's
-        // version is entered (CLAUDE.md, "Release process"). An InformationalVersion that is
-        // "$(AssemblyVersion)" means the AssemblyVersion element's.
+        // version is entered (CLAUDE.md, "Release process"). "$(AssemblyVersion)" in it is the
+        // AssemblyVersion element's, as MSBuild reads it - "$(AssemblyVersion)-alpha.1" is a
+        // pre-release (2026-11-24: taken as the bare AssemblyVersion, it was frozen as a release).
         // ###########################################################################################
         private static string CrtVersionBeingBuilt()
         {
@@ -403,9 +404,11 @@ namespace CRT.Server.Tests.ApiCompatibility
             string? informational = project.Descendants("InformationalVersion").Select(element => element.Value.Trim()).LastOrDefault();
             string? assembly = project.Descendants("AssemblyVersion").Select(element => element.Value.Trim()).LastOrDefault();
 
-            string? version = informational is null || informational.Contains("$(", StringComparison.Ordinal)
+            string? expanded = assembly is null ? informational : informational?.Replace("$(AssemblyVersion)", assembly, StringComparison.Ordinal);
+
+            string? version = expanded is null || expanded.Contains("$(", StringComparison.Ordinal)
                 ? assembly
-                : informational;
+                : expanded;
 
             Assert.False(string.IsNullOrWhiteSpace(version), "CRT.App.csproj declares no version.");
             return version!;

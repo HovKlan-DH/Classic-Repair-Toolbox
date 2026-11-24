@@ -90,11 +90,12 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
 
     // ###########################################################################################
     // The list on the far left that Main has for the tab (Main.ContributeLists.cs): showing the tab's collection,
-    // one component at a time. MainContributeListsTests holds Main's own half.
+    // one component at a time. MainContributeListsTests holds Main's own half. Its own scrolling OFF, as Main.axaml makes
+    // ContributeComponentListBox - on, the list scrolled itself and a test passed whether or not the tab scrolled.
     // ###########################################################################################
     private static ListBox ListFor(TabDrafts tab)
     {
-        var list = new ListBox { SelectionMode = SelectionMode.Single, ItemsSource = tab.ComponentItems };
+        var list = new ListBox { SelectionMode = SelectionMode.Single, AutoScrollToSelectedItem = false, ItemsSource = tab.ComponentItems };
         tab.UseComponentList(list);
         return list;
     }
@@ -2114,6 +2115,117 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
                 // Once there, it is left alone.
                 await tab.EnsureCreditForChangesAsync(entry);
                 Assert.Single(session.Content.Board.Credits);
+            });
+        }
+        finally
+        {
+            UserSettings.LoadFrom(this.thisWorkspace.WriteFile("settings-after.json", "{}"));
+        }
+    }
+
+    // ###########################################################################################
+    // *** WHILE THE CONTRIBUTOR WANTS NO CREDIT, SUBMIT ADDS NONE - AND "Add a credit for my changes" PUTS IT BACK (owner request,
+    // 2026-11-24; code review the same day: nothing held the host to either). *** The draft's marker says none is wanted: the step
+    // before Submit adds nothing. "Board: Credits" says so, and its button asks the host, which adds the credit as ONE step and
+    // ends the wish - the notice going with it.
+    // ###########################################################################################
+    [Fact]
+    public async Task While_no_credit_is_wanted_Submit_adds_none_and_the_pane_can_ask_for_it_back()
+    {
+        BoardData published = Board();
+        WriteDraft(BoardA, published.WithComponentSections(components: [.. published.Components.Select(component =>
+            component.BoardLabel == "U8" ? new ComponentEntry { BoardLabel = "U8", Category = "IC", FriendlyName = "CPU 6510" } : component)]));
+        DraftBaseStore.SaveDocument(DraftManager.DraftsRoot, BoardA, BoardDocumentMapping.ToDocument(new BoardContent(published, [], []), name => name, []));
+        DraftMarkerStore.Update(DraftFolderLayout.GetMarkerPath(DraftManager.DraftsRoot, BoardA), marker => marker with { NoCreditForWork = true });
+
+        UserSettings.LoadFrom(this.thisWorkspace.WriteFile("settings.json", "{}"));
+        UserSettings.RememberCreditIdentity("Anna", "RHD");
+
+        try
+        {
+            await UiTest.RunAsync(async () =>
+            {
+                HardwareBoardEntry entry = Entry("250407", BoardA);
+                TabDrafts tab = Tab(entry);
+                tab.PublishedBoardOverrideForTests = _ => Board();
+                var window = new Window { Content = tab, Width = 1400, Height = 1000 };
+                window.Show();
+
+                await tab.EnsureCreditForChangesAsync(entry);
+
+                DraftSession session = DraftManager.Sessions.Find(DraftManager.DraftsRoot, BoardA)!;
+                Assert.True(session.NoCreditForWork);
+                Assert.Empty(session.Content.Board.Credits);
+                Assert.False(session.CanUndo);
+
+                // "Board: Credits" says so, and its button asks the host for the credit back.
+                tab.ShowBoard(entry, Board(), "PAL", null);
+                await tab.OpenBoardPartAsync(PaneBoardPart.Credits);
+                Assert.True(tab.ComponentPaneForTests.ShowsNoCreditNoticeForTests);
+
+                tab.ComponentPaneForTests.GetControl<Button>("AddCreditForChangesButton")
+                    .RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+                await Until(() => session.Content.Board.Credits.Count == 1);
+                Dispatcher.UIThread.RunJobs();
+
+                Assert.Equal("Anna", session.Content.Board.Credits[0].NameOrHandle);
+                Assert.Equal(DraftStepWording.CreditForYourChanges, session.UndoDescription);
+                Assert.False(session.NoCreditForWork);
+                Assert.False(tab.ComponentPaneForTests.ShowsNoCreditNoticeForTests);
+
+                window.Close();
+            });
+        }
+        finally
+        {
+            UserSettings.LoadFrom(this.thisWorkspace.WriteFile("settings-after.json", "{}"));
+        }
+    }
+
+    // ###########################################################################################
+    // The credit taken away in an editor that had not handed it over yet - the table's row deleted, say - is handed over as the
+    // step before Submit begins, and that says none is wanted: the step reads the wish after it, and adds nothing back (code
+    // review, 2026-11-24: read before, Submit put the credit straight back and stopped on its empty main contribution).
+    // ###########################################################################################
+    [Fact]
+    public async Task A_credit_taken_away_as_Submit_begins_is_not_put_back()
+    {
+        BoardData published = Board();
+        WriteDraft(BoardA, published.WithComponentSections(components: [.. published.Components.Select(component =>
+            component.BoardLabel == "U8" ? new ComponentEntry { BoardLabel = "U8", Category = "IC", FriendlyName = "CPU 6510" } : component)]));
+        DraftBaseStore.SaveDocument(DraftManager.DraftsRoot, BoardA, BoardDocumentMapping.ToDocument(new BoardContent(published, [], []), name => name, []));
+
+        UserSettings.LoadFrom(this.thisWorkspace.WriteFile("settings.json", "{}"));
+        UserSettings.RememberCreditIdentity("Anna", "RHD");
+
+        try
+        {
+            await UiTest.RunAsync(async () =>
+            {
+                HardwareBoardEntry entry = Entry("250407", BoardA);
+                TabDrafts tab = Tab(entry);
+
+                await tab.EnsureCreditForChangesAsync(entry);
+                DraftSession session = DraftManager.Sessions.Find(DraftManager.DraftsRoot, BoardA)!;
+                Assert.Single(session.Content.Board.Credits);
+
+                // An editor holding the credit's removal hands it over as the next change comes.
+                bool handedOver = false;
+                session.ChangeComing += (_, _) =>
+                {
+                    if (!handedOver)
+                    {
+                        handedOver = true;
+                        session.Apply("Credits", content => content with { Board = content.Board.WithBoardSections(credits: []) });
+                    }
+                };
+
+                await tab.EnsureCreditForChangesAsync(entry);
+
+                Assert.True(handedOver);
+                Assert.Empty(session.Content.Board.Credits);
+                Assert.True(session.NoCreditForWork);
+                Assert.Equal("Credits", session.UndoDescription);
             });
         }
         finally

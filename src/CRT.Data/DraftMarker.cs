@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
@@ -101,6 +102,14 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         public IReadOnlyList<string>? CreditsOffered { get; init; }
 
+        // ###########################################################################################
+        // THE CONTRIBUTOR WANTS NO CREDIT FOR THIS DRAFT'S WORK (owner request, 2026-11-24: "I want a possibility for the user
+        // to opt-out of the credit ... when I contribute something, then I do not want to have a new line generated") - the
+        // credit CRT added removed, so none is added again (SubmissionCredit.NoCreditAfter, DraftSession.NoCreditForWork). Null
+        // unless so, so every other marker keeps its bytes. Nothing a board publishes: the marker never leaves the machine.
+        // ###########################################################################################
+        public bool? NoCreditForWork { get; init; }
+
         // True when this draft has no published counterpart at all.
         [JsonIgnore]
         public bool IsNewBoard => this.NewBoard != null;
@@ -170,6 +179,40 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         public static void Save(string markerPath, DraftMarker marker) =>
             DraftMarkerStore.Save(markerPath, marker, Thread.Sleep);
+
+        // ###########################################################################################
+        // READS, CHANGES AND WRITES A MARKER AS ONE STEP (code review, 2026-11-24). What changes one field of a draft's marker
+        // while the draft is in use - the wish for no credit (DraftSession, with a save, on the pool), "I have looked at this"
+        // (DraftWorkbookStore.MarkDriftSeen), the new board's credits offered (TabDrafts) - goes through here, one at a time
+        // per marker: two at once each read the marker before the other wrote it, and the later write dropped the other's
+        // field. What writes a marker whole as it makes, moves or converts its folder (DraftSeeder, DraftBoardRename,
+        // DraftConversion, DraftFolderImport) does not - a field one of those carries over while the draft is in use goes
+        // through here first. The changed marker, or null when there is none (its write's IOException is the caller's).
+        // ###########################################################################################
+        public static DraftMarker? Update(string markerPath, Func<DraftMarker, DraftMarker> change)
+        {
+            ArgumentNullException.ThrowIfNull(change);
+
+            // One gate per marker, so a marker held open for a moment (Save waits for it) holds up no other draft's.
+            object gate = DraftMarkerStore.UpdateGates.GetOrAdd(
+                string.IsNullOrWhiteSpace(markerPath) ? string.Empty : Path.GetFullPath(markerPath),
+                _ => new object());
+
+            lock (gate)
+            {
+                if (DraftMarkerStore.Load(markerPath) is not { } marker)
+                {
+                    return null;
+                }
+
+                DraftMarker changed = change(marker);
+                DraftMarkerStore.Save(markerPath, changed);
+
+                return changed;
+            }
+        }
+
+        private static readonly ConcurrentDictionary<string, object> UpdateGates = new(StringComparer.OrdinalIgnoreCase);
 
         internal static void Save(string markerPath, DraftMarker marker, Action<TimeSpan> pause)
         {

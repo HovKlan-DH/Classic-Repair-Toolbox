@@ -3,6 +3,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Handlers.DataHandling;
+using Handlers.Theming;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -814,9 +815,10 @@ namespace CRT
                 }
             }
 
+            // Laid out first, as rows were just put in (ListScrolling - plain ScrollIntoView never got there).
             if (list is { SelectedIndex: >= 0 } && list.SelectedIndex != selectedWas)
             {
-                list.ScrollIntoView(list.SelectedIndex);
+                ListScrolling.ToRow(list, list.SelectedIndex);
             }
 
             // A row just made says what the checks found on it too (TabDrafts.Problems.cs).
@@ -912,7 +914,7 @@ namespace CRT
 
             if (selected is not null)
             {
-                list.ScrollIntoView(selected);
+                ListScrolling.ToRow(list, list.SelectedIndex);
             }
         }
 

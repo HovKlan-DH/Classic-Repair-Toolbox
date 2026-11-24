@@ -143,6 +143,52 @@ public sealed class ComponentPaneBaselineRunTests : IDisposable
     }
 
     // ###########################################################################################
+    // "Capture again" on a pin far down the list, its line put in just then, shows that line IN VIEW (code review, 2026-11-24): a
+    // list's rows put in since its last layout pass cannot be scrolled to without a layout first (ListScrolling).
+    // ###########################################################################################
+    [Fact]
+    public async Task Capture_again_on_a_pin_far_down_shows_its_line_in_the_window()
+    {
+        DraftSession session = this.OpenDraft();
+
+        await UiTest.RunAsync(async () =>
+        {
+            (ComponentPane pane, Window host) = Shown(session, new FakeBaselineScope());
+
+            // The window open already on the first pin, and pin 14's baseline coming from another editor: its line put in as
+            // "Capture again" asks for it (BaselineCaptureWindow.FollowRows).
+            BaselineCaptureWindow window = Open(pane);
+
+            AddBaseline(session, new ComponentImageEntry { BoardLabel = "U27", Pin = "14", Name = "VCC", File = "Scope baseline/U27_3.png", TimeDiv = "1us", VoltsDiv = "1V" });
+
+            await pane.CaptureAgainInWindowAsync(pane.BaselinesForTests.Single(row => row.Committed.Pin == "14"));
+
+            Assert.Same(window, pane.CaptureWindowForTests);
+            ListBox lines = In<ListBox>(window, "TargetsList");
+            Dispatcher.UIThread.RunJobs();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            Dispatcher.UIThread.RunJobs();
+
+            ScrollViewer scroller = lines.GetVisualDescendants().OfType<ScrollViewer>().First();
+            int index = window.CurrentIndexForTests;
+
+            Assert.Equal("14", window.TargetsForTests[index].Step.PinText);
+            Assert.True(scroller.Extent.Height > scroller.Viewport.Height, "The list is longer than its view.");
+            Assert.True(
+                lines.ContainerFromIndex(index) is Control line &&
+                line.IsEffectivelyVisible &&
+                line.TranslatePoint(default, scroller) is { } at &&
+                at.Y >= -1 &&
+                at.Y + line.Bounds.Height <= scroller.Viewport.Height + 1,
+                "Pin 14's line is in view.");
+
+            await Settled(pane, window);
+            window.LetGo();
+            host.Close();
+        });
+    }
+
+    // ###########################################################################################
     // "CAPTURE AGAIN" on a baseline opens the window on its pin and captures there (owner request, 2026-11-20: "this button should
     // open the "Capture from oscilloscope pin-by-pin" window and go to that pin and capture the image from scope and then show it in
     // this view instead. Then its data can be controlled by the user before it maybe will be accepted"): the oscilloscope set as the

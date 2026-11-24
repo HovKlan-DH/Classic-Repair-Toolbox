@@ -86,7 +86,8 @@ public sealed class TabDraftsEntriesTests : IDisposable
         tab.RefreshDrafts();
         tab.ShowBoard(entry, Board(), "PAL", null);
 
-        var list = new ListBox { SelectionMode = SelectionMode.Single, ItemsSource = tab.ComponentItems };
+        // Its own scrolling off, as Main.axaml makes the tab's list (TabDraftsProblemsTests.ListAndBoxFor says why).
+        var list = new ListBox { SelectionMode = SelectionMode.Single, AutoScrollToSelectedItem = false, ItemsSource = tab.ComponentItems };
         tab.UseComponentList(list);
 
         return (tab, list);

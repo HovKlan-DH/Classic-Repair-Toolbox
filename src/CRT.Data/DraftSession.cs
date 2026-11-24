@@ -29,7 +29,9 @@ namespace Handlers.DataHandling
     //     And the credit for the work (SubmissionCredit.Follow, 2026-11-15) when the sessions were
     //     told whom to credit (DraftSessions.CreditIdentity): IN THE SAME STEP, so one undo takes the
     //     change and its credit back together; a change that did more than its editor asked says so
-    //     (DraftSessionChange.FollowedUp), so an editor showing the credits reads them again.
+    //     (DraftSessionChange.FollowedUp), so an editor showing the credits reads them again. Whether
+    //     the contributor wants no credit at all follows each edit too (NoCreditForWork, 2026-11-24),
+    //     kept in the draft's marker.
     //   - SAVED MEANS THE FILE HOLDS WHAT IS SHOWN: compared by the content itself, so undoing back
     //     to the content last written is Saved again, with nothing to write.
     //   - A FILE CHANGED OUTSIDE IS NEVER WRITTEN OVER WITHOUT BEING ASKED. The session keeps the
@@ -85,7 +87,7 @@ namespace Handlers.DataHandling
         private DraftWorkbookEditOutcome? thisFailure;
         private BoardContent? thisFailedContent;
 
-        private DraftSession(string draftsRoot, string excelDataFile, BoardContent content, string fingerprint, Func<DateTimeOffset> clock)
+        private DraftSession(string draftsRoot, string excelDataFile, BoardContent content, string fingerprint, Func<DateTimeOffset> clock, bool noCreditForWork)
         {
             this.DraftsRoot = draftsRoot;
             this.ExcelDataFile = excelDataFile;
@@ -94,6 +96,8 @@ namespace Handlers.DataHandling
             this.thisFingerprint = fingerprint;
             this.thisClock = clock;
             this.thisLastChange = clock();
+            this.thisNoCreditForWork = noCreditForWork;
+            this.thisNoCreditForWorkNoted = noCreditForWork;
         }
 
         // ###########################################################################################
@@ -118,7 +122,9 @@ namespace Handlers.DataHandling
                 return null;
             }
 
-            var session = new DraftSession(draftsRoot, excelDataFile, BoardDocumentMapping.ToContent(document), fingerprint, clock ?? (() => DateTimeOffset.UtcNow));
+            bool noCreditForWork = DraftMarkerStore.Load(DraftFolderLayout.GetMarkerPath(draftsRoot, excelDataFile))?.NoCreditForWork == true;
+
+            var session = new DraftSession(draftsRoot, excelDataFile, BoardDocumentMapping.ToContent(document), fingerprint, clock ?? (() => DateTimeOffset.UtcNow), noCreditForWork);
             session.thisFiles.Note(document.Files);
 
             return session;
@@ -142,10 +148,33 @@ namespace Handlers.DataHandling
         public string ExcelDataFile { get; }
 
         // ###########################################################################################
-        // What follows every edit besides DraftEditRules: the board as the edit left it from the board before it, and the board
-        // it should be - the same object for nothing more. Set by the sessions that opened this one (DraftSessions); null, nothing.
+        // What follows every edit besides DraftEditRules: the board as the edit left it from the board before it, with whether
+        // the contributor wanted no credit before it (NoCreditForWork) - and the board it should be (the same object for nothing
+        // more), with whether no credit is wanted after it. Set by the sessions that opened this one (DraftSessions); null,
+        // nothing.
         // ###########################################################################################
-        public Func<BoardData, BoardData, BoardData>? FollowUp { get; set; }
+        public Func<BoardData, BoardData, bool, DraftFollowUp>? FollowUp { get; set; }
+
+        // ###########################################################################################
+        // *** THE CONTRIBUTOR WANTS NO CREDIT FOR THIS DRAFT'S WORK (owner request, 2026-11-24). *** Said by taking the credit
+        // sent away (SubmissionCredit.NoCreditAfter, run with each edit through FollowUp), and ended by sending one again.
+        // Read from the draft's marker as the session opens, and written back to it with the next save (NoteNoCreditForWork) -
+        // so it outlasts CRT being closed. Each step of the history keeps it with its content, so Undo, Redo and a step taken
+        // back put back the wish that went with it (code review, 2026-11-24).
+        // ###########################################################################################
+        public bool NoCreditForWork
+        {
+            get
+            {
+                lock (this.thisGate)
+                    return this.thisNoCreditForWork;
+            }
+        }
+
+        private bool thisNoCreditForWork;
+
+        // What the marker holds of it - read and written under thisWriting alone.
+        private bool thisNoCreditForWorkNoted;
 
         // ###########################################################################################
         // The board this draft was started from or last brought up to date with (DraftBase) - what its work and its credits are
@@ -277,7 +306,7 @@ namespace Handlers.DataHandling
         public DraftPreparedEdit? PrepareEdit(
             BoardContent before,
             Func<BoardContent, (BoardContent? Content, IReadOnlyDictionary<string, string?>? Follow)> edit) =>
-            DraftSession.Prepare(before, edit, this.FollowUp);
+            DraftSession.Prepare(before, edit, this.FollowUp, this.NoCreditForWork);
 
         // ###########################################################################################
         // AN EDIT WORKED OUT OFF THE UI THREAD (code review, 2026-10-25: a large board's edit, and what
@@ -285,10 +314,12 @@ namespace Handlers.DataHandling
         // `before` and what follows it is followed (DraftEditRules) - pure, so any thread. Null when
         // it changes nothing. ApplyPrepared then applies it on the UI thread.
         // ###########################################################################################
+        // `noCreditForWork`: whether the contributor wanted no credit before the edit (NoCreditForWork) - handed to `followUp`.
         public static DraftPreparedEdit? Prepare(
             BoardContent before,
             Func<BoardContent, (BoardContent? Content, IReadOnlyDictionary<string, string?>? Follow)> edit,
-            Func<BoardData, BoardData, BoardData>? followUp = null)
+            Func<BoardData, BoardData, bool, DraftFollowUp>? followUp = null,
+            bool noCreditForWork = false)
         {
             ArgumentNullException.ThrowIfNull(before);
             ArgumentNullException.ThrowIfNull(edit);
@@ -305,12 +336,15 @@ namespace Handlers.DataHandling
 
             // What else follows the edit (FollowUp - the credit for the work): in the same step, and said, so an editor that
             // takes its own edits as already shown reads the draft again.
-            BoardData followed = followUp?.Invoke(before.Board, board) ?? board;
+            DraftFollowUp? followUpDone = followUp?.Invoke(before.Board, board, noCreditForWork);
+            BoardData followed = followUpDone?.Board ?? board;
 
             return new DraftPreparedEdit(
                 before,
                 edited with { Board = followed, Calibrations = calibrations },
-                FollowedUp: !ReferenceEquals(followed, board));
+                FollowedUp: !ReferenceEquals(followed, board),
+                NoCreditForWork: followUpDone?.NoCreditForWork ?? noCreditForWork,
+                NoCreditForWorkBefore: noCreditForWork);
         }
 
         // ###########################################################################################
@@ -331,13 +365,16 @@ namespace Handlers.DataHandling
         {
             lock (this.thisGate)
             {
-                if (!ReferenceEquals(this.thisContent, prepared.Before))
+                // The content it was worked out on, AND the wish for no credit that goes with it (code review, 2026-11-24): an edit
+                // worked out on the pool while the draft moved away and back - "Add a credit for my changes", then Undo - came back
+                // to the same content with the wish read from the other one, and the credit turned down was added.
+                if (!ReferenceEquals(this.thisContent, prepared.Before) || this.thisNoCreditForWork != prepared.NoCreditForWorkBefore)
                 {
                     return false;
                 }
 
                 this.thisRedo.Clear();
-                this.thisUndo.Add(new Step(prepared.Before, description ?? string.Empty, origin));
+                this.thisUndo.Add(new Step(prepared.Before, description ?? string.Empty, origin, this.thisNoCreditForWork));
 
                 if (this.thisUndo.Count > DraftSession.MaxSteps)
                 {
@@ -345,6 +382,7 @@ namespace Handlers.DataHandling
                 }
 
                 this.thisContent = prepared.After;
+                this.thisNoCreditForWork = prepared.NoCreditForWork;
                 this.thisLastChange = this.thisClock();
             }
 
@@ -423,10 +461,13 @@ namespace Handlers.DataHandling
                 step = from[^1];
                 from.RemoveAt(from.Count - 1);
 
-                // The state being left goes on the other stack, so the opposite command returns to it.
-                to.Add(step with { Content = this.thisContent });
+                // The state being left goes on the other stack, so the opposite command returns to it - the wish for no credit with it
+                // (code review, 2026-11-24: an undo of "Add a credit for my changes" took the credit away and left the wish at "one
+                // wanted", so the next change added it back unasked).
+                to.Add(step with { Content = this.thisContent, NoCreditForWork = this.thisNoCreditForWork });
 
                 this.thisContent = step.Content;
+                this.thisNoCreditForWork = step.NoCreditForWork;
                 this.thisLastChange = this.thisClock();
             }
 
@@ -479,6 +520,7 @@ namespace Handlers.DataHandling
                 {
                     this.thisUndo.RemoveAt(this.thisUndo.Count - 1);
                     this.thisContent = latest.Content;
+                    this.thisNoCreditForWork = latest.NoCreditForWork;
                     this.thisLastChange = this.thisClock();
                 }
             }
@@ -591,7 +633,7 @@ namespace Handlers.DataHandling
             lock (this.thisGate)
             {
                 this.thisRedo.Clear();
-                this.thisUndo.Add(new Step(this.thisContent, description ?? string.Empty, Origin: null));
+                this.thisUndo.Add(new Step(this.thisContent, description ?? string.Empty, Origin: null, this.thisNoCreditForWork));
 
                 if (this.thisUndo.Count > DraftSession.MaxSteps)
                 {
@@ -815,18 +857,28 @@ namespace Handlers.DataHandling
             {
                 BoardContent content;
                 string expected;
+                bool unchanged;
 
                 lock (this.thisGate)
                 {
                     content = this.thisContent;
+                    unchanged = ReferenceEquals(content, this.thisSavedContent) && !evenUnchanged;
 
-                    if (ReferenceEquals(content, this.thisSavedContent) && !evenUnchanged)
+                    if (!unchanged)
                     {
-                        return DraftWorkbookEditOutcome.Saved;
+                        expected = this.thisFingerprint;
+                        this.thisSaving = true;
                     }
+                    else
+                    {
+                        expected = string.Empty;
+                    }
+                }
 
-                    expected = this.thisFingerprint;
-                    this.thisSaving = true;
+                if (unchanged)
+                {
+                    this.NoteNoCreditForWork();
+                    return DraftWorkbookEditOutcome.Saved;
                 }
 
                 this.SaveStateChanged?.Invoke(this, EventArgs.Empty);
@@ -893,7 +945,47 @@ namespace Handlers.DataHandling
                     this.SaveStateChanged?.Invoke(this, EventArgs.Empty);
                 }
 
+                if (outcome == DraftWorkbookEditOutcome.Saved)
+                {
+                    this.NoteNoCreditForWork();
+                }
+
                 return outcome;
+            }
+        }
+
+        // ###########################################################################################
+        // Whether the contributor wants no credit (NoCreditForWork), into the draft's marker when it holds otherwise - with a save,
+        // under thisWriting, so it is written once with the content it was said with, and never beside a write of the marker by
+        // WriteFileDirectly ("Bring my draft up to date"). One that cannot be written is tried again at the next save: until
+        // then, a CRT started again adds the credit back at the next change - nothing is lost but the wish.
+        // ###########################################################################################
+        private void NoteNoCreditForWork()
+        {
+            bool wanted;
+
+            lock (this.thisGate)
+                wanted = this.thisNoCreditForWork;
+
+            if (wanted == this.thisNoCreditForWorkNoted)
+            {
+                return;
+            }
+
+            string path = DraftFolderLayout.GetMarkerPath(this.DraftsRoot, this.ExcelDataFile);
+
+            try
+            {
+                // One step with every other change of the marker (DraftMarkerStore.Update): read and written beside "I have looked
+                // at this", say, the later write dropped the other's field (code review, 2026-11-24).
+                if (DraftMarkerStore.Update(path, marker => marker with { NoCreditForWork = wanted ? true : null }) is not null)
+                {
+                    this.thisNoCreditForWorkNoted = wanted;
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                CrtLog.Warning($"Could not note in the draft's marker [{path}] that no credit is wanted - [{ex.Message}]");
             }
         }
 
@@ -1004,8 +1096,9 @@ namespace Handlers.DataHandling
             this.SaveStateChanged?.Invoke(this, EventArgs.Empty);
         }
 
-        // One step of the history: the content to go back to, what the change was, who made it.
-        private sealed record Step(BoardContent Content, string Description, object? Origin);
+        // One step of the history: the content to go back to, what the change was, who made it - and whether the contributor wanted
+        // no credit with that content (NoCreditForWork), which goes back with it.
+        private sealed record Step(BoardContent Content, string Description, object? Origin, bool NoCreditForWork = false);
     }
 
     public enum DraftSessionChangeKind
@@ -1032,8 +1125,13 @@ namespace Handlers.DataHandling
     // An edit worked out off the UI thread (DraftSession.Prepare): the content it was worked out on,
     // and the content it makes of it, what follows the edit followed.
     // An edit worked out: the content before and after it - `FollowedUp` when more followed it than its editor asked for (the
-    // credit for the work, DraftSession.FollowUp).
-    public sealed record DraftPreparedEdit(BoardContent Before, BoardContent After, bool FollowedUp = false);
+    // credit for the work, DraftSession.FollowUp), and `NoCreditForWork` whether the contributor wants no credit after it -
+    // `NoCreditForWorkBefore` before it, as it was worked out with, which Commit holds the draft to as it holds it to `Before`.
+    public sealed record DraftPreparedEdit(BoardContent Before, BoardContent After, bool FollowedUp = false, bool NoCreditForWork = false, bool NoCreditForWorkBefore = false);
+
+    // What follows an edit (DraftSession.FollowUp): the board as it should be, and whether the contributor wants no credit for
+    // the draft's work (SubmissionCredit.NoCreditAfter).
+    public sealed record DraftFollowUp(BoardData Board, bool NoCreditForWork);
 
     // What changed a draft session: the kind, the step's description, and the editor that made the
     // edit (null for undo and redo of nobody's, and for the file read again).

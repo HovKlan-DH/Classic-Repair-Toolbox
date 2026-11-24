@@ -979,7 +979,10 @@ namespace CRT
             try
             {
                 this.TargetsList.SelectedIndex = index;
-                this.TargetsList.ScrollIntoView(index);
+
+                // The lines may have been put in just now (FollowRows) - laid out first, as a list's rows changed since its last layout
+                // pass cannot be scrolled to (ListScrolling).
+                ListScrolling.ToRow(this.TargetsList, index);
             }
             finally
             {

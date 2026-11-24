@@ -61,8 +61,20 @@ namespace CRT
             this.ComponentPane.KiCadViewsWanted += (_, ask) => this.RunGuarded(() => this.LoadKiCadViewsAsync(ask), "Reading the KiCad views");
             this.ComponentPane.ShowNetRequested += (_, net) => this.RunGuarded(() => this.ShowNetOnBoardAsync(net), "Show on board");
             this.ComponentPane.OpenComponentRequested += (_, asked) => this.RunGuarded(() => this.OpenComponentInRegionAsync(asked.Label, asked.Region), "Open a component of a region");
+            this.ComponentPane.CreditForChangesRequested += (_, _) => this.RunGuarded(this.AddCreditForChangesAsync, "Credit for your changes");
+            this.ComponentPane.JudgedAgainst = session => DraftManager.Sessions.BoardToJudgeAgainst(session);
             this.ComponentPane.ReadPreviewTraces = this.PreviewTracesAsync;
         }
+
+        // ###########################################################################################
+        // "Board: Credits"'s "Add a credit for my changes" (owner request, 2026-11-24) - the credit for the draft's work back
+        // after the contributor took it away, as ONE step, which ends the wish for none (SubmissionCredit.NoCreditAfter). The
+        // pane reads it in as another's edit.
+        // ###########################################################################################
+        private Task AddCreditForChangesAsync() =>
+            this.thisComponentEntry is { } entry
+                ? this.EnsureCreditForChangesAsync(entry, evenIfNoneWanted: true)
+                : Task.CompletedTask;
 
         // ###########################################################################################
         // A component "Board: Regions" lists a region applied on (owner request, 2026-11-11: "so I can find these and change

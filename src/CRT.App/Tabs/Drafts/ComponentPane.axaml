@@ -2276,7 +2276,23 @@
 					     THE CONTRIBUTOR'S OWN CHANGES IS ONE OF THEM (owner request, 2026-11-15 - the Submit dialog asked for it until
 					     then): made with the first change, framed as sent with the submission (SubmissionCredit). -->
 					<TextBlock Classes="PaneIntro"
-							   Text="Who made the board's data, and what each contribution was - the schematic images, the labelling, the measurements. The &quot;About&quot; tab shows them oldest first, by the date each was published; a name or a handle is fine, and the contact is shown to everybody. Your own changes are credited by a row of their own, framed in green: CRT adds it with your first change, under the name and contact you gave last - write &quot;Unknown&quot; as the name to be credited by none. Describe the main contribution in a few lines: the most important updates only, not every small detail." />
+							   Text="Who made the board's data, and what each contribution was - the schematic images, the labelling, the measurements. The &quot;About&quot; tab shows them oldest first, by the date each was published; a name or a handle is fine, and the contact is shown to everybody. Your own changes are credited by a row of their own, framed in green: CRT adds it with your first change, under the name and contact you gave last. Write &quot;Unknown&quot; as the name to keep the row without your name, or press &quot;No credit for my changes&quot; to send your changes with no credit at all. Describe the main contribution in a few lines: the most important updates only, not every small detail." />
+
+					<!-- THE CONTRIBUTOR WANTS NO CREDIT (owner request, 2026-11-24: "I want a possibility for the user to opt-out of the
+					     credit") - said while the draft's work goes without one, with the way back (SubmissionCredit.SendsNoCredit). -->
+					<Border x:Name="NoCreditNotice" Classes="Notice" IsVisible="False">
+						<Grid ColumnDefinitions="Auto,*,Auto">
+							<TextBlock Grid.Column="0" Classes="NoticeIcon" Text="&#xf05a;" />
+							<TextBlock Grid.Column="1" Classes="NoticeText" x:Name="NoCreditNoticeText" />
+							<Button Grid.Column="2"
+									x:Name="AddCreditForChangesButton"
+									Classes="Accept"
+									Content="Add a credit for my changes"
+									VerticalAlignment="Center"
+									Margin="12,0,0,0"
+									Click="OnAddCreditForChangesClick" />
+						</Grid>
+					</Border>
 
 					<TextBlock x:Name="NoCreditsText" Classes="EmptyLine" Text="No credits yet." />
 
@@ -2313,15 +2329,27 @@
 													CornerRadius="3"
 													Padding="8,4"
 													Margin="0,0,0,6">
-												<StackPanel Spacing="1">
-													<TextBlock Text="Sent with your submission"
-															   FontWeight="SemiBold"
-															   Foreground="{DynamicResource SubmittedCredit_Fg}" />
-													<TextBlock TextWrapping="Wrap"
-															   FontSize="12"
-															   Foreground="{DynamicResource SubmittedCredit_Fg}"
-															   Text="This is what the board's credits on the &quot;About&quot; tab say about your work once it is published. Write the most important updates in &quot;Main contribution&quot; - not every detail. It is a suggestion for the credits: the board's maintainers may change it, if needed, before it is published." />
-												</StackPanel>
+												<Grid ColumnDefinitions="*,Auto">
+													<StackPanel Grid.Column="0" Spacing="1">
+														<TextBlock Text="Sent with your submission"
+																   FontWeight="SemiBold"
+																   Foreground="{DynamicResource SubmittedCredit_Fg}" />
+														<TextBlock TextWrapping="Wrap"
+																   FontSize="12"
+																   Foreground="{DynamicResource SubmittedCredit_Fg}"
+																   Text="This is what the board's credits on the &quot;About&quot; tab say about your work once it is published. Write the most important updates in &quot;Main contribution&quot; - not every detail. It is a suggestion for the credits: the board's maintainers may change it, if needed, before it is published." />
+													</StackPanel>
+													<!-- The way out of the credit for a published board's draft (owner request, 2026-11-24): the row taken
+													     away, and none added again (SubmissionCredit.NoCreditAfter). Not on a new board's starting rows. -->
+													<Button Grid.Column="1"
+															Classes="Danger"
+															Content="No credit for my changes"
+															Tag="{Binding}"
+															IsVisible="{Binding OffersNoCredit}"
+															VerticalAlignment="Center"
+															Margin="12,0,0,0"
+															Click="OnNoCreditClick" />
+												</Grid>
 											</Border>
 											<Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto">
 												<Grid.ColumnDefinitions>

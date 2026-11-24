@@ -694,6 +694,40 @@ public sealed class FeedbackComposerTests
         });
     }
 
+    // Avalonia 12.2.0: a middle click on Linux pastes the PRIMARY SELECTION, raising PastingFromClipboard with that
+    // clipboard named. The composer read the clipboard itself - the picture on it went in, not the words selected.
+    [Fact]
+    public async Task A_paste_of_another_clipboard_than_the_clipboard_is_left_to_the_text_box()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var (window, composer) = Show();
+            var item = new DataTransferItem();
+            item.SetBitmap(new Avalonia.Media.Imaging.WriteableBitmap(new PixelSize(4, 4), new Vector(96, 96)));
+            await SetClipboard(window, item);
+
+            TextBox part = composer.PartsForTests[0];
+            var paste = new PastingFromClipboardEventArgs(TextBox.PastingFromClipboardEvent, PrimarySelectionStandIn.Make());
+            part.RaiseEvent(paste);
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.False(paste.Handled);
+            Assert.Empty(composer.Pictures);
+        });
+    }
+
+    // A clipboard other than the window's, as Linux's primary selection is. Nothing reads it here: the composer lets
+    // its paste through, and the event is raised by the test, not by a TextBox that would read it. Made at run time:
+    // Avalonia marks IClipboard [NotClientImplementable] with a member no class can name.
+    public class PrimarySelectionStandIn : System.Reflection.DispatchProxy
+    {
+        public static Avalonia.Input.Platform.IClipboard Make() =>
+            System.Reflection.DispatchProxy.Create<Avalonia.Input.Platform.IClipboard, PrimarySelectionStandIn>();
+
+        protected override object? Invoke(System.Reflection.MethodInfo? targetMethod, object?[]? args) =>
+            targetMethod?.ReturnType == typeof(Task<IAsyncDataTransfer?>) ? Task.FromResult<IAsyncDataTransfer?>(null) : Task.CompletedTask;
+    }
+
     // Finder's Copy puts the file, its name as text and its icon as a picture on the clipboard -
     // the file is what was copied.
     [Fact]

@@ -108,8 +108,9 @@ so it stops being edited in two places.
 
 CRT 4.0 explains itself on screen (the 4.0 plan: "The Wiki shrinks to installing, the reference
 pages, and the six pages installed CRTs open"), so these fourteen pages were taken out of this
-folder on 2026-10-29. **Delete them from the live Wiki on release day**, once 4.0 is out - until
-then the live pages still describe CRT 3, which is what everybody runs:
+folder on 2026-10-29, and **deleted from the live Wiki on 2026-11-23**, CRT 4.0.0's release day -
+together with `Contribute-data-via-GitHub`, an orphan telling people to send a new board's Excel files
+as a pull request:
 
 | Wiki page | What took its place |
 | --- | --- |

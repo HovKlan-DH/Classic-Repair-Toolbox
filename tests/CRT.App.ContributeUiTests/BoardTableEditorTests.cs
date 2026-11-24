@@ -907,7 +907,7 @@ public sealed class BoardTableEditorTests : IDisposable
         {
             BoardData published = Board(Component("U1", "CPU"));
             (BoardTableEditor editor, DraftSession session) = this.OpenOnSession(published, published);
-            session.FollowUp = (before, after) => SubmissionCredit.Follow(published, before, after, "Anna", "RHD");
+            session.FollowUp = (before, after, noCredit) => SubmissionCredit.FollowWork(published, before, after, "Anna", "RHD", noCredit);
 
             Row(editor, "U1").Cells[NameColumn].Text = "CPU 6510";
             Dispatcher.UIThread.RunJobs();

@@ -45,7 +45,7 @@ I use this for the [CRT Fun facts](https://classic-repair-toolbox.dk/funfacts/) 
 
 Nothing you edit leaves your computer until you click **Submit** on the "Contribute" tab. A submission sends:
 
-- The board's data and files, as your draft has them - your credit included (below)
+- The board's data and files, as your draft has them - your credit included, unless you chose to send none (below)
 - Your email address
   - So the maintainers can reply, and so you are told how it went. When you are signed in on the "Maintainer" tab, your account's address is used.
 - The CRT version
@@ -54,7 +54,7 @@ Your email address is shown only to the maintainers of that board and to the adm
 
 The server keeps the IP address a submission came from, only to limit how many submissions one address can send in a day.
 
-Your first change to a board adds a credit for your work to its "Board: Credits" on the "Contribute" tab, framed in green: what kind of work it was, the name and contact you gave last time, and a main contribution for you to describe - and the board's credits are shown to everybody who uses CRT. The credit is a suggestion: the board's maintainers may change it before it is published. Write "Unknown" as the name to be credited by none. The main contribution is also what the maintainers read as the description of your submission.
+Your first change to a board adds a credit for your work to its "Board: Credits" on the "Contribute" tab, framed in green: what kind of work it was, the name and contact you gave last time, and a main contribution for you to describe - and the board's credits are shown to everybody who uses CRT. The credit is a suggestion: the board's maintainers may change it before it is published. Write "Unknown" as the name to keep the credit without your name, or press "No credit for my changes" on it to send your changes with no credit at all - "Add a credit for my changes" brings it back. The main contribution is also what the maintainers read as the description of your submission; with no credit, they see the list of what changed instead.
 
 ## When you send in an oscilloscope model
 

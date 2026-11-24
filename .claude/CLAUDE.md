@@ -163,7 +163,7 @@ is user-visible is a judgement call). When a page starts documenting new code, a
 `Workbooks-tab`, `MiniPro-programmer` (two buttons), `Controlling-oscilloscope-with-keyboard`,
 `Synchronize-oscilloscope`, `Maintainer-tab`, `View-boards-from-online-source` and `Table-view` (the table's
 "Learn more", owner request 2026-11-11: "we need to reference a Wiki, so the user can see what options there is -
-e.g. how to copy/paste" - a 4.0 page, pasted on release day with the others). They are named
+e.g. how to copy/paste" - a 4.0 page, pasted on release day, 2026-11-23, with the others). They are named
 once, in `AppConfig` (`WikiPage*` plus `WikiPageUrl`). Renaming or deleting one breaks a button in
 builds already installed, which no update can fix, so `WikiHelpPageNamesTests` asserts each name
 still matches a file in `Assets/Wiki/`. Add an entry there for any new help button. **Since CRT 4.0
@@ -175,9 +175,9 @@ shows a tooltip and opens nothing.
 and the six pages installed CRTs open"; 2026-10-29) - the screens explain themselves, so a tab or a
 contributing flow gets no page of its own. Fourteen pages left the mirror then (`Schematics-tab`,
 `Contribute-tab`, `Drafts-tab`, `Main-Excel`, ... - listed in [Assets/Wiki/README.md](../Assets/Wiki/README.md)),
-to be deleted from the live Wiki on release day; do not add them back without being asked. **The
-mirror describes 4.0 from that day, so its pages are pasted on release day**, not before - the live
-Wiki describes what everybody runs.
+deleted from the live Wiki on CRT 4.0.0's release day, 2026-11-23 (with the orphan
+`Contribute-data-via-GitHub`); do not add them back without being asked. **The live Wiki describes 4.0 since
+that day** - every page of the mirror pasted and checked against it.
 
 **Some old Wiki pages are deliberately not mirrored** (orphans superseded by newer pages) - see
 [Assets/Wiki/README.md](../Assets/Wiki/README.md). Do not add them back without being asked.
@@ -455,7 +455,7 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
   never "this control's TextBlocks"**: a tooltip is a child of its control, and read as Font Awesome's symbols.
   **The picker's list is built when it FIRST OPENS** (2026-11-13, measured): Avalonia's template built a whole copy of the
   `ColorView` in every picker's flyout, opened or not, so App.axaml's `ColorPicker` style sets Avalonia's template less that
-  copy (12.1.4's, the same in 12.1.6 outside the flyout; compare it with Avalonia's ColorPicker.xaml when Avalonia is updated -
+  copy (12.1.4's, the same in 12.1.6 and 12.2.0 outside the flyout; compare it with Avalonia's ColorPicker.xaml when Avalonia is updated -
   what changes INSIDE the flyout reaches CRT by itself, as the list is a real `ColorView`) and `ColorPickerDropper` fills the flyout as it opens -
   a `ColorView` with the copy's resources, the dropper under it. `ColorPickerDropper.Of` builds it as opening does.
 - **A list in the component pane that can grow long builds only the rows in view** (2026-11-13, measured on the owner's boards:
@@ -464,7 +464,7 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
   tab's list too). **So a row out of view has no controls**:
   code reaching into a row (`ContainerFromItem`) gets null for one, and a test reaching a row's controls brings it into view first.
   Rows are views of their row objects - bindings only, never state wired up in code - as a row made again shows another item.
-  **`RowsInViewPanel` does what Avalonia 12.1.6's panel does not for rows typed in** (code reviews, 2026-11-13 and 2026-11-14,
+  **`RowsInViewPanel` does what Avalonia 12.1.6's panel does not for rows typed in - nor 12.2.0's, the same panel** (code reviews, 2026-11-13 and 2026-11-14,
   read from Avalonia's source): the row with the keyboard stays made as it scrolls away, and is brought into view before the focus
   moves inside it (Avalonia let go of it the moment its TabOnceActiveElement moved to the next box); **and Tab goes by ROW NUMBER**
   (`ICustomKeyboardNavigation`): Avalonia tabs in the order of the panel's children, and a row made again is added at their end, so
@@ -475,6 +475,16 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
   only the rows made, and widened and narrowed as the page scrolled.
   "KiCad: Files" draws each list's badges itself (`BadgeCloud`, `BadgeCloudGeometry` - one control for ~1,150 badges on the
   Open128-2, 0.39 s -> 0.11 s), its tests reading `BadgesForTests`, never a Border per badge.
+- **A list scrolled to a row after its rows changed goes through `ListScrolling.ToRow`** (2026-11-24, measured on Avalonia
+  12.1.6 and 12.2.0 alike): a ListBox's `VirtualizingStackPanel` cannot scroll to a row put in since the last layout pass - the
+  row is built and let go of again, and nothing moves - so it lays the list out first, and it leaves a HIDDEN list alone, as
+  12.2.0 keeps a scroll asked of one and does it once the list is shown (the far-left lists, each put where the other stood).
+  **A test's ListBox standing in for one of CRT's carries CRT's `AutoScrollToSelectedItem`**: with Avalonia's default (on)
+  the list scrolled ITSELF one turn later on 12.1.6, and "Unticking the box ... comes back to the component once" passed from
+  2026-11-04 while the tab's own scroll never got there; 12.2.0's auto-scroll no longer reaches a row put in above it.
+- **A `PastingFromClipboard` handler reads the clipboard the event names** (`PastingFromClipboardEventArgs.Clipboard`, Avalonia
+  12.2.0): a middle click on Linux pastes the primary selection and raises it too - the Feedback tab's composer catches only
+  the window's own clipboard and leaves the rest to the TextBox (`FeedbackComposer.OnPartPasting`).
 - **A sentence says its own bold pieces as `<b>...</b>`** (2026-11-03; `BoldRuns.ShowMarked`, the one parser - `Marked`,
   `Plain` for a test) wherever a wording class holds no control: Board status's explanations, the picture tools' help (the keys in
   bold), the KiCad summary. A block showing one has `Text == null` - read it with `BoldRuns.TextOf`.
@@ -549,7 +559,9 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
   (`RichNoteTextPresenter`, `CreateTextLayout` overridden) draws each character's style in the very layout
   the caret is measured against, under Fluent's own template copied whole (`RichNoteTheme.axaml`, with a
   row of five `FormatTool` icon buttons over the text; compare it with Avalonia's TextBox.xaml when
-  Avalonia is updated). **Code reads and writes `Markup`, never `Text`** (the words without their
+  Avalonia is updated - 12.2.0 changed only the inner buttons' width, which the copy has none of, and its
+  `TextPresenter.CreateTextLayout` adds `FontVariations` to the typeface, which CRT sets nowhere, so the
+  override still builds it without). **Code reads and writes `Markup`, never `Text`** (the words without their
   formatting), **and trims it with `RichNote.TrimMarkup`, never `Trim()`** (code review, 2026-11-08: a first line's
   indent says whether it is a bullet and how deep - "  - sub" saved trimmed reopened a level up) - where it is saved,
   compared (a component picture's and baseline's note: `ComponentPaneEdits.NormalisedMarkupNote`) and shown alike. **A board
@@ -993,14 +1005,30 @@ there, and `await` on a finished task looped for ever on the UI thread. A tool f
   follow the work; with no work left a row nothing was written in goes; a credit of the contributor's own gets none beside it; the
   edit that took the sent credits away adds none back. **One undo takes a change and its credit together**, and a change that did
   more than its editor asked says so (`DraftSessionChange.FollowedUp`) - **the table builds itself again on its own edit then**
-  (`BoardTableEditor.DraftSession.cs`), or its "Credits" sheet missed the row. **Before Submit a credit taken away is put back as one
-  step** (`TabDrafts.EnsureCreditForChangesAsync`, `SubmissionCredit.Ensure`, `DraftStepWording.CreditForYourChanges`), and **once
+  (`BoardTableEditor.DraftSession.cs`), or its "Credits" sheet missed the row. **Before Submit a credit missing is put back as one
+  step - unless the contributor took it away to have none, below** (`TabDrafts.EnsureCreditForChangesAsync`, `SubmissionCredit.Ensure`,
+  `DraftStepWording.CreditForYourChanges`), and **once
   the send is ACCEPTED** the sent credit's name and contact remembered - only of a published board's submission whose sent credits
   all name ONE person, never "Unknown", never a new board's (`SubmissionCredit.ToRemember`, `RememberWhoIsCredited`; code review,
   2026-11-16: nothing says which credit is the contributor's own, and the first one sent - a starting row crediting a scan's
   author - became the next draft's credit). A published board that could not be read says nothing of which credits are sent:
   none then make the summary (`SubmissionCredit.KnownSent`). Work that deserves no credit (`CreditSuggestions`:
-  the credits alone, the KiCad data, a calibration, an order) needs none. **The server does not ask for one** (owner decision) - a
+  the credits alone, the KiCad data, a calibration, an order) needs none. **A CONTRIBUTOR MAY WANT NO CREDIT AT ALL, THE
+  CREDIT STAYING THE DEFAULT** (owner requests, 2026-11-24: "I want a possibility for the user to opt-out of the credit ...
+  when I contribute something, then I do not want to have a new line generated", and "A credit should still default to be
+  mandatory" - no Configuration setting for it): taking the credits sent away - "No credit for my changes" in the green strip
+  (a published board's draft only, and only while ONE credit is sent - with more it would take away somebody else's; code
+  review, 2026-11-24), "Remove", or the row deleted in the table - says none is wanted (`SubmissionCredit
+  .NoCreditAfter`, run with every edit by `FollowWork`), and then no change and no Submit (`Ensure(..., noCredit)`) adds one;
+  "Board: Credits" says so with "Add a credit for my changes" (`SendsNoCredit`; the part's credits - framed as sent, needing a
+  main contribution, offering the button - are judged against the board the session judges by, `ComponentPane.JudgedAgainst`,
+  and the button only while there is work worth a credit, `SubmissionCredit.HasWorkWorthACredit`; the host's
+  `EnsureCreditForChangesAsync(..., evenIfNoneWanted)`, which reads the wish after the editors handed over), and the summary is the changes.
+  **Kept per draft** (`DraftSession.NoCreditForWork`, read from the marker's `NoCreditForWork` as the session opens, written with
+  the next save through `DraftMarkerStore.Update` - what changes one field of a marker in use goes through it, one at a time per
+  marker - null unless so) **and in the history** (each step keeps it with its content, so an undo of "Add a credit for my changes" puts the
+  wish back; code review, 2026-11-24): a credit sent outweighs it everywhere, and no work left - or work begun anew from none -
+  ends it. **The server does not ask for one** (owner decision) - a
   maintainer's edit straight to BETA and an amendment need no credit row. **The Submit dialog asks for the address alone; "What did
   you change?" is gone too** (owner request, 2026-11-15: "there is no need to ALSO specify the detailed changes in this field"): the
   submission's summary - the queue, the maintainers' mail, the board's history, "My submissions" - is the sent credits' main
@@ -3546,10 +3574,9 @@ whose families differ in their pins is matched by its family too** (`IcPinout.Fa
 another pin-out than the 7451's and 74S51's. The Kickstart mask ROMs have no datasheet and are matched by no part number. **A user's Excel-era draft takes the pinouts its published board was converted with, in the
   draft and its base** (`ConversionPinouts.FromPublished`, `DraftConversion`): a draft sends its whole pin list, and without them it read as
   every pin removed.
-- **Not done yet**: the release day itself (convert once more, work the queue empty, switch the service - a submission CRT 3.x sent names its
-  files by their Excel-tree paths; CRT itself needs nothing, its version picks the service), and pasting
-  the Wiki's 4.0 pages and deleting the fourteen it no longer has (`Assets/Wiki/README.md`, "Pages
-  removed at CRT 4.0").
+- **RELEASED 2026-11-23**: CRT 4.0.0, the live service switched to the 4.0 trees (server 12.1.0, API 2) before it and
+  updating itself from CRT's releases since, the live trees converted the day before, the Wiki's 4.0 pages pasted and
+  the fourteen it no longer has deleted (`Assets/Wiki/README.md`, "Pages removed at CRT 4.0").
 
 ### External integrations (`Handlers/`)
 

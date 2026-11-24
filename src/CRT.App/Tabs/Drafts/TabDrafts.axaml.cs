@@ -824,12 +824,18 @@ namespace CRT
         // ###########################################################################################
         // *** THE CREDIT FOR THE WORK IS BACK BEFORE SUBMIT (owner request, 2026-11-15: "have it mandatory, that the contributor
         // has created a new line in the "Board: Credits" with the changes done by the user"). *** The draft's first change made
-        // it (SubmissionCredit.Follow); one taken away since is put back here as ONE step, under the name and contact CRT
+        // it (SubmissionCredit.Follow); one missing since - unless the contributor took it away to have none, below - is put back
+        // here as ONE step, under the name and contact CRT
         // remembers - the checks that follow then hold it to its main contribution, and Submit goes to it. Nothing for a new
         // board (no base: its starting rows are its credits), for work that deserves no credit, or with a credit sent already.
         // Saved with the rest by SettleTableEditsAsync.
+        //
+        // *** NOR WHILE THE CONTRIBUTOR WANTS NO CREDIT (owner request, 2026-11-24: "I want a possibility for the user to opt-out
+        // of the credit"). *** The credit taken away from "Board: Credits" says so (SubmissionCredit.NoCreditAfter, the draft's
+        // DraftSession.NoCreditForWork): the submission goes without one, described by its changes. `evenIfNoneWanted` -
+        // "Board: Credits"'s "Add a credit for my changes" - puts it back all the same, which ends the wish.
         // ###########################################################################################
-        internal async Task EnsureCreditForChangesAsync(HardwareBoardEntry entry)
+        internal async Task EnsureCreditForChangesAsync(HardwareBoardEntry entry, bool evenIfNoneWanted = false)
         {
             if (entry.IsDraftOnly)
             {
@@ -858,9 +864,11 @@ namespace CRT
                 return;
             }
 
+            // The wish read IN the edit (code review, 2026-11-24): Apply first has the table and the pane hand over what they hold -
+            // the credit's row just deleted there, say - which is what says none is wanted. Read before, Submit put it back.
             session.Apply(
                 DraftStepWording.CreditForYourChanges,
-                content => SubmissionCredit.Ensure(published, content.Board, UserSettings.CreditName, UserSettings.CreditContact) is { } board &&
+                content => SubmissionCredit.Ensure(published, content.Board, UserSettings.CreditName, UserSettings.CreditContact, session.NoCreditForWork && !evenIfNoneWanted) is { } board &&
                            !ReferenceEquals(board, content.Board)
                     ? content with { Board = board }
                     : null);

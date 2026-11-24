@@ -257,12 +257,17 @@ namespace CRT
                 ComponentPane.Fill(
                     this.thisBoardLinks,
                     board.BoardLinks.Select(row => ComponentPaneBoardLinkRow.From(row, linkCategories)));
-                PublishedCredits publishedCredits = PublishedCredits.Of(this.thisPublished?.Credits);
-                IReadOnlySet<CreditEntry> newCredits = CreditOrder.NotPublished(board.Credits, this.thisPublished?.Credits);
+                BoardData? creditsJudgedBy = this.CreditsJudgedAgainst();
+                PublishedCredits publishedCredits = PublishedCredits.Of(creditsJudgedBy?.Credits);
+                IReadOnlySet<CreditEntry> newCredits = CreditOrder.NotPublished(board.Credits, creditsJudgedBy?.Credits);
+
+                // "No credit for my changes" on the ONE credit sent alone, while there is work it is for
+                // (ComponentPaneCreditRow.OffersNoCredit).
+                bool offersNoCredit = newCredits.Count == 1 && SubmissionCredit.HasWorkWorthACredit(creditsJudgedBy, board);
 
                 ComponentPane.Fill(
                     this.thisCredits,
-                    board.Credits.Select(row => ComponentPaneCreditRow.From(row, creditCategories, publishedCredits, newCredits.Contains(row))));
+                    board.Credits.Select(row => ComponentPaneCreditRow.From(row, creditCategories, publishedCredits, newCredits.Contains(row), offersNoCredit && newCredits.Contains(row))));
                 ComponentPane.Fill(
                     this.thisSignals,
                     board.KiCadImportantSignals.Select(row => ComponentPaneSignalRow.From(row, this.thisNetChoices)));
@@ -330,6 +335,7 @@ namespace CRT
 
             this.NoCreditsText.IsVisible = this.thisCredits.Count == 0;
             this.CreditsHeadings.IsVisible = this.thisCredits.Count > 0;
+            this.ShowNoCreditNotice();
 
             this.NoSignalsText.IsVisible = this.thisSignals.Count == 0;
             this.SignalsHeadings.IsVisible = this.thisSignals.Count > 0;
@@ -483,11 +489,50 @@ namespace CRT
         private void CommitBoardLinks() =>
             this.CommitList(this.thisBoardLinks, DraftStepWording.BoardLinks, BoardPartEdits.WithBoardLinks);
 
-        private void CommitCredits()
+        // `description`: the step's name - "No credit for your changes" for "No credit for my changes".
+        private void CommitCredits(string description = DraftStepWording.Credits)
         {
-            this.CommitList(this.thisCredits, DraftStepWording.Credits, BoardPartEdits.WithCredits);
+            this.CommitList(this.thisCredits, description, BoardPartEdits.WithCredits);
             this.FollowSentInCredits();
+
+            // Whether the contributor now wants no credit follows the edit (SubmissionCredit.NoCreditAfter) - a credit taken
+            // away however it went: "Remove", "No credit for my changes", or every box of it emptied.
+            this.ShowNoCreditNotice();
         }
+
+        // ###########################################################################################
+        // *** "NO CREDIT IS SENT WITH YOUR CHANGES" (owner request, 2026-11-24: "I want a possibility for the user to opt-out of
+        // the credit"). *** Said over the credits while the draft's work goes without one because the contributor took it away
+        // (SubmissionCredit.SendsNoCredit, by the draft's DraftSession.NoCreditForWork), with "Add a credit for my changes".
+        // ###########################################################################################
+        private void ShowNoCreditNotice()
+        {
+            bool none = this.thisBoardPart == PaneBoardPart.Credits && this.thisSession is { } session &&
+                        SubmissionCredit.SendsNoCredit(this.CreditsJudgedAgainst(), session.Content.Board, session.NoCreditForWork);
+
+            this.NoCreditNoticeText.Text = ComponentPaneWording.NoCreditForChanges;
+            this.NoCreditNotice.IsVisible = none;
+        }
+
+        // ###########################################################################################
+        // The board a draft's work and credits are judged against - the one its session's edits are, and "Add a credit for my
+        // changes" is (DraftSessions.BoardToJudgeAgainst), handed in by the host (code review, 2026-11-24). Judged against the
+        // pane's own read of the published board, a data check bringing a newer one could leave the notice offering a button
+        // that then found no work and did nothing - and the two reads, other objects, took each other's place in
+        // SubmissionCredit's kept work at every commit. Null - a pane a test builds - the pane's own read.
+        // ###########################################################################################
+        internal Func<DraftSession, BoardData?>? JudgedAgainst { get; set; }
+
+        // ###########################################################################################
+        // The board the credits shown are judged against - which are framed as sent, which need their main contribution, which
+        // offers "No credit for my changes", and the notice (code review, 2026-11-24: judged by the pane's own read, opened before
+        // a data check brought a board that had published the contributor's earlier credit, that credit stayed framed as sent,
+        // its button deleting a published credit). The session's board (JudgedAgainst), else the pane's own read.
+        // ###########################################################################################
+        private BoardData? CreditsJudgedAgainst() =>
+            (this.thisSession is { } session ? this.JudgedAgainst?.Invoke(session) : null) ?? this.thisPublished;
+
+        internal bool ShowsNoCreditNoticeForTests => this.NoCreditNotice.IsVisible;
 
         // ###########################################################################################
         // Which credits are sent with the submission, worked out again from what the rows now hold (code review, 2026-11-16):
@@ -496,12 +541,21 @@ namespace CRT
         // ###########################################################################################
         private void FollowSentInCredits()
         {
+            BoardData? judgedBy = this.CreditsJudgedAgainst();
             List<CreditEntry> entries = this.thisCredits.Select(row => row.ToEntry()).ToList();
-            IReadOnlySet<CreditEntry> sent = CreditOrder.NotPublished(entries, this.thisPublished?.Credits);
+            IReadOnlySet<CreditEntry> sent = CreditOrder.NotPublished(entries, judgedBy?.Credits);
+
+            // "No credit for my changes" on the one credit sent alone - a row with nothing typed in it yet is none - and only while
+            // there is work it would be the credit for (code review, 2026-11-24: on a draft whose one change is a credit for the
+            // person who scanned a schematic image, it deleted that person's credit and said no wish).
+            bool offersNoCredit = this.thisSession is { } session &&
+                                  SubmissionCredit.HasWorkWorthACredit(judgedBy, session.Content.Board) &&
+                                  this.thisCredits.Where((row, index) => !row.IsBlank && sent.Contains(entries[index])).Take(2).Count() == 1;
 
             for (int index = 0; index < this.thisCredits.Count; index++)
             {
                 this.thisCredits[index].IsNew = sent.Contains(entries[index]);
+                this.thisCredits[index].OffersNoCredit = offersNoCredit && !this.thisCredits[index].IsBlank && sent.Contains(entries[index]);
             }
         }
 
@@ -914,11 +968,41 @@ namespace CRT
             this.thisCredits.Add(new ComponentPaneCreditRow
             {
                 CategoryChoices = BoardPartEdits.CategoriesOf(this.thisCredits, row => row.Category),
-                Published = PublishedCredits.Of(this.thisPublished?.Credits),
+                Published = PublishedCredits.Of(this.CreditsJudgedAgainst()?.Credits),
             });
 
             this.ShowBoardPartLines();
         }
+
+        // ###########################################################################################
+        // *** "NO CREDIT FOR MY CHANGES" (owner request, 2026-11-24). *** The credit sent with the submission taken away as ONE
+        // step - "Remove", named for what it means - and the draft then wants none: none is added again at the next change, nor
+        // before Submit (SubmissionCredit.NoCreditAfter). "Undo", or "Add a credit for my changes", brings it back.
+        // ###########################################################################################
+        private void OnNoCreditClick(object? sender, RoutedEventArgs e)
+        {
+            if (sender is not Control { Tag: ComponentPaneCreditRow row })
+            {
+                return;
+            }
+
+            // Judged again as it is pressed (code review, 2026-11-24): a data check since the part opened may have published this
+            // very credit - then it is no credit sent any more, and the button goes instead of deleting a published credit.
+            this.FollowSentInCredits();
+
+            if (row.OffersNoCredit && this.thisCredits.Remove(row))
+            {
+                this.CommitCredits(DraftStepWording.NoCreditForYourChanges);
+                this.ShowBoardPartLines();
+            }
+        }
+
+        // The credit for the work put back - by the host, as Submit puts one back (TabDrafts.AddCreditForChangesAsync).
+        private void OnAddCreditForChangesClick(object? sender, RoutedEventArgs e) =>
+            this.CreditForChangesRequested?.Invoke(this, EventArgs.Empty);
+
+        // Asked to put the credit for the draft's work back after the contributor took it away ("Add a credit for my changes").
+        public event EventHandler? CreditForChangesRequested;
 
         // "Add me" - a credit by the name CRT remembered - went on 2026-10-29 (owner decision: "Remove
         // the button entirely - there is already the 'Add credit' button, which can be used"). And moving a
@@ -1366,6 +1450,28 @@ namespace CRT
         // The board's credits as published - a credit standing so needs no main contribution.
         public PublishedCredits Published { get; init; } = PublishedCredits.None;
 
+        // ###########################################################################################
+        // Whether this credit offers "No credit for my changes" (owner request, 2026-11-24; SubmissionCredit.NoCreditAfter) - on a
+        // published board's draft alone, as a new board's starting rows are its credits, and only while it is the ONE credit sent
+        // (code review, 2026-11-24): with a credit typed for somebody else beside it, the button took away whichever it stood on -
+        // that person's credit under "No credit for your changes" - and said no wish, a credit still being sent. Worked out again as
+        // the list is committed (ComponentPane.FollowSentInCredits).
+        // ###########################################################################################
+        private bool thisOffersNoCredit;
+
+        public bool OffersNoCredit
+        {
+            get => this.thisOffersNoCredit;
+            set
+            {
+                if (this.thisOffersNoCredit != value)
+                {
+                    this.thisOffersNoCredit = value;
+                    this.Raise(nameof(this.OffersNoCredit));
+                }
+            }
+        }
+
         // "What", "Name or handle" and - on a credit not published as it stands - "Main contribution"; which part of it and
         // the contact may stay empty.
         public bool CategoryMissing => this.IsMissing(BoardWorkbookSchema.ColCategory);
@@ -1394,9 +1500,10 @@ namespace CRT
 
         public IReadOnlyList<string> CategoryChoices { get; init; } = [];
 
-        public static ComponentPaneCreditRow From(CreditEntry row, IReadOnlyList<string> categories, PublishedCredits published, bool isNew) => new()
+        public static ComponentPaneCreditRow From(CreditEntry row, IReadOnlyList<string> categories, PublishedCredits published, bool isNew, bool offersNoCredit = false) => new()
         {
             IsNew = isNew,
+            OffersNoCredit = offersNoCredit,
             Category = row.Category ?? string.Empty,
             SubCategory = row.SubCategory ?? string.Empty,
             NameOrHandle = row.NameOrHandle ?? string.Empty,

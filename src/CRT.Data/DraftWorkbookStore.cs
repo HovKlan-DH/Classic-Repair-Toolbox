@@ -581,17 +581,9 @@ namespace Handlers.DataHandling
         {
             string markerPath = DraftFolderLayout.GetMarkerPath(draftsRoot, excelDataFile);
 
-            DraftMarker? marker = DraftMarkerStore.Load(markerPath);
-            if (marker is null)
-            {
-                return false;
-            }
-
             try
             {
-                DraftMarkerStore.Save(markerPath, change(marker));
-
-                return true;
+                return DraftMarkerStore.Update(markerPath, change) is not null;
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {

@@ -125,10 +125,7 @@ namespace CRT
             // Not kept, a row deleted may be offered once more - no reason to stop a Submit over.
             try
             {
-                if (DraftMarkerStore.Load(path) is { } marker)
-                {
-                    DraftMarkerStore.Save(path, marker with { CreditsOffered = offered });
-                }
+                DraftMarkerStore.Update(path, marker => marker with { CreditsOffered = offered });
             }
             catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException)
             {

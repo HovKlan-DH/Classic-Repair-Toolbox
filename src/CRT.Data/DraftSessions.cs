@@ -56,17 +56,19 @@ namespace Handlers.DataHandling
             return this.PublishedBoard?.Invoke(session) ?? session.BaseBoard();
         }
 
+        // The credit follows the work - and whether the contributor wants none follows each edit (SubmissionCredit.FollowWork,
+        // owner request 2026-11-24).
         private void FollowWorkWithCredit(DraftSession session) =>
-            session.FollowUp = (before, after) =>
+            session.FollowUp = (before, after, noCredit) =>
             {
                 if (this.CreditIdentity is not { } who || this.BoardToJudgeAgainst(session) is not { } published)
                 {
-                    return after;
+                    return new DraftFollowUp(after, noCredit);
                 }
 
                 (string name, string contact) = who();
 
-                return SubmissionCredit.Follow(published, before, after, name, contact);
+                return SubmissionCredit.FollowWork(published, before, after, name, contact, noCredit);
             };
 
         // ###########################################################################################

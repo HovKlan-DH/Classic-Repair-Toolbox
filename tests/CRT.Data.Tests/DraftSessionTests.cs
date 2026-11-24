@@ -765,6 +765,121 @@ public sealed class DraftSessionTests : IDisposable
         Assert.Empty(noBase.Content.Board.Credits);
     }
 
+    // ###########################################################################################
+    // *** A CREDIT TAKEN AWAY STAYS AWAY, AND THE DRAFT REMEMBERS IT (owner request, 2026-11-24: "I want a possibility for the
+    // user to opt-out of the credit"). *** The edit removing the credit sent says none is wanted, and the next change adds none;
+    // the wish goes into the draft's marker with the next save, so a CRT started again keeps to it. A credit sent again ends it,
+    // and the marker is the very bytes it was - a draft that never wanted none never has the field written.
+    // ###########################################################################################
+    [Fact]
+    public void A_credit_taken_away_stays_away_and_the_draft_remembers_it_across_runs()
+    {
+        BoardData published = DraftSessionTests.Board(DraftSessionTests.Component("U1", "CPU"), DraftSessionTests.Component("U2", "SID"));
+        this.WriteDraft(published);
+        this.WriteBase(published);
+        string markerPath = DraftFolderLayout.GetMarkerPath(this.DraftsRoot, DraftSessionTests.BoardKey);
+        DraftMarkerStore.Save(markerPath, new DraftMarker { BoardKey = DraftSessionTests.BoardKey });
+        string markerBefore = File.ReadAllText(markerPath);
+
+        DraftSession session = new DraftSessions(() => this.thisNow) { CreditIdentity = () => ("Anna", "RHD") }.Get(this.DraftsRoot, DraftSessionTests.BoardKey)!;
+
+        session.Apply("Name", DraftSessionTests.Rename("U1", "ULA"));
+        Assert.Single(session.Content.Board.Credits);
+        Assert.False(session.NoCreditForWork);
+
+        session.Apply("No credit", content => content with { Board = content.Board.WithBoardSections(credits: []) });
+        Assert.True(session.NoCreditForWork);
+
+        session.Apply("More work", DraftSessionTests.Rename("U2", "8580"));
+        Assert.Empty(session.Content.Board.Credits);
+
+        // Not on disk until the save that goes with it.
+        Assert.Equal(markerBefore, File.ReadAllText(markerPath));
+        Assert.Equal(DraftWorkbookEditOutcome.Saved, session.Save());
+        Assert.True(DraftMarkerStore.Load(markerPath)!.NoCreditForWork);
+
+        // CRT started again: the draft still wants none.
+        DraftSession again = new DraftSessions(() => this.thisNow) { CreditIdentity = () => ("Anna", "RHD") }.Get(this.DraftsRoot, DraftSessionTests.BoardKey)!;
+        Assert.True(again.NoCreditForWork);
+
+        again.Apply("Name again", DraftSessionTests.Rename("U1", "PLA"));
+        Assert.Empty(again.Content.Board.Credits);
+
+        // A credit sent again ends it.
+        again.Apply("Credit", content => content with { Board = SubmissionCredit.Ensure(published, content.Board, "Anna", "RHD") });
+        Assert.Single(again.Content.Board.Credits);
+        Assert.False(again.NoCreditForWork);
+
+        Assert.Equal(DraftWorkbookEditOutcome.Saved, again.Save());
+        Assert.Equal(markerBefore, File.ReadAllText(markerPath));
+    }
+
+    // ###########################################################################################
+    // *** THE WISH FOR NO CREDIT GOES BACK WITH WHAT AN UNDO PUTS BACK (code review, 2026-11-24). *** "No credit for my
+    // changes", then "Add a credit for my changes", then Undo: the credit goes, and the wish with it comes back - left at "one
+    // wanted", the next change added the credit again unasked, and Submit did too. Redo, and a step taken back, the same.
+    // ###########################################################################################
+    [Fact]
+    public void An_undo_or_redo_puts_back_the_wish_for_no_credit_that_went_with_its_content()
+    {
+        BoardData published = DraftSessionTests.Board(DraftSessionTests.Component("U1", "CPU"), DraftSessionTests.Component("U2", "SID"));
+        this.WriteDraft(published);
+        this.WriteBase(published);
+
+        DraftSession session = new DraftSessions(() => this.thisNow) { CreditIdentity = () => ("Anna", "RHD") }.Get(this.DraftsRoot, DraftSessionTests.BoardKey)!;
+
+        session.Apply("Name", DraftSessionTests.Rename("U1", "ULA"));
+        session.Apply("No credit", content => content with { Board = content.Board.WithBoardSections(credits: []) });
+        session.Apply("Credit", content => content with { Board = SubmissionCredit.Ensure(published, content.Board, "Anna", "RHD") });
+        Assert.Single(session.Content.Board.Credits);
+        Assert.False(session.NoCreditForWork);
+
+        Assert.True(session.Undo());
+        Assert.Empty(session.Content.Board.Credits);
+        Assert.True(session.NoCreditForWork);
+
+        Assert.True(session.Redo());
+        Assert.Single(session.Content.Board.Credits);
+        Assert.False(session.NoCreditForWork);
+
+        Assert.True(session.Undo());
+        session.Apply("More work", DraftSessionTests.Rename("U2", "8580"));
+        Assert.Empty(session.Content.Board.Credits);
+        Assert.True(session.NoCreditForWork);
+
+        // Undo back past "No credit": the credit as the first change made it, and one wanted again.
+        Assert.True(session.Undo());
+        Assert.True(session.Undo());
+        Assert.Single(session.Content.Board.Credits);
+        Assert.False(session.NoCreditForWork);
+
+        // An edit worked out off the UI thread while the draft moved away and back - "Add a credit for my changes", then Undo - is
+        // worked out again: the content is the same object, the wish that goes with it is not the one it was worked out with.
+        session.Apply("No credit at last", content => content with { Board = content.Board.WithBoardSections(credits: []) });
+        Assert.True(session.NoCreditForWork);
+        BoardContent before = session.Content;
+        session.Apply("Credit", content => content with { Board = SubmissionCredit.Ensure(published, content.Board, "Anna", "RHD") });
+
+        DraftPreparedEdit prepared = session.PrepareEdit(before, content => (DraftSessionTests.Rename("U2", "6581")(content), null))!;
+        Assert.True(session.Undo());
+        Assert.Same(before, session.Content);
+
+        Assert.False(session.ApplyPrepared("Worked out on the pool", prepared));
+        Assert.True(session.Apply("Worked out on the pool", DraftSessionTests.Rename("U2", "6581")));
+        Assert.Empty(session.Content.Board.Credits);
+        Assert.True(session.NoCreditForWork);
+        Assert.True(session.Undo());
+        Assert.True(session.Undo());
+
+        // A step taken back - its save could not be made - puts back the wish from before it too.
+        object editor = new();
+        session.Apply("No credit again", content => content with { Board = content.Board.WithBoardSections(credits: []) }, editor);
+        Assert.True(session.NoCreditForWork);
+        Assert.True(session.TakeBack(editor));
+        Assert.Single(session.Content.Board.Credits);
+        Assert.False(session.NoCreditForWork);
+    }
+
     // ------------------------------------------------------------------ DraftSessions
 
     // A draft made before 4.0 still names a workbook; it is the same draft, so the same session.

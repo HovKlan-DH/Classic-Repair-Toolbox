@@ -34,7 +34,7 @@
   pins went (2026-11-13).
   -->
   <ItemGroup>
-    <PackageReference Include="EPPlus" Version="8.7.2" />
+    <PackageReference Include="EPPlus" Version="8.7.3" />
   </ItemGroup>
 
   <!--

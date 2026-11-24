@@ -153,18 +153,106 @@ public sealed class SubmissionCreditTests
         Assert.Same(own, followed);
     }
 
-    // The edit that took the credit away adds none back - the next change does, as the work needs one.
+    // ---------------------------------------------------------------- no credit wanted (2026-11-24)
+
+    private static DraftFollowUp FollowWork(BoardData published, BoardData before, BoardData after, bool noCredit) =>
+        SubmissionCredit.FollowWork(published, before, after, "Anna", "RHD", noCredit);
+
+    // ###########################################################################################
+    // *** A CREDIT TAKEN AWAY STAYS AWAY (owner request, 2026-11-24: "I want a possibility for the user to opt-out of the
+    // credit ... when I contribute something, then I do not want to have a new line generated"). *** Until then the next change
+    // put it back, as the work needed one. Now the edit taking it away says none is wanted, and no later change - nor Submit -
+    // adds one: the work goes without a credit, and SendsNoCredit says so.
+    // ###########################################################################################
     [Fact]
-    public void A_credit_taken_away_comes_back_with_the_next_change_not_the_same_one()
+    public void A_credit_taken_away_says_none_is_wanted_and_no_later_change_brings_it_back()
     {
         BoardData published = Published();
         BoardData credited = Follow(published, published, Renamed(published));
         BoardData removed = credited.WithBoardSections(credits: [PublishedCredit]);
 
-        Assert.Same(removed, Follow(published, credited, removed));
+        DraftFollowUp taken = FollowWork(published, credited, removed, noCredit: false);
+        Assert.Same(removed, taken.Board);
+        Assert.True(taken.NoCreditForWork);
 
-        BoardData next = Follow(published, removed, WithPins(removed));
-        Assert.Equal(2, next.Credits.Count);
+        DraftFollowUp next = FollowWork(published, removed, WithPins(removed), noCredit: true);
+        Assert.Equal([PublishedCredit], next.Board.Credits);
+        Assert.True(next.NoCreditForWork);
+
+        Assert.Same(next.Board, SubmissionCredit.Ensure(published, next.Board, "Anna", "RHD", noCredit: true));
+        Assert.True(SubmissionCredit.SendsNoCredit(published, next.Board, noCredit: true));
+
+        // A credit is still the default: wanting one, the next change and Submit put it back.
+        Assert.Equal(2, Follow(published, removed, WithPins(removed)).Credits.Count);
+        Assert.Equal(2, SubmissionCredit.Ensure(published, removed, "Anna", "RHD").Credits.Count);
+    }
+
+    // A credit sent again - "Add a credit for my changes", or one added and typed - is wanted again, and outweighs the wish
+    // wherever it stands (an undo bringing the credit back leaves the wish standing: nothing goes without a credit then).
+    [Fact]
+    public void A_credit_sent_again_ends_the_wish_for_none()
+    {
+        BoardData published = Published();
+        BoardData removed = Renamed(published);
+        BoardData again = SubmissionCredit.Ensure(published, removed, "Anna", "RHD");
+
+        DraftFollowUp followed = FollowWork(published, removed, again, noCredit: true);
+
+        Assert.Same(again, followed.Board);
+        Assert.False(followed.NoCreditForWork);
+        Assert.False(SubmissionCredit.SendsNoCredit(published, again, noCredit: true));
+    }
+
+    // ###########################################################################################
+    // The wish is about the work there is: with none left - every change undone, or published - it is over, and work begun anew
+    // from none is credited as any is. A new board never wants none: its starting rows are its credits.
+    // ###########################################################################################
+    [Fact]
+    public void With_no_work_left_or_work_begun_anew_a_credit_is_wanted_again()
+    {
+        BoardData published = Published();
+        BoardData worked = Renamed(published);
+
+        Assert.False(SubmissionCredit.NoCreditAfter(published, worked, Renamed(worked, "CPU"), noCredit: true));
+        Assert.False(SubmissionCredit.SendsNoCredit(published, published, noCredit: true));
+
+        DraftFollowUp anew = FollowWork(published, published, worked, noCredit: true);
+        Assert.Equal(2, anew.Board.Credits.Count);
+        Assert.False(anew.NoCreditForWork);
+
+        BoardData removedOnNewBoard = worked.WithBoardSections(credits: []);
+        Assert.False(SubmissionCredit.NoCreditAfter(null, worked, removedOnNewBoard, noCredit: true));
+        Assert.False(SubmissionCredit.SendsNoCredit(null, removedOnNewBoard, noCredit: true));
+    }
+
+    // ###########################################################################################
+    // What "No credit for my changes" is offered by (code review, 2026-11-24): work worth a credit against the published board -
+    // a credit added alone is none, and a new board (none published) has none, its starting rows being its credits.
+    // ###########################################################################################
+    [Fact]
+    public void Work_worth_a_credit_is_a_change_that_is_no_credit_alone()
+    {
+        BoardData published = Published();
+        var helper = new CreditEntry { Category = "Schematic image", NameOrHandle = "Ray" };
+
+        Assert.True(SubmissionCredit.HasWorkWorthACredit(published, Renamed(published)));
+        Assert.False(SubmissionCredit.HasWorkWorthACredit(published, published));
+        Assert.False(SubmissionCredit.HasWorkWorthACredit(published, published.WithBoardSections(credits: [.. published.Credits, helper])));
+        Assert.False(SubmissionCredit.HasWorkWorthACredit(null, Renamed(published)));
+    }
+
+    // A credit of somebody else's still sent keeps a credit going with the work: taking the contributor's own away is no wish
+    // for none then.
+    [Fact]
+    public void Another_credit_still_sent_is_a_credit_sent()
+    {
+        BoardData published = Published();
+        var helper = new CreditEntry { Category = "Repairs", NameOrHandle = "Ray", MainContribution = "Found the fault" };
+        BoardData credited = Follow(published, published, Renamed(published)).WithBoardSections(
+            credits: [PublishedCredit, new CreditEntry { Category = CreditSuggestions.BoardData, NameOrHandle = "Anna" }, helper]);
+        BoardData ownTakenAway = credited.WithBoardSections(credits: [PublishedCredit, helper]);
+
+        Assert.False(SubmissionCredit.NoCreditAfter(published, credited, ownTakenAway, noCredit: false));
     }
 
     // No work left: a credit nothing was written in goes with it; one with a main contribution stays.

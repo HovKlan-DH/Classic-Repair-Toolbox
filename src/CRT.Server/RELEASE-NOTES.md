@@ -11,6 +11,10 @@ every push of that version, so a section reworded later reaches the release with
 - Plain ASCII punctuation.
 -->
 
+# 12.1.1, 2026-November-24
+--------------------------
+- The library that reads Excel workbooks when a data tree is converted is updated (EPPlus 8.7.3); nothing it converts comes out differently
+
 # 12.1.0, 2026-November-22
 --------------------------
 - Converting a data tree for CRT 4.0 dates every board and the list of boards and oscilloscopes on the day of the conversion, as a publish dates what it writes

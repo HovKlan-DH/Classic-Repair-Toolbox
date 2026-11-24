@@ -2320,7 +2320,7 @@ public sealed class ComponentPaneTests : IDisposable
             Board = content.Board.WithBoardSections(boardLinks:
                 [.. content.Board.BoardLinks, new BoardLinkEntry { Category = "Forums", Name = "Forum 64", Url = "https://forum64.de" }]),
         });
-        session.FollowUp = (before, after) => SubmissionCredit.Follow(published, before, after, "Bo", "bo@example.com");
+        session.FollowUp = (before, after, noCredit) => SubmissionCredit.FollowWork(published, before, after, "Bo", "bo@example.com", noCredit);
 
         UiTest.Run(() =>
         {
@@ -2340,6 +2340,247 @@ public sealed class ComponentPaneTests : IDisposable
             Dispatcher.UIThread.RunJobs();
 
             Assert.Equal(["Anna", "Bo"], session.Content.Board.Credits.Select(row => row.NameOrHandle));
+
+            window.Close();
+        });
+    }
+
+    // ---- no credit for my changes (owner request, 2026-11-24) ---------------------------------------
+
+    // The board's links with one more - work CreditSuggestions credits.
+    private static BoardData WithLink(BoardData board, string name) =>
+        board.WithBoardSections(boardLinks: [.. board.BoardLinks, new BoardLinkEntry { Category = "Forums", Name = name, Url = "https://forum64.de" }]);
+
+    // A published board's draft whose first change brought the credit for its work (Bo's), as DraftSessions sets it up.
+    private DraftSession OpenDraftCreditedForWork(out BoardData published)
+    {
+        DraftSession session = this.OpenDraftWithBoardParts();
+        BoardData judgedBy = session.Content.Board;
+        published = judgedBy;
+        session.FollowUp = (before, after, noCredit) => SubmissionCredit.FollowWork(judgedBy, before, after, "Bo", "bo@example.com", noCredit);
+
+        session.Apply("Work", content => content with { Board = WithLink(content.Board, "Forum 64") });
+        Assert.Equal(["Anna", "Bo"], session.Content.Board.Credits.Select(row => row.NameOrHandle));
+
+        return session;
+    }
+
+    private static IEnumerable<Button> NoCreditButtons(ComponentPane pane) =>
+        RowButtons(pane, "CreditsItemsControl").Where(button => button.Content as string == "No credit for my changes");
+
+    // ###########################################################################################
+    // *** "NO CREDIT FOR MY CHANGES" (owner request, 2026-11-24: "I want a possibility for the user to opt-out of the credit ...
+    // A credit should still default to be mandatory"). *** The credit the first change brought is framed as sent, the button on
+    // it alone; pressed, the credit goes as one named step, the page says the changes go without one, and further work brings
+    // none back - until "Add a credit for my changes" asks the host to put it back, which ends the wish.
+    // ###########################################################################################
+    [Fact]
+    public void No_credit_for_my_changes_keeps_the_credit_away_until_it_is_asked_back()
+    {
+        DraftSession session = this.OpenDraftCreditedForWork(out BoardData published);
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Credits);
+            Assert.False(pane.ShowsNoCreditNoticeForTests);
+
+            // On the credit sent alone - Anna's is published.
+            Button noCredit = Assert.Single(NoCreditButtons(pane), button => button.IsEffectivelyVisible);
+            Click(noCredit);
+
+            Assert.Equal(["Anna"], session.Content.Board.Credits.Select(row => row.NameOrHandle));
+            Assert.Equal(DraftStepWording.NoCreditForYourChanges, session.UndoDescription);
+            Assert.True(session.NoCreditForWork);
+            Assert.True(pane.ShowsNoCreditNoticeForTests);
+            Assert.Equal(ComponentPaneWording.NoCreditForChanges, Get<TextBlock>(pane, "NoCreditNoticeText").Text);
+
+            // More work, by another editor: no credit comes back, and the page still says so.
+            session.Apply("More work", content => content with { Board = WithLink(content.Board, "Forum 128") });
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(["Anna"], session.Content.Board.Credits.Select(row => row.NameOrHandle));
+            Assert.True(pane.ShowsNoCreditNoticeForTests);
+
+            // "Add a credit for my changes" asks the host, which puts it back as Submit does (TabDrafts.AddCreditForChangesAsync).
+            int asked = 0;
+            pane.CreditForChangesRequested += (_, _) =>
+            {
+                asked++;
+                session.Apply(DraftStepWording.CreditForYourChanges, content => content with
+                {
+                    Board = SubmissionCredit.Ensure(published, content.Board, "Bo", "bo@example.com"),
+                });
+            };
+
+            Click(Get<Button>(pane, "AddCreditForChangesButton"));
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(1, asked);
+            Assert.Equal(["Anna", "Bo"], session.Content.Board.Credits.Select(row => row.NameOrHandle));
+            Assert.Equal(["Anna", "Bo"], pane.CreditsForTests.Select(row => row.NameOrHandle));
+            Assert.False(session.NoCreditForWork);
+            Assert.False(pane.ShowsNoCreditNoticeForTests);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // "Remove" on the credit for the work says the same - two ways to take it away must not do two things. And an undo bringing
+    // it back is a credit sent again: nothing is said, and Submit sends it.
+    // ###########################################################################################
+    [Fact]
+    public void Removing_the_credit_for_the_work_wants_none_and_an_undo_brings_it_back()
+    {
+        DraftSession session = this.OpenDraftCreditedForWork(out _);
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Credits);
+
+            Click(RowButtons(pane, "CreditsItemsControl").Last(button => button.Content as string == "Remove"));
+
+            Assert.Equal(["Anna"], session.Content.Board.Credits.Select(row => row.NameOrHandle));
+            Assert.True(session.NoCreditForWork);
+            Assert.True(pane.ShowsNoCreditNoticeForTests);
+
+            Assert.True(session.Undo());
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(["Anna", "Bo"], pane.CreditsForTests.Select(row => row.NameOrHandle));
+            Assert.False(pane.ShowsNoCreditNoticeForTests);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // *** "NO CREDIT FOR MY CHANGES" ONLY WHILE ONE CREDIT IS SENT (code review, 2026-11-24). *** With a credit typed for somebody
+    // else beside the one for the work, the button stood on both, and on the other one it took that person's credit away under
+    // "No credit for your changes" - wanting nothing, a credit still being sent. A row added and nothing typed yet is no credit.
+    // ###########################################################################################
+    [Fact]
+    public void No_credit_for_my_changes_is_offered_only_while_one_credit_is_sent()
+    {
+        DraftSession session = this.OpenDraftCreditedForWork(out _);
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Credits);
+            Assert.Equal([false, true], pane.CreditsForTests.Select(row => row.OffersNoCredit));
+
+            // A row added, nothing typed in it yet: still the one credit sent.
+            Click(Get<Button>(pane, "AddCreditButton"));
+            ComponentPaneCreditRow ray = pane.CreditsForTests[^1];
+            Assert.False(ray.OffersNoCredit);
+            Assert.True(pane.CreditsForTests[1].OffersNoCredit);
+
+            // Typed and committed: two sent, so neither offers it.
+            ray.Category = "Schematic image";
+            ray.NameOrHandle = "Ray";
+            pane.CommitHeld();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(["Anna", "Bo", "Ray"], session.Content.Board.Credits.Select(row => row.NameOrHandle));
+            Assert.All(pane.CreditsForTests, row => Assert.False(row.OffersNoCredit));
+            Assert.DoesNotContain(NoCreditButtons(pane), button => button.IsEffectivelyVisible);
+
+            // Ray's taken away again: Bo's offers it once more.
+            Click(RowButtons(pane, "CreditsItemsControl").Last(button => button.Content as string == "Remove"));
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(["Anna", "Bo"], session.Content.Board.Credits.Select(row => row.NameOrHandle));
+            Assert.False(session.NoCreditForWork);
+            Assert.Equal([false, true], pane.CreditsForTests.Select(row => row.OffersNoCredit));
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // With no work worth a credit, the one credit sent is somebody else's - the person who scanned a schematic image, say - and
+    // offers no way out of a credit there is none of (code review, 2026-11-24: pressed, it deleted that person's credit).
+    // ###########################################################################################
+    [Fact]
+    public void A_credit_sent_with_no_work_beside_it_offers_no_way_out()
+    {
+        DraftSession session = this.OpenDraftWithBoardParts();
+
+        UiTest.Run(() =>
+        {
+            (ComponentPane pane, Window window) = ShownPart(session, PaneBoardPart.Credits);
+
+            Click(Get<Button>(pane, "AddCreditButton"));
+            ComponentPaneCreditRow ray = pane.CreditsForTests[^1];
+            ray.Category = "Schematic image";
+            ray.NameOrHandle = "Ray";
+            pane.CommitHeld();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(["Anna", "Ray"], session.Content.Board.Credits.Select(row => row.NameOrHandle));
+            Assert.True(pane.CreditsForTests[1].IsNew);
+            Assert.False(pane.CreditsForTests[1].OffersNoCredit);
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // *** THE CREDITS ARE JUDGED AGAINST THE BOARD THE SESSION JUDGES BY, AS THE BUTTON IS PRESSED (code review, 2026-11-24). ***
+    // A data check since the part opened brought a board that publishes the contributor's credit: framed as sent until then, its
+    // button now takes nothing away - a published credit would have gone with the next Submit - and the frame goes.
+    // ###########################################################################################
+    [Fact]
+    public void A_credit_published_since_the_part_opened_is_not_taken_away_by_its_button()
+    {
+        DraftSession session = this.OpenDraftCreditedForWork(out BoardData published);
+        BoardData judgedBy = published;
+
+        UiTest.Run(() =>
+        {
+            var pane = new ComponentPane { AutoSave = false, JudgedAgainst = _ => judgedBy };
+            var window = new Window { Content = pane, Width = 1100, Height = 1400 };
+            window.Show();
+            pane.ShowBoardPart(session, PaneBoardPart.Credits, published);
+            Dispatcher.UIThread.RunJobs();
+
+            ComponentPaneCreditRow bo = pane.CreditsForTests[1];
+            Assert.True(bo.OffersNoCredit);
+            Button noCredit = Assert.Single(NoCreditButtons(pane), button => button.IsEffectivelyVisible);
+
+            // Published since - the work and Bo's credit with it.
+            judgedBy = session.Content.Board;
+            Click(noCredit);
+
+            Assert.Equal(["Anna", "Bo"], session.Content.Board.Credits.Select(row => row.NameOrHandle));
+            Assert.False(session.NoCreditForWork);
+            Assert.False(bo.OffersNoCredit);
+            Assert.False(bo.IsNew);
+
+            window.Close();
+        });
+    }
+
+    // A new board's credits are its starting rows, every one of them sent: none offers "No credit for my changes".
+    [Fact]
+    public void A_new_boards_credits_offer_no_way_out_of_the_credit()
+    {
+        DraftSession session = this.OpenDraftWithBoardParts();
+
+        UiTest.Run(() =>
+        {
+            var pane = new ComponentPane { AutoSave = false };
+            var window = new Window { Content = pane, Width = 1100, Height = 1400 };
+            window.Show();
+
+            pane.ShowBoardPart(session, PaneBoardPart.Credits, published: null);
+            Dispatcher.UIThread.RunJobs();
+
+            ComponentPaneCreditRow row = Assert.Single(pane.CreditsForTests);
+            Assert.True(row.IsNew);
+            Assert.False(row.OffersNoCredit);
+            Assert.DoesNotContain(NoCreditButtons(pane), button => button.IsEffectivelyVisible);
+            Assert.False(pane.ShowsNoCreditNoticeForTests);
 
             window.Close();
         });

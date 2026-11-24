@@ -486,7 +486,7 @@ public sealed class TabDraftsProblemsTests : IDisposable
         await UiTest.RunAsync(async () =>
         {
             TabDrafts tab = Tab(board);
-            var list = new ListBox { SelectionMode = SelectionMode.Single, ItemsSource = tab.ComponentItems };
+            var list = new ListBox { SelectionMode = SelectionMode.Single, AutoScrollToSelectedItem = false, ItemsSource = tab.ComponentItems };
             tab.UseComponentList(list);
 
             Assert.Equal(new BoardProblemCounts(1, 0), Row(tab, "U8").Problems);
@@ -970,9 +970,12 @@ public sealed class TabDraftsProblemsTests : IDisposable
 
     // ---- "With issues" ----------------------------------------------------------
 
+    // The list as Main.axaml makes ContributeComponentListBox: its own scrolling OFF. With Avalonia's default (on) the
+    // list scrolled itself back to the selection one dispatcher turn later on 12.1.6, and a test of the tab's own
+    // scrolling passed whether or not the tab scrolled at all (2026-11-24, found by the move to Avalonia 12.2.0).
     private static (ListBox List, CheckBox Box) ListAndBoxFor(TabDrafts tab)
     {
-        var list = new ListBox { SelectionMode = SelectionMode.Single, ItemsSource = tab.ComponentItems };
+        var list = new ListBox { SelectionMode = SelectionMode.Single, AutoScrollToSelectedItem = false, ItemsSource = tab.ComponentItems };
         var box = new CheckBox();
 
         tab.UseIssuesBox(box);

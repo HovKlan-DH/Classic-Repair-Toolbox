@@ -83,4 +83,39 @@ public sealed class DraftMarkerStoreTests : IDisposable
         Assert.DoesNotContain("\"NewBoard\"", written, StringComparison.Ordinal);
         Assert.Equal("Commodore/C64/250407/C64 250407.xlsx", DraftMarkerStore.Load(path)!.BoardKey);
     }
+
+    // ###########################################################################################
+    // *** EVERY CHANGE OF A MARKER LANDS, HOWEVER MANY COME AT ONCE (code review, 2026-11-24). *** The wish for no credit is
+    // noted with a save on the pool, while "I have looked at this" or the new board's credits change the same file: each read
+    // the marker before the other wrote it, and the later write dropped the other's field. Update is one step each.
+    // ###########################################################################################
+    [Fact]
+    public void Changes_of_a_marker_made_at_once_all_land()
+    {
+        string path = this.thisWorkspace.Path_("Drafts", "Commodore", "C64", "250407", DraftFolderLayout.DraftMarkerFileName);
+        DraftMarkerStore.Save(path, new DraftMarker { BoardKey = "Commodore/C64/250407/board.json" });
+
+        System.Threading.Tasks.Parallel.For(0, 4, writer =>
+        {
+            for (int change = 0; change < 15; change++)
+            {
+                string note = $"{writer}-{change}";
+                Assert.NotNull(DraftMarkerStore.Update(path, marker => marker with { CreditsOffered = [.. marker.CreditsOffered ?? [], note] }));
+            }
+        });
+
+        DraftMarker written = DraftMarkerStore.Load(path)!;
+
+        Assert.Equal(60, written.CreditsOffered!.Count);
+        Assert.Equal("Commodore/C64/250407/board.json", written.BoardKey);
+    }
+
+    [Fact]
+    public void No_marker_is_no_change()
+    {
+        string path = this.thisWorkspace.Path_("Drafts", "Commodore", "C64", "250407", DraftFolderLayout.DraftMarkerFileName);
+
+        Assert.Null(DraftMarkerStore.Update(path, marker => marker with { NoCreditForWork = true }));
+        Assert.False(File.Exists(path));
+    }
 }

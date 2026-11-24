@@ -5,6 +5,10 @@
 
 # Wiki pages waiting to be pasted
 
-**Nothing to paste.** Every page matches what is in the live Wiki.
+**1 page waiting.**
+
+| File in `Assets/Wiki` | Where it is in the Wiki |
+| --- | --- |
+| `Information-collected.md` | Home > Reference > Information collected |
 
 <!-- crt:waiting-end -->

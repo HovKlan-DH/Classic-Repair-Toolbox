@@ -79,6 +79,13 @@ namespace Handlers.DataHandling
 
         public static string CreditPublishedOn(string date) => $"Published {date}";
 
+        // ---- no credit for the contributor's own changes (owner request, 2026-11-24) --------------------
+
+        // Over "Board: Credits" while the draft's work goes without a credit because the contributor took it away
+        // (SubmissionCredit.SendsNoCredit) - what the submission then says it changed is the changes, as "Review changes" words them.
+        public const string NoCreditForChanges =
+            "Your changes are sent without a credit, as you chose. The maintainers see them described by the list of what changed.";
+
         // ---- the component as a whole (slice 3c) -----------------------------------------------------
 
         public const string NewComponentTitle = "New component";

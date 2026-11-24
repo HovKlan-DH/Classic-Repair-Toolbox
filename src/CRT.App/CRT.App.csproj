@@ -7,10 +7,10 @@
 		<Authors>Dennis Helligsø</Authors>
 		<Copyright>©2025-2026</Copyright>
 		<AssemblyName>Classic-Repair-Toolbox</AssemblyName>
-		<AssemblyVersion>4.0.0</AssemblyVersion>
-		<InformationalVersion>$(AssemblyVersion)</InformationalVersion>
+		<AssemblyVersion>4.1.0</AssemblyVersion>
+		<InformationalVersion>4.1.0-alpha.1</InformationalVersion>
 		<!--
-		<InformationalVersion>4.0.0-beta.1</InformationalVersion>
+		<InformationalVersion>$(AssemblyVersion)</InformationalVersion>
 		-->
 
 		<OutputType>WinExe</OutputType>
@@ -79,13 +79,13 @@
 </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.1.6" />
-    <PackageReference Include="Avalonia.Desktop" Version="12.1.6" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.6" />
-    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.6" />
-	<PackageReference Include="Avalonia.Controls.ColorPicker" Version="12.1.6" />
+    <PackageReference Include="Avalonia" Version="12.2.0" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.2.0" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.2.0" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.2.0" />
+	<PackageReference Include="Avalonia.Controls.ColorPicker" Version="12.2.0" />
     <PackageReference Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3" />
-    <PackageReference Include="ProDataGrid" Version="12.1.5" />
+    <PackageReference Include="ProDataGrid" Version="12.2.0" />
     <PackageReference Include="QuestPDF" Version="2026.9.2" />
     <!--
     DPAPI, for the Maintainer tab's remembered sign-in (Handlers/Maintainer/ReviewSessionProtection,
@@ -96,7 +96,7 @@
     -->
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="11.0.0" />
     <PackageReference Include="Velopack" Version="1.2.161" />
-    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.36.0.15337" PrivateAssets="all" />
+    <PackageReference Include="SonarAnalyzer.CSharp" Version="10.37.0.15768" PrivateAssets="all" />
   </ItemGroup>
 
   <!--

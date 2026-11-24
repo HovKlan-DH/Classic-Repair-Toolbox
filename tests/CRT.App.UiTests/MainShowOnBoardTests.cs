@@ -1,4 +1,8 @@
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Headless;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using CRT;
 using Handlers.DataHandling;
 
@@ -84,6 +88,48 @@ public sealed class MainShowOnBoardTests : IDisposable
 
             Assert.Equal(["U8"], MainShowOnBoardTests.Selected(window));
             Assert.Same(window.SchematicsTabItem, window.MainTabControl.SelectedItem);
+        });
+    }
+
+    // ###########################################################################################
+    // Read again first, the component far down the list it was given is scrolled INTO VIEW (code review, 2026-11-24): the
+    // load replaced the rows just before, and Avalonia's list could not scroll to a row put in since its last layout pass
+    // (ListScrolling).
+    // ###########################################################################################
+    [Fact]
+    public void After_reading_the_board_again_the_component_far_down_the_list_is_in_view()
+    {
+        UiTest.Run(() =>
+        {
+            var window = new CRT.Main { BoardKeyOverrideForTests = MainShowOnBoardTests.BoardKey, Width = 1400, Height = 900 };
+            window.Show();
+            Dispatcher.UIThread.RunJobs();
+
+            window.ShowComponentOnBoard("U400", readBoardFirst: true);
+            Dispatcher.UIThread.RunJobs();
+            window.ComponentFilterListBox.ItemsSource = Enumerable.Range(1, 400)
+                .Select(number => new ComponentListItem { BoardLabel = "U" + number, DisplayText = $"U{number} | IC", SelectionKey = "U" + number })
+                .ToList();
+
+            window.DoWhatWasAskedAfterLoad(MainShowOnBoardTests.BoardKey);
+            Dispatcher.UIThread.RunJobs();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            Dispatcher.UIThread.RunJobs();
+
+            Assert.Equal(["U400"], MainShowOnBoardTests.Selected(window));
+
+            ListBox list = window.ComponentFilterListBox;
+            ScrollViewer scroller = list.GetVisualDescendants().OfType<ScrollViewer>().First();
+
+            Assert.True(
+                list.ContainerFromIndex(399) is Control row &&
+                row.IsEffectivelyVisible &&
+                row.TranslatePoint(default, scroller) is { } at &&
+                at.Y >= -1 &&
+                at.Y < scroller.Viewport.Height,
+                "U400's row is in view.");
+
+            window.Close();
         });
     }
 
