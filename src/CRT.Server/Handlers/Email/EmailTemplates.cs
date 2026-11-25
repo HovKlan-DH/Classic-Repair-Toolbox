@@ -71,16 +71,31 @@ namespace CRT.Server.Handlers.Email
         // ###########################################################################################
         private const string WhereInCrt = global::Handlers.DataHandling.AccountWording.WhereInCrt;
 
+        // ###########################################################################################
+        // *** AND THE WAY IN FOR A CRT FROM BEFORE THE ICON *** (code review, 2026-11-25; "Installed CRTs keep working"). The
+        // live server takes 13.0.0 with CRT 4.1.0's release, and a maintainer still on 4.0 or older has no account icon: its
+        // sign-in, "I forgot my password" and "I have an invitation" are the "Maintainer" tab's (turned on in "Configuration"),
+        // "My account" is under that tab's "Account". The buttons' words are the same. Said in brackets after the icon, in the
+        // mails such a CRT's user can get - not the verification mail, whose "Send the mail again" no older CRT has.
+        // ###########################################################################################
+        private const string OlderCrtSignIn = "in CRT 4.0 and older, the \"Maintainer\" tab's sign-in";
+
+        private const string OlderCrtMyAccount = "in CRT 4.0 and older, the \"Maintainer\" tab's \"Account\" > \"My account\"";
+
         private static string Quoted(string button) => $"\"{button}\"";
 
         // ###########################################################################################
         // Sent when a NEW address registers. Carries the link that proves the address is theirs.
         // ###########################################################################################
+        // *** SIGNING IN WAITS FOR THE LINK *** (2026-11-25: an address not confirmed cannot sign in - AccountFlows.LoginAsync),
+        // so an expired link is not answered by "sign in and press "Send the mail again"" (it was until then): a new password
+        // set with a mailed code confirms the address too, in CRT's account window or on the website's page.
         public static EmailMessage Verification(
             string toAddress,
             string displayName,
             string verificationUrl,
-            int validHours)
+            int validHours,
+            string forgotPasswordPageUrl)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(toAddress);
             ArgumentException.ThrowIfNullOrWhiteSpace(verificationUrl);
@@ -88,13 +103,31 @@ namespace CRT.Server.Handlers.Email
             return EmailTemplates.Greeted(displayName)
                 .Paragraph($"Thanks for signing up to {EmailTemplates.ProductName}. Open this link to confirm your address:")
                 .Paragraph(MailText.Link(verificationUrl, verificationUrl))
+                .Paragraph($"You can sign in once the address is confirmed. The link works for {validHours} hours.")
                 .Paragraph(
-                    $"The link works for {validHours} hours. If it expires, sign in to CRT through {EmailTemplates.WhereInCrt} " +
-                    $"and press {EmailTemplates.Quoted(global::Handlers.DataHandling.AccountWording.SendMailAgainButton)} - a new link is mailed to you.")
+                    $"If it expires, use {EmailTemplates.Quoted(global::Handlers.DataHandling.AccountWording.ForgotPasswordButton)} - in CRT, " +
+                    $"through {EmailTemplates.WhereInCrt}, or on the website - to set a password with a code mailed to you. That confirms the address too: ",
+                    MailText.Link(forgotPasswordPageUrl, forgotPasswordPageUrl))
                 .Paragraph("If you did not sign up, you can ignore this message - the address will not be used for anything else.")
                 .WithContactLine()
                 .ToMessage(toAddress, $"Confirm your {EmailTemplates.ProductName} address")
                 with { CarriesCredential = true };
+        }
+
+        // ###########################################################################################
+        // THE DISPLAY NAME WAS TAKEN MEANWHILE (2026-11-25; AccountFlows.ConfirmAddressAsync). A name is held only by an account
+        // whose address is confirmed, so two new accounts can ask for one; the second to confirm is given the name with a
+        // number after it, and this says so - and where to pick another.
+        // ###########################################################################################
+        public static EmailMessage DisplayNameTakenMeanwhile(string toAddress, string asked, string given)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(toAddress);
+
+            return EmailTemplates.Greeted(given)
+                .Paragraph("Your address is confirmed. ", MailText.Named(asked), " was taken by another account meanwhile, so your display name is ", MailText.Named(given), ".")
+                .Paragraph($"To choose another, sign in to CRT through {EmailTemplates.WhereInCrt} and change it under \"My account\".")
+                .WithContactLine()
+                .ToMessage(toAddress, $"Your {EmailTemplates.ProductName} display name");
         }
 
         // ###########################################################################################
@@ -182,7 +215,7 @@ namespace CRT.Server.Handlers.Email
         private static MailBody WhereTheResetCodeGoes(MailBody body, string forgotPasswordPageUrl) =>
             body
                 .Paragraph(
-                    $"In CRT, open {EmailTemplates.WhereInCrt} and choose " +
+                    $"In CRT, open {EmailTemplates.WhereInCrt} ({EmailTemplates.OlderCrtSignIn}) and choose " +
                     $"{EmailTemplates.Quoted(global::Handlers.DataHandling.AccountWording.ForgotPasswordButton)}, " +
                     "then paste this code and type the password you want.")
                 .Paragraph("Or do the same on the website: ", MailText.Link(forgotPasswordPageUrl, forgotPasswordPageUrl));
@@ -235,7 +268,8 @@ namespace CRT.Server.Handlers.Email
                 .Paragraph("To accept it:")
                 .Steps(
                     ["Install Classic Repair Toolbox (CRT) from ", MailText.Link(EmailTemplates.CrtDownloadUrl, EmailTemplates.CrtDownloadUrl), ", or use the one you already have."],
-                    [$"In CRT, open {EmailTemplates.WhereInCrt} and choose {EmailTemplates.Quoted(global::Handlers.DataHandling.AccountWording.HaveInvitationButton)}."],
+                    [$"In CRT, open {EmailTemplates.WhereInCrt} and choose {EmailTemplates.Quoted(global::Handlers.DataHandling.AccountWording.HaveInvitationButton)} " +
+                     $"({EmailTemplates.OlderCrtSignIn}, once the box in the last step is checked)."],
                     ["Paste the code, and pick the name others will see and a password - then sign in with this email address and that password."],
                     ["In CRT's \"Configuration\" tab, check the box that turns on the \"Maintainer\" tab."])
                 .Paragraph($"The code works for {validDays} days and can only be used once.")
@@ -270,7 +304,7 @@ namespace CRT.Server.Handlers.Email
                     "for everybody who uses the data. You get an email when somebody sends one.")
                 .Paragraph("To review them:")
                 .Steps(
-                    [$"In CRT, sign in through {EmailTemplates.WhereInCrt} with this email address and your password."],
+                    [$"In CRT, sign in through {EmailTemplates.WhereInCrt} ({EmailTemplates.OlderCrtSignIn}) with this email address and your password."],
                     ["In CRT's \"Configuration\" tab, check the box that turns on the \"Maintainer\" tab."])
                 .WithContactLine()
                 .ToMessage(toAddress, $"For CRT you are now the maintainer of the [{board}] board");
@@ -290,7 +324,7 @@ namespace CRT.Server.Handlers.Email
                 .Paragraph("If that was you, nothing further is needed.")
                 .Paragraph(
                     $"If it was not, your account may have been taken over. Use {EmailTemplates.Quoted(global::Handlers.DataHandling.AccountWording.ForgotPasswordButton)} " +
-                    $"- in CRT, through {EmailTemplates.WhereInCrt}, or on the website - to take it back, and any other sessions will be signed out.")
+                    $"- in CRT, through {EmailTemplates.WhereInCrt} ({EmailTemplates.OlderCrtSignIn}), or on the website - to take it back, and any other sessions will be signed out.")
                 .WithContactLine()
                 .ToMessage(toAddress, $"Your {EmailTemplates.ProductName} password was changed");
         }
@@ -325,7 +359,7 @@ namespace CRT.Server.Handlers.Email
             return EmailTemplates.Greeted(displayName)
                 .Paragraph($"You asked to use this address for your {EmailTemplates.ProductName} account. Here is the code that confirms it:")
                 .Code(code)
-                .Paragraph($"In CRT, open {EmailTemplates.WhereInCrt}, press \"I have received a code\", and type it in. Your address does not change until the code is used.")
+                .Paragraph($"In CRT, open {EmailTemplates.WhereInCrt} ({EmailTemplates.OlderCrtMyAccount}), press \"I have received a code\", and type it in. Your address does not change until the code is used.")
                 .Paragraph($"The code works for {validHours} hours and can only be used once.")
                 .Paragraph("If you did not ask for this, you can ignore it - nothing changes unless the code is used.")
                 .WithContactLine()

@@ -74,13 +74,17 @@ namespace CRT.Server.Handlers.Accounts
                 $"<p class=\"muted\">{Encode(AccountWording.PasswordLine)}</p>" +
                 // A field no person sees or fills: a script that fills every field is answered as if it had made an account,
                 // and nothing is made (AccountPageEndpoints).
-                "<div class=\"hp\" aria-hidden=\"true\"><label for=\"website\">Leave this empty</label>" +
-                $"<input type=\"text\" id=\"website\" name=\"{AccountPages.TrapField}\" tabindex=\"-1\" autocomplete=\"off\"></div>" +
+                $"<div class=\"hp\" aria-hidden=\"true\"><label for=\"{AccountPages.TrapField}\">Leave this empty</label>" +
+                $"<input type=\"text\" id=\"{AccountPages.TrapField}\" name=\"{AccountPages.TrapField}\" tabindex=\"-1\" autocomplete=\"off\"></div>" +
                 $"<button type=\"submit\">{Encode(AccountWording.CreateAccountButton)}</button>" +
                 "</form>");
 
-        // The field the register form hides from people (above).
-        public const string TrapField = "website";
+        // ###########################################################################################
+        // The field the register form hides from people (above). *** A NAME NO BROWSER KNOWS *** (code review, 2026-11-25):
+        // "website" was one - autofill and password managers fill a field by its name, whatever autocomplete="off" says,
+        // and a person whose browser filled it was told "Check your mail" while nothing was made and no mail sent.
+        // ###########################################################################################
+        public const string TrapField = "f7q2x";
 
         // ###########################################################################################
         // After "Create an account": the server's neutral answer - the same whether or not the address had an account.
@@ -99,14 +103,18 @@ namespace CRT.Server.Handlers.Accounts
         public static (string Html, int Status) Verified(string baseUrl, TokenRedemptionOutcome outcome) => outcome switch
         {
             TokenRedemptionOutcome.Success => (AccountPages.Layout(baseUrl, "Your address is confirmed",
-                "<p>Thank you. You can close this page.</p>"), 200),
+                $"<p>Thank you. You can sign in now - in Classic Repair Toolbox, through {Encode(AccountWording.WhereInCrt)}.</p>"), 200),
 
             TokenRedemptionOutcome.AlreadyUsed => (AccountPages.Layout(baseUrl, "Your address is confirmed",
                 "<p>That link has already been used, so there is nothing more to do. You can close this page.</p>"), 200),
 
+            // The way on is a new password set with a mailed code, which confirms the address too (AccountFlows
+            // .CompletePasswordResetAsync) - here, or in CRT's account window. An address not confirmed cannot sign in (2026-11-25,
+            // AccountFlows.LoginAsync), so "sign in and press "Send the mail again"", what this page said until then, is none.
             TokenRedemptionOutcome.Expired => (AccountPages.Layout(baseUrl, "That link has expired",
-                $"<p>Sign in to Classic Repair Toolbox through {Encode(AccountWording.WhereInCrt)} and press " +
-                $"\"{Encode(AccountWording.SendMailAgainButton)}\" - a new link is mailed to you.</p>"), 400),
+                $"<p>Set a password with a code mailed to you on <a href=\"{Encode(AccountPages.Link(baseUrl, "forgot-password"))}\">" +
+                $"{Encode(AccountWording.ForgotPasswordButton)}</a> - that confirms the address too. It is the same in Classic Repair " +
+                $"Toolbox, through {Encode(AccountWording.WhereInCrt)}.</p>"), 400),
 
             _ => (AccountPages.Layout(baseUrl, "That link is not valid",
                 "<p>Check that the whole link was opened - a mail program can break a long link over two lines.</p>"), 400)
@@ -123,7 +131,7 @@ namespace CRT.Server.Handlers.Accounts
                 AccountWording.ForgotPasswordButton,
                 "<h2>1. Ask for a code</h2>" +
                 (codeAsked
-                    ? $"<div class=\"notice\" role=\"status\"><p>If {Encode(email)} has an account, a code is on its way to it. It works for 2 hours and can be used once.</p></div>"
+                    ? $"<div class=\"notice\" role=\"status\"><p>If {Encode(email)} has an account, a code is on its way to it. {Encode(AccountWording.ResetCodeWorks)}</p></div>"
                     : string.Empty) +
                 $"<form method=\"post\" action=\"{Encode(AccountPages.Link(baseUrl, "forgot-password"))}\">" +
                 "<label for=\"email\">Email address</label>" +
@@ -146,6 +154,58 @@ namespace CRT.Server.Handlers.Accounts
                 baseUrl,
                 "Your password is set",
                 $"<p>Sign in with it - in Classic Repair Toolbox, through {Encode(AccountWording.WhereInCrt)}.</p>");
+
+        // A form posted from another website (IsFromAnotherSite) - nothing done, and the way to do it here said.
+        public static string FromAnotherSite(string baseUrl) =>
+            AccountPages.Layout(
+                baseUrl,
+                "That form came from another website",
+                "<p>Nothing was done. To make an account or set a new password, " +
+                // With its slash: Apache forwards "/account/" (INSTALLING.md), never "/account".
+                $"<a href=\"{Encode(baseUrl + AccountPages.Path + "/")}\">open the account page here</a> and send the form from it.</p>");
+
+        // ###########################################################################################
+        // *** A FORM ANOTHER WEBSITE POSTS HERE IS REFUSED *** (code review, 2026-11-25, Security). Making an account and asking
+        // for a code both MAIL somebody, and the mail budget is counted per IP address (AccountFlows.CheckMailBudgetAsync) - so
+        // a hidden form on a busy page, posting here from every visitor's browser, would spend each visitor's budget and
+        // flood an inbox, the limit never tripping. The JSON routes take application/json, which no form can send.
+        //
+        //   Sec-Fetch-Site  every current browser sends it and no page can set it: "same-origin" or "same-site" (a page of
+        //                   this site), or "none" (typed or bookmarked) is ours; "cross-site" - and anything else - is not.
+        //   Origin          what an older browser sends instead with a POST: this site's own scheme and host, or one of its
+        //                   subdomains, is ours; another, or "null" (a sandboxed frame), is not. The pages' Referrer-Policy
+        //                   is "strict-origin" for this (ReferrerPolicy) - "no-referrer" makes a browser send "null" for
+        //                   the site's own forms.
+        //   neither         no browser - a script, which could post directly anyway, so nothing is gained by refusing it.
+        // ###########################################################################################
+        public static bool IsFromAnotherSite(string? fetchSite, string? origin, string baseUrl)
+        {
+            if (!string.IsNullOrWhiteSpace(fetchSite))
+            {
+                string site = fetchSite.Trim();
+
+                return !(site.Equals("same-origin", StringComparison.OrdinalIgnoreCase) ||
+                         site.Equals("same-site", StringComparison.OrdinalIgnoreCase) ||
+                         site.Equals("none", StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (string.IsNullOrWhiteSpace(origin))
+                return false;
+
+            if (!Uri.TryCreate(origin.Trim(), UriKind.Absolute, out Uri? from) ||
+                !Uri.TryCreate(baseUrl, UriKind.Absolute, out Uri? ours))
+                return true;
+
+            if (!string.Equals(from.Scheme, ours.Scheme, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            return !(string.Equals(from.Host, ours.Host, StringComparison.OrdinalIgnoreCase) ||
+                     from.Host.EndsWith("." + ours.Host, StringComparison.OrdinalIgnoreCase));
+        }
+
+        // The pages' Referrer-Policy: a link sends no more than this site's address, so a verify link's token never leaves in
+        // a Referer - and a form's POST keeps its Origin, which IsFromAnotherSite reads ("no-referrer" would send "null").
+        public const string ReferrerPolicy = "strict-origin";
 
         // ###########################################################################################
         // The frame every page stands in: the name of the site, the page, and where CRT is downloaded.

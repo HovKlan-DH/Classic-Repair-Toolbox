@@ -33,6 +33,9 @@ public sealed class AccountWindowTests
 
         public int SignOuts { get; set; }
 
+        // The server's "not signed in" handed on - the host then holds no session, as the tab's does once it ended it.
+        public int SessionsEnded { get; set; }
+
         public List<HttpRequestMessage> Requests { get; } = [];
 
         public List<string> Bodies { get; } = [];
@@ -50,9 +53,10 @@ public sealed class AccountWindowTests
             })));
 
         ReviewApiClient? inUse = signedIn is null ? null : NewClient();
+        ReviewSession? current = signedIn;
 
         return new AccountHost(
-            SignedIn: () => signedIn,
+            SignedIn: () => current,
             ClientInUse: () => inUse,
             NewClient: NewClient,
             UseSignIn: (session, _) =>
@@ -65,6 +69,11 @@ public sealed class AccountWindowTests
             {
                 seen.SignOuts++;
                 return Task.CompletedTask;
+            },
+            SessionEnded: () =>
+            {
+                seen.SessionsEnded++;
+                current = null;
             },
             SignInIsRemembered: true,
             UsesTestServer: false);
@@ -591,6 +600,85 @@ public sealed class AccountWindowTests
             confirmed = true;
             await window.SendMailAgainAsync();
             Assert.False(AccountWindowTests.Shows(window, "NotConfirmedPanel"));
+
+            window.Close();
+        });
+    }
+
+    // ###########################################################################################
+    // *** A SESSION THE SERVER HAS ENDED IS ENDED HERE TOO *** (code review, 2026-11-25). With "Enable Maintainer tab" off nothing
+    // else asks the server, so a sign-in ended elsewhere - a password reset signs out every computer - showed as signed in, the
+    // window opened on "My account", and every change there answered "Sign in to continue." with no sign-in offered. The 401 to
+    // the read as the window opens goes to the host (the tab's own end of a session), and the window is the sign-in, saying why.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_session_the_server_has_ended_takes_the_window_back_to_the_sign_in()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var seen = new Seen();
+            AccountWindow window = AccountWindowTests.Shown(AccountWindowTests.Host(
+                request => request.RequestUri!.AbsolutePath == "/api/accounts/me"
+                    ? new HttpResponseMessage(HttpStatusCode.Unauthorized)
+                    : AccountWindowTests.Unexpected(request),
+                seen,
+                AccountWindowTests.Signed));
+
+            await AccountWindowTests.Until(() => window.ViewShown == AccountWindow.AccountView.SignIn, "the 401 to the account read takes the window to the sign-in");
+
+            Assert.Equal(1, seen.SessionsEnded);
+            Assert.Equal(TabMaintainer.SessionEndedMessage, AccountWindowTests.Text(window, "SignInMessageText"));
+            Assert.False(AccountWindowTests.Shows(window, "SignedInPanel"));
+
+            window.Close();
+        });
+    }
+
+    // The same 401 on a change made under "My account" - the name, here.
+    [Fact]
+    public async Task A_change_refused_as_not_signed_in_takes_the_window_back_to_the_sign_in()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var seen = new Seen();
+            AccountWindow window = AccountWindowTests.Shown(AccountWindowTests.Host(
+                request => request.RequestUri!.AbsolutePath switch
+                {
+                    "/api/accounts/me" => AccountWindowTests.Answer(HttpStatusCode.OK, new AccountAnswer(7, "dennis@example.com", "Dennis", true, false, [], DateTimeOffset.UtcNow)),
+                    "/api/accounts/me/name" => new HttpResponseMessage(HttpStatusCode.Unauthorized),
+                    _ => AccountWindowTests.Unexpected(request)
+                },
+                seen,
+                AccountWindowTests.Signed));
+
+            await AccountWindowTests.Until(() => seen.AccountsChanged.Count == 1, "the account is read as the window opens");
+            Assert.Equal(AccountWindow.AccountView.SignedIn, window.ViewShown);
+
+            MyAccountView account = window.GetControl<MyAccountView>("MyAccountPanel");
+            account.GetControl<TextBox>("NameTextBox").Text = "Dennis2";
+            await account.SaveNameAsync();
+
+            Assert.Equal(1, seen.SessionsEnded);
+            Assert.Equal(AccountWindow.AccountView.SignIn, window.ViewShown);
+            Assert.Equal(TabMaintainer.SessionEndedMessage, AccountWindowTests.Text(window, "SignInMessageText"));
+
+            // Everything typed for the session gone with it.
+            Assert.Equal(string.Empty, account.GetControl<TextBox>("NameTextBox").Text);
+
+            window.Close();
+        });
+    }
+
+    // Opened, the first box of the view takes the keyboard - the address typed first goes into it (code review, 2026-11-25:
+    // the focus was asked for before there was a window to focus in).
+    [Fact]
+    public void Opened_the_sign_in_has_the_keyboard_in_its_address_box()
+    {
+        UiTest.Run(() =>
+        {
+            AccountWindow window = AccountWindowTests.Shown(AccountWindowTests.Host(AccountWindowTests.Unexpected, new Seen()));
+
+            Assert.Same(window.GetControl<TextBox>("EmailTextBox"), window.FocusManager?.GetFocusedElement());
 
             window.Close();
         });

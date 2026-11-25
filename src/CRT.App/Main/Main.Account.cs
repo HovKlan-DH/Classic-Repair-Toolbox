@@ -72,6 +72,7 @@ namespace CRT
                 UseSignIn: (session, client) => this.TabMaintainer.UseSignInAsync(session, client, readLists: UserSettings.EnableMaintainerTab),
                 AccountChanged: this.TabMaintainer.ApplyAccount,
                 SignOut: this.SignOutFromAccountWindowAsync,
+                SessionEnded: this.TabMaintainer.EndSessionTheServerRefused,
                 SignInIsRemembered: ReviewSessionStore.IsSupported,
                 UsesTestServer: AppConfig.UsesTestServer);
 

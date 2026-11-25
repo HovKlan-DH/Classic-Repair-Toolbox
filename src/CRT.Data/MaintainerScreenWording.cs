@@ -44,9 +44,5 @@ namespace Handlers.DataHandling
         public const string BetaQueueQuoted = "\"" + BetaQueue + "\"";
 
         public const string ManagementQuoted = "\"" + Management + "\"";
-
-        public const string AccountQuoted = "\"" + Account + "\"";
-
-        public const string MyAccountQuoted = "\"" + MyAccount + "\"";
     }
 }

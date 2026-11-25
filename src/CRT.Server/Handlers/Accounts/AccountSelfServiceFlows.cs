@@ -341,9 +341,10 @@ namespace CRT.Server.Handlers.Accounts
             // would be a way back in.
             await store.ConsumeOutstandingTokensAsync(account.Id, TokenPurpose.PasswordReset, now, cancellationToken);
 
-            // The code reaching the new mailbox proves what the verification link would have.
+            // The code reaching the new mailbox proves what the verification link would have - and its name is claimed as
+            // any confirmed account's (AccountFlows.ConfirmAddressAsync).
             if (!account.IsVerified)
-                await store.SetVerifiedAsync(account.Id, cancellationToken);
+                await AccountFlows.ConfirmAddressAsync(account.Id, store, mailer, now, cancellationToken);
 
             await store.RevokeOtherSessionsAsync(account.Id, signedIn.SessionId, "email changed", now, cancellationToken);
 
@@ -474,7 +475,7 @@ namespace CRT.Server.Handlers.Accounts
         public const string AlreadyConfirmedMessage = "Your address is confirmed already.";
 
         public static string VerificationSentMessage(string address) =>
-            $"A new link to confirm your address is on its way to {address}. It works for 24 hours.";
+            $"A new link to confirm your address is on its way to {address}. It works for {(int)AccountFlows.VerificationTokenLifetime.TotalHours} hours.";
 
         // -------------------------------------------------------------------------------------
         // Helpers.

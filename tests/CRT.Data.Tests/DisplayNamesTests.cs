@@ -5,7 +5,8 @@ namespace ClassicRepairToolbox.Tests;
 // ###########################################################################################
 // DisplayNames - the name others see (owner requests, 2026-11-25: "it needs to be unique for all users", "allow only normal
 // A-Z + 0-9 and then some common special charatcers like: +-/@.[]() ... Make the max length 30 characters"). The ONE rule
-// the server holds and CRT's account window says as a name is typed; uniqueness is the server's, by SameName.
+// the server holds and CRT's account window says as a name is typed; uniqueness is the server's database's
+// (AccountFlowTests and AccountSelfServiceFlowsTests hold a name taken in other capitals to it, through FakeAccountStore).
 // ###########################################################################################
 public sealed class DisplayNamesTests
 {
@@ -67,16 +68,6 @@ public sealed class DisplayNamesTests
     public void A_blank_name_asks_for_one(string? name)
     {
         Assert.Equal(DisplayNames.Missing, DisplayNames.Problem(name));
-    }
-
-    [Fact]
-    public void Two_names_are_one_name_ignoring_capitals_and_the_spaces_around_them()
-    {
-        Assert.True(DisplayNames.SameName("Dennis", "dennis"));
-        Assert.True(DisplayNames.SameName(" DENNIS ", "Dennis"));
-        Assert.True(DisplayNames.SameName("Dennis@CRT", "dennis@crt"));
-        Assert.False(DisplayNames.SameName("Dennis", "Dennis@CRT"));
-        Assert.False(DisplayNames.SameName("Dennis", null));
     }
 
     // The words a person reads beside the box are held to the numbers the rule uses - a limit changed alone would leave

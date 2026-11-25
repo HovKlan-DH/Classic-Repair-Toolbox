@@ -47,6 +47,19 @@ namespace CRT.Server.Tests.Fakes
         // Accounts.
         // -----------------------------------------------------------------------------------
 
+        // ###########################################################################################
+        // The address confirmed, as opening its mailed link does - for a test that registers an account and then signs it in:
+        // an address not confirmed cannot sign in since 2026-11-25 (AccountFlows.LoginAsync). Every account of that address,
+        // in any capitals - there is one.
+        // ###########################################################################################
+        public void ConfirmAddress(string email)
+        {
+            string normalised = AccountRules.NormaliseEmail(email);
+
+            foreach (AccountRecord account in this.Accounts.Values.Where(account => account.NormalisedEmail == normalised).ToList())
+                this.Accounts[account.Id] = account with { IsVerified = true };
+        }
+
         public Task<AccountRecord?> FindByNormalisedEmailAsync(string normalisedEmail, CancellationToken cancellationToken = default)
         {
             AccountRecord? found = this.Accounts.Values
@@ -79,11 +92,13 @@ namespace CRT.Server.Tests.Fakes
 
         public int FindByIdsCount { get; private set; }
 
-        // CRT.Data's rule, as the database's query compares: trimmed, ignoring capitals.
+        // As the database's query compares (MySqlAccountStore.IsDisplayNameTakenAsync): a confirmed account's name, trimmed,
+        // in capitals.
         public Task<bool> IsDisplayNameTakenAsync(string displayName, long? exceptAccountId, CancellationToken cancellationToken = default) =>
             Task.FromResult(this.Accounts.Values.Any(account =>
                 account.Id != exceptAccountId &&
-                global::Handlers.DataHandling.DisplayNames.SameName(account.DisplayName, displayName)));
+                account.IsVerified &&
+                string.Equals(account.DisplayName.Trim().ToUpperInvariant(), displayName.Trim().ToUpperInvariant(), StringComparison.Ordinal)));
 
         public Task<long> CreateAccountAsync(NewAccount account, CancellationToken cancellationToken = default)
         {

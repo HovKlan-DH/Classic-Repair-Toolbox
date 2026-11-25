@@ -56,11 +56,25 @@ namespace CRT.Server.Tests
                 new RegistrationRequest(email, AccountSelfServiceFlowsTests.GoodPassword, displayName, null),
                 store, mailer, AccountSelfServiceFlowsTests.Hasher(), AccountSelfServiceFlowsTests.Options(), AccountSelfServiceFlowsTests.Now);
 
+            // Its link opened - an address not confirmed cannot sign in (since 2026-11-25).
+            store.ConfirmAddress(email);
+
             string token = await AccountSelfServiceFlowsTests.LogInAsync(store, email);
 
             mailer.Sent.Clear();
 
             return new Setup(store, mailer, token, store.Accounts.Values.Single(account => account.NormalisedEmail == email.ToLowerInvariant()).Id);
+        }
+
+        // ###########################################################################################
+        // Signed in with an address NOT confirmed: a session from before server 13.0.0, when such an address could still sign
+        // in (AccountFlows.LoginAsync refuses it since 2026-11-25) - "Send the mail again" is for those.
+        // ###########################################################################################
+        private static async Task<Setup> SignedInUnconfirmedAsync()
+        {
+            Setup setup = await AccountSelfServiceFlowsTests.SignedInAsync();
+            setup.Store.Accounts[setup.AccountId] = setup.Store.Accounts[setup.AccountId] with { IsVerified = false };
+            return setup;
         }
 
         private static async Task<string> LogInAsync(FakeAccountStore store, string email, string password = GoodPassword)
@@ -565,7 +579,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task An_unconfirmed_address_is_mailed_a_new_link_that_confirms_it()
         {
-            Setup setup = await AccountSelfServiceFlowsTests.SignedInAsync();
+            Setup setup = await AccountSelfServiceFlowsTests.SignedInUnconfirmedAsync();
 
             AccountChangeOutcome outcome = await AccountSelfServiceFlowsTests.SendAgainAsync(setup);
 
@@ -578,7 +592,7 @@ namespace CRT.Server.Tests
             Assert.Contains(setup.Store.Audit, entry => entry.Action == AccountSelfServiceFlows.VerificationResentAction);
 
             TokenRedemptionOutcome verified = await AccountFlows.VerifyEmailAsync(
-                setup.Mailer.ExtractTokenFromLastMail(), setup.Store, AccountSelfServiceFlowsTests.Now);
+                setup.Mailer.ExtractTokenFromLastMail(), setup.Store, setup.Mailer, AccountSelfServiceFlowsTests.Now);
 
             Assert.Equal(TokenRedemptionOutcome.Success, verified);
             Assert.True(AccountSelfServiceFlowsTests.Account(setup).IsVerified);
@@ -602,7 +616,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task The_mail_again_spends_the_mail_budget_and_needs_a_live_session()
         {
-            Setup setup = await AccountSelfServiceFlowsTests.SignedInAsync();
+            Setup setup = await AccountSelfServiceFlowsTests.SignedInUnconfirmedAsync();
 
             Assert.True((await AccountSelfServiceFlowsTests.SendAgainAsync(setup, token: "not-a-token")).IsNotSignedIn);
 

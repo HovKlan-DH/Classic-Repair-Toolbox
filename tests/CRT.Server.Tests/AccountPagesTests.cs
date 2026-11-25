@@ -25,6 +25,7 @@ namespace CRT.Server.Tests
             yield return AccountPages.ForgotPassword(AccountPagesTests.Base);
             yield return AccountPages.ForgotPassword(AccountPagesTests.Base, "dennis@example.com", codeAsked: true, resetErrors: ["That code is not valid."]);
             yield return AccountPages.PasswordSet(AccountPagesTests.Base);
+            yield return AccountPages.FromAnotherSite(AccountPagesTests.Base);
 
             foreach (TokenRedemptionOutcome outcome in Enum.GetValues<TokenRedemptionOutcome>())
                 yield return AccountPages.Verified(AccountPagesTests.Base, outcome).Html;
@@ -155,6 +156,77 @@ namespace CRT.Server.Tests
             Assert.Contains("If dennis@example.com has an account, a code is on its way to it.", AccountPages.ForgotPassword(AccountPagesTests.Base, "dennis@example.com", codeAsked: true), StringComparison.Ordinal);
         }
 
+        // ###########################################################################################
+        // *** A FORM ANOTHER WEBSITE POSTS IS REFUSED *** (code review, 2026-11-25, Security). Making an account and asking for
+        // a code mail somebody, the budget counted per IP address - a hidden form on a busy page would have spent every
+        // visitor's. Sec-Fetch-Site says it in every current browser; an older one's Origin is read instead; a request with
+        // neither is no browser, which could post directly anyway.
+        // ###########################################################################################
+        [Theory]
+        [InlineData("same-origin", null, false)]
+        [InlineData("same-site", null, false)]
+        [InlineData("none", null, false)]
+        [InlineData("SAME-ORIGIN", null, false)]
+        [InlineData("cross-site", null, true)]
+        [InlineData("cross-site", "https://classic-repair-toolbox.dk", true)]
+        [InlineData("something-new", null, true)]
+        [InlineData(null, "https://classic-repair-toolbox.dk", false)]
+        [InlineData(null, "https://www.classic-repair-toolbox.dk", false)]
+        [InlineData(null, "https://evil.example", true)]
+        [InlineData(null, "https://classic-repair-toolbox.dk.evil.example", true)]
+        [InlineData(null, "https://evilclassic-repair-toolbox.dk", true)]
+        [InlineData(null, "http://classic-repair-toolbox.dk", true)]
+        [InlineData(null, "null", true)]
+        [InlineData(null, null, false)]
+        [InlineData("", "", false)]
+        public void A_form_from_another_website_is_told_apart_from_the_sites_own(string? fetchSite, string? origin, bool fromAnotherSite)
+        {
+            Assert.Equal(fromAnotherSite, AccountPages.IsFromAnotherSite(fetchSite, origin, "https://classic-repair-toolbox.dk/crt-test"));
+        }
+
+        // The page saying so names the account page here - with its slash, the only form Apache forwards (INSTALLING.md).
+        [Fact]
+        public void The_refusal_names_the_account_page_with_its_slash()
+        {
+            Assert.Contains("href=\"https://classic-repair-toolbox.dk/crt-test/account/\"", AccountPages.FromAnotherSite("https://classic-repair-toolbox.dk/crt-test"), StringComparison.Ordinal);
+        }
+
+        // "no-referrer" makes a browser send "Origin: null" with the site's OWN forms, which the check above refuses - and
+        // "strict-origin" still lets no verify link's token leave in a Referer, only the site's address.
+        [Fact]
+        public void The_pages_send_only_the_sites_address_as_referrer_so_their_own_forms_keep_their_origin()
+        {
+            Assert.Equal("strict-origin", AccountPages.ReferrerPolicy);
+        }
+
+        // ###########################################################################################
+        // The trap field is named as no browser's autofill knows a field (code review, 2026-11-25): "website" was one, filled by
+        // password managers whatever autocomplete="off" said - and a person whose browser filled it got "Check your mail" and
+        // no account.
+        // ###########################################################################################
+        [Fact]
+        public void The_trap_field_has_a_name_no_autofill_knows()
+        {
+            string[] known = ["website", "url", "homepage", "name", "email", "phone", "address", "company", "username", "nickname"];
+
+            Assert.DoesNotContain(known, word => AccountPages.TrapField.Contains(word, StringComparison.OrdinalIgnoreCase));
+            Assert.Contains($"id=\"{AccountPages.TrapField}\"", AccountPages.RegisterForm(AccountPagesTests.Base), StringComparison.Ordinal);
+            Assert.Contains($"for=\"{AccountPages.TrapField}\"", AccountPages.RegisterForm(AccountPagesTests.Base), StringComparison.Ordinal);
+        }
+
+        // How long a code lasts is the server's own lifetime, said in CRT.Data's words - never a number typed beside it.
+        [Fact]
+        public void A_code_asked_for_says_the_lifetime_the_server_gives_it()
+        {
+            Assert.Equal(AccountFlows.PasswordResetTokenLifetime, TimeSpan.FromHours(AccountWording.PasswordResetCodeHours));
+            Assert.Equal(AccountFlows.VerificationTokenLifetime, TimeSpan.FromHours(AccountWording.VerificationLinkHours));
+            Assert.Contains(
+                System.Net.WebUtility.HtmlEncode(AccountWording.ResetCodeWorks),
+                AccountPages.ForgotPassword(AccountPagesTests.Base, "dennis@example.com", codeAsked: true),
+                StringComparison.Ordinal);
+            Assert.Contains($"{AccountWording.PasswordResetCodeHours} hours", AccountWording.ResetCodeWorks, StringComparison.Ordinal);
+        }
+
         // The mailed link: a page per outcome, the failures told apart as the token is the only subject - an expired link
         // names CRT's button for a new one, in CRT's words.
         [Fact]
@@ -164,9 +236,12 @@ namespace CRT.Server.Tests
             Assert.Contains("Your address is confirmed", AccountPages.Verified(AccountPagesTests.Base, TokenRedemptionOutcome.Success).Html, StringComparison.Ordinal);
             Assert.Equal(200, AccountPages.Verified(AccountPagesTests.Base, TokenRedemptionOutcome.AlreadyUsed).Status);
 
+            // The way on from an expired link is a password set with a mailed code, which confirms the address too - an address
+            // not confirmed cannot sign in to press "Send the mail again" (2026-11-25), so the page no longer names it.
             (string expired, int expiredStatus) = AccountPages.Verified(AccountPagesTests.Base, TokenRedemptionOutcome.Expired);
             Assert.Equal(400, expiredStatus);
-            Assert.Contains($"\"{AccountWording.SendMailAgainButton}\"", expired, StringComparison.Ordinal);
+            Assert.Contains("href=\"https://classic-repair-toolbox.dk/account/forgot-password\"", expired, StringComparison.Ordinal);
+            Assert.DoesNotContain(AccountWording.SendMailAgainButton, expired, StringComparison.Ordinal);
 
             Assert.Equal(400, AccountPages.Verified(AccountPagesTests.Base, TokenRedemptionOutcome.Invalid).Status);
         }

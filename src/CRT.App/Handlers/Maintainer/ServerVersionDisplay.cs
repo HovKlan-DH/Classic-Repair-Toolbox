@@ -269,18 +269,6 @@ namespace Handlers.MaintainerHandling
         // A fact whose value is one bold piece.
         private static ServerPanelRow Row(string label, string value) =>
             new(label, [new ReviewNoteRun(value, IsCount: true)]);
-
-        // ###########################################################################################
-        // A panel as plain lines - "Server: This CRT and the server speak the same API", then "Version: 4.6.0" -
-        // for a test and for nothing else.
-        // ###########################################################################################
-        public static IEnumerable<string> AsLines(ServerPanel panel)
-        {
-            yield return panel.Title + ": " + panel.Summary;
-
-            foreach (ServerPanelRow row in panel.Rows)
-                yield return row.Label + ": " + string.Concat(System.Linq.Enumerable.Select(row.Value, run => run.Text));
-        }
     }
 
     // How a panel stands - its edge, its icon and the color of its line.

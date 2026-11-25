@@ -63,6 +63,12 @@ namespace CRT.Server.Tests.ApiCompatibility
 
             foreach (RouteEndpoint route in ServerRouteTable.Routes)
             {
+                // *** ONLY "/api/" IS CRT'S *** (code review, 2026-11-25). A route outside it is a browser's - the account web
+                // pages, "/account/..." - which no CRT calls (ClientArea.Web, ApiUsageRules.RouteOf): listed, a page renamed
+                // would read as a break of every CRT frozen after it.
+                if (!ServerRouteTable.PatternOf(route).StartsWith("/api/", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
                 string name = ServerRouteTable.NameOf(route);
                 lines.Add("route " + name);
 

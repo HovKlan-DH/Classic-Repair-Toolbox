@@ -20,6 +20,11 @@ next push. The sections from 10.4.1 down to 1.0.0 were written from VERSION.md's
 - Anybody can make an account - in CRT, or on the website's new account pages - and the same account works in both
 - A display name is now 2 to 30 characters of A-Z, 0-9 and + - / @ . [ ] ( ), and no two accounts can share one, whatever the capitals; a name set before is kept
 - The website has pages to make an account, confirm its address and set a new password with a code from a mail
+- A form of those pages sent from another website is refused, so no other site can make its visitors' browsers send mail through them
+- An account can sign in only once its address is confirmed - until then it is answered as a wrong password, so nothing tells whether an address has an account
+- A display name is held only once its account's address is confirmed; of two new accounts asking for one name, the second to confirm gets it with a number after it, and a mail saying so
+- An expired link to confirm an address points to "I forgot my password", whose code confirms the address too
+- "Send invitation" with an address that already has an account makes that account the board's maintainer, instead of refusing
 - The link that confirms an address opens a page instead of a line of text
 - A signed-in account can ask for a new link to confirm its address
 - The mails point to the account icon in CRT's top right corner, and the password mails also to the website's page for the code

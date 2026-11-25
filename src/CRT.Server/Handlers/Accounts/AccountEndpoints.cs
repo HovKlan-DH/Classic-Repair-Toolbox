@@ -110,11 +110,12 @@ namespace CRT.Server.Handlers.Accounts
             string? token,
             HttpContext context,
             IAccountStore store,
+            IEmailSender mailer,
             ServerOptions options,
             CancellationToken cancellationToken)
         {
             TokenRedemptionOutcome outcome =
-                await AccountFlows.VerifyEmailAsync(token, store, DateTimeOffset.UtcNow, cancellationToken);
+                await AccountFlows.VerifyEmailAsync(token, store, mailer, DateTimeOffset.UtcNow, cancellationToken);
 
             (string html, int status) = AccountPages.Verified(AccountPages.BaseUrl(options.PublicApiBaseUrl), outcome);
 

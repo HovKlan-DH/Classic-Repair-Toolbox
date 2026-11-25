@@ -67,8 +67,9 @@ namespace CRT.Server.Tests
 
         // ###########################################################################################
         // *** "THE ADDRESS IS VERIFIED" IS SAID ONLY OF AN ADDRESS THAT IS (owner decision, 2026-11-02). ***
-        // Anybody can register under anybody's address, and signing in asks nothing of verification
-        // (AccountFlows.LoginAsync), so an account alone proves nothing: the Contributor view read
+        // Anybody can register under anybody's address, and signing in asked nothing of verification
+        // until 2026-11-25 (AccountFlows.LoginAsync refuses an unconfirmed address since, and a session
+        // from before may still be live), so an account alone proves nothing: the Contributor view read
         // "the address is verified" over a stranger's typed address, on the record a maintainer
         // judges a contributor by. An account that has gone can no longer say either.
         // ###########################################################################################

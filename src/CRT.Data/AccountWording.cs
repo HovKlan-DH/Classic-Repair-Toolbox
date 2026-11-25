@@ -25,7 +25,20 @@ namespace Handlers.DataHandling
         public const string ForgotPasswordButton = "I forgot my password";
         public const string HaveInvitationButton = "I have an invitation";
         public const string SendMailAgainButton = "Send the mail again";
-        public const string SignOutButton = "Sign out";
+
+        // ###########################################################################################
+        // How long a mailed code and link last - the server's lifetimes (AccountFlows.PasswordResetTokenLifetime and
+        // VerificationTokenLifetime are made from these), so the window, the pages and the mails cannot promise another
+        // (code review, 2026-11-25: "2 hours" and "24 hours" were typed into three sentences by hand).
+        // ###########################################################################################
+        public const int PasswordResetCodeHours = 2;
+        public const int VerificationLinkHours = 24;
+
+        // Said where a code for a new password is asked for - CRT's account window and the web page.
+        public static readonly string ResetCodeWorks =
+            $"It works for {AccountWording.PasswordResetCodeHours} hours and can be used once.";
+
+        public static readonly string ResetCodeHint = "It is mailed to the address, if it has an account. " + AccountWording.ResetCodeWorks;
 
         // The password rule as a person reads it beside the box - the server's own (AccountRules.MinimumPasswordLength).
         public const int MinimumPasswordLength = 12;

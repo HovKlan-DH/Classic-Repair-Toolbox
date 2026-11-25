@@ -39,9 +39,11 @@ namespace CRT.Server.Tests
         private static Argon2PasswordHasher Hasher() => new(AccountFlowTests.Options());
 
         // Registers an account and returns the store, mailer and the verification token that was
-        // mailed - the starting point for most of the tests below.
+        // mailed - the starting point for most of the tests below. `confirmed`: its address confirmed
+        // too, as opening the link does - an address not confirmed cannot sign in (since 2026-11-25).
         private static async Task<(FakeAccountStore Store, FakeEmailSender Mailer, string Token)> RegisteredAsync(
-            string email = "dennis@example.com")
+            string email = "dennis@example.com",
+            bool confirmed = false)
         {
             var store = new FakeAccountStore();
             var mailer = new FakeEmailSender();
@@ -49,6 +51,9 @@ namespace CRT.Server.Tests
             await AccountFlows.RegisterAsync(
                 new RegistrationRequest(email, AccountFlowTests.GoodPassword, "Dennis", "192.0.2.1"),
                 store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
+
+            if (confirmed)
+                store.ConfirmAddress(email);
 
             return (store, mailer, mailer.ExtractTokenFromLastMail());
         }
@@ -219,7 +224,8 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task A_display_name_another_account_has_is_refused_in_any_capitals_and_nothing_is_made_or_mailed()
         {
-            (FakeAccountStore store, FakeEmailSender mailer, _) = await AccountFlowTests.RegisteredAsync();
+            // Confirmed: only a confirmed account holds its name (the test after the next).
+            (FakeAccountStore store, FakeEmailSender mailer, _) = await AccountFlowTests.RegisteredAsync(confirmed: true);
             mailer.Sent.Clear();
 
             RegistrationOutcome outcome = await AccountFlows.RegisterAsync(
@@ -280,7 +286,7 @@ namespace CRT.Server.Tests
             (FakeAccountStore store, _, string token) = await AccountFlowTests.RegisteredAsync();
 
             TokenRedemptionOutcome outcome = await AccountFlows.VerifyEmailAsync(
-                token, store, AccountFlowTests.Now);
+                token, store, new FakeEmailSender(), AccountFlowTests.Now);
 
             Assert.Equal(TokenRedemptionOutcome.Success, outcome);
             Assert.True(store.Accounts.Values.Single().IsVerified);
@@ -292,11 +298,11 @@ namespace CRT.Server.Tests
             // Without this, a verification link sitting in a mailbox stays live forever.
             (FakeAccountStore store, _, string token) = await AccountFlowTests.RegisteredAsync();
 
-            await AccountFlows.VerifyEmailAsync(token, store, AccountFlowTests.Now);
+            await AccountFlows.VerifyEmailAsync(token, store, new FakeEmailSender(), AccountFlowTests.Now);
 
             Assert.Equal(
                 TokenRedemptionOutcome.AlreadyUsed,
-                await AccountFlows.VerifyEmailAsync(token, store, AccountFlowTests.Now));
+                await AccountFlows.VerifyEmailAsync(token, store, new FakeEmailSender(), AccountFlowTests.Now));
         }
 
         [Fact]
@@ -308,7 +314,7 @@ namespace CRT.Server.Tests
 
             Assert.Equal(
                 TokenRedemptionOutcome.Expired,
-                await AccountFlows.VerifyEmailAsync(token, store, tooLate));
+                await AccountFlows.VerifyEmailAsync(token, store, new FakeEmailSender(), tooLate));
 
             Assert.False(store.Accounts.Values.Single().IsVerified);
         }
@@ -323,7 +329,7 @@ namespace CRT.Server.Tests
 
             Assert.Equal(
                 TokenRedemptionOutcome.Invalid,
-                await AccountFlows.VerifyEmailAsync(token, store, AccountFlowTests.Now));
+                await AccountFlows.VerifyEmailAsync(token, store, new FakeEmailSender(), AccountFlowTests.Now));
         }
 
         [Fact]
@@ -340,7 +346,7 @@ namespace CRT.Server.Tests
 
             Assert.Equal(
                 TokenRedemptionOutcome.Invalid,
-                await AccountFlows.VerifyEmailAsync(resetToken, store, AccountFlowTests.Now));
+                await AccountFlows.VerifyEmailAsync(resetToken, store, mailer, AccountFlowTests.Now));
         }
 
         // -----------------------------------------------------------------------------------
@@ -350,7 +356,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task A_correct_password_logs_in_and_issues_a_session()
         {
-            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync();
+            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync(confirmed: true);
 
             LoginOutcome outcome = await AccountFlows.LoginAsync(
                 new LoginRequest("dennis@example.com", AccountFlowTests.GoodPassword, "CRT/2.6", "192.0.2.1"),
@@ -371,7 +377,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task A_long_user_agent_is_cut_without_splitting_a_character()
         {
-            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync();
+            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync(confirmed: true);
             string userAgent = new string('a', 254) + "\U0001F600 and more";
 
             LoginOutcome outcome = await AccountFlows.LoginAsync(
@@ -383,21 +389,116 @@ namespace CRT.Server.Tests
             Assert.Equal(new string('a', 254), stored);
         }
 
+        // ###########################################################################################
+        // *** AN ADDRESS NOT CONFIRMED CANNOT SIGN IN, AND IT LOOKS LIKE A WRONG PASSWORD (project owner,
+        // 2026-11-25: "I do not think any address should be revealed, no"). *** It could until then, for
+        // "resend my verification mail" - and that made signing in the second request that told whether
+        // an address had an account: register it with a password of your own, then sign in with it. The
+        // right password of an unconfirmed account now fails as a wrong one does - the same answer, and a
+        // failure counted for the limiter, which would otherwise trip only for an address that had one.
+        // Confirmed, it signs in.
+        // ###########################################################################################
         [Fact]
-        public async Task An_UNVERIFIED_account_can_still_log_in()
+        public async Task An_UNCONFIRMED_account_cannot_sign_in_and_fails_as_a_wrong_password_does()
         {
-            // Deliberate: blocking login makes "resend my verification mail" unreachable, since
-            // that endpoint needs to know who is asking. What an unverified account may not do is
-            // submit, which is enforced where submissions are accepted.
-            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync();
+            (FakeAccountStore store, _, string token) = await AccountFlowTests.RegisteredAsync();
 
             Assert.False(store.Accounts.Values.Single().IsVerified);
 
-            LoginOutcome outcome = await AccountFlows.LoginAsync(
-                new LoginRequest("dennis@example.com", AccountFlowTests.GoodPassword, null, null),
+            LoginOutcome rightPassword = await AccountFlows.LoginAsync(
+                new LoginRequest("dennis@example.com", AccountFlowTests.GoodPassword, null, "198.51.100.7"),
                 store, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
 
-            Assert.True(outcome.IsSuccess);
+            LoginOutcome wrongPassword = await AccountFlows.LoginAsync(
+                new LoginRequest("dennis@example.com", "the wrong password entirely", null, "198.51.100.7"),
+                store, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
+
+            Assert.Equal(wrongPassword, rightPassword);
+            Assert.False(rightPassword.IsSuccess);
+            Assert.Empty(store.NewSessions);
+            Assert.Equal(2, store.AuthFailures.Count);
+            Assert.Contains(store.Audit, entry => entry.Action == AccountFlows.SignInUnconfirmedAction);
+
+            await AccountFlows.VerifyEmailAsync(token, store, new FakeEmailSender(), AccountFlowTests.Now);
+
+            LoginOutcome confirmed = await AccountFlows.LoginAsync(
+                new LoginRequest("dennis@example.com", AccountFlowTests.GoodPassword, null, "198.51.100.7"),
+                store, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
+
+            Assert.True(confirmed.IsSuccess);
+        }
+
+        // ###########################################################################################
+        // *** A NAME ASKED FOR BY A NEW ACCOUNT IS NOT HELD UNTIL ITS ADDRESS IS CONFIRMED (project owner,
+        // 2026-11-25). *** Held at once, it was an oracle: register somebody's address under a name nobody
+        // has, then that name again - "taken" meant no account had existed, and one was just made. Now the
+        // second registration is accepted whether the first made an account or not.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_name_asked_for_says_nothing_of_whether_registering_made_an_account()
+        {
+            // The owner of anna@ has an account already; somebody registers both addresses under a fresh name.
+            (FakeAccountStore store, FakeEmailSender mailer, _) = await AccountFlowTests.RegisteredAsync("anna@example.com", confirmed: true);
+
+            foreach (string probed in new[] { "anna@example.com", "nobody-yet@example.com" })
+            {
+                await AccountFlows.RegisterAsync(
+                    new RegistrationRequest(probed, AccountFlowTests.GoodPassword, "Zq9x7Kp2", "203.0.113.9"),
+                    store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
+
+                RegistrationOutcome again = await AccountFlows.RegisterAsync(
+                    new RegistrationRequest("prober@example.com", AccountFlowTests.GoodPassword, "Zq9x7Kp2", "203.0.113.9"),
+                    store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
+
+                Assert.True(again.IsAccepted, probed);
+            }
+        }
+
+        // ###########################################################################################
+        // Two new accounts asked for one name, and the first confirmed: the second, confirming, is given the name with "-2"
+        // after it and told so by mail (AccountFlows.ConfirmAddressAsync) - a confirmed name is never shared.
+        // ###########################################################################################
+        [Fact]
+        public async Task The_second_to_confirm_a_name_is_given_it_numbered_and_told_by_mail()
+        {
+            var store = new FakeAccountStore();
+            var mailer = new FakeEmailSender();
+
+            await AccountFlows.RegisterAsync(
+                new RegistrationRequest("anna@example.com", AccountFlowTests.GoodPassword, "Anna", "192.0.2.1"),
+                store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
+            string annasLink = mailer.ExtractTokenFromLastMail();
+
+            await AccountFlows.RegisterAsync(
+                new RegistrationRequest("other@example.com", AccountFlowTests.GoodPassword, "ANNA", "192.0.2.2"),
+                store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
+            string othersLink = mailer.ExtractTokenFromLastMail();
+
+            Assert.Equal(TokenRedemptionOutcome.Success, await AccountFlows.VerifyEmailAsync(annasLink, store, mailer, AccountFlowTests.Now));
+            int mailsBefore = mailer.Sent.Count;
+
+            Assert.Equal(TokenRedemptionOutcome.Success, await AccountFlows.VerifyEmailAsync(othersLink, store, mailer, AccountFlowTests.Now));
+
+            Assert.Equal("Anna", store.Accounts.Values.Single(account => account.Email == "anna@example.com").DisplayName);
+            Assert.Equal("ANNA-2", store.Accounts.Values.Single(account => account.Email == "other@example.com").DisplayName);
+
+            EmailMessage told = Assert.Single(mailer.Sent.Skip(mailsBefore));
+            Assert.Equal("other@example.com", told.ToAddress);
+            Assert.Contains("ANNA-2", told.Body, StringComparison.Ordinal);
+            Assert.Contains(store.Audit, entry => entry.Action == AccountFlows.NameGivenAtConfirmationAction);
+        }
+
+        // A name too long for its number is cut short first, so the whole stays within the rule's 30 characters.
+        [Theory]
+        [InlineData("Anna", 2, "Anna-2")]
+        [InlineData("123456789012345678901234567890", 2, "1234567890123456789012345678-2")]
+        [InlineData("123456789012345678901234567890", 12, "123456789012345678901234567-12")]
+        public void A_numbered_name_keeps_within_the_rule(string name, int number, string expected)
+        {
+            string given = AccountFlows.NumberedName(name, number);
+
+            Assert.Equal(expected, given);
+            Assert.Null(DisplayNames.Problem(given));
         }
 
         [Fact]
@@ -406,7 +507,7 @@ namespace CRT.Server.Tests
             // The enumeration guarantee on the one endpoint everybody can reach. If these two
             // answered differently - a different status, a different message, even a different
             // shape - login would be a way to discover who has an account.
-            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync();
+            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync(confirmed: true);
 
             LoginOutcome wrongPassword = await AccountFlows.LoginAsync(
                 new LoginRequest("dennis@example.com", "the wrong password entirely", null, null),
@@ -423,7 +524,7 @@ namespace CRT.Server.Tests
         public async Task A_LOCKED_account_fails_exactly_like_a_wrong_password()
         {
             // A distinct "your account is locked" reply would confirm the address exists.
-            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync();
+            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync(confirmed: true);
 
             store.Accounts[1] = store.Accounts[1] with { IsLocked = true };
 
@@ -450,7 +551,7 @@ namespace CRT.Server.Tests
         public async Task Every_failed_login_costs_exactly_one_password_verification(
             string email, string password, bool locked)
         {
-            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync();
+            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync(confirmed: true);
 
             if (locked)
                 store.Accounts[1] = store.Accounts[1] with { IsLocked = true };
@@ -470,7 +571,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task A_login_to_an_account_with_an_unreadable_stored_hash_costs_one_verification()
         {
-            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync();
+            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync(confirmed: true);
 
             store.Accounts[1] = store.Accounts[1] with { PasswordHash = "not a password hash" };
 
@@ -494,7 +595,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task After_the_cost_is_raised_a_wrong_password_costs_the_same_work_as_an_unknown_address()
         {
-            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync();
+            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync(confirmed: true);
 
             ServerOptions raised = AccountFlowTests.Options();
             raised.Argon2MemoryKib = 16384;
@@ -692,7 +793,7 @@ namespace CRT.Server.Tests
             // twice against the per-IP bucket (30 attempts became 15), and because
             // ClearAuthFailuresAsync only clears rows whose subject is the address, the extra
             // "account:{id}" row survived every successful login and accumulated for ever.
-            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync();
+            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync(confirmed: true);
 
             await AccountFlows.LoginAsync(
                 new LoginRequest("dennis@example.com", "the wrong password entirely", null, "192.0.2.1"),
@@ -724,7 +825,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task Repeated_failures_trip_the_rate_limiter()
         {
-            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync();
+            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync(confirmed: true);
 
             for (int attempt = 0; attempt < AuthRateLimitPolicy.MaxFailuresPerAccountAndAddress; attempt++)
             {
@@ -748,7 +849,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task Failures_from_another_address_do_not_stop_the_owner_signing_in()
         {
-            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync();
+            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync(confirmed: true);
 
             for (int attempt = 0; attempt < AuthRateLimitPolicy.MaxFailuresPerAccountAndAddress; attempt++)
             {
@@ -774,7 +875,7 @@ namespace CRT.Server.Tests
         {
             // Someone who gets it right on the fourth try is not an attacker and must not be
             // locked out afterwards.
-            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync();
+            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync(confirmed: true);
 
             for (int attempt = 0; attempt < 3; attempt++)
             {
@@ -797,7 +898,7 @@ namespace CRT.Server.Tests
             // decoration and leaves the memory-exhaustion vector open. Proven by observing that a
             // rate-limited request does not record another failure - it never reached the code
             // that would.
-            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync();
+            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync(confirmed: true);
 
             for (int attempt = 0; attempt < AuthRateLimitPolicy.MaxFailuresPerAccountAndAddress; attempt++)
             {
@@ -818,7 +919,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task Logging_in_with_a_differently_cased_address_works()
         {
-            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync();
+            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync(confirmed: true);
 
             LoginOutcome outcome = await AccountFlows.LoginAsync(
                 new LoginRequest("DENNIS@EXAMPLE.COM", AccountFlowTests.GoodPassword, null, null),
@@ -845,6 +946,7 @@ namespace CRT.Server.Tests
             await AccountFlows.RegisterAsync(
                 new RegistrationRequest("dennis@example.com", AccountFlowTests.GoodPassword, "Dennis", null),
                 store, mailer, new Argon2PasswordHasher(weak), weak, AccountFlowTests.Now);
+            store.ConfirmAddress("dennis@example.com");
 
             string hashBefore = store.Accounts.Values.Single().PasswordHash;
 

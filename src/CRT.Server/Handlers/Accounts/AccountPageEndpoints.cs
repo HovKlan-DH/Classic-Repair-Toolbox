@@ -17,11 +17,12 @@ namespace CRT.Server.Handlers.Accounts
     //   POST /account/forgot-password  AccountFlows.RequestPasswordResetAsync
     //   POST /account/reset-password   AccountFlows.CompletePasswordResetAsync
     //
-    // *** NO ANTI-FORGERY TOKEN, ON PURPOSE. *** A form another site posts here can do nothing its author could not do by
-    // posting it directly: making an account mails the address named, asking for a code mails the address named (the same
-    // neutral answer, the same mail budget), and setting a password needs the code from the mailbox. Nothing here acts on a
-    // signed-in person - there is no sign-in on these pages - so there is nothing for a forged form to ride on. Read by hand
-    // from the request (ReadFormAsync), never through [FromForm], which would ask for the framework's anti-forgery middleware.
+    // *** NO ANTI-FORGERY TOKEN - BUT A FORM ANOTHER WEBSITE POSTS IS REFUSED *** (AccountPages.IsFromAnotherSite, before
+    // anything is read). Nothing here acts on a signed-in person - there is no sign-in on these pages - so no token is needed
+    // to stop a forged form riding on one. What a forged form WOULD ride on is the visitor's own IP address: making an
+    // account and asking for a code mail somebody, and the mail budget is counted per IP address, so a hidden form on a busy
+    // page would spend every visitor's (code review, 2026-11-25, Security). Read by hand from the request (ReadFormAsync),
+    // never through [FromForm], which would ask for the framework's anti-forgery middleware.
     //
     // A form's body is small, and limited where it is mapped (RequestBodyLimits.FormBytes). The pages are classified as the
     // web's, never refused as an outdated CRT (ClientVersionPolicy, ClientArea.Web) - a browser sends no CRT version.
@@ -45,8 +46,8 @@ namespace CRT.Server.Handlers.Accounts
 
         // ###########################################################################################
         // A page, sent with the headers every page needs: the policy allowing nothing but the page's own style
-        // (AccountPages.ContentSecurityPolicy), no sniffing a type, no Referer leaving with a verify link's token, no frame on
-        // another site, and no copy kept.
+        // (AccountPages.ContentSecurityPolicy), no sniffing a type, no Referer leaving with a verify link's token
+        // (AccountPages.ReferrerPolicy), no frame on another site, and no copy kept.
         // ###########################################################################################
         internal static IResult Page(HttpContext context, string html, int status = StatusCodes.Status200OK)
         {
@@ -55,10 +56,21 @@ namespace CRT.Server.Handlers.Accounts
             headers.ContentSecurityPolicy = AccountPages.ContentSecurityPolicy;
             headers.XContentTypeOptions = "nosniff";
             headers.XFrameOptions = "DENY";
-            headers["Referrer-Policy"] = "no-referrer";
+            headers["Referrer-Policy"] = AccountPages.ReferrerPolicy;
             headers.CacheControl = "no-store";
 
             return Results.Content(html, "text/html; charset=utf-8", System.Text.Encoding.UTF8, status);
+        }
+
+        // A form posted from another website: 403 and a page saying so, nothing read and nothing done (the header).
+        private static IResult? RefuseFromAnotherSite(HttpContext context, ServerOptions options)
+        {
+            IHeaderDictionary headers = context.Request.Headers;
+            string baseUrl = AccountPageEndpoints.BaseUrl(options);
+
+            return AccountPages.IsFromAnotherSite(headers["Sec-Fetch-Site"].ToString(), headers.Origin.ToString(), baseUrl)
+                ? AccountPageEndpoints.Page(context, AccountPages.FromAnotherSite(baseUrl), StatusCodes.Status403Forbidden)
+                : null;
         }
 
         private static IResult Landing(HttpContext context, ServerOptions options) =>
@@ -75,6 +87,9 @@ namespace CRT.Server.Handlers.Accounts
             ServerOptions options,
             CancellationToken cancellationToken)
         {
+            if (AccountPageEndpoints.RefuseFromAnotherSite(context, options) is IResult refused)
+                return refused;
+
             string baseUrl = AccountPageEndpoints.BaseUrl(options);
             IFormCollection? form = await AccountPageEndpoints.FormOf(context, cancellationToken);
 
@@ -99,9 +114,15 @@ namespace CRT.Server.Handlers.Accounts
                 : AccountPageEndpoints.Page(context, AccountPages.RegisterForm(baseUrl, displayName, email, outcome.Failures), StatusCodes.Status400BadRequest);
         }
 
-        private static async Task<IResult> VerifyAsync(string? token, HttpContext context, IAccountStore store, ServerOptions options, CancellationToken cancellationToken)
+        private static async Task<IResult> VerifyAsync(
+            string? token,
+            HttpContext context,
+            IAccountStore store,
+            IEmailSender mailer,
+            ServerOptions options,
+            CancellationToken cancellationToken)
         {
-            TokenRedemptionOutcome outcome = await AccountFlows.VerifyEmailAsync(token, store, DateTimeOffset.UtcNow, cancellationToken);
+            TokenRedemptionOutcome outcome = await AccountFlows.VerifyEmailAsync(token, store, mailer, DateTimeOffset.UtcNow, cancellationToken);
 
             (string html, int status) = AccountPages.Verified(AccountPageEndpoints.BaseUrl(options), outcome);
 
@@ -119,6 +140,9 @@ namespace CRT.Server.Handlers.Accounts
             ServerOptions options,
             CancellationToken cancellationToken)
         {
+            if (AccountPageEndpoints.RefuseFromAnotherSite(context, options) is IResult refused)
+                return refused;
+
             IFormCollection? form = await AccountPageEndpoints.FormOf(context, cancellationToken);
             string email = AccountPageEndpoints.Field(form, "email")?.Trim() ?? string.Empty;
 
@@ -139,6 +163,9 @@ namespace CRT.Server.Handlers.Accounts
             ServerOptions options,
             CancellationToken cancellationToken)
         {
+            if (AccountPageEndpoints.RefuseFromAnotherSite(context, options) is IResult refused)
+                return refused;
+
             string baseUrl = AccountPageEndpoints.BaseUrl(options);
             IFormCollection? form = await AccountPageEndpoints.FormOf(context, cancellationToken);
             string? newPassword = AccountPageEndpoints.Field(form, "newPassword");

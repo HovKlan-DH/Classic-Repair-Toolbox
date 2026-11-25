@@ -302,7 +302,12 @@ public sealed class ReviewApiClientTests
         ReviewApiResult<ReviewSession> login = await client.LoginAsync("m@example.com", "wrong");
 
         Assert.Equal(ReviewApiFailure.NotSignedIn, login.Failure);
-        Assert.Equal("That address and password did not work.", login.Message);
+        // Written out, so the words a person reads are seen changing here - an address not confirmed answers the same 401
+        // since 2026-11-25, so the sentence names that case for everybody, never only for that one.
+        Assert.Equal(
+            "That address and password did not work. If you have just made the account, open the link in the mail you were " +
+            "sent first - an address not confirmed yet cannot sign in.",
+            login.Message);
 
         ReviewApiResult<ReviewQueueResponse> queue = await client.GetQueueAsync(ReviewApiClientTests.Session);
 

@@ -47,7 +47,7 @@ Nothing you edit leaves your computer until you click **Submit** on the "Contrib
 
 - The board's data and files, as your draft has them - your credit included, unless you chose to send none (below)
 - Your email address
-  - So the maintainers can reply, and so you are told how it went. When you are signed in on the "Maintainer" tab, your account's address is used.
+  - So the maintainers can reply, and so you are told how it went. When you are signed in to your account, its address is used.
 - The CRT version
 
 Your email address is shown only to the maintainers of that board and to the administrator. Maintainers of other boards never see it - at most the name on your account, if you were signed in when you sent it.
@@ -61,7 +61,7 @@ Your first change to a board adds a credit for your work to its "Board: Credits"
 **Submit**, under "Submit this model for everybody" on the "Oscilloscope" tab, sends:
 
 - The model: its vendor, its name and every command and setting of it
-- Your email address (your account's, when you are signed in on the "Maintainer" tab), so you are told whether it was published
+- Your email address (your account's, when you are signed in), so you are told whether it was published
 - Your name, if you give one, and your message
 - Whether CRT's full test suite went through on the model
 - The CRT version
@@ -69,6 +69,24 @@ Your first change to a board adds a credit for your work to its "Board: Credits"
 Only the administrator sees it. The server keeps the IP address it came from - of an IPv6 address only its network part - for two things only: to limit how many models one internet connection can send in a day, and, when you are not signed in, to know that a newer copy of your model sent from the same connection and address replaces the one still waiting. A published model is part of CRT's data for everybody - without your name or address.
 
 While a submission is still open, CRT asks the server how it is getting on - at launch, and every minute while CRT's window is open and not minimised - using its number and the private code CRT was given when you sent it.
+
+## When you make an account
+
+An account is not needed for anything above. You can make one with the account icon in the top right corner of CRT's window, or on the website's [account page](https://classic-repair-toolbox.dk/account/) - the same account in both. The server keeps:
+
+- Your email address
+  - To sign in with, and for the mails about your account. It is never shown to other people, only to the administrator - and to the maintainers of a board you send something to, as above.
+- Your display name
+  - Shown to the maintainers and the administrator beside what you send.
+- Your password - only as a scrambled check value, never the password itself
+- Each sign-in: when it was made, the IP address it came from and the name your CRT gives itself (ex. `CRT 4.1.0`)
+  - So the sign-ins of one account can be told apart. A sign-in ends when you sign out, or by itself when it has not been used for 30 days.
+- A record of what happened to the account - made, confirmed, signed in and out, a password that did not match, a changed address, name or password - with the IP address of each sign-in and of each password that did not match
+  - Kept as the server's history, which only the administrator can read, to find out what happened if an account is ever misused.
+
+While you are signed in, CRT uses your account's email address in the "Feedback" tab, the submit dialog and when you send an oscilloscope model.
+
+To limit how often it can happen, the server also notes the IP address of each request that sends a mail (making an account, asking for a code or a new link) and of each failed sign-in. Those notes are deleted after a day.
 
 ## When you discard a draft you have submitted
 
@@ -80,7 +98,7 @@ It sends only the number of that contribution and the private code CRT was given
 
 The "Feedback" tab sends only what you give it:
 
-- The email address you type, if any (or your account's, when you are signed in on the "Maintainer" tab)
+- The email address you type, if any (or your account's, when you are signed in)
 - Your text
 - The CRT version
 - Attachments, only if you ask for them: CRT's log and crash log with "Attach application logfile and crash reports", its settings and traces files with "Attach configuration and traces data files", and any files or folder you add yourself

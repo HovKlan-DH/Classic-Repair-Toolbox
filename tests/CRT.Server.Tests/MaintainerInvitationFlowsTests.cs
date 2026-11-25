@@ -86,9 +86,12 @@ namespace CRT.Server.Tests
             Assert.Equal("For CRT you are invited to maintain the [Commodore / C64 / 250407] board", mail.Subject);
             Assert.Contains("Dennis has invited you", mail.Body, StringComparison.Ordinal);
             Assert.Contains("\"I have an invitation\"", mail.Body, StringComparison.Ordinal);
-            // Accepted where every account lives since 2026-11-25 - the account icon, never the Maintainer tab's sign-in.
+            // Accepted where every account lives since 2026-11-25 - the account icon; the Maintainer tab's sign-in only as the
+            // way of a CRT from before it, which an invitee told to "use the one you already have" may run (code review,
+            // 2026-11-25).
             Assert.Contains(
-                $"In CRT, open {(global::Handlers.DataHandling.AccountWording.WhereInCrt)} and choose \"I have an invitation\".",
+                $"In CRT, open {(global::Handlers.DataHandling.AccountWording.WhereInCrt)} and choose \"I have an invitation\" " +
+                "(in CRT 4.0 and older, the \"Maintainer\" tab's sign-in, once the box in the last step is checked).",
                 mail.Body,
                 StringComparison.Ordinal);
             // CRT itself, and how to show its Maintainer tab (2026-09-29) - the separate CRT
@@ -183,20 +186,37 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
-        // *** AN ADDRESS WITH AN ACCOUNT IS CHOSEN FROM THE LIST, NOT INVITED. *** The list says why
-        // an account cannot be granted (unverified, locked, administrator); an invitation would be a
-        // second way into the same pool that skipped those checks.
+        // *** AN ADDRESS WITH AN ACCOUNT IS NOT INVITED - IT IS ADDED, AS CHOOSING IT FROM THE LIST ADDS IT
+        // *** (2026-11-25, the project owner's OK: the administrator's list holds at most 500 accounts, and
+        // anybody may have one now - refused with "choose it from the list" until then). Through the list's
+        // own flow, so its checks hold (the test below) - and nothing is mailed: no invitation was needed.
         // ###########################################################################################
         [Fact]
-        public async Task An_address_that_already_has_an_account_is_not_invited()
+        public async Task An_address_that_already_has_an_account_is_added_and_not_invited()
         {
             World world = await MaintainerInvitationFlowsTests.SetUpAsync();
 
             MaintainerInvitationOutcome outcome = await MaintainerInvitationFlowsTests.InviteAsync(world, "ADMIN@example.com");
 
-            Assert.False(outcome.IsDone);
-            Assert.Equal("ADMIN@example.com already has an account - choose it from the list of accounts instead of inviting it.", outcome.Message);
+            Assert.True(outcome.IsDone, outcome.Message);
+            Assert.Equal("ADMIN@example.com already has an account, so it now maintains Commodore / C64 / 250407 - no invitation was needed.", outcome.Message);
             Assert.Empty(world.Mailer.Sent);
+            Assert.Contains(world.Accounts.Audit, entry => entry.Action == MaintainerAssignmentFlows.GrantedAction);
+        }
+
+        // The list's checks hold for an address typed: one not confirmed is refused in the list's words, and nothing added.
+        [Fact]
+        public async Task An_address_whose_account_is_not_confirmed_is_refused_as_from_the_list()
+        {
+            World world = await MaintainerInvitationFlowsTests.SetUpAsync();
+            long id = await world.Accounts.CreateAccountAsync(new NewAccount("bo@example.com", "bo@example.com", "x", "Bo", MaintainerInvitationFlowsTests.Now));
+
+            MaintainerInvitationOutcome outcome = await MaintainerInvitationFlowsTests.InviteAsync(world, "bo@example.com");
+
+            Assert.False(outcome.IsDone);
+            Assert.Equal(MaintainerAssignmentRules.WhyNotGrantable(world.Accounts.Accounts[id]), outcome.Message);
+            Assert.Empty(world.Mailer.Sent);
+            Assert.DoesNotContain(world.Accounts.Audit, entry => entry.Action == MaintainerAssignmentFlows.GrantedAction);
         }
 
         [Theory]

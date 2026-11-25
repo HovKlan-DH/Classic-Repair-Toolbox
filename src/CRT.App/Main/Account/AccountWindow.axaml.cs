@@ -56,6 +56,7 @@ namespace CRT
             MyAccountView account = this.MyAccountDetail;
             account.AccountChanged = this.OnAccountChanged;
             account.SignOutRequested = this.SignOutAsync;
+            account.SessionEnded = this.OnSessionEnded;
 
             if (host.SignedIn() is ReviewSession session && host.ClientInUse() is ReviewApiClient client)
             {
@@ -69,10 +70,13 @@ namespace CRT
             }
         }
 
-        // The account as the server holds it, read once the window is shown signed in - whether the address is confirmed.
+        // Shown: the first box takes the keyboard (Initialize's ShowView ran before there was a window to focus in - code review,
+        // 2026-11-25: the address typed first went nowhere), and the account as the server holds it is read, signed in.
         protected override async void OnOpened(EventArgs e)
         {
             base.OnOpened(e);
+
+            this.FocusFirstBox();
 
             await HandlerGuard.RunAsync(this.ReadAccountAsync, message => this.ShowAccountMessage(message, isError: true));
         }
@@ -113,7 +117,13 @@ namespace CRT
                 _ => "Account"
             };
 
-            string? first = view switch
+            this.FocusFirstBox();
+        }
+
+        // The first box of the view shown - nothing for "My account", whose boxes are all for changing something.
+        private void FocusFirstBox()
+        {
+            string? first = this.ViewShown switch
             {
                 AccountView.SignIn => "EmailTextBox",
                 AccountView.Register => "RegisterNameTextBox",
@@ -161,7 +171,8 @@ namespace CRT
         // ###########################################################################################
         // GET /api/accounts/me, quietly - nobody pressed anything, so no "please wait": the window is usable while it is
         // asked. Shows the notice for an address not confirmed, and hands the account on (the name or address may have
-        // changed elsewhere). A failure says nothing - "My account" still works on the session held.
+        // changed elsewhere). A failure says nothing - "My account" still works on the session held - BUT the server saying
+        // the session is over (a 401) ends it here (OnSessionEnded): with the Maintainer tab off nothing else asks.
         // ###########################################################################################
         private async Task ReadAccountAsync()
         {
@@ -172,6 +183,28 @@ namespace CRT
 
             if (read.IsOk && read.Value is AccountAnswer account)
                 this.OnAccountChanged(account);
+            else if (read.Failure == ReviewApiFailure.NotSignedIn)
+                this.OnSessionEnded();
+        }
+
+        // ###########################################################################################
+        // *** THE SERVER SAID THE SESSION IS OVER *** (code review, 2026-11-25) - the read above, "Send the mail again" or a
+        // change under "My account". The tab ends it (AccountHost.SessionEnded - its one funnel, which forgets the remembered
+        // sign-in and tells the icon), and the window goes back to the sign-in, saying why. A table on the tab with unsaved
+        // changes keeps the session for them (TabMaintainer.EndSessionTheServerRefused); the window then stays as it is.
+        // ###########################################################################################
+        private void OnSessionEnded()
+        {
+            this.thisHost?.SessionEnded();
+
+            if (this.ViewShown != AccountView.SignedIn || this.thisHost?.SignedIn() is not null)
+                return;
+
+            this.MyAccountDetail.Initialize(null, null);
+            this.ShowNotConfirmed(false);
+            this.ShowAccountMessage(null, isError: false);
+            this.ShowView(AccountView.SignIn);
+            this.ShowSignInMessage(TabMaintainer.SessionEndedMessage);
         }
 
         // Every account the server hands back - "My account"'s changes and the read above: to the tab, which owns the session,
@@ -215,6 +248,10 @@ namespace CRT
                 if (!result.IsOk)
                 {
                     this.ShowAccountMessage(result.Message, isError: true);
+
+                    if (result.Failure == ReviewApiFailure.NotSignedIn)
+                        this.OnSessionEnded();
+
                     return;
                 }
 
@@ -280,6 +317,7 @@ namespace CRT
     //   UseSignIn           signed in here: the session and the client it was got with, handed to the tab
     //   AccountChanged      the account as the server now holds it, to the tab
     //   SignOut             the tab's own sign-out
+    //   SessionEnded        the server said the session is over (a 401): the tab's own end of it, EndSessionTheServerRefused
     //   SignInIsRemembered  whether this system can remember a sign-in (ReviewSessionStore.IsSupported)
     //   UsesTestServer      whether CRT talks to the test instance (AppConfig.UsesTestServer)
     // ###########################################################################################
@@ -290,6 +328,7 @@ namespace CRT
         Func<ReviewSession, ReviewApiClient, Task> UseSignIn,
         Action<AccountAnswer> AccountChanged,
         Func<Task> SignOut,
+        Action SessionEnded,
         bool SignInIsRemembered,
         bool UsesTestServer);
 }

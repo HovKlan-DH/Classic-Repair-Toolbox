@@ -183,7 +183,7 @@
 					<TextBlock Classes="Heading" Text="{x:Static data:AccountWording.ForgotPasswordButton}" />
 
 					<TextBlock Classes="SubHeading" Text="1. Ask for a code" Margin="0,0,0,0" />
-					<TextBlock Classes="Hint" Text="It is mailed to the address, if it has an account. It works for 2 hours and can be used once." />
+					<TextBlock Classes="Hint" Text="{x:Static data:AccountWording.ResetCodeHint}" />
 					<TextBlock Classes="Label" Text="Email address" />
 					<TextBox x:Name="ForgotEmailTextBox" />
 					<Button x:Name="SendResetCodeButton"

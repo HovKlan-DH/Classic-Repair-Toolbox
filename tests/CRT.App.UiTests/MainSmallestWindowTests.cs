@@ -36,7 +36,9 @@ public sealed class MainSmallestWindowTests : IDisposable
 
     public void Dispose()
     {
-        UserSettings.LoadFrom(this.thisWorkspace.Path_("after-" + Guid.NewGuid().ToString("N") + ".json"));
+        // An EMPTY file, not a missing one: LoadFrom keeps the settings already in memory when the file does not exist, and
+        // every tab switched on above would stay on for whichever test runs next.
+        UserSettings.LoadFrom(this.thisWorkspace.WriteFile("after-" + Guid.NewGuid().ToString("N") + ".json", "{}"));
         WorklogManager.LoadFrom(this.thisWorkspace.Path_("Workbooks-after-" + Guid.NewGuid().ToString("N")));
         this.thisWorkspace.Dispose();
     }

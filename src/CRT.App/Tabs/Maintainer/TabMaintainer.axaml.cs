@@ -278,6 +278,12 @@ namespace CRT
                 if (result.Failure == ReviewApiFailure.NotSignedIn)
                     this.ShowSignInPanel();
 
+                // An account whose standing was never read (its /me failed at sign-in): the 403 may be an account that
+                // maintains nothing, which ApplyStanding then says (code review, 2026-11-25). Read only until it has been, and
+                // never under a table's unsaved changes, which that panel would hide.
+                if (result.Failure == ReviewApiFailure.NotPermitted && this.IsSessionInUse(asked) && !this.WouldLoseAnyTableChanges)
+                    await this.ReadAccountQuietlyAsync();
+
                 return;
             }
 

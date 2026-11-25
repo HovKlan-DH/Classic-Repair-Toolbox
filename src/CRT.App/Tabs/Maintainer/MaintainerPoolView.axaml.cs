@@ -356,17 +356,24 @@ namespace CRT
                 return;
             }
 
-            ReviewAccountRow account = this.thisAccountChoices[index];
+            await this.AddAccountAsync(this.thisAccountChoices[index]);
+        }
+
+        // An account made a maintainer of the board shown - chosen from the list, or its address typed (below).
+        private async Task<bool> AddAccountAsync(ReviewAccountRow account)
+        {
+            if (this.thisDetail is null)
+                return false;
 
             // Said here, before the round trip, in the words the list already shows. The server
             // refuses it regardless.
             if (MaintainerAssignmentDisplay.WhyNotGrantable(account) is string why)
             {
                 this.ShowPoolMessage($"{account.Email} cannot be a maintainer: {why}.", isError: true);
-                return;
+                return false;
             }
 
-            await this.ChangePoolAsync(
+            return await this.ChangePoolAsync(
                 new PoolAction(PoolActionKind.Add, this.thisDetail.Board.BoardId, AccountId: account.Id, Who: account.DisplayName),
                 $"{account.DisplayName} now maintains {ReviewQueueDisplay.BoardHeading(this.thisDetail.Board.BoardId)}.");
         }
@@ -387,11 +394,17 @@ namespace CRT
                 return;
             }
 
-            // An address that already has an account is chosen from the list - the server says so
-            // too, but this costs no round trip and names the way that works.
+            // ###########################################################################################
+            // *** AN ADDRESS THAT HAS AN ACCOUNT IS ADDED, AS CHOOSING IT FROM THE LIST ADDS IT *** (2026-11-25; the server's
+            // MaintainerInvitationFlows.InviteAsync does the same for one past the list's limit, which only it can find).
+            // Refused until then, "choose it in the list above" - and the list holds at most the server's first 500 accounts,
+            // since accounts opened to everybody a number it can reach.
+            // ###########################################################################################
             if (this.thisAccounts.FirstOrDefault(account => string.Equals(account.Email, email, StringComparison.OrdinalIgnoreCase)) is ReviewAccountRow existing)
             {
-                this.ShowPoolMessage($"{existing.Email} already has an account - choose it in the list above instead.", isError: true);
+                if (await this.AddAccountAsync(existing))
+                    box.Text = string.Empty;
+
                 return;
             }
 

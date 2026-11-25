@@ -144,9 +144,13 @@ namespace Handlers.MaintainerHandling
         // is about a session that ended, and read in red under a form just filled in it said nothing.
         // One fixed sentence, naming neither half: the server gives no reason on purpose - an unknown
         // address, a locked account and a wrong password all answer the same 401 - and this must not
-        // start telling them apart.
+        // start telling them apart. Since 2026-11-25 an address not confirmed answers the same too
+        // (AccountFlows.LoginAsync on the server), so the sentence names that case as a possibility
+        // for everybody - somebody who just made an account must be told why it does not work yet.
         // ###########################################################################################
-        public const string SignInRefused = "That address and password did not work.";
+        public const string SignInRefused =
+            "That address and password did not work. If you have just made the account, open the link in the mail you were " +
+            "sent first - an address not confirmed yet cannot sign in.";
 
         // ###########################################################################################
         // Asks for a password reset link.

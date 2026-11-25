@@ -47,6 +47,9 @@ namespace CRT.Server.Tests
                 new RegistrationRequest("dennis@example.com", SessionAndResetTests.GoodPassword, "Dennis", null),
                 store, mailer, SessionAndResetTests.Hasher(), SessionAndResetTests.Options(), SessionAndResetTests.Now);
 
+            // Its link opened - an address not confirmed cannot sign in (since 2026-11-25).
+            store.ConfirmAddress("dennis@example.com");
+
             LoginOutcome login = await AccountFlows.LoginAsync(
                 new LoginRequest("dennis@example.com", SessionAndResetTests.GoodPassword, "CRT/2.6", "192.0.2.1"),
                 store, SessionAndResetTests.Hasher(), SessionAndResetTests.Options(), SessionAndResetTests.Now);

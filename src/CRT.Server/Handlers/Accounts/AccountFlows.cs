@@ -20,6 +20,14 @@ namespace CRT.Server.Handlers.Accounts
     //    the mailbox owner sees. Any change that makes the RESULT depend on whether the account
     //    existed reopens enumeration.
     //
+    //    *** AND NO SECOND REQUEST SAYS IT EITHER *** (project owner, 2026-11-25: "I do not think any
+    //    address should be revealed, no"). A registration that made an account was told apart by
+    //    what followed: signing in with the password just given worked only then, and a name asked
+    //    for was then held. So an address not confirmed cannot sign in (LoginAsync, answered as a
+    //    wrong password), and only a confirmed account holds a display name (ConfirmAddressAsync,
+    //    IAccountStore.IsDisplayNameTakenAsync) - a made account looks the same as none until its
+    //    mailbox's owner opens the link.
+    //
     // 2. A LOGIN THAT FAILS TELLS YOU NOTHING ABOUT WHY. Unknown address, wrong password and
     //    locked account are one answer, given after the same Argon2 work. "No such account" -
     //    in words or in a quicker reply - would otherwise be a free account enumeration oracle
@@ -38,11 +46,12 @@ namespace CRT.Server.Handlers.Accounts
         // How long a verification link lasts. Long, because someone may register in the evening
         // and read their mail the next day, and an expired link is a support burden for a
         // volunteer project with no support desk.
-        public static readonly TimeSpan VerificationTokenLifetime = TimeSpan.FromHours(24);
+        // The number is CRT.Data's (AccountWording), so CRT's window and the web pages say what this is.
+        public static readonly TimeSpan VerificationTokenLifetime = TimeSpan.FromHours(AccountWording.VerificationLinkHours);
 
         // Short, because a reset link is a live credential for an account whose owner may not be
         // the person who requested it.
-        public static readonly TimeSpan PasswordResetTokenLifetime = TimeSpan.FromHours(2);
+        public static readonly TimeSpan PasswordResetTokenLifetime = TimeSpan.FromHours(AccountWording.PasswordResetCodeHours);
 
         // ###########################################################################################
         // REGISTER.
@@ -83,7 +92,8 @@ namespace CRT.Server.Handlers.Accounts
             //
             // Unique since 2026-11-25 (owner request: "it needs to be unique for all users"). SAID, unlike a taken address:
             // a display name is what others SEE, so saying it is taken tells nobody anything they could not read - and it
-            // is asked whatever the address is, so the answer says nothing of the address either. Before the mail limit,
+            // is asked whatever the address is, so this answer says nothing of the address - and, held only by confirmed
+            // accounts, no name asked for here is held by the account this makes (property 1 in the header). Before the mail limit,
             // so a person whose mail budget is spent is still told to pick another name rather than wait for a mail that
             // never comes; the lookup costs one cheap query.
             if (await store.IsDisplayNameTakenAsync(request.DisplayName!.Trim(), exceptAccountId: null, cancellationToken))
@@ -215,7 +225,8 @@ namespace CRT.Server.Handlers.Accounts
                     email,
                     displayName,
                     AccountFlows.BuildLink(options, "verify", verificationToken),
-                    (int)AccountFlows.VerificationTokenLifetime.TotalHours),
+                    (int)AccountFlows.VerificationTokenLifetime.TotalHours,
+                    AccountPages.Link(AccountPages.BaseUrl(options.PublicApiBaseUrl), "forgot-password")),
                 cancellationToken);
         }
 
@@ -229,10 +240,12 @@ namespace CRT.Server.Handlers.Accounts
         public static async Task<TokenRedemptionOutcome> VerifyEmailAsync(
             string? token,
             IAccountStore store,
+            IEmailSender mailer,
             DateTimeOffset now,
             CancellationToken cancellationToken = default)
         {
             ArgumentNullException.ThrowIfNull(store);
+            ArgumentNullException.ThrowIfNull(mailer);
 
             if (string.IsNullOrWhiteSpace(token))
                 return TokenRedemptionOutcome.Invalid;
@@ -251,7 +264,7 @@ namespace CRT.Server.Handlers.Accounts
                 return TokenRedemptionOutcome.Expired;
 
             await store.ConsumeTokenAsync(record.Id, now, cancellationToken);
-            await store.SetVerifiedAsync(record.AccountId, cancellationToken);
+            await AccountFlows.ConfirmAddressAsync(record.AccountId, store, mailer, now, cancellationToken);
 
             await store.WriteAuditAsync(
                 new AuditEntry(record.AccountId, $"account:{record.AccountId}", "verify.email",
@@ -260,6 +273,69 @@ namespace CRT.Server.Handlers.Accounts
 
             return TokenRedemptionOutcome.Success;
         }
+
+        // ###########################################################################################
+        // *** AN ADDRESS CONFIRMED - AND ITS DISPLAY NAME CLAIMED *** (project owner, 2026-11-25: "I do not think any address
+        // should be revealed, no"). A name is held only by an account whose address is confirmed (IAccountStore
+        // .IsDisplayNameTakenAsync): held from registration on, a name taken told whether the account was made - register an
+        // address under a name nobody has, then try that name again - so whether the address had an account. So two
+        // unconfirmed accounts may ask for one name, and the second to confirm finds it held: it is given the name with "-2"
+        // after it (or the next number free, the whole within DisplayNames' 30) and told so by mail. Rare - two people picking
+        // one new name inside a day - and nothing a stranger can cause to anybody but an account of their own.
+        //
+        // Every way an address becomes confirmed comes here: the mailed link (VerifyEmailAsync), a new password set with a
+        // mailed code (CompletePasswordResetAsync) and a new address's code (AccountSelfServiceFlows). An accepted invitation
+        // makes an account confirmed from the start, its name asked of the confirmed accounts as it is made.
+        // ###########################################################################################
+        internal static async Task ConfirmAddressAsync(
+            long accountId,
+            IAccountStore store,
+            IEmailSender mailer,
+            DateTimeOffset now,
+            CancellationToken cancellationToken)
+        {
+            await store.SetVerifiedAsync(accountId, cancellationToken);
+
+            if (await store.FindByIdAsync(accountId, cancellationToken) is not AccountRecord account)
+                return;
+
+            string name = account.DisplayName.Trim();
+
+            if (!await store.IsDisplayNameTakenAsync(name, exceptAccountId: account.Id, cancellationToken))
+                return;
+
+            for (int number = 2; number < 1000; number++)
+            {
+                string given = AccountFlows.NumberedName(name, number);
+
+                if (await store.IsDisplayNameTakenAsync(given, exceptAccountId: account.Id, cancellationToken))
+                    continue;
+
+                await store.SetDisplayNameAsync(account.Id, given, cancellationToken);
+                await store.WriteAuditAsync(
+                    new AuditEntry(account.Id, account.Email, AccountFlows.NameGivenAtConfirmationAction, $"account:{account.Id}",
+                        $"\"{name}\" -> \"{given}\"", now),
+                    cancellationToken);
+                await mailer.SendAsync(EmailTemplates.DisplayNameTakenMeanwhile(account.Email, name, given), cancellationToken);
+                return;
+            }
+        }
+
+        // "Dennis" and 2 -> "Dennis-2"; a name too long for the number is cut short first, so the whole stays within the rule.
+        internal static string NumberedName(string name, int number)
+        {
+            string suffix = "-" + number.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            string kept = name.Length + suffix.Length > DisplayNames.MaximumLength
+                ? name[..Math.Max(0, DisplayNames.MaximumLength - suffix.Length)]
+                : name;
+
+            return kept + suffix;
+        }
+
+        // The audit actions of the two above - an unconfirmed address refused, a name given as it was confirmed.
+        public const string SignInUnconfirmedAction = "login.unconfirmed";
+
+        public const string NameGivenAtConfirmationAction = "account.name_given";
 
         // ###########################################################################################
         // LOG IN.
@@ -272,12 +348,19 @@ namespace CRT.Server.Handlers.Accounts
         //      generic result - otherwise the failure count and the response time both leak which
         //      addresses exist. The time did leak, until the security review of 2026-10-11.
         //   3. Verify the password.
-        //   4. Every failure answers the same thing.
+        //   4. An account whose address is NOT CONFIRMED is no sign-in - answered as a wrong password.
+        //   5. Every failure answers the same thing.
         //
-        // An UNVERIFIED account may log in. That is deliberate: blocking it makes "resend my
-        // verification mail" unreachable, since that endpoint needs to know who is asking. What an
-        // unverified account may not do is submit, which is enforced where submissions are
-        // accepted.
+        // *** AN UNCONFIRMED ADDRESS CANNOT SIGN IN *** (project owner, 2026-11-25: "I do not think any
+        // address should be revealed, no"). Since accounts opened to everybody, signing in was the
+        // second request that told whether an address had an account: register it with a password of
+        // your own, then sign in with that password - it worked only when no account had existed. Now
+        // the right password of an unconfirmed account is a failure like any other: recorded for the
+        // limiter (a limiter that tripped only for wrong passwords would say the same thing), after the
+        // same Argon2 work, in the same words. An unconfirmed address has its link to open, and
+        // "I forgot my password" - whose code confirms the address too - for a link that expired, so
+        // nothing needs a session first. It was allowed until then for "resend my verification mail",
+        // which needs to know who is asking.
         // ###########################################################################################
         public static async Task<LoginOutcome> LoginAsync(
             LoginRequest request,
@@ -374,7 +457,19 @@ namespace CRT.Server.Handlers.Accounts
                 return LoginOutcome.Failed();
             }
 
-            // ---- 4. Success. ----
+            // ---- 4. The address not confirmed: a failure like any other (the header). ----
+            if (!account.IsVerified)
+            {
+                await store.RecordAuthFailureAsync(normalised, request.IpAddress, now, cancellationToken);
+                await store.WriteAuditAsync(
+                    new AuditEntry(account.Id, account.Email, AccountFlows.SignInUnconfirmedAction, $"account:{account.Id}",
+                        request.IpAddress, now),
+                    cancellationToken);
+
+                return LoginOutcome.Failed();
+            }
+
+            // ---- 5. Success. ----
 
             // The parameters were raised since this password was last hashed, and the plaintext is
             // legitimately in hand for this one instant - so upgrade it now.
@@ -728,9 +823,10 @@ namespace CRT.Server.Handlers.Accounts
 
             // Completing a reset proves control of the mailbox, so the address is verified too.
             // Someone who registered, never clicked verify, then reset their password has
-            // demonstrated exactly what verification was asking for.
+            // demonstrated exactly what verification was asking for - and since 2026-11-25 it is the
+            // way on from an expired link, as an unconfirmed account cannot sign in for a new one.
             if (!account.IsVerified)
-                await store.SetVerifiedAsync(account.Id, cancellationToken);
+                await AccountFlows.ConfirmAddressAsync(account.Id, store, mailer, now, cancellationToken);
 
             await mailer.SendAsync(
                 EmailTemplates.PasswordChanged(account.Email, account.DisplayName),

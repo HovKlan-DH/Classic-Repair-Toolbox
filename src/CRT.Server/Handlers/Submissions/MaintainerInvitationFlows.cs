@@ -18,10 +18,13 @@ namespace CRT.Server.Handlers.Submissions
     //      reaching the mailbox proves what the verification link would - and puts it in the pool
     //      of EVERY board that address has an open invitation to.
     //
-    // *** AN ADDRESS THAT HAS AN ACCOUNT IS NOT INVITED. *** It is chosen from the list of accounts
-    // instead (MaintainerAssignmentFlows.AddAsync), which also says why an account cannot be granted
-    // - unverified, locked, administrator. Inviting it would make a second way into the same pool
-    // with none of those checks.
+    // *** AN ADDRESS THAT HAS AN ACCOUNT IS NOT INVITED - IT IS ADDED, AS CHOOSING IT FROM THE LIST
+    // ADDS IT *** (2026-11-25, the project owner's OK to the code review's proposal: anybody may have an
+    // account since that day, and the administrator's list holds at most MaintainerAssignmentFlows
+    // .AccountListLimit of them, so an account past it could be made a maintainer no other way - it
+    // was refused with "choose it from the list" until then). Through MaintainerAssignmentFlows.AddAsync
+    // itself, so the same checks hold - an address not confirmed, a locked account - and no invitation
+    // or mail goes out: it is no second way into the pool.
     //
     // *** THE PASSWORD IS HASHED ONLY AFTER THE CODE CHECKS OUT *** - the order the password reset
     // keeps - so the unauthenticated acceptance route cannot be used to make the server run the
@@ -75,8 +78,18 @@ namespace CRT.Server.Handlers.Submissions
 
             string normalised = AccountRules.NormaliseEmail(address);
 
-            if (await accounts.FindByNormalisedEmailAsync(normalised, cancellationToken) is not null)
-                return MaintainerInvitationOutcome.Refused(MaintainerInvitationRules.HasAccountMessage(address));
+            // An account already: added as choosing it from the list adds it (the header).
+            if (await accounts.FindByNormalisedEmailAsync(normalised, cancellationToken) is AccountRecord existing)
+            {
+                MaintainerAssignmentOutcome added = await MaintainerAssignmentFlows.AddAsync(
+                    actor, boardId, existing.Id, inTree, accounts, submissions, now, cancellationToken);
+
+                return added.IsDone
+                    ? MaintainerInvitationOutcome.Done(MaintainerInvitationRules.AddedInsteadMessage(
+                        address,
+                        MaintainerInvitationRules.BoardDisplayName(identity.Value.Manufacturer, identity.Value.Hardware, identity.Value.Board)))
+                    : MaintainerInvitationOutcome.Refused(added.Error);
+            }
 
             // The invitation's foreign key needs the board's row; a shipped board nobody has
             // submitted to has none yet.
@@ -283,8 +296,9 @@ namespace CRT.Server.Handlers.Submissions
         public const string AlreadyHasAccountMessage =
             "An account with this address already exists. Sign in with it, and ask the administrator to add you to the board.";
 
-        public static string HasAccountMessage(string email) =>
-            $"{email} already has an account - choose it from the list of accounts instead of inviting it.";
+        // What "Send invitation" says of an address that had an account, added instead (2026-11-25).
+        public static string AddedInsteadMessage(string email, string boardDisplayName) =>
+            $"{email} already has an account, so it now maintains {boardDisplayName} - no invitation was needed.";
 
         // "Commodore / C64 / 250407", as the Boards screen names it.
         public static string BoardDisplayName(string manufacturer, string hardware, string board) =>

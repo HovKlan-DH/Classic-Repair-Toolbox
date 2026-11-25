@@ -63,7 +63,7 @@ namespace CRT.Server.Tests
                 global::Handlers.DataHandling.MaintainerScreenWording.ManagementQuoted + " > \"Oscilloscope models\"",
                 message.Body,
                 StringComparison.Ordinal);
-            Assert.DoesNotContain(global::Handlers.DataHandling.MaintainerScreenWording.AccountQuoted + " >", message.Body, StringComparison.Ordinal);
+            Assert.DoesNotContain("\"" + global::Handlers.DataHandling.MaintainerScreenWording.Account + "\" >", message.Body, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -156,12 +156,42 @@ namespace CRT.Server.Tests
         public void The_verification_mail_carries_the_link_and_says_how_long_it_lasts()
         {
             EmailMessage message = EmailTemplates.Verification(
-                "dennis@example.com", "Dennis", EmailTemplatesTests.VerifyUrl, 24);
+                "dennis@example.com", "Dennis", EmailTemplatesTests.VerifyUrl, 24, EmailTemplatesTests.ForgotUrl);
 
             Assert.Equal("dennis@example.com", message.ToAddress);
             Assert.Contains(EmailTemplatesTests.VerifyUrl, message.Body, StringComparison.Ordinal);
             Assert.Contains("24 hours", message.Body, StringComparison.Ordinal);
             Assert.Contains("Hi Dennis,", message.Body, StringComparison.Ordinal);
+        }
+
+        // ###########################################################################################
+        // *** AN EXPIRED LINK IS ANSWERED BY "I FORGOT MY PASSWORD" *** (2026-11-25). An address not confirmed cannot sign in
+        // (AccountFlows.LoginAsync), so "sign in and press "Send the mail again"" - what the mail said until then - is no way
+        // on. A new password set with a mailed code confirms the address too, in CRT or on the website's page.
+        // ###########################################################################################
+        [Fact]
+        public void The_verification_mail_says_signing_in_waits_for_it_and_names_the_way_on_from_an_expired_link()
+        {
+            EmailMessage message = EmailTemplates.Verification(
+                "dennis@example.com", "Dennis", EmailTemplatesTests.VerifyUrl, 24, EmailTemplatesTests.ForgotUrl);
+
+            Assert.Contains("You can sign in once the address is confirmed.", message.Body, StringComparison.Ordinal);
+            Assert.Contains("If it expires, use \"I forgot my password\"", message.Body, StringComparison.Ordinal);
+            Assert.Contains(EmailTemplatesTests.ForgotUrl, message.Body, StringComparison.Ordinal);
+            Assert.DoesNotContain(global::Handlers.DataHandling.AccountWording.SendMailAgainButton, message.Body, StringComparison.Ordinal);
+        }
+
+        // A name taken while the address waited to be confirmed: the mail names both, and where to pick another.
+        [Fact]
+        public void The_name_given_at_confirmation_is_told_with_the_name_asked_for()
+        {
+            EmailMessage message = EmailTemplates.DisplayNameTakenMeanwhile("anna@example.com", "Anna", "Anna-2");
+
+            Assert.Equal("anna@example.com", message.ToAddress);
+            Assert.Contains("Anna", message.Body, StringComparison.Ordinal);
+            Assert.Contains("Anna-2", message.Body, StringComparison.Ordinal);
+            Assert.Contains("\"My account\"", message.Body, StringComparison.Ordinal);
+            Assert.False(message.CarriesCredential);
         }
 
         [Fact]
@@ -170,7 +200,7 @@ namespace CRT.Server.Tests
             // Someone may receive this because another person typed their address by mistake.
             // They need to know that doing nothing is safe and sufficient.
             EmailMessage message = EmailTemplates.Verification(
-                "dennis@example.com", "Dennis", EmailTemplatesTests.VerifyUrl, 24);
+                "dennis@example.com", "Dennis", EmailTemplatesTests.VerifyUrl, 24, EmailTemplatesTests.ForgotUrl);
 
             Assert.Contains("did not sign up", message.Body, StringComparison.Ordinal);
         }
@@ -289,17 +319,18 @@ namespace CRT.Server.Tests
         {
             // A bare code with no instructions is worse than the broken link was: at least the
             // link said what to do with it. The mail must name the place in CRT and the button - the
-            // account icon since 2026-11-25 (the Maintainer tab's sign-in screen until then) - in CRT's
-            // own words, and the page for somebody with no CRT at hand.
+            // account icon since 2026-11-25, and in brackets the Maintainer tab's sign-in screen of a
+            // CRT from before it (code review, 2026-11-25: the live server takes these words while some
+            // still run 4.0) - in CRT's own words, and the page for somebody with no CRT at hand.
             EmailMessage message = EmailTemplates.PasswordReset(
                 "dennis@example.com", "Dennis", EmailTemplatesTests.ResetCode, 2, EmailTemplatesTests.ForgotUrl);
 
             Assert.Contains(
-                $"In CRT, open {(global::Handlers.DataHandling.AccountWording.WhereInCrt)} and choose \"I forgot my password\", then paste this code",
+                $"In CRT, open {(global::Handlers.DataHandling.AccountWording.WhereInCrt)} (in CRT 4.0 and older, the \"Maintainer\" tab's sign-in) " +
+                "and choose \"I forgot my password\", then paste this code",
                 message.Body,
                 StringComparison.Ordinal);
             Assert.Contains("Or do the same on the website: " + EmailTemplatesTests.ForgotUrl, message.Body, StringComparison.Ordinal);
-            Assert.DoesNotContain("\"Maintainer\" tab", message.Body, StringComparison.Ordinal);
             Assert.DoesNotContain("CRT Maintainer", message.Body, StringComparison.Ordinal);
         }
 
@@ -346,10 +377,11 @@ namespace CRT.Server.Tests
             Assert.Equal("bench@example.com", message.ToAddress);
             Assert.Contains(message.Body.Split("\r\n"), line => line.Trim() == EmailTemplatesTests.ResetCode);
             // The way in (owner wording, 2026-10-03): the account icon since 2026-11-25, when accounts
-            // opened to everybody - the Maintainer tab's "Account" > "My account" until then. Written out,
-            // so a change to the shared words fails here.
+            // opened to everybody - and the Maintainer tab's "Account" > "My account" of a CRT from before
+            // it, in brackets. Written out, so a change to the shared words fails here.
             Assert.Contains(
-                "In CRT, open the account icon in the top right corner of CRT's window, press \"I have received a code\"",
+                "In CRT, open the account icon in the top right corner of CRT's window (in CRT 4.0 and older, the \"Maintainer\" tab's " +
+                "\"Account\" > \"My account\"), press \"I have received a code\"",
                 message.Body,
                 StringComparison.Ordinal);
             Assert.Contains("24 hours", message.Body, StringComparison.Ordinal);
@@ -402,7 +434,7 @@ namespace CRT.Server.Tests
             // test that catches the normalisation being removed.
             var messages = new[]
             {
-                EmailTemplates.Verification("a@b.com", "A", EmailTemplatesTests.VerifyUrl, 24),
+                EmailTemplates.Verification("a@b.com", "A", EmailTemplatesTests.VerifyUrl, 24, EmailTemplatesTests.ForgotUrl),
                 EmailTemplates.AlreadyRegistered("a@b.com", "A", EmailTemplatesTests.ResetCode, 2, EmailTemplatesTests.ForgotUrl),
                 EmailTemplates.PasswordReset("a@b.com", "A", EmailTemplatesTests.ResetCode, 2, EmailTemplatesTests.ForgotUrl),
                 EmailTemplates.PasswordChanged("a@b.com", "A")
@@ -426,7 +458,7 @@ namespace CRT.Server.Tests
             // about without being opened.
             var messages = new[]
             {
-                EmailTemplates.Verification("a@b.com", "A", EmailTemplatesTests.VerifyUrl, 24),
+                EmailTemplates.Verification("a@b.com", "A", EmailTemplatesTests.VerifyUrl, 24, EmailTemplatesTests.ForgotUrl),
                 EmailTemplates.AlreadyRegistered("a@b.com", "A", EmailTemplatesTests.ResetCode, 2, EmailTemplatesTests.ForgotUrl),
                 EmailTemplates.PasswordReset("a@b.com", "A", EmailTemplatesTests.ResetCode, 2, EmailTemplatesTests.ForgotUrl),
                 EmailTemplates.PasswordChanged("a@b.com", "A")
@@ -445,7 +477,7 @@ namespace CRT.Server.Tests
 
             var messages = new[]
             {
-                EmailTemplates.Verification("a@b.com", "A", EmailTemplatesTests.VerifyUrl, 24),
+                EmailTemplates.Verification("a@b.com", "A", EmailTemplatesTests.VerifyUrl, 24, EmailTemplatesTests.ForgotUrl),
                 EmailTemplates.AlreadyRegistered("a@b.com", "A", EmailTemplatesTests.ResetCode, 2, EmailTemplatesTests.ForgotUrl),
                 EmailTemplates.PasswordReset("a@b.com", "A", EmailTemplatesTests.ResetCode, 2, EmailTemplatesTests.ForgotUrl),
                 EmailTemplates.PasswordChanged("a@b.com", "A")
@@ -470,7 +502,7 @@ namespace CRT.Server.Tests
         // One of every mail, each with whatever a test needs to find in it.
         private static IReadOnlyList<EmailMessage> EveryMail() =>
         [
-            EmailTemplates.Verification("a@b.com", "A", EmailTemplatesTests.VerifyUrl, 24),
+            EmailTemplates.Verification("a@b.com", "A", EmailTemplatesTests.VerifyUrl, 24, EmailTemplatesTests.ForgotUrl),
             EmailTemplates.AlreadyRegistered("a@b.com", "A", EmailTemplatesTests.ResetCode, 2, EmailTemplatesTests.ForgotUrl),
             EmailTemplates.PasswordReset("a@b.com", "A", EmailTemplatesTests.ResetCode, 2, EmailTemplatesTests.ForgotUrl),
             EmailTemplates.PasswordChanged("a@b.com", "A"),

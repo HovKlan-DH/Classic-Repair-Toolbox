@@ -1730,10 +1730,6 @@ enum SubmissionFileScope | ManufacturerShared -> "ManufacturerShared"
 enum SubmissionFileScope | Own -> "Own"
 enum ValidationSeverity | Error -> 1
 enum ValidationSeverity | Warning -> 0
-route GET /account
-route GET /account/forgot-password
-route GET /account/register
-route GET /account/verify
 route GET /api/accounts/me
 route GET /api/accounts/verify
 route GET /api/admin/accounts
@@ -1755,9 +1751,6 @@ route GET /api/review/submissions/{submissionId:long}/submitted/{hash}
 route GET /api/review/submissions/{submissionId:long}/table
 route GET /api/submissions/{submissionId:long}
 route GET /api/submissions/{submissionId:long}/blobs/{hash}
-route POST /account/forgot-password
-route POST /account/register
-route POST /account/reset-password
 route POST /api/accounts/accept-invitation
 route POST /api/accounts/forgot-password
 route POST /api/accounts/login

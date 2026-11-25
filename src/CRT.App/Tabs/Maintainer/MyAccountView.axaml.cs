@@ -64,6 +64,20 @@ namespace CRT
         // "Sign out" pressed - the tab's own sign-out, which asks about unsaved changes first.
         internal Func<Task>? SignOutRequested { get; set; }
 
+        // ###########################################################################################
+        // *** THE SERVER SAID THE SESSION IS OVER *** - a 401 on any change here (code review, 2026-11-25). Handed to the tab,
+        // whose one funnel ends it (TabMaintainer.EndSessionTheServerRefused) - and, in CRT's account window, the window goes
+        // back to its sign-in. With "Enable Maintainer tab" off nothing else ever asks the server, so a session signed out
+        // elsewhere (a password reset signs out every computer) went on showing as signed in, every change refused.
+        // ###########################################################################################
+        internal Action? SessionEnded { get; set; }
+
+        private void EndSessionIfRefused(ReviewApiFailure failure)
+        {
+            if (failure == ReviewApiFailure.NotSignedIn)
+                this.SessionEnded?.Invoke();
+        }
+
         // The session as it stands after whatever was changed here - the token never changes.
         internal ReviewSession? Session => this.thisSession;
 
@@ -150,6 +164,7 @@ namespace CRT
             if (!result.IsOk)
             {
                 this.ShowMessage("NameMessageText", result.Message);
+                this.EndSessionIfRefused(result.Failure);
                 return;
             }
 
@@ -188,6 +203,7 @@ namespace CRT
             if (!result.IsOk)
             {
                 this.ShowMessage("EmailMessageText", result.Message);
+                this.EndSessionIfRefused(result.Failure);
                 return;
             }
 
@@ -239,6 +255,7 @@ namespace CRT
             if (!result.IsOk)
             {
                 this.ShowMessage("EmailMessageText", result.Message);
+                this.EndSessionIfRefused(result.Failure);
                 return;
             }
 
@@ -291,6 +308,7 @@ namespace CRT
             if (!result.IsOk)
             {
                 this.ShowMessage("PasswordMessageText", result.Message);
+                this.EndSessionIfRefused(result.Failure);
                 return;
             }
 
@@ -345,7 +363,10 @@ namespace CRT
                 this, WaitWording.Checking, token => client.GetAccountAsync(session, token));
 
             if (!read.IsOk)
+            {
+                this.EndSessionIfRefused(read.Failure);
                 return null;
+            }
 
             this.Apply(read.Value);
             return read.Value;

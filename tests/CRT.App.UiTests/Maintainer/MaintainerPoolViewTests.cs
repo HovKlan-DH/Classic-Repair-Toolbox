@@ -164,23 +164,32 @@ public sealed class MaintainerPoolViewTests
     }
 
     // ###########################################################################################
-    // Inviting sends the typed address and shows the server's sentence; an address that already has
-    // an account is pointed at the list instead, without a round trip.
+    // Inviting sends the typed address and shows the server's sentence. An address that already has an account is ADDED, as
+    // choosing it from the list adds it (2026-11-25, the project owner's OK - "point at the list" until then, which holds at most
+    // the server's first 500 accounts); one the list says cannot be a maintainer is refused in the list's words.
     // ###########################################################################################
     [Fact]
-    public async Task Inviting_sends_the_typed_address_and_an_existing_account_is_pointed_at_the_list()
+    public async Task Inviting_sends_the_typed_address_and_an_existing_account_is_added_as_from_the_list()
     {
         await UiTest.RunAsync(async () =>
         {
             (MaintainerPoolView view, List<PoolAction> sent) = await MaintainerPoolViewTests.ChosenAsync();
             TextBox box = view.FindControl<TextBox>("InviteEmailBox")!;
 
-            box.Text = "BO@example.com";
+            box.Text = "CY@example.com";
             await view.InviteTypedAddressAsync();
 
             Assert.Empty(sent);
-            Assert.Equal("bo@example.com already has an account - choose it in the list above instead.", MaintainerPoolViewTests.PoolMessage(view));
+            Assert.StartsWith("cy@example.com cannot be a maintainer:", MaintainerPoolViewTests.PoolMessage(view), StringComparison.Ordinal);
 
+            box.Text = "BO@example.com";
+            await view.InviteTypedAddressAsync();
+
+            Assert.Equal([new PoolAction(PoolActionKind.Add, C64, AccountId: 8, Who: "Bo")], sent);
+            Assert.Equal("Bo now maintains Commodore / C64 / 250407.", MaintainerPoolViewTests.PoolMessage(view));
+            Assert.Equal(string.Empty, box.Text);
+
+            sent.Clear();
             box.Text = "  new@example.com ";
             await view.InviteTypedAddressAsync();
 

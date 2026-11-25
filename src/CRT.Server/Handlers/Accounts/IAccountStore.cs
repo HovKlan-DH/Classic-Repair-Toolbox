@@ -41,11 +41,14 @@ namespace CRT.Server.Handlers.Accounts
         Task<long> CreateAccountAsync(NewAccount account, CancellationToken cancellationToken = default);
 
         // ###########################################################################################
-        // Whether ANOTHER account has this display name, ignoring capitals and the spaces around it (owner request,
-        // 2026-11-25: "it needs to be unique for all users"; CRT.Data's DisplayNames.SameName is the rule). `exceptAccountId`
-        // is the account being renamed: its own name in other capitals is no clash. Asked before a name is set - at
-        // registration, under "My account" and accepting an invitation; two people taking one new name in the same moment
-        // could both pass, which no index holds against (names set before were never unique, so none could be made).
+        // Whether ANOTHER account WHOSE ADDRESS IS CONFIRMED has this display name, ignoring capitals and the spaces around it
+        // (owner request, 2026-11-25: "it needs to be unique for all users"; MySqlAccountStore's query is the rule).
+        // `exceptAccountId` is the account being renamed: its own name in other capitals is no clash. Asked before a name is
+        // set - at registration, under "My account" and accepting an invitation - and as an address is confirmed
+        // (AccountFlows.ConfirmAddressAsync). *** ONLY A CONFIRMED ACCOUNT HOLDS A NAME *** (owner, the same day: "I do not
+        // think any address should be revealed"): held by an account just made, a name taken said whether registering had
+        // made one, so whether the address already had an account. Two people taking one new name in the same moment could
+        // both pass, which no index holds against (names set before were never unique, so none could be made).
         // ###########################################################################################
         Task<bool> IsDisplayNameTakenAsync(string displayName, long? exceptAccountId, CancellationToken cancellationToken = default);
 

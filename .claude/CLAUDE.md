@@ -3071,6 +3071,13 @@ about its centre (`Main.DataSyncStatusIconSpinAngle`). **The "KiCad nets" panel 
   on the tab's client; never give the window a session of its own. An account that maintains no board and is no
   administrator is said so on the tab instead of the queue (`ApplyStanding`, from GET /api/accounts/me). The words a mail,
   the window and the web pages share are CRT.Data's `AccountWording`.
+- **NO REQUEST SAYS WHETHER AN ADDRESS HAS AN ACCOUNT - NOT A SECOND ONE EITHER** (owner decision, 2026-11-25: "I do not
+  think any address should be revealed, no"): **an address not confirmed cannot sign in**, answered as a wrong password
+  (`AccountFlows.LoginAsync` - the same Argon2 work, a failure counted for the limiter), and **only a confirmed account holds
+  a display name** (`IAccountStore.IsDisplayNameTakenAsync`, `AccountFlows.ConfirmAddressAsync`: the second of two new
+  accounts to confirm one name gets it with "-2" after it, and a mail). Registering an address, then signing in with the
+  password given or asking for the name given again, told whether an account had been made. Every way an address becomes
+  confirmed goes through `ConfirmAddressAsync`; an expired link's way on is "I forgot my password", whose code confirms it.
 - **A DISPLAY NAME IS UNIQUE AND OF ONE RULE** (owner requests, 2026-11-25: "it needs to be unique for all users", "only
   normal A-Z + 0-9 and then some common special charatcers like: +-/@.[]() ... max length 30"): CRT.Data's `DisplayNames`,
   2 to 30 characters, unique ignoring capitals - asked of a name being SET (registering, "My account", an invitation), on the
@@ -3081,7 +3088,10 @@ about its centre (`Main.DataSyncStatusIconSpinAngle`). **The "KiCad nets" panel 
   over the very flows the JSON routes call (`AccountPageEndpoints`), the HTML pure and tested (`AccountPages`): every word
   typed encoded, no script, one style block allowed by its hash in the Content-Security-Policy - change `AccountPages.Css`
   and the hash follows by itself. Never a page that acts on a signed-in person - there is no web sign-in yet, and no
-  anti-forgery token because of that; a page that needs one is the moment to add both.
+  anti-forgery token because of that; a page that needs one is the moment to add both. **A form posted from another
+  website is refused** (`AccountPages.IsFromAnotherSite` - `Sec-Fetch-Site`, else an older browser's `Origin`; code review,
+  2026-11-25, Security: the mail budget is per IP address, so a hidden form elsewhere spent every visitor's), which is why
+  the pages' `Referrer-Policy` is `strict-origin` - `no-referrer` makes a browser send `Origin: null` with their own forms.
 - **The tab's badge** (`MaintainerModes.TabAttention`): the two queues' attention counts ADDED UP - and,
   for the administrator, the oscilloscope models waiting (the queue answer's `OscilloscopeModelsWaiting`,
   badged on the Management tab and on its "Oscilloscope models" entry too - owner request, 2026-11-07: "indicate

@@ -100,6 +100,7 @@ namespace CRT
         {
             this.MyAccountDetail.AccountChanged = this.ApplyAccount;
             this.MyAccountDetail.SignOutRequested = this.SignOutAsync;
+            this.MyAccountDetail.SessionEnded = this.EndSessionTheServerRefused;
 
             // What the models screen reads is what the badges count (TabMaintainer.Modes.cs).
             this.OscilloscopeModelsAdmin.ModelsWaitingRead = this.UseOscilloscopeModelsWaiting;
@@ -237,22 +238,28 @@ namespace CRT
             if (this.thisSession is not { } session)
                 return;
 
-            // Asked before "nothing changed": whether the account maintains anything moves without its name or address.
+            ReviewSession updated = session.WithAccount(account);
+            bool changed = !Equals(updated, session);
+
+            if (changed)
+            {
+                this.UseSession(updated);
+
+                // The stored copy too, or the next launch shows the old name and address until it has
+                // read them again. Declines on its own where it cannot store safely.
+                ReviewSessionStore.Remember(updated);
+
+                this.ShowSignedInAs();
+                this.MyAccountDetail.UseAccount(updated);
+            }
+
+            // Asked whether or not anything else changed: whether the account maintains anything moves without its name or
+            // address. AFTER the session takes the new name (code review, 2026-11-25), as the "not a maintainer" line names who
+            // is signed in - built before, it said the name before; and a new name redraws that line when it stays.
             this.ApplyStanding(account);
 
-            ReviewSession updated = session.WithAccount(account);
-
-            if (Equals(updated, session))
-                return;
-
-            this.UseSession(updated);
-
-            // The stored copy too, or the next launch shows the old name and address until it has
-            // read them again. Declines on its own where it cannot store safely.
-            ReviewSessionStore.Remember(updated);
-
-            this.ShowSignedInAs();
-            this.MyAccountDetail.UseAccount(updated);
+            if (changed && this.thisMaintainsNothing)
+                this.ShowSignInPanelState(maintainsNothing: true);
         }
 
         // ###########################################################################################
@@ -287,25 +294,63 @@ namespace CRT
 
             this.ShowSignInPanelState(maintainsNothing: false);
             this.ShowQueuePanel();
-            _ = HandlerGuard.RunAsync(this.ReadListsAsync, this.ShowHandlerFailure);
+
+            // *** ONLY ON SCREEN *** (code review, 2026-11-25): the lists are read under the "please wait" of the window the tab
+            // stands in - off screen that is CRT's window found some other way, dimmed behind the account window for a tab not
+            // even shown. Off screen they wait for the tab to be shown, as a sign-in's do (UseSignInAsync, thisListsWanted).
+            if (TopLevel.GetTopLevel(this) is not null)
+                _ = HandlerGuard.RunAsync(this.ReadListsAsync, this.ShowHandlerFailure);
+            else
+                this.thisListsWanted = true;
         }
+
+        // ###########################################################################################
+        // *** A 401 MET OUTSIDE THE TAB'S OWN CHECKS *** - "My account", here or in CRT's account window (code review,
+        // 2026-11-25). The queue's 401 path, for a session the server has ended (signed out elsewhere, a password reset, the
+        // account locked): with a table holding unsaved changes the tab keeps them and says so (KeepTablesAfterSessionEnded),
+        // otherwise the sign-in screen, the remembered sign-in forgotten (ShowSignInPanel) - and SignedInChanged tells the
+        // rest of CRT, the account icon included.
+        // ###########################################################################################
+        internal void EndSessionTheServerRefused()
+        {
+            if (this.thisSession is null)
+                return;
+
+            if (this.WouldLoseAnyTableChanges)
+            {
+                this.KeepTablesAfterSessionEnded(expired: false);
+                return;
+            }
+
+            this.ShowSignInPanel();
+            this.ShowSignInMessage(TabMaintainer.SessionEndedMessage);
+        }
+
+        internal const string SessionEndedMessage = "You are no longer signed in - signed out on another computer, or the sign-in ended. Sign in again.";
 
         // Whether the sign-in panel says the account maintains no board - for tests.
         internal bool SaysAccountMaintainsNothingForTests => this.FindControl<TextBlock>("NotMaintainerText")?.IsVisible == true;
 
+        // ###########################################################################################
+        // *** READ ONCE IT HAS BEEN READ, NOT ONCE IT HAS BEEN ASKED *** (code review, 2026-11-25). Marked read before the
+        // request, a /me that failed at sign-in was never asked again, and an account that maintains nothing stayed on the
+        // queue panel, refused every minute. A failure leaves it to be asked again - by the queue's 403 too (RefreshQueueAsync),
+        // the one answer that says the account's standing may not be what the tab thinks.
+        // ###########################################################################################
         private async Task ReadAccountQuietlyAsync()
         {
             if (this.thisAccountRead || this.thisClient is not { } client || this.thisSession is not { } session)
                 return;
 
-            this.thisAccountRead = true;
-
             ReviewApiResult<AccountAnswer> read = await client.GetAccountAsync(session);
 
             // Only onto the session it was asked for - a sign-out or another sign-in meanwhile wins
             // (its expiry slid meanwhile is still that session).
-            if (read.IsOk && this.IsSessionInUse(session))
-                this.ApplyAccount(read.Value!);
+            if (!read.IsOk || !this.IsSessionInUse(session))
+                return;
+
+            this.thisAccountRead = true;
+            this.ApplyAccount(read.Value!);
         }
 
         // ###########################################################################################

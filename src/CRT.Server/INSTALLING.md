@@ -433,15 +433,31 @@ page; CRT and the confirmation link (still under `/api/`) work either way.
 
 **Display names are unique from 13.0.0** - a name being set is refused when another account has it,
 ignoring capitals. Names set before were never held to that, so two old accounts may share one; nothing
-breaks, but it is worth knowing (in the `crt_review` database, and `crt_review_test` for the test instance):
+breaks, but it is worth knowing (`crt_review_test` in place of `crt_review` for the test instance):
 
-```sql
-SELECT UPPER(TRIM(display_name)) AS name, COUNT(*) AS accounts, GROUP_CONCAT(id) AS ids
-FROM accounts GROUP BY UPPER(TRIM(display_name)) HAVING COUNT(*) > 1;
+```bash
+mysql -u root -e "SELECT UPPER(TRIM(display_name)) AS name, COUNT(*) AS accounts, GROUP_CONCAT(id) AS ids FROM crt_review.accounts GROUP BY UPPER(TRIM(display_name)) HAVING COUNT(*) > 1;"
 ```
 
-No rows: every name is one account's. A row: those accounts keep the name until one of them changes it
+No rows (it prints nothing): every name is one account's. A row: those accounts keep the name until one of them changes it
 (under "My account"), which the rule then holds.
+
+**An address not confirmed cannot sign in from 13.0.0** - it is answered as a wrong password, so that
+signing in never tells whether an address has an account. An account an invitation made is confirmed
+already; one registered before 13.0.0 whose link was never opened stops signing in. To see any
+(`crt_review_test` in place of `crt_review` for the test instance):
+
+```bash
+mysql -u root -e "SELECT id, email, display_name, created_utc, last_login_utc FROM crt_review.accounts WHERE is_verified = 0;"
+```
+
+No rows (it prints nothing): nothing changes for anybody. A row: that person confirms the address with
+**I forgot my password** (in CRT's account window, or on the `/account/forgot-password` page) - setting a
+password with the mailed code confirms it. Only for an address you know is that person's, confirm it by hand:
+
+```bash
+mysql -u root -e "UPDATE crt_review.accounts SET is_verified = 1 WHERE id = <id>;"
+```
 
 **Let large feedback through.** CRT sends feedback attachments of up to 250 MB. Apache allows 1 GB
 by default, but a smaller `LimitRequestBody` set anywhere would refuse it first:
@@ -1404,13 +1420,13 @@ pre-release the test instance's, by its version (`ContributionServer.RootUrlFor`
 
 ```bash
 # The newest board views - which boards CRT users look at, and from which country:
-mysql -u root -p -e "SELECT viewedUtc, hardwareName, boardName, version, countryCode, fromBeta FROM crt_review.crt_board_views ORDER BY id DESC LIMIT 10;"
+mysql -u root -e "SELECT viewedUtc, hardwareName, boardName, version, countryCode, fromBeta FROM crt_review.crt_board_views ORDER BY id DESC LIMIT 10;"
 
 # Which CRT versions called which route today (written every five minutes):
-mysql -u root -p -e "SELECT callDate, method, route, version, calls FROM crt_review.crt_api_calls ORDER BY lastUtc DESC LIMIT 10;"
+mysql -u root -e "SELECT callDate, method, route, version, calls FROM crt_review.crt_api_calls ORDER BY lastUtc DESC LIMIT 10;"
 
 # The newest launch check-ins:
-mysql -u root -p -e "SELECT createDateTime, version, osHighlevel, countryCode FROM crt_review.crt_update ORDER BY id DESC LIMIT 10;"
+mysql -u root -e "SELECT createDateTime, version, osHighlevel, countryCode FROM crt_review.crt_update ORDER BY id DESC LIMIT 10;"
 ```
 
 CRT's Maintainer tab shows the same, worded: each board's **Statistics** view, and Account > **API

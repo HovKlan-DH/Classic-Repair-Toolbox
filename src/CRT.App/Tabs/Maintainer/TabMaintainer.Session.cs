@@ -148,6 +148,10 @@ namespace CRT
             this.UseClient(client);
             this.UseSession(session);
 
+            // What the sign-in panel said before - "You are signed out.", a session ended - is not about this sign-in, and an
+            // account that maintains nothing would show it under its own line (code review, 2026-11-25).
+            this.ShowSignInMessage(null);
+
             // The question the launch asks is answered: this is the sign-in.
             this.thisSessionRestoreTried = true;
 
@@ -156,8 +160,10 @@ namespace CRT
             this.ShowQueuePanel();
 
             // Whether it maintains anything - an account that does not is said so instead of reading lists the server would
-            // refuse (TabMaintainer.Account.cs, ApplyStanding).
+            // refuse (TabMaintainer.Account.cs, ApplyStanding). Judged afresh for this account: the one before maintaining
+            // nothing would otherwise make this one's answer a change, and ApplyStanding read the lists beside the read below.
             this.thisAccountRead = false;
+            this.thisMaintainsNothing = false;
             await this.ReadAccountQuietlyAsync();
 
             if (this.thisMaintainsNothing || !this.IsSessionInUse(session))

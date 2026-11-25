@@ -12,7 +12,18 @@ namespace ClassicRepairToolbox.Tests.Maintainer;
 public sealed class ServerVersionDisplayTests
 {
     private static string[] Lines(IReadOnlyList<ServerPanel> panels) =>
-        panels.SelectMany(ServerVersionDisplay.AsLines).ToArray();
+        panels.SelectMany(ServerVersionDisplayTests.AsLines).ToArray();
+
+    // A panel as plain lines - "Server: This CRT and the server speak the same API", then "Version: 4.6.0" - the values'
+    // pieces joined, bold or not. The test's own reading of a panel (ServerVersionDisplay held it until 2026-11-25, for
+    // the tests alone).
+    private static IEnumerable<string> AsLines(ServerPanel panel)
+    {
+        yield return panel.Title + ": " + panel.Summary;
+
+        foreach (ServerPanelRow row in panel.Rows)
+            yield return row.Label + ": " + string.Concat(row.Value.Select(run => run.Text));
+    }
 
     [Fact]
     public void The_server_panel_says_the_version_and_both_api_revisions()
@@ -103,7 +114,7 @@ public sealed class ServerVersionDisplayTests
     {
         ServerPanel mail = ServerVersionDisplay.Panels("1.1.0", 1, 1, unsentMails: 1234).Last();
 
-        Assert.Equal(["Mail: Mails the server could not send yet - it keeps trying", "Not sent yet: 1,234"], ServerVersionDisplay.AsLines(mail));
+        Assert.Equal(["Mail: Mails the server could not send yet - it keeps trying", "Not sent yet: 1,234"], ServerVersionDisplayTests.AsLines(mail));
         Assert.Equal(ServerPanelState.Problem, mail.State);
 
         Assert.Single(ServerVersionDisplay.Panels("1.1.0", 1, 1, unsentMails: 0));
@@ -144,7 +155,7 @@ public sealed class ServerVersionDisplayTests
                 "Found: Installed 10.3.0 (CRT release [4.1.0]) in place of 10.2.1.",
                 "Last installed: 10.3.0 on 2026-November-9 at 14:05, replacing 10.2.1",
             ],
-            ServerVersionDisplay.AsLines(panel));
+            ServerVersionDisplayTests.AsLines(panel));
         Assert.Equal(ServerPanelState.Good, panel.State);
 
         // The values bold, never the updater's sentence.
@@ -195,10 +206,10 @@ public sealed class ServerVersionDisplayTests
         ServerPanel fresh = ServerVersionDisplay.Panels("10.3.0", 2, 2, updates: updates, now: ServerVersionDisplayTests.Looked.AddMinutes(9))[1];
         ServerPanel stale = ServerVersionDisplay.Panels("10.3.0", 2, 2, updates: updates, now: ServerVersionDisplayTests.Looked.AddMinutes(11))[1];
 
-        Assert.Contains("Last look: 2026-November-9 at 14:20", ServerVersionDisplay.AsLines(fresh));
+        Assert.Contains("Last look: 2026-November-9 at 14:20", ServerVersionDisplayTests.AsLines(fresh));
         Assert.Equal(ServerPanelState.Good, fresh.State);
 
-        Assert.Contains("Last look: 2026-November-9 at 14:20 - over ten minutes ago", ServerVersionDisplay.AsLines(stale));
+        Assert.Contains("Last look: 2026-November-9 at 14:20 - over ten minutes ago", ServerVersionDisplayTests.AsLines(stale));
         Assert.Equal((ServerPanelState.Waiting, ServerVersionDisplay.TimerMayHaveStopped), (stale.State, stale.Summary));
 
         ServerPanel staleFailure = ServerVersionDisplay.Panels(
@@ -214,7 +225,7 @@ public sealed class ServerVersionDisplayTests
     {
         ServerPanel notSetUp = ServerVersionDisplay.Panels("10.3.0", 2, 2, updates: new ServerUpdatesAnswer(SetUp: false))[1];
 
-        Assert.Equal(["Automatic updates: Not set up on this server"], ServerVersionDisplay.AsLines(notSetUp));
+        Assert.Equal(["Automatic updates: Not set up on this server"], ServerVersionDisplayTests.AsLines(notSetUp));
         Assert.Equal(ServerPanelState.Neutral, notSetUp.State);
 
         Assert.Single(ServerVersionDisplay.Panels("10.2.1", 2, 2, updates: null));

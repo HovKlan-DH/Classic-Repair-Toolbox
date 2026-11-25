@@ -149,6 +149,61 @@ public sealed class TabMaintainerSessionTests
     }
 
     // ###########################################################################################
+    // *** A 401 MET UNDER "MY ACCOUNT" ENDS THE SESSION AS THE QUEUE'S DOES (code review, 2026-11-25). *** With the tab turned
+    // off nothing else asks the server, so the account window's 401 is the only news of a session ended elsewhere: the sign-in
+    // screen, the session gone - for the rest of CRT too (SignedInChanged, the account icon) - and why said under "Sign in".
+    // ###########################################################################################
+    [Fact]
+    public void A_401_met_under_My_account_ends_the_session_as_the_queues_does()
+    {
+        UiTest.Run(() =>
+        {
+            var tab = new TabMaintainer();
+            tab.UseSessionForTests(TabMaintainerSessionTests.Session(DateTimeOffset.UtcNow.AddDays(10)));
+            typeof(TabMaintainer).GetMethod("ShowQueuePanel", Any)!.Invoke(tab, null);
+
+            int changes = 0;
+            tab.SignedInChanged += () => changes++;
+
+            tab.EndSessionTheServerRefused();
+
+            Assert.Null(tab.SignedIn);
+            Assert.Equal(1, changes);
+            Assert.True(tab.FindControl<StackPanel>("SignInPanel")!.IsVisible);
+            Assert.Equal(TabMaintainer.SessionEndedMessage, tab.FindControl<TextBlock>("SignInMessageText")!.Text);
+
+            // Signed out already: nothing more happens.
+            tab.EndSessionTheServerRefused();
+            Assert.Equal(1, changes);
+        });
+    }
+
+    // Under a table's unsaved changes the session is kept for them, as the queue's 401 keeps it, and the line says what is left.
+    [Fact]
+    public void A_401_met_under_My_account_keeps_a_tables_unsaved_changes()
+    {
+        UiTest.Run(() =>
+        {
+            var tab = new TabMaintainer();
+            tab.UseClientForTests(new ReviewApiClient("https://review.invalid", new HttpClient(new AnsweringHttpHandler(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized)))));
+            tab.UseSessionForTests(TabMaintainerSessionTests.Session(DateTimeOffset.UtcNow.AddDays(10)));
+            typeof(TabMaintainer).GetMethod("ShowQueuePanel", Any)!.Invoke(tab, null);
+
+            tab.OpenTableForTests(TabMaintainerSessionTests.Row(42), TabMaintainerSessionTests.Table());
+            BoardTableDocument document = tab.TableEditorForTests.CommitAndGetDocument()!;
+            document.FindSheet(BoardWorkbookSchema.SheetComponentImages)!.Rows.First(row => !row.IsDeleted)
+                .Cells[BoardWorkbookSchema.ComponentImages.ColumnOrder.ToList().IndexOf(BoardWorkbookSchema.ColName)].Text = "Changed";
+
+            tab.EndSessionTheServerRefused();
+
+            Assert.NotNull(tab.SignedIn);
+            Assert.True(tab.IsTableOpen);
+            Assert.True(tab.HasUnsavedTableEdits);
+            Assert.Equal(ReviewTableWording.SessionEndedUnderUnsavedEdits(expired: false), tab.FindControl<TextBlock>("QueueMessageText")!.Text);
+        });
+    }
+
+    // ###########################################################################################
     // *** TAKEN OFF THE LAST BOARD, NOTHING IS WAITING (code review, 2026-11-02). *** The queue and BETA
     // checks answer 403 from then on, every minute; that read as "could not ask" and left the lists
     // alone, so the tab's badge and the buttons went on saying "2" until signing out, and "hide the tab

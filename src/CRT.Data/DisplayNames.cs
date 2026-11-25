@@ -16,8 +16,8 @@ namespace Handlers.DataHandling
     //   - 2 to 30 characters, counted as kept - trimmed;
     //   - only the letters A-Z (either case), the digits 0-9 and + - / @ . [ ] ( ) - no spaces, no letters of other
     //     alphabets, so no name can be written in lookalike letters ("Dennis" with a Cyrillic "e");
-    //   - UNIQUE, ignoring capitals: "Dennis" and "dennis" are one name (SameName, Key). That half is the server's, which
-    //     alone knows the other names (IAccountStore.IsDisplayNameTakenAsync).
+    //   - UNIQUE, ignoring capitals and the spaces around it: "Dennis" and "dennis" are one name. That half is the server's,
+    //     which alone knows the other names, and asks its database (IAccountStore.IsDisplayNameTakenAsync).
     //
     // *** A NAME FROM BEFORE IS KEPT. *** The rule is asked of a name being SET; an account named under the old rule keeps
     // its name until it is changed, and two old accounts may still share one (INSTALLING.md says how to look).
@@ -95,16 +95,6 @@ namespace Handlers.DataHandling
         public static bool IsAllowed(char character) =>
             character is (>= 'A' and <= 'Z') or (>= 'a' and <= 'z') or (>= '0' and <= '9') ||
             DisplayNames.AllowedMarks.Contains(character, StringComparison.Ordinal);
-
-        // ###########################################################################################
-        // Whether two names are ONE name: the same, ignoring capitals and the spaces around them. Ordinal, on the rule's
-        // letters - an old name with other letters is compared as it is, and matches only itself in other capitals.
-        // ###########################################################################################
-        public static bool SameName(string? first, string? second) =>
-            string.Equals(DisplayNames.Key(first), DisplayNames.Key(second), StringComparison.Ordinal);
-
-        // The form two names are compared in: trimmed, in capitals.
-        public static string Key(string? name) => (name?.Trim() ?? string.Empty).ToUpperInvariant();
 
         // A character as a sentence can show it - one that cannot be seen (a control character, a zero-width one) by its
         // code, so the sentence never says "cannot hold """.

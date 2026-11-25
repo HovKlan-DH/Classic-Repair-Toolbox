@@ -208,7 +208,7 @@ namespace CRT.Server.Tests
 
             Assert.Equal(
                 TokenRedemptionOutcome.Invalid,
-                await AccountFlows.VerifyEmailAsync(token, store, EndpointNegativeTests.Now));
+                await AccountFlows.VerifyEmailAsync(token, store, new FakeEmailSender(), EndpointNegativeTests.Now));
         }
 
         [Theory]

@@ -70,7 +70,7 @@
                 <Grid ColumnDefinitions="*,Auto">
                     <TextBox Grid.Column="0"
                              x:Name="InviteEmailBox"
-                             PlaceholderText="Or invite somebody new - their email address" />
+                             PlaceholderText="Or type an email address - invited, or added at once if it has an account" />
                     <Button Grid.Column="1"
                             Classes="Accept"
                             x:Name="InviteButton"
