@@ -129,6 +129,23 @@ public sealed class MainToursTests : IDisposable
     // at a time; asked at once, the tour was refused for it once in a full run (2026-11-12). What held it back is the
     // assertion's message (TourWaitReasonForTests).
     // ###########################################################################################
+    // ###########################################################################################
+    // The newest version a tab's tour has a step of - "seen all of it" (2026-11-25). These tests wrote "4.0.0" for that while
+    // every step was 4.0.0's; the account icon's step is 4.1.0's, and the next feature's will be the next version's.
+    // ###########################################################################################
+    private static string Newest(string tab)
+    {
+        string newest = "0.0.0";
+
+        foreach (TourStep step in TourCatalogue.All.Single(tour => tour.TabName == tab).Steps)
+        {
+            if (CrtVersion.TryParse(step.Since, out CrtVersion? since) && CrtVersion.TryParse(newest, out CrtVersion? most) && since! > most!)
+                newest = step.Since;
+        }
+
+        return newest;
+    }
+
     private static bool Offered(CRT.Main main)
     {
         for (int attempt = 0; attempt < 200 && main.TourMustWait(); attempt++)
@@ -242,7 +259,7 @@ public sealed class MainToursTests : IDisposable
                 overlay.Next();
             }
 
-            Assert.Equal("4.0.0", UserSettings.IntroductionTourSeen("Schematics"));
+            Assert.Equal(MainToursTests.Newest("Schematics"), UserSettings.IntroductionTourSeen("Schematics"));
             Assert.False(main.OfferTourNow());
             return Task.CompletedTask;
         });
@@ -368,8 +385,8 @@ public sealed class MainToursTests : IDisposable
     [Fact]
     public async Task A_step_left_out_comes_back_whole_once_it_is_on_screen()
     {
-        UserSettings.SetIntroductionTourSeen("Schematics", "4.0.0", ["Below the component list", "Highlight a trace"]);
-        UserSettings.SetIntroductionTourSeen("Contribute", "4.0.0");
+        UserSettings.SetIntroductionTourSeen("Schematics", MainToursTests.Newest("Schematics"), ["Below the component list", "Highlight a trace"]);
+        UserSettings.SetIntroductionTourSeen("Contribute", MainToursTests.Newest("Contribute"));
 
         await this.WithMainAsync(main =>
         {
@@ -389,7 +406,7 @@ public sealed class MainToursTests : IDisposable
             Assert.False(overlay.IsShowing);
 
             Assert.Equal(["Highlight a trace"], UserSettings.IntroductionTourStepsLeftOut("Schematics"));
-            Assert.Equal("4.0.0", UserSettings.IntroductionTourSeen("Schematics"));
+            Assert.Equal(MainToursTests.Newest("Schematics"), UserSettings.IntroductionTourSeen("Schematics"));
             Assert.False(main.OfferTourNow());
             return Task.CompletedTask;
         }, withRegions: true);
@@ -447,7 +464,7 @@ public sealed class MainToursTests : IDisposable
             Assert.True(Offered(main), main.TourWaitReasonForTests());
             Overlay(main).Skip();
 
-            Assert.Equal("4.0.0", UserSettings.IntroductionTourSeen("Schematics"));
+            Assert.Equal(MainToursTests.Newest("Schematics"), UserSettings.IntroductionTourSeen("Schematics"));
             Assert.Empty(UserSettings.IntroductionTourStepsLeftOut("Schematics"));
             return Task.CompletedTask;
         });
@@ -456,7 +473,7 @@ public sealed class MainToursTests : IDisposable
     [Fact]
     public async Task A_tour_of_what_was_left_out_skipped_forgets_it()
     {
-        UserSettings.SetIntroductionTourSeen("Schematics", "4.0.0", ["Below the component list", "Highlight a trace"]);
+        UserSettings.SetIntroductionTourSeen("Schematics", MainToursTests.Newest("Schematics"), ["Below the component list", "Highlight a trace"]);
 
         await this.WithMainAsync(main =>
         {
@@ -477,8 +494,8 @@ public sealed class MainToursTests : IDisposable
     [Fact]
     public async Task Steps_left_out_that_cannot_be_said_whole_are_not_waited_for()
     {
-        UserSettings.SetIntroductionTourSeen("Schematics", "4.0.0", ["Highlight a trace"]);
-        UserSettings.SetIntroductionTourSeen("Contribute", "4.0.0");
+        UserSettings.SetIntroductionTourSeen("Schematics", MainToursTests.Newest("Schematics"), ["Highlight a trace"]);
+        UserSettings.SetIntroductionTourSeen("Contribute", MainToursTests.Newest("Contribute"));
 
         await this.WithMainAsync(async main =>
         {
@@ -571,7 +588,7 @@ public sealed class MainToursTests : IDisposable
     [Fact]
     public async Task Coming_back_to_the_front_offers_only_a_tour_held_back_by_it()
     {
-        UserSettings.SetIntroductionTourSeen("Schematics", "4.0.0", ["Below the component list"]);
+        UserSettings.SetIntroductionTourSeen("Schematics", MainToursTests.Newest("Schematics"), ["Below the component list"]);
 
         await this.WithMainAsync(main =>
         {
@@ -748,8 +765,8 @@ public sealed class MainToursTests : IDisposable
     [Fact]
     public async Task A_tab_with_nothing_to_offer_is_not_waited_for()
     {
-        UserSettings.SetIntroductionTourSeen("Schematics", "4.0.0");
-        UserSettings.SetIntroductionTourSeen("Contribute", "4.0.0");
+        UserSettings.SetIntroductionTourSeen("Schematics", MainToursTests.Newest("Schematics"));
+        UserSettings.SetIntroductionTourSeen("Contribute", MainToursTests.Newest("Contribute"));
 
         await this.WithMainAsync(async main =>
         {
@@ -821,7 +838,7 @@ public sealed class MainToursTests : IDisposable
             Dispatcher.UIThread.RunJobs();
 
             Assert.False(Overlay(main).IsShowing);
-            Assert.Equal("4.0.0", UserSettings.IntroductionTourSeen("Schematics"));
+            Assert.Equal(MainToursTests.Newest("Schematics"), UserSettings.IntroductionTourSeen("Schematics"));
             return Task.CompletedTask;
         });
     }
@@ -845,7 +862,7 @@ public sealed class MainToursTests : IDisposable
             Assert.Equal("New in 4.0.0", Overlay(main).GetControl<TextBlock>("NewBadgeText").Text);
 
             Overlay(main).Skip();
-            Assert.Equal("4.0.0", UserSettings.IntroductionTourSeen("Schematics"));
+            Assert.Equal(MainToursTests.Newest("Schematics"), UserSettings.IntroductionTourSeen("Schematics"));
             Assert.False(main.OfferTourNow());
             return Task.CompletedTask;
         });
@@ -858,7 +875,7 @@ public sealed class MainToursTests : IDisposable
     [Fact]
     public async Task Forced_tours_show_whatever_was_seen_and_remember_nothing()
     {
-        UserSettings.SetIntroductionTourSeen("Schematics", "4.0.0");
+        UserSettings.SetIntroductionTourSeen("Schematics", MainToursTests.Newest("Schematics"));
 
         await this.WithMainAsync(main =>
         {
@@ -869,7 +886,7 @@ public sealed class MainToursTests : IDisposable
 
             Overlay(main).Skip();
 
-            Assert.Equal("4.0.0", UserSettings.IntroductionTourSeen("Schematics"));
+            Assert.Equal(MainToursTests.Newest("Schematics"), UserSettings.IntroductionTourSeen("Schematics"));
             Assert.False(main.OfferTourNow());
             return Task.CompletedTask;
         });
@@ -895,7 +912,7 @@ public sealed class MainToursTests : IDisposable
     [Fact]
     public async Task The_contribute_tab_has_a_tour_of_its_own()
     {
-        UserSettings.SetIntroductionTourSeen("Schematics", "4.0.0");
+        UserSettings.SetIntroductionTourSeen("Schematics", MainToursTests.Newest("Schematics"));
 
         await this.WithMainAsync(main =>
         {
@@ -918,7 +935,7 @@ public sealed class MainToursTests : IDisposable
             Assert.Null(overlay.HoleShown);
 
             overlay.Next();
-            Assert.Equal("4.0.0", UserSettings.IntroductionTourSeen("Contribute"));
+            Assert.Equal(MainToursTests.Newest("Contribute"), UserSettings.IntroductionTourSeen("Contribute"));
             return Task.CompletedTask;
         });
     }
@@ -1108,7 +1125,7 @@ public sealed class MainToursTests : IDisposable
     {
         foreach (TourOfTab tour in TourCatalogue.All)
         {
-            UserSettings.SetIntroductionTourSeen(tour.TabName, "4.0.0");
+            UserSettings.SetIntroductionTourSeen(tour.TabName, MainToursTests.Newest(tour.TabName));
         }
 
         await this.WithMainAsync(main =>

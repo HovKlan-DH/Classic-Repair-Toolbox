@@ -106,6 +106,16 @@ namespace Handlers.MaintainerHandling
             $"{ReviewApiRoutes.Me(baseAddress)}/password";
 
         // ###########################################################################################
+        // Accounts for everybody (2026-11-25) - CRT's account window. Making one, before anybody is signed in; and a new link
+        // to confirm the address, signed in.
+        // ###########################################################################################
+        public static string Register(string baseAddress) =>
+            $"{ReviewApiRoutes.Normalise(baseAddress)}/api/accounts/register";
+
+        public static string SendVerificationAgain(string baseAddress) =>
+            $"{ReviewApiRoutes.Me(baseAddress)}/verify-again";
+
+        // ###########################################################################################
         // The three review DECISIONS (task 5).
         //
         // Separate routes rather than one taking the outcome as a body field, mirroring the

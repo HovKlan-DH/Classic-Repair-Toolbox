@@ -79,6 +79,16 @@ namespace CRT.Server.Handlers.Accounts
             if (failures.Count > 0)
                 return RegistrationOutcome.Invalid(failures);
 
+            // ---- A name another account has ----------------------------------------------------
+            //
+            // Unique since 2026-11-25 (owner request: "it needs to be unique for all users"). SAID, unlike a taken address:
+            // a display name is what others SEE, so saying it is taken tells nobody anything they could not read - and it
+            // is asked whatever the address is, so the answer says nothing of the address either. Before the mail limit,
+            // so a person whose mail budget is spent is still told to pick another name rather than wait for a mail that
+            // never comes; the lookup costs one cheap query.
+            if (await store.IsDisplayNameTakenAsync(request.DisplayName!.Trim(), exceptAccountId: null, cancellationToken))
+                return RegistrationOutcome.Invalid([DisplayNames.Taken]);
+
             // ---- The mail rate limit -----------------------------------------------------------
             //
             // *** BOTH BRANCHES BELOW SEND MAIL, so this endpoint is a way to put a message into
@@ -135,7 +145,8 @@ namespace CRT.Server.Handlers.Accounts
                         existing.Email,
                         existing.DisplayName,
                         resetToken,
-                        (int)AccountFlows.PasswordResetTokenLifetime.TotalHours),
+                        (int)AccountFlows.PasswordResetTokenLifetime.TotalHours,
+                        AccountPages.Link(AccountPages.BaseUrl(options.PublicApiBaseUrl), "forgot-password")),
                     cancellationToken);
 
                 await store.WriteAuditAsync(
@@ -162,6 +173,32 @@ namespace CRT.Server.Handlers.Accounts
                     now),
                 cancellationToken);
 
+            await AccountFlows.SendVerificationAsync(
+                accountId, request.Email.Trim(), request.DisplayName.Trim(), store, mailer, options, now, cancellationToken);
+
+            await store.WriteAuditAsync(
+                new AuditEntry(accountId, request.Email.Trim(), "register", $"account:{accountId}", null, now),
+                cancellationToken);
+
+            return RegistrationOutcome.Accepted();
+        }
+
+        // ###########################################################################################
+        // THE VERIFICATION MAIL - a new single-use link, at registration and when a signed-in account asks for it again
+        // (AccountSelfServiceFlows.SendVerificationAgainAsync, CRT's "Send the mail again" - since 2026-11-25, when accounts
+        // opened to everybody: the link lasts a day, and a person who missed it had no way to another one). A link mailed
+        // before stays good until it expires: each confirms the same address.
+        // ###########################################################################################
+        internal static async Task SendVerificationAsync(
+            long accountId,
+            string email,
+            string displayName,
+            IAccountStore store,
+            IEmailSender mailer,
+            ServerOptions options,
+            DateTimeOffset now,
+            CancellationToken cancellationToken)
+        {
             string verificationToken = SecureToken.Create();
 
             await store.CreateTokenAsync(
@@ -175,17 +212,11 @@ namespace CRT.Server.Handlers.Accounts
 
             await mailer.SendAsync(
                 EmailTemplates.Verification(
-                    request.Email.Trim(),
-                    request.DisplayName.Trim(),
+                    email,
+                    displayName,
                     AccountFlows.BuildLink(options, "verify", verificationToken),
                     (int)AccountFlows.VerificationTokenLifetime.TotalHours),
                 cancellationToken);
-
-            await store.WriteAuditAsync(
-                new AuditEntry(accountId, request.Email.Trim(), "register", $"account:{accountId}", null, now),
-                cancellationToken);
-
-            return RegistrationOutcome.Accepted();
         }
 
         // ###########################################################################################
@@ -629,7 +660,8 @@ namespace CRT.Server.Handlers.Accounts
                     account.Email,
                     account.DisplayName,
                     token,
-                    (int)AccountFlows.PasswordResetTokenLifetime.TotalHours),
+                    (int)AccountFlows.PasswordResetTokenLifetime.TotalHours,
+                        AccountPages.Link(AccountPages.BaseUrl(options.PublicApiBaseUrl), "forgot-password")),
                 cancellationToken);
 
             await store.WriteAuditAsync(
@@ -812,7 +844,7 @@ namespace CRT.Server.Handlers.Accounts
         // 2026-09-22, producing ".../api/accounts/reset?token=..." - a path nothing is mapped at,
         // because resetting needs a new PASSWORD and so is POST /reset-password. Every reset mail
         // ever sent therefore led to a 404, unnoticed from Phase 3 until the project owner clicked
-        // one. Reset mails now carry a code to paste into the Maintainer tab instead.
+        // one. Reset mails carry a code to paste instead - into CRT's account window, or the account web page.
         //
         // Before adding a second caller, confirm the path is mapped with MapGet in
         // AccountEndpoints - a wrong value here fails in a mail client days later, not at build.

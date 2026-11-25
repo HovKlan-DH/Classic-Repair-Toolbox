@@ -53,6 +53,9 @@ namespace CRT.Server.Handlers.Accounts
             accounts.MapPost("/me/email", AccountEndpoints.RequestEmailChangeAsync);
             accounts.MapPost("/me/email/confirm", AccountEndpoints.ConfirmEmailChangeAsync);
             accounts.MapPost("/me/password", AccountEndpoints.ChangePasswordAsync);
+
+            // The verification mail again (2026-11-25) - CRT's account window, "Send the mail again". No body.
+            accounts.MapPost("/me/verify-again", AccountEndpoints.SendVerificationAgainAsync);
         }
 
         // ###########################################################################################
@@ -61,7 +64,7 @@ namespace CRT.Server.Handlers.Accounts
         // 202 for both a new address and one already registered - see the header.
         // ###########################################################################################
         private static async Task<IResult> RegisterAsync(
-            RegisterBody body,
+            global::Handlers.DataHandling.RegisterAccountRequest body,
             HttpContext context,
             IAccountStore store,
             IEmailSender mailer,
@@ -71,9 +74,9 @@ namespace CRT.Server.Handlers.Accounts
         {
             RegistrationOutcome outcome = await AccountFlows.RegisterAsync(
                 new RegistrationRequest(
-                    body.Email,
-                    body.Password,
-                    body.DisplayName,
+                    body?.Email,
+                    body?.Password,
+                    body?.DisplayName,
                     AccountEndpoints.ClientAddress(context)),
                 store,
                 mailer,
@@ -98,28 +101,47 @@ namespace CRT.Server.Handlers.Accounts
         // unprotectable against a prefetching mail client or scanner following the link, which is
         // why verification is not a security boundary on its own - it proves the address receives
         // mail, nothing more.
+        //
+        // *** A PAGE, NOT JSON, since 2026-11-25. *** Only a browser ever opens it - no CRT calls it - and it showed the
+        // browser raw JSON. The same page as /account/verify (AccountPages.Verified, AccountPageEndpoints), here so every link
+        // mailed keeps working whatever Apache forwards.
         // ###########################################################################################
         private static async Task<IResult> VerifyAsync(
             string? token,
+            HttpContext context,
             IAccountStore store,
+            ServerOptions options,
             CancellationToken cancellationToken)
         {
             TokenRedemptionOutcome outcome =
                 await AccountFlows.VerifyEmailAsync(token, store, DateTimeOffset.UtcNow, cancellationToken);
 
-            return outcome switch
-            {
-                TokenRedemptionOutcome.Success =>
-                    Results.Ok(new { message = "Your address is confirmed. You can close this page." }),
+            (string html, int status) = AccountPages.Verified(AccountPages.BaseUrl(options.PublicApiBaseUrl), outcome);
 
-                TokenRedemptionOutcome.AlreadyUsed =>
-                    Results.Ok(new { message = "That link has already been used. Your address is confirmed." }),
+            return AccountPageEndpoints.Page(context, html, status);
+        }
 
-                TokenRedemptionOutcome.Expired =>
-                    Results.BadRequest(new { message = "That link has expired. Ask for a new one from the app." }),
+        // ###########################################################################################
+        // POST /api/accounts/me/verify-again - see AccountSelfServiceFlows.SendVerificationAgainAsync. ChangeResult's
+        // answers: 200 with AccountChangeAnswer, 401, or 429 with Retry-After.
+        // ###########################################################################################
+        private static async Task<IResult> SendVerificationAgainAsync(
+            HttpContext context,
+            IAccountStore store,
+            IEmailSender mailer,
+            ServerOptions options,
+            CancellationToken cancellationToken)
+        {
+            AccountChangeOutcome outcome = await AccountSelfServiceFlows.SendVerificationAgainAsync(
+                AccountEndpoints.BearerToken(context),
+                AccountEndpoints.ClientAddress(context),
+                store,
+                mailer,
+                options,
+                DateTimeOffset.UtcNow,
+                cancellationToken);
 
-                _ => Results.BadRequest(new { message = "That link is not valid. Check you copied all of it." })
-            };
+            return AccountEndpoints.ChangeResult(outcome, context);
         }
 
         // ###########################################################################################
@@ -351,7 +373,7 @@ namespace CRT.Server.Handlers.Accounts
 
             return Results.Accepted(value: new
             {
-                message = "If that address has an account, a reset link is on its way to it."
+                message = "If that address has an account, a code to set a new password is on its way to it."
             });
         }
 
@@ -456,8 +478,6 @@ namespace CRT.Server.Handlers.Accounts
         // Bodies are records so the JSON binder can construct them, and are deliberately all
         // nullable strings: validation is AccountRules' job, and a binder that rejected a missing
         // field would answer with a framework-shaped error rather than our own message.
-        public sealed record RegisterBody(string? Email, string? Password, string? DisplayName);
-
         public sealed record LoginBody(string? Email, string? Password);
 
         public sealed record RefreshBody(string? RefreshToken);

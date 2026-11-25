@@ -590,6 +590,24 @@ reflection) and `UpdateChannelFilter` (which release stages a user opted into).
   (`ComposeLinkedText`), searched and listed as `RichNote.PlainOf`. **A TextBox lets go of its
   selection as its `CaretIndex` is set** (Avalonia's `OnCaretIndexChanged`) - set the caret first, then
   the selection.
+- **EVERYTHING ON EVERY TAB CAN BE REACHED ON CRT'S SMALLEST WINDOW, 800 x 500, AND IN EVERY DIALOG ON A LAPTOP'S
+  SCREEN** (owner report, 2026-11-25: on Linux the "Maintainer" tab's "Reset code" lay below the window, "there is no
+  possibility for me to scroll down ... it makes the UI useless in these situation"; the search that followed found
+  "Feedback", "Oscilloscope", "Add a new board" - 732 high as made - the component list on the far left squeezed to 9 px,
+  and the "Contribute" tab's top line at 800 wide). So **what can be taller than the room it gets is in a ScrollViewer**:
+  a form centred in a tab stays centred in one (the scroll presenter arranges its content at least as high as the
+  viewport - the sign-in, `SignInScroller`); **a page with a part that STRETCHES gets a height of its own**
+  (`ScrollingPageGeometry`, the "Feedback" tab's `FitPage`) - inside a ScrollViewer content is measured with no limit, so
+  the stretching part would grow with what it holds and stop scrolling in itself, and Avalonia clips a desired size to
+  the room offered, so a page cannot be asked its least by measuring it short; **a dialog sized to its content that can
+  outgrow a screen uses `ScreenSizedDialog`** (capped at the working area, its form scrolling above a row of buttons - the
+  Submit dialog and "Add a new board"); the category lists on the far left take at most half the room they share with
+  the component list (`SideListsGeometry`), and "Contribute"'s buttons go under its top line on a narrow tab
+  (`TopLineGeometry`). **Machine-checked:** `MainSmallestWindowTests` reads every tab through `ControlsInReach` (a box,
+  button, list or tick less than half inside the window with no scroll viewer to bring it in, or squeezed too low to use)
+  - at TWICE the narrowest width, as the headless font is twice as wide as a real one and as high. Left as they are on
+  purpose: at exactly 800 wide "Contribute"'s columns keep their minimum widths (some 20 px cut at the right) and its
+  left column its 120 (the bottom of "Add component" under a 500-high window) - both still clickable.
 - **Every tooltip opens at its control's EDGE, never under the pointer** (`Handlers/Theme/ToolTipPlacement`,
   registered in `App`'s static constructor). Avalonia's default could land a tooltip over the pointer,
   and CRT's tooltips are popup windows, so the next click went to the tooltip (Approve needed three
@@ -3040,6 +3058,30 @@ about its centre (`Main.DataSyncStatusIconSpinAngle`). **The "KiCad nets" panel 
   `Main.ShareMaintainerSignIn`): the Feedback tab and the Submit dialog use the account's address,
   read only, and submissions go with the account's token. `ContactAddress` is the one rule. It stays
   shared whatever the Configuration tab says, until signing out.
+- **ACCOUNTS FOR EVERYBODY, SIGNED IN WITH THE ACCOUNT ICON** (owner requests, 2026-11-25: "we now need a possibility to
+  have user accounts in CRT. This user account can then be used for "Maintainer" tab or this collection thing, but also
+  anyone else can register an account"; "Allow registration both places - it does not matter, but it should be clear that it
+  gives access to both"; step 1 of the oscilloscope collections, see the memory note): the person icon right of the theme's
+  in the window's top right corner (`Main.Account.cs`) opens `AccountWindow` (`Main/Account/`) - **Sign in**, **Create an
+  account**, **I forgot my password** (ask for a code, then the code and a password, the web page's two steps), **I have an
+  invitation**, and signed in **My account** (`MyAccountView`, ALSO still under the Maintainer tab's Account screen) with a
+  notice while the address is not confirmed and **Send the mail again**. The tab's sign-in form, reset panel and invitation
+  went there; the tab keeps what it is and a **Sign in** that opens the window (`SignInWanted`). **The session is still the
+  Maintainer tab's** - the window hands a sign-in over (`AccountHost.UseSignIn` -> `TabMaintainer.UseSignInAsync`) and works
+  on the tab's client; never give the window a session of its own. An account that maintains no board and is no
+  administrator is said so on the tab instead of the queue (`ApplyStanding`, from GET /api/accounts/me). The words a mail,
+  the window and the web pages share are CRT.Data's `AccountWording`.
+- **A DISPLAY NAME IS UNIQUE AND OF ONE RULE** (owner requests, 2026-11-25: "it needs to be unique for all users", "only
+  normal A-Z + 0-9 and then some common special charatcers like: +-/@.[]() ... max length 30"): CRT.Data's `DisplayNames`,
+  2 to 30 characters, unique ignoring capitals - asked of a name being SET (registering, "My account", an invitation), on the
+  server (`AccountRules.ValidateDisplayName`, `IAccountStore.IsDisplayNameTakenAsync`) and as it is typed in CRT. A name set
+  before is kept; no unique index holds it (old names may share one). Labelled **Display name**, "Name or handle" until then.
+- **THE ACCOUNT WEB PAGES** (server 13.0.0, `/account/` - Apache forwards it, INSTALLING.md): making an account, confirming
+  its address (`/api/accounts/verify` answers the same page), "I forgot my password" with the code typed on the page. A rim
+  over the very flows the JSON routes call (`AccountPageEndpoints`), the HTML pure and tested (`AccountPages`): every word
+  typed encoded, no script, one style block allowed by its hash in the Content-Security-Policy - change `AccountPages.Css`
+  and the hash follows by itself. Never a page that acts on a signed-in person - there is no web sign-in yet, and no
+  anti-forgery token because of that; a page that needs one is the moment to add both.
 - **The tab's badge** (`MaintainerModes.TabAttention`): the two queues' attention counts ADDED UP - and,
   for the administrator, the oscilloscope models waiting (the queue answer's `OscilloscopeModelsWaiting`,
   badged on the Management tab and on its "Oscilloscope models" entry too - owner request, 2026-11-07: "indicate
@@ -3067,7 +3109,12 @@ about its centre (`Main.DataSyncStatusIconSpinAngle`). **The "KiCad nets" panel 
   (`MaintainerModes.EntryToOpen`).
 - **Account**: every maintainer has "My account" (name, address, password, Sign out -
   `MyAccountView`; the session alone is enough, no current password - an accepted risk) and "Server
-  version", and nothing else.
+  version", and nothing else. **"Server version" is panels, then the server's changelog** (owner requests, 2026-11-24:
+  "make the "Account" page a little prettier ... so it is more easy to overview", 'have a "Changelog" like there is in
+  "About"'; `ServerVersionView`, words and states `ServerVersionDisplay`): "Server", "Automatic updates" and, while any
+  wait, "Mail" - each drawn as "Board status" draws its panels (an edge and an icon per state, a line in words, the
+  facts in two columns, values bold) - and under them RELEASE-NOTES.md as the server sends it (above, "THE SERVER'S
+  CHANGELOG"), one virtualized list as the "About" tab, built again only when its text changed.
 - **Management** (owner request, 2026-11-07: 'a new tab named "Management" (shown before "Account") - it should only be
   visible by me ... show a "lock" icon. Then move all the menu items from "Account" into there'; `TabMaintainer.Account.cs`,
   `ShowManagementScreen`): the administrator's entries - Maintainers, Order of boards, Unused files, Rebuild checksum
@@ -4001,6 +4048,22 @@ without the `+<commit>` metadata (the endpoint is public). **Machine-checked:** 
 [hooks/server-version-bump.sh](hooks/server-version-bump.sh) warns when a file the service is built
 from changed while the version stood still - "nothing a caller can observe changed" is sometimes the
 right answer.
+
+**THE SERVER'S CHANGELOG IS YOURS TO KEEP, ALWAYS, IN THE SAME CHANGE** (owner request, 2026-11-24: "you should
+create a changelog for the changes done in the server, just like I do for the application. You should always do
+this yourself, so do have a rule for that, when there are server changes, so I can check what has changed in server
+also"). It is [RELEASE-NOTES.md](../src/CRT.Server/RELEASE-NOTES.md) - one section per server version, newest first,
+back to `1.0.0` - and the project owner reads it in CRT, under the "Maintainer" tab's Account > "Server version",
+drawn as the "About" tab draws CHANGELOG.md: the server is BUILT with the file inside it (`ServerReleaseNotes`, an
+`EmbeddedResource`) and sends it with `GET /api/review/server-status`, so the page shows the changelog of the server
+actually deployed - the test instance's from main, the live one's from its release. So: **every change to what the
+service does gets its bullets in the same change as its bump** - never "notes later", never a bump without them, a
+section reworded only to make it truer. The bullets are CHANGELOG.md's kind: one line each, what a maintainer, a
+contributor or the project owner notices, no class or file names and no reasons (the why is VERSION.md's row); a
+change nobody can observe says "Nothing changed in what the server answers". A version once pushed to main is
+deployed on the test instance, so a later change to it is a NEW version with a section of its own. The `Stop` hook
+above warns when the version moved and its section is missing. Unlike CHANGELOG.md, which is the project owner's
+alone ("Hands off CHANGELOG.md"), this file is written by Claude - never copy text from one into the other.
 
 **Say the API version when it MOVES** (owner request, 2026-10-09: "whenever you change anything for
 the API, then do comment what is the API version on SERVER and APPLICATION, so I always can track

@@ -1049,6 +1049,7 @@ public sealed class TabMaintainerModesTests
         {
             var main = new TabMaintainer();
             string version = "4.6.0";
+            string application = ClientVersionContract.ApiRevision.ToString(global::System.Globalization.CultureInfo.InvariantCulture);
             int asked = 0;
 
             main.UseClientForTests(new ReviewApiClient("https://review.invalid", new HttpClient(new AnsweringHttpHandler(request =>
@@ -1057,7 +1058,7 @@ public sealed class TabMaintainerModesTests
                     return AnsweringHttpHandler.Refused();
 
                 asked++;
-                return AnsweringHttpHandler.Json($"{{\"status\":\"ok\",\"version\":\"{version}\",\"utc\":\"2026-10-04T12:00:00+00:00\",\"apiRevision\":1}}");
+                return AnsweringHttpHandler.Json($"{{\"status\":\"ok\",\"version\":\"{version}\",\"utc\":\"2026-10-04T12:00:00+00:00\",\"apiRevision\":{application}}}");
             }))));
 
             TabMaintainerModesTests.Queue(main, isAdministrator: false);
@@ -1069,8 +1070,9 @@ public sealed class TabMaintainerModesTests
 
             await TabMaintainerModesTests.ChooseAccountEntryAsync(main, "ServerVersionItem");
 
-            string application = ClientVersionContract.ApiRevision.ToString(global::System.Globalization.CultureInfo.InvariantCulture);
-            Assert.Equal($"Server version [4.6.0]\nAPI server version [1]\nAPI application version [{application}]", main.ServerVersionLineForTests);
+            Assert.Equal(
+                $"Server: This CRT and the server speak the same API\nVersion: 4.6.0\nAPI revision: {application}\nThis CRT's API revision: {application}",
+                main.ServerVersionLineForTests);
             Assert.False(TabMaintainerModesTests.Shown(main, "MyAccountPanel"));
 
             // Gone with another entry, and with another screen.
@@ -1087,7 +1089,69 @@ public sealed class TabMaintainerModesTests
             await main.ShowModeAsync(MaintainerMode.Account);
 
             Assert.Equal(askedBefore + 1, asked);
-            Assert.StartsWith("Server version [4.6.1]", main.ServerVersionLineForTests);
+            Assert.Contains("\nVersion: 4.6.1\n", main.ServerVersionLineForTests);
+        });
+    }
+
+    // ###########################################################################################
+    // *** THE SERVER'S OWN CHANGELOG UNDER ITS PANELS (owner request, 2026-11-24: 'have a "Changelog" like there is
+    // in "About" ... so I can check what has changed in server also'). *** From server-status, asked with the
+    // session, and listed block by block as the "About" tab lists CHANGELOG.md. Read again unchanged it is NOT built
+    // again - the page would rebuild hundreds of blocks and jump back each time the entry is chosen; a new one
+    // replaces it; a server that answers without one, older than 12.2.0, is said to send none.
+    // ###########################################################################################
+    [Fact]
+    public async Task The_server_version_entry_lists_the_servers_changelog_and_builds_it_again_only_when_it_changed()
+    {
+        await UiTest.RunAsync(async () =>
+        {
+            var main = new TabMaintainer();
+            int application = ClientVersionContract.ApiRevision;
+            string? changelog = "# 12.2.0, 2026-November-24\n---\n- One\n- Two\n\n# 12.1.1, 2026-November-24\n---\n- Three";
+
+            main.UseClientForTests(new ReviewApiClient("https://review.invalid", new HttpClient(new AnsweringHttpHandler(request =>
+                request.RequestUri!.AbsolutePath switch
+                {
+                    "/api/health" => AnsweringHttpHandler.Json($"{{\"status\":\"ok\",\"version\":\"12.2.0\",\"utc\":\"2026-11-24T12:00:00+00:00\",\"apiRevision\":{application}}}"),
+                    "/api/review/server-status" => AnsweringHttpHandler.Json(global::System.Text.Json.JsonSerializer.Serialize(new { unsentMails = 0, changelog })),
+                    _ => AnsweringHttpHandler.Refused(),
+                }))));
+
+            main.UseSessionForTests(new ReviewSession("token", DateTimeOffset.UtcNow.AddDays(1), 1, "dh@example.com", "Dennis"));
+
+            TabMaintainerModesTests.Queue(main, isAdministrator: false);
+            await main.ShowModeAsync(MaintainerMode.Account);
+            await TabMaintainerModesTests.ChooseAccountEntryAsync(main, "ServerVersionItem");
+
+            ServerVersionView page = main.ServerVersionPageForTests;
+
+            // Two versions: each heading and each line of its list a block - the dashes under a heading are its line,
+            // no block of their own.
+            Assert.Equal(["Good"], page.PanelStatesForTests);
+            Assert.True(page.ChangelogTitleShownForTests);
+            Assert.False(page.NoChangelogShownForTests);
+            Assert.Equal(5, page.ChangelogBlocksForTests);
+            object? first = page.FirstChangelogBlockForTests;
+
+            // Chosen again with the same changelog: the very blocks stay.
+            await TabMaintainerModesTests.ChooseAccountEntryAsync(main, "MyAccountItem");
+            await TabMaintainerModesTests.ChooseAccountEntryAsync(main, "ServerVersionItem");
+            Assert.Same(first, page.FirstChangelogBlockForTests);
+
+            // A deploy since, with a version more: built again.
+            changelog = "# 12.3.0, 2026-November-25\n---\n- New\n\n" + changelog;
+            await TabMaintainerModesTests.ChooseAccountEntryAsync(main, "MyAccountItem");
+            await TabMaintainerModesTests.ChooseAccountEntryAsync(main, "ServerVersionItem");
+            Assert.NotSame(first, page.FirstChangelogBlockForTests);
+            Assert.Equal(7, page.ChangelogBlocksForTests);
+
+            // An older server answers without one: said, and nothing listed.
+            changelog = null;
+            await TabMaintainerModesTests.ChooseAccountEntryAsync(main, "MyAccountItem");
+            await TabMaintainerModesTests.ChooseAccountEntryAsync(main, "ServerVersionItem");
+            Assert.True(page.ChangelogTitleShownForTests);
+            Assert.True(page.NoChangelogShownForTests);
+            Assert.Equal(0, page.ChangelogBlocksForTests);
         });
     }
 
@@ -1116,7 +1180,11 @@ public sealed class TabMaintainerModesTests
             await main.ShowModeAsync(MaintainerMode.Account);
             await TabMaintainerModesTests.ChooseAccountEntryAsync(main, "ServerVersionItem");
 
-            Assert.StartsWith("Server version: the server did not answer\nAPI application version [", main.ServerVersionLineForTests);
+            Assert.StartsWith("Server: The server did not answer\nThis CRT's API revision: ", main.ServerVersionLineForTests);
+            Assert.Equal(["Problem"], main.ServerVersionPageForTests.PanelStatesForTests);
+
+            // And nothing said about a changelog it never got to.
+            Assert.False(main.ServerVersionPageForTests.ChangelogTitleShownForTests);
         });
     }
 

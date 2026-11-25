@@ -47,7 +47,8 @@ namespace Handlers.MaintainerHandling
 
         // ###########################################################################################
         // GET /api/review/server-status (2026-10-13): CRT.Data's ServerStatusAnswer - how many mails
-        // the server could not send, and how it keeps itself up to date (server 10.3.0). A count that
+        // the server could not send, how it keeps itself up to date (server 10.3.0), and its own changelog
+        // (server 12.2.0). A count that
         // is no whole number of zero or more reads as not said (null); an answer that is no object is
         // no answer; "updates" that is no object, or says nothing of being set up, is not said (an older
         // server's).
@@ -81,7 +82,10 @@ namespace Handlers.MaintainerHandling
                     ReviewApiParser.String(found, "installedFromVersion"));
             }
 
-            return new ServerStatusAnswer(unsent, updates);
+            // The server's changelog (server 12.2.0) - blank is none, as an older server's.
+            string? changelog = ReviewApiParser.String(root, "changelog") is string text && !string.IsNullOrWhiteSpace(text) ? text : null;
+
+            return new ServerStatusAnswer(unsent, updates, changelog);
         }
 
         // ###########################################################################################

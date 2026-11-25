@@ -14,45 +14,45 @@
     to switch it on, and the button stays off.
 
     The words are DataResetWording's.
-    -->
-    <DockPanel>
 
-        <TextBlock DockPanel.Dock="Top"
-                   x:Name="HeadingText"
+    IT SCROLLS, AND THE CONFIRMATION WRAPS (2026-11-25, after the owner's report of the "Maintainer" tab's sign-in out of
+    reach on Linux): a dozen count lines and the server's sentences are taller than a low window gives this panel, and
+    at CRT's narrowest the prompt, the box and the button ran past its right edge.
+    -->
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                  VerticalScrollBarVisibility="Auto">
+    <StackPanel Margin="0,0,12,0">
+
+        <TextBlock x:Name="HeadingText"
                    FontWeight="SemiBold"
                    FontSize="14"
                    Margin="0,0,0,8" />
 
-        <TextBlock DockPanel.Dock="Top"
-                   x:Name="ExplanationText"
+        <TextBlock x:Name="ExplanationText"
                    TextWrapping="Wrap"
                    Opacity="0.8"
                    Margin="0,0,0,12" />
 
         <!-- One line per kind of thing deleted, each count bold. -->
-        <StackPanel DockPanel.Dock="Top"
-                    x:Name="CountLines"
+        <StackPanel x:Name="CountLines"
                     Spacing="4"
                     Margin="0,0,0,12" />
 
-        <TextBlock DockPanel.Dock="Top"
-                   x:Name="KeptText"
+        <TextBlock x:Name="KeptText"
                    TextWrapping="Wrap"
                    Opacity="0.8"
                    Margin="0,0,0,12" />
 
         <!-- The server's words while its switch is off. -->
-        <TextBlock DockPanel.Dock="Top"
-                   x:Name="SwitchedOffText"
+        <TextBlock x:Name="SwitchedOffText"
                    TextWrapping="Wrap"
                    Foreground="{DynamicResource Text_Fail_Fg}"
                    IsVisible="False"
                    Margin="0,0,0,12" />
 
-        <StackPanel DockPanel.Dock="Top"
-                    Orientation="Horizontal"
-                    Spacing="8"
-                    Margin="0,0,0,12">
+        <WrapPanel ItemSpacing="8"
+                   LineSpacing="8"
+                   Margin="0,0,0,12">
 
             <TextBlock x:Name="ConfirmPromptText"
                        VerticalAlignment="Center" />
@@ -65,20 +65,16 @@
                     Classes="Danger"
                     IsEnabled="False"
                     Click="OnResetClick" />
-        </StackPanel>
+        </WrapPanel>
 
-        <TextBlock DockPanel.Dock="Top"
-                   x:Name="MessageText"
+        <TextBlock x:Name="MessageText"
                    TextWrapping="Wrap"
                    IsVisible="False"
                    Margin="0,0,0,8" />
 
-        <TextBlock DockPanel.Dock="Top"
-                   x:Name="DoneText"
+        <TextBlock x:Name="DoneText"
                    TextWrapping="Wrap"
                    IsVisible="False" />
-
-        <!-- Nothing fills the rest. -->
-        <Panel />
-    </DockPanel>
+    </StackPanel>
+    </ScrollViewer>
 </UserControl>

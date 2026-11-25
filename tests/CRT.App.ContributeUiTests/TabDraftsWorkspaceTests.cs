@@ -89,6 +89,50 @@ public sealed class TabDraftsWorkspaceTests : IDisposable
     }
 
     // ###########################################################################################
+    // "My drafts", "My submissions" and "Add a new board" BESIDE the top line, or UNDER it on a narrow tab
+    // (TabDrafts.PlaceTopButtons, 2026-11-25): on CRT's narrowest window they left the sentence some 120 wide, a dozen
+    // lines that pushed the workspace below the window, out of reach. Under it there, the sentence takes the line's
+    // width; beside it again once the tab is wide.
+    // ###########################################################################################
+    [Fact]
+    public void On_a_narrow_tab_the_top_line_buttons_go_under_its_words_and_back_beside_them_on_a_wide_one()
+    {
+        UiTest.Run(() =>
+        {
+            HardwareBoardEntry entry = TabDraftsWorkspaceTests.Entry("250407", BoardA);
+            TabDrafts tab = TabDraftsWorkspaceTests.Tab(entry);
+            tab.ShowBoard(entry, TabDraftsWorkspaceTests.Board(), "PAL", null);
+
+            var window = new Window { Content = tab, Width = 1400, Height = 700 };
+            window.Show();
+
+            try
+            {
+                ControlsInReach.Settle(window);
+                Assert.False(tab.TopButtonsUnderForTests, "the buttons went under the words on a wide tab");
+
+                // CRT's narrowest: its 800, less the left panel.
+                window.Width = 596;
+                ControlsInReach.Settle(window);
+
+                Assert.True(tab.TopButtonsUnderForTests, "the buttons stayed beside the words on a narrow tab");
+
+                TextBlock words = tab.GetControl<TextBlock>("TopLineText");
+                Assert.True(words.Bounds.Width > 400, $"the top line is {words.Bounds.Width} wide with the buttons under it");
+
+                window.Width = 1400;
+                ControlsInReach.Settle(window);
+
+                Assert.False(tab.TopButtonsUnderForTests, "the buttons stayed under the words once the tab was wide again");
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    // ###########################################################################################
     // The list on the far left that Main has for the tab (Main.ContributeLists.cs): showing the tab's collection,
     // one component at a time. MainContributeListsTests holds Main's own half. Its own scrolling OFF, as Main.axaml makes
     // ContributeComponentListBox - on, the list scrolled itself and a test passed whether or not the tab scrolled.

@@ -1,0 +1,292 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:CRT"
+        xmlns:data="clr-namespace:Handlers.DataHandling;assembly=CRT.Data"
+        x:Class="CRT.AccountWindow"
+        Title="Account"
+        Width="480"
+        MinWidth="420"
+        CanResize="False"
+        CanMinimize="False"
+        ShowInTaskbar="False"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource Bg}"
+        Foreground="{DynamicResource Fg}">
+
+	<!--
+	CRT'S ACCOUNT WINDOW (owner requests, 2026-11-25: accounts for everybody - "we now need a possibility to have user accounts in
+	CRT. This user account can then be used for "Maintainer" tab or this collection thing, but also anyone else can register an
+	account"). Opened by the account icon in the top right corner of CRT's window (Main.Account.cs), from any tab. Until then the
+	only way in was the "Maintainer" tab's own sign-in screen, and only an invitation made an account.
+
+	FIVE VIEWS, ONE AT A TIME (AccountWindow.axaml.cs, ShowView): signing in; "Create an account"; "I forgot my password" - asking
+	for a code and setting a password with it, the account web page's two steps; "I have an invitation" (the Maintainer tab's
+	until 2026-11-25); and, signed in, "My account" (MyAccountView - the Maintainer tab's "Account" screen's until then) under a
+	notice while the address is not confirmed. The words a mail or a web page also says are CRT.Data's AccountWording and
+	DisplayNames, so the three say the same.
+
+	NO TALLER THAN ITS SCREEN (ScreenSizedDialog), its views scrolling above the "Close" button - the lesson of the owner's report
+	of 2026-11-25 about the "Maintainer" tab's sign-in out of reach on Linux. Every wait the person watches runs under its own
+	BusyOverlay, the last child.
+	-->
+	<Window.Styles>
+		<!-- A button that reads as a link: the sign-in view's ways to the other views, as the "Maintainer" tab's sign-in had them. -->
+		<Style Selector="Button.Link">
+			<Setter Property="Padding" Value="0" />
+			<Setter Property="Background" Value="Transparent" />
+			<Setter Property="BorderThickness" Value="0" />
+			<Setter Property="Foreground" Value="{DynamicResource Link_Fg}" />
+			<Setter Property="HorizontalAlignment" Value="Left" />
+			<Setter Property="Cursor" Value="Hand" />
+		</Style>
+
+		<Style Selector="TextBlock.Label">
+			<Setter Property="Opacity" Value="0.7" />
+			<Setter Property="Margin" Value="0,6,0,0" />
+		</Style>
+
+		<Style Selector="TextBlock.Hint">
+			<Setter Property="Opacity" Value="0.75" />
+			<Setter Property="FontSize" Value="12" />
+			<Setter Property="TextWrapping" Value="Wrap" />
+		</Style>
+
+		<Style Selector="TextBlock.Heading">
+			<Setter Property="FontSize" Value="16" />
+			<Setter Property="FontWeight" Value="Bold" />
+			<Setter Property="Margin" Value="0,0,0,6" />
+		</Style>
+
+		<Style Selector="TextBlock.SubHeading">
+			<Setter Property="FontWeight" Value="SemiBold" />
+			<Setter Property="Margin" Value="0,10,0,0" />
+		</Style>
+	</Window.Styles>
+
+	<Grid RowDefinitions="*,Auto" Margin="18">
+
+		<ScrollViewer Grid.Row="0"
+					  x:Name="ViewScroller"
+					  HorizontalScrollBarVisibility="Disabled"
+					  VerticalScrollBarVisibility="Auto">
+			<Panel>
+
+				<!-- ================= Sign in ================= -->
+				<StackPanel x:Name="SignInFormPanel" Spacing="4">
+					<TextBlock Classes="Heading" Text="Sign in" />
+
+					<!-- What an account is, said before anything is asked - the same sentence the account web pages open with. -->
+					<Border Background="#20808080" CornerRadius="4" Padding="10" Margin="0,0,0,6">
+						<TextBlock TextWrapping="Wrap" Text="{x:Static data:AccountWording.OneAccount}" />
+					</Border>
+
+					<!-- The TEST instance's accounts are its own (ContributionServer.SignInNote) - said while a pre-release uses it. -->
+					<TextBlock x:Name="TestServerSignInText"
+							   TextWrapping="Wrap"
+							   FontWeight="SemiBold"
+							   Foreground="{DynamicResource Text_Warning_Fg}"
+							   IsVisible="False" />
+
+					<TextBlock Classes="Label" Text="Email address" />
+					<TextBox x:Name="EmailTextBox" />
+
+					<TextBlock Classes="Label" Text="Password" />
+					<!-- PasswordChar, so somebody standing by cannot read it. -->
+					<TextBox x:Name="PasswordTextBox"
+							 PasswordChar="*"
+							 KeyDown="OnPasswordKeyDown" />
+
+					<Button x:Name="SignInButton"
+							Content="{x:Static data:AccountWording.SignInButton}"
+							HorizontalAlignment="Stretch"
+							HorizontalContentAlignment="Center"
+							Margin="0,10,0,0"
+							Click="OnSignInClick" />
+
+					<!-- Where a sign-in cannot be remembered (no DPAPI) - ReviewSessionStore.NotRememberedNote. -->
+					<TextBlock x:Name="NotRememberedText"
+							   Classes="Hint"
+							   IsVisible="False" />
+
+					<StackPanel Spacing="6" Margin="0,8,0,0">
+						<Button x:Name="CreateAccountButton"
+								Classes="Link"
+								Content="{x:Static data:AccountWording.CreateAccountButton}"
+								Click="OnCreateAccountClick" />
+						<Button x:Name="ForgotPasswordButton"
+								Classes="Link"
+								Content="{x:Static data:AccountWording.ForgotPasswordButton}"
+								Click="OnForgotPasswordClick" />
+						<Button x:Name="HaveInvitationButton"
+								Classes="Link"
+								Content="{x:Static data:AccountWording.HaveInvitationButton}"
+								Click="OnHaveInvitationClick" />
+					</StackPanel>
+
+					<!-- Not always red: "Your account is made" and "Your password is set" are good news. -->
+					<TextBlock x:Name="SignInMessageText"
+							   TextWrapping="Wrap"
+							   Margin="0,6,0,0"
+							   IsVisible="False" />
+				</StackPanel>
+
+				<!-- ================= Create an account ================= -->
+				<StackPanel x:Name="RegisterPanel" Spacing="4" IsVisible="False">
+					<TextBlock Classes="Heading" Text="{x:Static data:AccountWording.CreateAccountButton}" />
+
+					<TextBlock TextWrapping="Wrap" Margin="0,0,0,6" Text="{x:Static data:AccountWording.OneAccount}" />
+
+					<TextBlock Classes="Label" Text="Display name" />
+					<TextBlock Classes="Hint" Text="{x:Static data:DisplayNames.Explanation}" />
+					<TextBlock Classes="Hint" Text="{x:Static data:DisplayNames.AllowedLine}" />
+					<TextBox x:Name="RegisterNameTextBox"
+							 MaxLength="{x:Static data:DisplayNames.MaximumLength}"
+							 TextChanged="OnRegisterNameChanged" />
+					<!-- What is wrong with the name typed, as it is typed - the server's own rule. -->
+					<TextBlock x:Name="RegisterNameProblemText"
+							   TextWrapping="Wrap"
+							   Foreground="{DynamicResource Text_Fail_Fg}"
+							   IsVisible="False" />
+
+					<TextBlock Classes="Label" Text="Email address" />
+					<TextBlock Classes="Hint" Text="Never shown to anybody. A link to confirm it is mailed to it." />
+					<TextBox x:Name="RegisterEmailTextBox" />
+
+					<TextBlock Classes="Label" Text="Password" />
+					<TextBlock Classes="Hint" Text="{x:Static data:AccountWording.PasswordLine}" />
+					<TextBox x:Name="RegisterPasswordTextBox"
+							 PasswordChar="*"
+							 KeyDown="OnRegisterPasswordKeyDown" />
+
+					<!-- Cancel first and the action last, as in CRT's dialogs. -->
+					<StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="6" Margin="0,10,0,0">
+						<Button x:Name="CancelRegisterButton" Content="Cancel" Click="OnBackToSignInClick" />
+						<Button x:Name="RegisterButton"
+								Classes="Accept"
+								Content="{x:Static data:AccountWording.CreateAccountButton}"
+								Click="OnRegisterClick" />
+					</StackPanel>
+
+					<TextBlock x:Name="RegisterMessageText"
+							   TextWrapping="Wrap"
+							   Margin="0,4,0,0"
+							   IsVisible="False" />
+				</StackPanel>
+
+				<!-- ================= I forgot my password =================
+				     The account web page's two steps on one page (AccountPages.ForgotPassword): ask for a code, then set a password
+				     with it - a code mailed some other way (somebody registering this address again) is typed straight into step 2.
+				     *** THE ANSWER TO STEP 1 IS THE SAME FOR EVERY ADDRESS *** - the server's neutral 202, so nothing here tells
+				     whether an address has an account. -->
+				<StackPanel x:Name="ForgotPanel" Spacing="4" IsVisible="False">
+					<TextBlock Classes="Heading" Text="{x:Static data:AccountWording.ForgotPasswordButton}" />
+
+					<TextBlock Classes="SubHeading" Text="1. Ask for a code" Margin="0,0,0,0" />
+					<TextBlock Classes="Hint" Text="It is mailed to the address, if it has an account. It works for 2 hours and can be used once." />
+					<TextBlock Classes="Label" Text="Email address" />
+					<TextBox x:Name="ForgotEmailTextBox" />
+					<Button x:Name="SendResetCodeButton"
+							Classes="Accept"
+							Content="Send me a code"
+							Margin="0,8,0,0"
+							Click="OnSendResetCodeClick" />
+					<TextBlock x:Name="ForgotMessageText" TextWrapping="Wrap" IsVisible="False" />
+
+					<TextBlock Classes="SubHeading" Text="2. Set a new password" Margin="0,16,0,0" />
+					<TextBlock Classes="Label" Text="Code from the mail" />
+					<TextBox x:Name="ResetCodeTextBox" />
+					<TextBlock Classes="Label" Text="New password" />
+					<TextBlock Classes="Hint" Text="{x:Static data:AccountWording.PasswordLine}" />
+					<TextBox x:Name="NewPasswordTextBox"
+							 PasswordChar="*"
+							 KeyDown="OnNewPasswordKeyDown" />
+
+					<StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="6" Margin="0,10,0,0">
+						<Button x:Name="CancelForgotButton" Content="Cancel" Click="OnBackToSignInClick" />
+						<Button x:Name="SetPasswordButton"
+								Classes="Accept"
+								Content="Set password"
+								Click="OnSetPasswordClick" />
+					</StackPanel>
+
+					<TextBlock x:Name="ResetMessageText" TextWrapping="Wrap" Margin="0,4,0,0" IsVisible="False" />
+				</StackPanel>
+
+				<!-- ================= I have an invitation =================
+				     The administrator invites an address to maintain a board; the mail's code is redeemed here - with a name and a
+				     password it makes the account and puts it in the pool of every board that address was invited to (the server's
+				     MaintainerInvitationFlows). The "Maintainer" tab's sign-in screen's until 2026-11-25. -->
+				<StackPanel x:Name="InvitationPanel" Spacing="4" IsVisible="False">
+					<TextBlock Classes="Heading" Text="Accept your invitation" />
+
+					<TextBlock TextWrapping="Wrap"
+							   Margin="0,0,0,6"
+							   Text="Paste the code from the invitation email, then choose the name others will see and a password. Your account is made for the address the invitation was sent to." />
+
+					<TextBlock Classes="Label" Text="Invitation code" />
+					<TextBox x:Name="InvitationCodeTextBox" />
+
+					<TextBlock Classes="Label" Text="Display name" />
+					<TextBlock Classes="Hint" Text="{x:Static data:DisplayNames.AllowedLine}" />
+					<TextBox x:Name="InvitationNameTextBox"
+							 MaxLength="{x:Static data:DisplayNames.MaximumLength}" />
+
+					<TextBlock Classes="Label" Text="Password" />
+					<TextBlock Classes="Hint" Text="{x:Static data:AccountWording.PasswordLine}" />
+					<TextBox x:Name="InvitationPasswordTextBox"
+							 PasswordChar="*"
+							 KeyDown="OnInvitationPasswordKeyDown" />
+
+					<StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="6" Margin="0,10,0,0">
+						<Button x:Name="CancelInvitationButton" Content="Cancel" Click="OnBackToSignInClick" />
+						<Button x:Name="AcceptInvitationButton"
+								Classes="Accept"
+								Content="Create my account"
+								Click="OnAcceptInvitationClick" />
+					</StackPanel>
+
+					<TextBlock x:Name="InvitationMessageText"
+							   Foreground="{DynamicResource Text_Fail_Fg}"
+							   TextWrapping="Wrap"
+							   Margin="0,4,0,0"
+							   IsVisible="False" />
+				</StackPanel>
+
+				<!-- ================= Signed in: My account ================= -->
+				<StackPanel x:Name="SignedInPanel" Spacing="10" IsVisible="False">
+
+					<!-- The address not confirmed yet - read from the server as the window opens (GET /api/accounts/me), with
+					     a new link one press away. Hidden for a confirmed address, and until the server has said. -->
+					<Border x:Name="NotConfirmedPanel" Classes="Notice" IsVisible="False">
+						<Grid ColumnDefinitions="Auto,*">
+							<TextBlock Grid.Column="0" Classes="NoticeIcon" Text="&#xf0e0;" />
+							<StackPanel Grid.Column="1" Spacing="8">
+								<TextBlock Classes="NoticeText" Text="{x:Static data:AccountWording.NotConfirmed}" />
+								<Button x:Name="SendMailAgainButton"
+										Classes="Accept"
+										Content="{x:Static data:AccountWording.SendMailAgainButton}"
+										Click="OnSendMailAgainClick" />
+							</StackPanel>
+						</Grid>
+					</Border>
+
+					<TextBlock x:Name="AccountMessageText" TextWrapping="Wrap" IsVisible="False" />
+
+					<local:MyAccountView x:Name="MyAccountPanel" />
+				</StackPanel>
+			</Panel>
+		</ScrollViewer>
+
+		<Button Grid.Row="1"
+				x:Name="CloseButton"
+				Content="Close"
+				HorizontalAlignment="Right"
+				Margin="0,12,0,0"
+				Click="OnCloseClick" />
+
+		<!-- Every wait the person watches (CLAUDE.md: BusyOverlay) - the last child, over everything. The -18 margin covers the
+		     grid's own margin. -->
+		<local:BusyOverlay Grid.RowSpan="2" Margin="-18" />
+	</Grid>
+</Window>

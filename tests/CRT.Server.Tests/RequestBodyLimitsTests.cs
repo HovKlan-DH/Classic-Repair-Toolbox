@@ -145,6 +145,12 @@ namespace CRT.Server.Tests
             // CRT 2.x's contribution upload (2026-10-04): a zip read to its end only so the "please
             // update" answer reaches the sender - see LegacyContributionEndpoints.
             { "POST", "/api/legacy/contribution", RequestBodyLimits.LegacyContributionBytes },
+
+            // The account web pages' forms (2026-11-25, AccountPageEndpoints): a name, an address, a password or a code,
+            // posted by anybody's browser - smaller than the default on purpose.
+            { "POST", "/account/register", RequestBodyLimits.FormBytes },
+            { "POST", "/account/forgot-password", RequestBodyLimits.FormBytes },
+            { "POST", "/account/reset-password", RequestBodyLimits.FormBytes },
         };
 
         [Theory]

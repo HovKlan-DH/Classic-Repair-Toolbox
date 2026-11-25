@@ -103,15 +103,62 @@ namespace CRT.Server.Tests
             Setup setup = await AccountSelfServiceFlowsTests.SignedInAsync();
 
             AccountChangeOutcome outcome = await AccountSelfServiceFlows.ChangeNameAsync(
-                setup.Token, "  Dennis H  ", setup.Store, AccountSelfServiceFlowsTests.Options(), AccountSelfServiceFlowsTests.Now);
+                setup.Token, "  Dennis@CRT  ", setup.Store, AccountSelfServiceFlowsTests.Options(), AccountSelfServiceFlowsTests.Now);
 
             Assert.True(outcome.IsDone);
-            Assert.Equal("Dennis H", AccountSelfServiceFlowsTests.Account(setup).DisplayName);
-            Assert.Equal("Dennis H", outcome.Answer!.Account!.DisplayName);
-            Assert.Equal("Your name is now Dennis H.", outcome.Answer.Message);
+            Assert.Equal("Dennis@CRT", AccountSelfServiceFlowsTests.Account(setup).DisplayName);
+            Assert.Equal("Dennis@CRT", outcome.Answer!.Account!.DisplayName);
+            Assert.Equal("Your name is now Dennis@CRT.", outcome.Answer.Message);
 
             AuditEntry row = Assert.Single(setup.Store.Audit, entry => entry.Action == AccountSelfServiceFlows.NameChangedAction);
-            Assert.Equal("\"Dennis\" -> \"Dennis H\"", row.Detail);
+            Assert.Equal("\"Dennis\" -> \"Dennis@CRT\"", row.Detail);
+        }
+
+        // ###########################################################################################
+        // *** UNIQUE (owner request, 2026-11-25: "it needs to be unique for all users"). *** A name another account has is
+        // refused in any capitals, and nothing changes; the account's OWN name in other capitals is no clash - "dennis" to
+        // "Dennis" is a change of spelling.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_name_another_account_has_is_refused_in_any_capitals()
+        {
+            Setup setup = await AccountSelfServiceFlowsTests.SignedInAsync();
+            await AccountSelfServiceFlowsTests.SignedInAsync("anna@example.com", setup.Store, setup.Mailer, displayName: "Anna");
+
+            AccountChangeOutcome outcome = await AccountSelfServiceFlows.ChangeNameAsync(
+                setup.Token, "ANNA", setup.Store, AccountSelfServiceFlowsTests.Options(), AccountSelfServiceFlowsTests.Now);
+
+            Assert.False(outcome.IsDone);
+            Assert.Equal([DisplayNames.Taken], outcome.Errors);
+            Assert.Equal("Dennis", AccountSelfServiceFlowsTests.Account(setup).DisplayName);
+        }
+
+        [Fact]
+        public async Task Its_own_name_in_other_capitals_is_no_clash()
+        {
+            Setup setup = await AccountSelfServiceFlowsTests.SignedInAsync();
+
+            AccountChangeOutcome outcome = await AccountSelfServiceFlows.ChangeNameAsync(
+                setup.Token, "DENNIS", setup.Store, AccountSelfServiceFlowsTests.Options(), AccountSelfServiceFlowsTests.Now);
+
+            Assert.True(outcome.IsDone);
+            Assert.Equal("DENNIS", AccountSelfServiceFlowsTests.Account(setup).DisplayName);
+        }
+
+        // A name set before 2026-11-25 under the old rule (a space) is kept, and sent back as it is it is no refusal - the
+        // rule is asked of a name being SET.
+        [Fact]
+        public async Task A_name_from_the_old_rule_sent_back_unchanged_is_no_refusal()
+        {
+            Setup setup = await AccountSelfServiceFlowsTests.SignedInAsync();
+            setup.Store.Accounts[setup.AccountId] = AccountSelfServiceFlowsTests.Account(setup) with { DisplayName = "Dennis Hansen" };
+
+            AccountChangeOutcome outcome = await AccountSelfServiceFlows.ChangeNameAsync(
+                setup.Token, "Dennis Hansen", setup.Store, AccountSelfServiceFlowsTests.Options(), AccountSelfServiceFlowsTests.Now);
+
+            Assert.True(outcome.IsDone);
+            Assert.Equal("Dennis Hansen", AccountSelfServiceFlowsTests.Account(setup).DisplayName);
+            Assert.DoesNotContain(setup.Store.Audit, entry => entry.Action == AccountSelfServiceFlows.NameChangedAction);
         }
 
         [Fact]
@@ -287,7 +334,7 @@ namespace CRT.Server.Tests
         public async Task A_code_is_refused_in_another_accounts_session()
         {
             Setup dennis = await AccountSelfServiceFlowsTests.SignedInAsync();
-            Setup anna = await AccountSelfServiceFlowsTests.SignedInAsync("anna@example.com", dennis.Store, dennis.Mailer);
+            Setup anna = await AccountSelfServiceFlowsTests.SignedInAsync("anna@example.com", dennis.Store, dennis.Mailer, displayName: "Anna");
 
             await AccountSelfServiceFlowsTests.RequestEmailAsync(dennis, "bench@example.com");
             string code = dennis.Mailer.ExtractTokenFromLastMail();
@@ -350,7 +397,7 @@ namespace CRT.Server.Tests
             await AccountSelfServiceFlowsTests.RequestEmailAsync(setup, "bench@example.com");
             string code = setup.Mailer.ExtractTokenFromLastMail();
 
-            await AccountSelfServiceFlowsTests.SignedInAsync("bench@example.com", setup.Store, setup.Mailer);
+            await AccountSelfServiceFlowsTests.SignedInAsync("bench@example.com", setup.Store, setup.Mailer, displayName: "Bench");
 
             AccountChangeOutcome outcome = await AccountSelfServiceFlowsTests.ConfirmAsync(setup, code);
 
@@ -503,6 +550,69 @@ namespace CRT.Server.Tests
             Assert.Equal(["Commodore/C128/310378", "Commodore/C64/250407"], answer.MaintainerOf);
             Assert.Equal("dennis@example.com", answer.Email);
             Assert.Equal("Dennis", answer.DisplayName);
+        }
+
+        // -----------------------------------------------------------------------------------
+        // The verification mail again (2026-11-25) - CRT's "Send the mail again".
+        // -----------------------------------------------------------------------------------
+
+        private static Task<AccountChangeOutcome> SendAgainAsync(Setup setup, string? token = null) =>
+            AccountSelfServiceFlows.SendVerificationAgainAsync(
+                token ?? setup.Token, AccountSelfServiceFlowsTests.Ip, setup.Store, setup.Mailer,
+                AccountSelfServiceFlowsTests.Options(), AccountSelfServiceFlowsTests.Now);
+
+        // A new link to the account's OWN address - nothing names another - which confirms it.
+        [Fact]
+        public async Task An_unconfirmed_address_is_mailed_a_new_link_that_confirms_it()
+        {
+            Setup setup = await AccountSelfServiceFlowsTests.SignedInAsync();
+
+            AccountChangeOutcome outcome = await AccountSelfServiceFlowsTests.SendAgainAsync(setup);
+
+            Assert.True(outcome.IsDone);
+            Assert.Equal(AccountSelfServiceFlows.VerificationSentMessage("dennis@example.com"), outcome.Answer!.Message);
+
+            EmailMessage mail = Assert.Single(setup.Mailer.Sent);
+            Assert.Equal("dennis@example.com", mail.ToAddress);
+            Assert.StartsWith("Confirm your", mail.Subject, StringComparison.Ordinal);
+            Assert.Contains(setup.Store.Audit, entry => entry.Action == AccountSelfServiceFlows.VerificationResentAction);
+
+            TokenRedemptionOutcome verified = await AccountFlows.VerifyEmailAsync(
+                setup.Mailer.ExtractTokenFromLastMail(), setup.Store, AccountSelfServiceFlowsTests.Now);
+
+            Assert.Equal(TokenRedemptionOutcome.Success, verified);
+            Assert.True(AccountSelfServiceFlowsTests.Account(setup).IsVerified);
+        }
+
+        [Fact]
+        public async Task A_confirmed_address_is_told_so_and_nothing_is_sent()
+        {
+            Setup setup = await AccountSelfServiceFlowsTests.SignedInAsync();
+            await setup.Store.SetVerifiedAsync(setup.AccountId);
+
+            AccountChangeOutcome outcome = await AccountSelfServiceFlowsTests.SendAgainAsync(setup);
+
+            Assert.True(outcome.IsDone);
+            Assert.Equal(AccountSelfServiceFlows.AlreadyConfirmedMessage, outcome.Answer!.Message);
+            Assert.True(outcome.Answer.Account!.IsVerified);
+            Assert.Empty(setup.Mailer.Sent);
+        }
+
+        // Every mail spends the same budget (the flows' header) - and without a live session nothing is sent at all.
+        [Fact]
+        public async Task The_mail_again_spends_the_mail_budget_and_needs_a_live_session()
+        {
+            Setup setup = await AccountSelfServiceFlowsTests.SignedInAsync();
+
+            Assert.True((await AccountSelfServiceFlowsTests.SendAgainAsync(setup, token: "not-a-token")).IsNotSignedIn);
+
+            for (int sent = 0; sent < AuthRateLimitPolicy.MaxMailRequestsPerAddress; sent++)
+                setup.Store.MailRequests.Add((AccountSelfServiceFlowsTests.Ip, AccountSelfServiceFlowsTests.Now - TimeSpan.FromMinutes(5)));
+
+            AccountChangeOutcome limited = await AccountSelfServiceFlowsTests.SendAgainAsync(setup);
+
+            Assert.NotNull(limited.RetryAfter);
+            Assert.Empty(setup.Mailer.Sent);
         }
     }
 }

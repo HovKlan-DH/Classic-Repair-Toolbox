@@ -8,9 +8,11 @@ namespace Handlers.MaintainerHandling
     // maintainer, and I have logged in, then I want to use that email address everywhere in the CRT
     // app - e.g. for the Feedback tab or in the Draft tab").
     //
-    // Signed in on the Maintainer tab, it is the ACCOUNT's address, and the box showing it is read
-    // only; otherwise the one the user typed last (UserSettings.ContactEmail), as before. The
-    // Feedback tab and the Submit dialog both ask here, so the two cannot pick differently.
+    // Signed in, it is the ACCOUNT's address, and the box showing it is read only; otherwise the one
+    // the user typed last (UserSettings.ContactEmail), as before. Signed in with the account icon in
+    // the top right corner since 2026-11-25 (accounts for everybody) - on the Maintainer tab until
+    // then, where the session still lives. The Feedback tab and the Submit dialog both ask here, so
+    // the two cannot pick differently.
     //
     // *** A SUBMISSION SENT SIGNED IN GOES WITH THE ACCOUNT, NOT ONLY ITS ADDRESS. *** The Submit
     // dialog sends the session's token with it (SubmissionClient.CreateAsync), so the maintainer
@@ -38,15 +40,22 @@ namespace Handlers.MaintainerHandling
             return new ContactAddress(typedEmail?.Trim() ?? string.Empty, null);
         }
 
-        // Under the Feedback tab's address while it is the account's.
+        // ###########################################################################################
+        // Under the Feedback tab's address while it is the account's. *** ANYBODY'S ACCOUNT SINCE 2026-11-25 *** (accounts for
+        // everybody), signed in and out with the account icon in the top right corner of CRT's window - so no "maintainer" and
+        // no "Maintainer" tab here any more, and no promise that the address is verified: a new account's may not be yet.
+        // ###########################################################################################
         public const string FeedbackNote =
-            "Your maintainer account's address, as you are signed in on the \"Maintainer\" tab. Sign out there to use another one.";
+            "Your account's address, as you are signed in. To use another one, sign out with " + AccountWording.WhereInCrt + ".";
 
         // Under the Submit dialog's address while it is the account's - in place of the line saying
         // there is no account to create, which would then be untrue. It no longer tells how to send with
         // another address (owner request, 2026-11-14: "we should strive to know the user by one address only").
         public const string SubmitNote =
-            "Sent with your maintainer account, as you are signed in on the \"Maintainer\" tab, so the maintainer reviewing it " +
-            "sees a verified address. The outcome is shown in \"My submissions\" on the \"Contribute\" tab.";
+            "Sent with your account, as you are signed in, so the maintainer reviewing it sees who sent it. " +
+            "The outcome is shown in \"My submissions\" on the \"Contribute\" tab.";
+
+        // Under the address of "Submit this model" on the "Oscilloscope" tab while it is the account's.
+        public const string ModelNote = "Your account's address, as you are signed in.";
     }
 }

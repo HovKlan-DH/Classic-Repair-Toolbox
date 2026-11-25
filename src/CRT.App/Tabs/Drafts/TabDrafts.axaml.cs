@@ -39,7 +39,8 @@ namespace CRT
     //   TabDrafts.Workspace.cs - the board the tab is about: its header with "UI" and "Table", the left
     //                         column (its entries, "Add component" below the board's - the components
     //                         are picked in CRT's own lists on the far left - and the entry open shown
-    //                         selected) and "My drafts"
+    //                         selected), "My drafts", and the top line's buttons beside or under its
+    //                         words (PlaceTopButtons)
     //   TabDrafts.Several.cs - several components picked in that list, opened together, and the pick the other
     //                         tabs' lists hand over as the tab is entered ("Mark all" there shown, never opened)
     //   TabDrafts.Splitters.cs - the widths dragged on the tab - the left column, and the previews on
@@ -124,6 +125,9 @@ namespace CRT
 
             // The left column's width, dragged and kept per board (TabDrafts.Splitters.cs).
             this.WireSplitters();
+
+            // The top line's buttons under its words on a narrow tab (TabDrafts.Workspace.cs).
+            this.WireTopLine();
 
             this.TableEditor.Saved += this.OnTableSaved;
 

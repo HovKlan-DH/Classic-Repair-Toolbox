@@ -1,6 +1,7 @@
 using CRT.Server.Configuration;
 using CRT.Server.Handlers.Accounts;
 using CRT.Server.Tests.Fakes;
+using Handlers.DataHandling;
 
 namespace CRT.Server.Tests
 {
@@ -123,7 +124,7 @@ namespace CRT.Server.Tests
                 new RegistrationRequest(
                     "dennis@example.com",
                     EndpointNegativeTests.GoodPassword,
-                    new string('a', AccountRules.MaximumDisplayNameLength),
+                    new string('a', DisplayNames.MaximumLength),
                     null),
                 store, mailer, EndpointNegativeTests.Hasher(), EndpointNegativeTests.Options(),
                 EndpointNegativeTests.Now);

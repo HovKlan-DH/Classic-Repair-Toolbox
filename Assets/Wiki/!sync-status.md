@@ -5,10 +5,11 @@
 
 # Wiki pages waiting to be pasted
 
-**1 page waiting.**
+**2 pages waiting.**
 
 | File in `Assets/Wiki` | Where it is in the Wiki |
 | --- | --- |
 | `Information-collected.md` | Home > Reference > Information collected |
+| `Maintainer-tab.md` | Home > Contributing > Maintainer tab |
 
 <!-- crt:waiting-end -->

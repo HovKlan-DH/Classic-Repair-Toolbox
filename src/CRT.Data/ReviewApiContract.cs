@@ -111,6 +111,13 @@ namespace Handlers.DataHandling
     public sealed record AcceptInvitationRequest(string? Code, string? DisplayName, string? Password);
 
     // ###########################################################################################
+    // POST /api/accounts/register - making an account, which CRT's account window does since 2026-11-25 (accounts for
+    // everybody; only curl and the administrator's own scripts until then, so the server kept the body to itself). Answered
+    // 202 { message } whatever the address - the neutral answer of AccountFlows' header - or 400 { errors }.
+    // ###########################################################################################
+    public sealed record RegisterAccountRequest(string? Email, string? Password, string? DisplayName);
+
+    // ###########################################################################################
     // A MAINTAINER'S OWN ACCOUNT (owner request, 2026-10-03: the maintainer "can edit his/her own
     // email address and name"). The Maintainer tab's "Your account" window, signed in:
     //
@@ -1061,8 +1068,15 @@ namespace Handlers.DataHandling
     //
     // Updates (server 10.3.0): how the server keeps itself up to date from GitHub (ServerUpdatesAnswer).
     // Null from an older server, which had no such thing.
+    //
+    // Changelog (server 12.2.0; owner request, 2026-11-24: 'have a "Changelog" like there is in "About" ...
+    // so I can check what has changed in server also'): the server's own release notes, as Markdown -
+    // CRT.Server's RELEASE-NOTES.md, built into the very program answering, from its first version
+    // heading on (ServerReleaseNotes). So it is the changelog of what is deployed, whichever CRT asks.
+    // Account > "Server version" draws it under its panels as the "About" tab draws CHANGELOG.md. Null
+    // from an older server.
     // ###########################################################################################
-    public sealed record ServerStatusAnswer(int? UnsentMails = null, ServerUpdatesAnswer? Updates = null);
+    public sealed record ServerStatusAnswer(int? UnsentMails = null, ServerUpdatesAnswer? Updates = null, string? Changelog = null);
 
     // ###########################################################################################
     // *** THE SERVER KEEPS ITSELF UP TO DATE FROM GITHUB (owner request, 2026-11-09: "would it be

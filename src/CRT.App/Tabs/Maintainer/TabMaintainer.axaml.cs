@@ -6,6 +6,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Handlers.MaintainerHandling;
 using Handlers.DataHandling;
 
@@ -44,9 +45,12 @@ namespace CRT
     //     filter (its colour-key pills; "Show changes only" until 2026-10-02) is
     //     UserSettings.MaintainerTableFilter (TabMaintainer.Table.cs).
     //
-    // FILE MAP - this file (sign in, the queue, the submission shown), TabMaintainer.Decisions.cs
+    // FILE MAP - this file ("Sign in", which opens CRT's account window - the sign-in form, "I forgot
+    // my password" and "I have an invitation" were this tab's until 2026-11-25 and are
+    // AccountWindow's now; the queue, the submission shown), TabMaintainer.Decisions.cs
     // (Approve, Reject and Request changes, and the decision bar), TabMaintainer.Session.cs (the
-    // remembered sign-in, restored at launch for the badge or when the tab is first shown, and
+    // remembered sign-in, restored at launch for the badge or when the tab is first shown, a sign-in
+    // made in the account window taken over, and
     // sharing it with the rest of CRT, and sliding its expiry as the server does), TabMaintainer.QueueItems.cs (the
     // queue list grouped by board, and every list on the tab changed in place), TabMaintainer.QueueRefresh.cs (the queue checking itself - no
     // Refresh button - and the other lists with it, or only the badge's off screen),
@@ -57,8 +61,8 @@ namespace CRT
     // the buttons' badges, handing the panels the session), TabMaintainer.Beta.cs (the BETA list),
     // TabMaintainer.Boards.cs (the Boards list), TabMaintainer.Account.cs (the Account screen:
     // "My account" and "Server version" for every maintainer and the administrator's padlocked
-    // entries, the "Signed in as" line, and the remembered sign-in's name and address read again at
-    // launch), TabMaintainer.Invitation.cs ("I have an invitation" on the sign-in screen),
+    // entries, the "Signed in as" line, the remembered sign-in's name and address read again at
+    // launch, and an account that maintains no board said so),
     // TabMaintainer.SubmissionViews.cs (a submission's three views - Board data, Files,
     // Contributor - and which is shown), TabMaintainer.Files.cs (the Files view: the submission's
     // file tree, and the count on its button), TabMaintainer.Contributor.cs (the Contributor
@@ -112,8 +116,6 @@ namespace CRT
             this.InitializeComponent();
             this.WireTable();
             this.WireAccountScreen();
-            this.ShowNotRememberedNote(ReviewSessionStore.IsSupported);
-            this.ShowTestServerNote(AppConfig.UsesTestServer);
         }
 
         // ###########################################################################################
@@ -148,292 +150,25 @@ namespace CRT
         // Sign in
         // -----------------------------------------------------------------------------------
 
-        // Every async handler runs through HandlerGuard: what throws is logged and said, never the
-        // end of CRT (code review, 2026-10-13).
-        private async void OnSignInClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) =>
-            await HandlerGuard.RunAsync(this.SignInAsync, this.ShowHandlerFailure);
+        // ###########################################################################################
+        // "Sign in" on the tab opens CRT's ACCOUNT WINDOW (2026-11-25, Main.Account.cs - accounts for everybody): the sign-in
+        // form, "I forgot my password" and "I have an invitation" were this tab's until then, and are the window's now
+        // (AccountWindow). What the window signs in comes back through UseSignInAsync (TabMaintainer.Session.cs) - the session
+        // is still this tab's.
+        // ###########################################################################################
+        internal event Action? SignInWanted;
 
-        // Enter in the password box signs in. Unlike CRT's own destructive dialogs - where Enter
-        // deliberately CANCELS - this is a safe, repeatable action, and making someone reach for
-        // the mouse after typing a password is the kind of friction that has no upside.
-        private async void OnPasswordKeyDown(object? sender, KeyEventArgs e)
-        {
-            if (e.Key == Key.Enter)
-            {
-                e.Handled = true;
-                await HandlerGuard.RunAsync(this.SignInAsync, this.ShowHandlerFailure);
-            }
-        }
-
-        private async Task SignInAsync()
-        {
-            var email = this.FindControl<TextBox>("EmailTextBox");
-            var password = this.FindControl<TextBox>("PasswordTextBox");
-            var button = this.FindControl<Button>("SignInButton");
-
-            if (email is null || password is null || button is null)
-                return;
-
-            // *** NOT ASKED FOR. *** The Maintainer tab talks to one service and always will, so the
-            // address is a constant rather than a field somebody retypes on every launch - and
-            // gets wrong with a trailing slash or a missing scheme.
-            string address = ReviewApiRoutes.DefaultBaseAddress;
-
-            // Disabled for the duration, so a second click cannot start a second sign-in while
-            // the first is in flight - which would race two sessions and leave whichever finished
-            // last in place, not necessarily the one the maintainer waited for.
-            button.IsEnabled = false;
-            this.ShowSignInMessage(null);
-
-            try
-            {
-                this.thisClient?.Dispose();
-
-                var client = new ReviewApiClient(address);
-                this.UseClient(client);
-                string enteredEmail = email.Text?.Trim() ?? string.Empty;
-                string enteredPassword = password.Text ?? string.Empty;
-
-                // A timeout is an ordinary failure here: signing in changes nothing worth checking.
-                ReviewApiResult<ReviewSession> result = await ServerWait.CallAsync(
-                    this,
-                    MaintainerWaitWording.SigningIn,
-                    token => client.LoginAsync(enteredEmail, enteredPassword, token));
-
-                if (!result.IsOk)
-                {
-                    this.ShowSignInMessage(result.Message);
-                    return;
-                }
-
-                this.UseSession(result.Value);
-
-                // Fresh from the server: nothing for the launch's account read to bring up to date
-                // (TabMaintainer.Account.cs).
-                this.thisAccountRead = true;
-
-                // *** REMEMBERED HERE, ONCE, ON A SUCCESSFUL SIGN-IN. *** Storing it anywhere else
-                // would mean storing a token that has not been proved to work. The store itself
-                // declines on any machine where it cannot be encrypted, so this call is safe to
-                // make unconditionally - see ReviewSessionStore.Remember.
-                ReviewSessionStore.Remember(this.thisSession!);
-
-                // The password is cleared the moment it is no longer needed. It is not a secret
-                // this window has any further use for, and a populated password box left on a
-                // signed-in machine is a credential sitting in plain sight.
-                password.Text = string.Empty;
-
-                this.ShowQueuePanel();
-                await this.ReadListsAsync();
-            }
-            finally
-            {
-                button.IsEnabled = true;
-            }
-        }
+        private void OnSignInClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) => this.SignInWanted?.Invoke();
 
         // ###########################################################################################
-        // The sign-in panel's one message line.
+        // The sign-in panel's one message line - "You are signed out." and a failure in CRT itself (HandlerGuard).
         //
-        // isError defaults TRUE because almost every use is a failure - but the password-reset
-        // answer is good news, and colouring that red would read as a failure to somebody who has
-        // just asked for help.
+        // isError defaults TRUE because almost every use is a failure - but signing out is good news, and colouring that red
+        // would read as a failure.
         // ###########################################################################################
         private void ShowSignInMessage(string? message, bool isError = true)
         {
             WindowMessage.ShowOutcome(this.FindControl<TextBlock>("SignInMessageText"), message, isError);
-        }
-
-        // ###########################################################################################
-        // "I forgot my password".
-        //
-        // *** THE ANSWER IS THE SAME WHETHER OR NOT THE ADDRESS EXISTS. *** The server always
-        // answers 202 for exactly that reason, and this must not try to be more helpful:
-        // distinguishing the two would turn the sign-in screen into a tool for discovering which
-        // addresses hold maintainer accounts - the accounts that can publish to every user.
-        //
-        // The reset itself happens through the emailed link, not in this app. Building a
-        // reset-token screen here would be a second place that flow lives, for an action taken
-        // once in a career.
-        // ###########################################################################################
-        private async void OnForgotPasswordClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) =>
-            await HandlerGuard.RunAsync(this.ForgotPasswordAsync, this.ShowHandlerFailure);
-
-        private async Task ForgotPasswordAsync()
-        {
-            var email = this.FindControl<TextBox>("EmailTextBox");
-            var button = this.FindControl<Button>("ForgotPasswordButton");
-
-            if (email is null || button is null)
-                return;
-
-            string address = email.Text?.Trim() ?? string.Empty;
-
-            if (string.IsNullOrWhiteSpace(address))
-            {
-                // The one thing worth checking locally - the server cannot email nothing, and
-                // saying so costs no round trip.
-                this.ShowSignInMessage("Enter your email address first, then ask for a reset.");
-                return;
-            }
-
-            button.IsEnabled = false;
-
-            try
-            {
-                // A client of its own: the shared one is created by signing in, and this runs
-                // before anybody has.
-                using var client = new ReviewApiClient(ReviewApiRoutes.DefaultBaseAddress);
-
-                ReviewApiResult<string> result = await ServerWait.CallAsync(
-                    this,
-                    MaintainerWaitWording.AskingForResetCode,
-                    token => client.ForgotPasswordAsync(address, token));
-
-                // A code may still be mailed after the window stopped waiting - so the place to
-                // paste it opens then too.
-                if (result.Failure == ReviewApiFailure.TimedOut)
-                {
-                    this.ShowSignInMessage(MaintainerWaitWording.ResetCodeNoAnswer);
-                    this.ShowResetPanel();
-                    return;
-                }
-
-                this.ShowSignInMessage(
-                    result.IsOk ? result.Value : result.Message,
-                    isError: !result.IsOk);
-
-                // *** THE PANEL OPENS ON SUCCESS, WHICH IS THE ANSWER FOR ANY ADDRESS. *** The
-                // server deliberately answers 202 whether or not the address is known, so this
-                // reveals somewhere to paste a code that may never arrive. That is correct: a
-                // panel that appeared only for registered addresses would turn this screen into a
-                // way of discovering which addresses hold maintainer accounts - the exact
-                // enumeration oracle the neutral 202 exists to prevent.
-                if (result.IsOk)
-                    this.ShowResetPanel();
-            }
-            finally
-            {
-                button.IsEnabled = true;
-            }
-        }
-
-        // ###########################################################################################
-        // Reveals the "paste your code" panel and puts the cursor in it.
-        //
-        // Idempotent: asking for a second code while the panel is already open must not clear a
-        // half-typed password, so nothing here resets the fields.
-        // ###########################################################################################
-        private void ShowResetPanel()
-        {
-            var panel = this.FindControl<StackPanel>("ResetPanel");
-
-            if (panel is null)
-                return;
-
-            panel.IsVisible = true;
-
-            this.FindControl<TextBox>("ResetCodeTextBox")?.Focus();
-        }
-
-        // Enter in the password box submits, matching the sign-in box above it. Safe and
-        // repeatable, so there is no reason to make somebody reach for the mouse.
-        private async void OnNewPasswordKeyDown(object? sender, KeyEventArgs e)
-        {
-            if (e.Key == Key.Enter)
-            {
-                e.Handled = true;
-                await HandlerGuard.RunAsync(this.ResetPasswordAsync, this.ShowHandlerFailure);
-            }
-        }
-
-        private async void OnSetPasswordClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e) =>
-            await HandlerGuard.RunAsync(this.ResetPasswordAsync, this.ShowHandlerFailure);
-
-        // ###########################################################################################
-        // Completes the reset: the code from the mail, plus the chosen password.
-        //
-        // *** ON SUCCESS THE PANEL CLOSES AND THE PASSWORD BOX IS FILLED IN, NOT THE QUEUE
-        // OPENED. *** Resetting a password is not signing in - the server issues no session here,
-        // and pretending otherwise would mean holding the password to log in with it behind the
-        // person's back. Filling the sign-in box means one click from "password set" to working,
-        // without inventing a session that was never granted.
-        // ###########################################################################################
-        private async Task ResetPasswordAsync()
-        {
-            var code = this.FindControl<TextBox>("ResetCodeTextBox");
-            var password = this.FindControl<TextBox>("NewPasswordTextBox");
-            var button = this.FindControl<Button>("SetPasswordButton");
-
-            if (code is null || password is null || button is null)
-                return;
-
-            string enteredCode = code.Text?.Trim() ?? string.Empty;
-            string enteredPassword = password.Text ?? string.Empty;
-
-            // Both checked locally, because the round trip can say nothing useful about an empty
-            // box that this cannot say immediately.
-            if (string.IsNullOrWhiteSpace(enteredCode))
-            {
-                this.ShowSignInMessage("Paste the code from the email first.");
-                return;
-            }
-
-            if (string.IsNullOrEmpty(enteredPassword))
-            {
-                this.ShowSignInMessage("Type the password you want to use.");
-                return;
-            }
-
-            button.IsEnabled = false;
-
-            try
-            {
-                // Its own client, like the forgot-password request: the shared one is created by
-                // signing in, and this runs before anybody has.
-                using var client = new ReviewApiClient(ReviewApiRoutes.DefaultBaseAddress);
-
-                ReviewApiResult<string> result = await ServerWait.CallAsync(
-                    this,
-                    MaintainerWaitWording.SettingPassword,
-                    token => client.ResetPasswordAsync(enteredCode, enteredPassword, token));
-
-                if (result.Failure == ReviewApiFailure.TimedOut)
-                {
-                    this.ShowSignInMessage(MaintainerWaitWording.PasswordNoAnswer);
-                    return;
-                }
-
-                this.ShowSignInMessage(
-                    result.IsOk ? result.Value : result.Message,
-                    isError: !result.IsOk);
-
-                if (!result.IsOk)
-                    return;
-
-                // The code is spent and the fields have served their purpose. Clearing them stops
-                // a second press resubmitting a code the server has already consumed, which would
-                // answer "that link has already been used" and read as a failure.
-                code.Text = string.Empty;
-                password.Text = string.Empty;
-
-                var panel = this.FindControl<StackPanel>("ResetPanel");
-
-                if (panel is not null)
-                    panel.IsVisible = false;
-
-                var signInPassword = this.FindControl<TextBox>("PasswordTextBox");
-
-                if (signInPassword is not null)
-                {
-                    signInPassword.Text = enteredPassword;
-                    signInPassword.Focus();
-                }
-            }
-            finally
-            {
-                button.IsEnabled = true;
-            }
         }
 
         private void ShowQueuePanel()
@@ -446,10 +181,6 @@ namespace CRT
 
             signIn.IsVisible = false;
             queue.IsVisible = true;
-
-            // A remembered sign-in can be restored while the invitation is on screen; the next
-            // sign-out must find the sign-in form, not that (TabMaintainer.Invitation.cs).
-            this.CloseInvitationView();
 
             this.ShowSignedInAs();
 
@@ -623,6 +354,8 @@ namespace CRT
             // Cleared BEFORE the early return: a null control is a markup problem, and it must not
             // leave a rejected token sitting on disk to be retried next launch.
             this.UseSession(null);
+            this.thisMaintainsNothing = false;
+            this.thisListsWanted = false;
             this.thisQueueKnown = false;
             this.thisOscilloscopeModelsWaiting = 0;
             ReviewSessionStore.Forget();
@@ -661,6 +394,36 @@ namespace CRT
 
             queue.IsVisible = false;
             signIn.IsVisible = true;
+            this.ShowSignInPanelState(maintainsNothing: false);
+        }
+
+        // ###########################################################################################
+        // What the sign-in panel says: signed out, "Sign in"; signed in with an account that maintains no board (and is
+        // no administrator), that - with who is signed in, so it is plain which account it is about.
+        // ###########################################################################################
+        private void ShowSignInPanelState(bool maintainsNothing)
+        {
+            if (this.FindControl<Control>("SignedOutPart") is Control signedOut)
+                signedOut.IsVisible = !maintainsNothing;
+
+            if (this.FindControl<TextBlock>("NotMaintainerText") is not TextBlock text)
+                return;
+
+            text.IsVisible = maintainsNothing && this.thisSession is not null;
+
+            if (text.IsVisible && this.thisSession is ReviewSession session)
+            {
+                TabMaintainer.ShowCounts(
+                    text,
+                    [
+                        new ReviewNoteRun("Signed in as ", false),
+                        .. MyAccountRules.SignedInAs(session.DisplayName, session.Email),
+                        new ReviewNoteRun(
+                            ". This account is not a maintainer of any board, so there is nothing for it here. " +
+                            "The administrator makes an account a board's maintainer.",
+                            false)
+                    ]);
+            }
         }
 
         // ###########################################################################################

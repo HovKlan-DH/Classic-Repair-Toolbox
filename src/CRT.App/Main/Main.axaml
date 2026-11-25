@@ -55,12 +55,13 @@
 			<Setter Property="Background" Value="Transparent" />
 		</Style>
 
-		<!-- The tabs' headers keep clear of the top right corner's icons (TopRightTools: 15 from the edge, two icons of 22 and
-		     12 between them, and 9 to spare): on a narrow window the headers wrap and run to the right edge, and a header under
-		     the theme's icon switched the theme when it was clicked (code review, 2026-11-18). By the strip's placement as
-		     Fluent's own style sets this margin: a style with a trigger outranks a plain one, and a plain one was ignored. -->
+		<!-- The tabs' headers keep clear of the top right corner's icons (TopRightTools: 15 from the edge, three icons of 22 -
+		     the data check, the theme and, since 2026-11-25, the account - 12 between them, and 9 to spare): on a narrow window
+		     the headers wrap and run to the right edge, and a header under the theme's icon switched the theme when it was
+		     clicked (code review, 2026-11-18). By the strip's placement as Fluent's own style sets this margin: a style with a
+		     trigger outranks a plain one, and a plain one was ignored. -->
 		<Style Selector="TabControl#MainTabControl[TabStripPlacement=Top] /template/ ItemsPresenter#PART_ItemsPresenter">
-			<Setter Property="Margin" Value="0,0,80,0" />
+			<Setter Property="Margin" Value="0,0,114,0" />
 		</Style>
 
 		<!-- A notice card floating over the tabs' bottom-right corner (NoticeStack) -->
@@ -707,6 +708,27 @@
 							VerticalContentAlignment="Center"
 							Click="OnThemeToggleClick">
 						<TextBlock x:Name="ThemeToggleGlyph"
+								   FontFamily="{StaticResource FontAwesomeSolid}"
+								   FontWeight="Black"
+								   FontSize="18"
+								   HorizontalAlignment="Center"
+								   VerticalAlignment="Center"
+								   Foreground="{DynamicResource Main_ThemeIcon_Fg}" />
+					</Button>
+
+					<!-- THE ACCOUNT (owner requests, 2026-11-25: accounts for everybody): a person, a person with a check while signed
+					     in - drawn as the theme's icon is, and like it taking no keyboard focus. A click opens the account window
+					     (Main.Account.cs). -->
+					<Button x:Name="AccountButton"
+							Classes="ThemeIcon"
+							Focusable="False"
+							Width="22"
+							Height="22"
+							VerticalAlignment="Center"
+							HorizontalContentAlignment="Center"
+							VerticalContentAlignment="Center"
+							Click="OnAccountButtonClick">
+						<TextBlock x:Name="AccountGlyph"
 								   FontFamily="{StaticResource FontAwesomeSolid}"
 								   FontWeight="Black"
 								   FontSize="18"

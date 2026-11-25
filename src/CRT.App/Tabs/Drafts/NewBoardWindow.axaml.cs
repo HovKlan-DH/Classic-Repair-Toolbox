@@ -52,6 +52,10 @@ namespace CRT
             this.AddHandler(KeyDownEvent, this.OnWindowKeyDown, RoutingStrategies.Tunnel);
 
             this.UpdateValidation();
+
+            // No taller than its screen, its form scrolling above its buttons (2026-11-25: 732 high as made, past the
+            // bottom of a 768 screen with "Create board" under it) - as the Submit dialog.
+            Handlers.Theming.ScreenSizedDialog.Use(this);
         }
 
         // Seeds the fields' suggestions and the set of names already in use (BoardNameFields).

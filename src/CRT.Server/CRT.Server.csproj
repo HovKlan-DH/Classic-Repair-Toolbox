@@ -62,7 +62,7 @@
     fields on purpose - InformationalVersion is the one /api/health reports and the one to bump.
     -->
     <AssemblyVersion>1.0.0</AssemblyVersion>
-    <InformationalVersion>12.1.1</InformationalVersion>
+    <InformationalVersion>13.0.0</InformationalVersion>
 
   </PropertyGroup>
 
@@ -87,6 +87,16 @@
   is what makes "dotnet publish" carry them, which CopyToOutputDirectory alone does not
   guarantee for a framework-dependent publish.
   -->
+  <!--
+  The server's own changelog, built into the program (2026-11-24; Handlers/Health/ServerReleaseNotes): GET
+  /api/review/server-status hands it to the Maintainer tab's Account > "Server version", so it is always the
+  changelog of the build answering. Embedded rather than copied beside the binaries, so no deployment can leave
+  it behind or pair it with another build.
+  -->
+  <ItemGroup>
+    <EmbeddedResource Include="RELEASE-NOTES.md" LogicalName="CRT.Server.RELEASE-NOTES.md" />
+  </ItemGroup>
+
   <ItemGroup>
     <None Update="Migrations\*.sql">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

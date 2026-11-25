@@ -112,6 +112,22 @@ public sealed class ReviewWireContractTests
         Assert.Equal(["Commodore/C64/250407/old.png"], remove.Files);
     }
 
+    // ###########################################################################################
+    // Making an account from CRT's account window (2026-11-25, accounts for everybody): the record the server's register route
+    // binds since that day - the server's own body until then, with the very same names, so curl and older scripts are read
+    // as before.
+    // ###########################################################################################
+    [Fact]
+    public void A_new_account_arrives_with_its_name_address_and_password_under_the_names_it_always_had()
+    {
+        var sent = new RegisterAccountRequest("anna@example.com", "correct horse battery staple", "Anna");
+
+        Assert.Equal(sent, ReviewWireContractTests.Received<RegisterAccountRequest>(sent));
+        Assert.Equal(
+            """{"email":"anna@example.com","password":"correct horse battery staple","displayName":"Anna"}""",
+            ReviewApiClient.Body(sent));
+    }
+
     // The field names on the wire are camelCase, as they were when these bodies were anonymous
     // objects - so a server not yet updated reads them the same.
     [Fact]
@@ -2100,6 +2116,27 @@ public sealed class ReviewWireContractTests
         Assert.DoesNotContain(
             typeof(HealthStatus).GetProperties(),
             property => property.Name.Contains("Mail", StringComparison.OrdinalIgnoreCase));
+    }
+
+    // ###########################################################################################
+    // The server's own changelog (server 12.2.0, 2026-11-24): its Markdown read back as sent, line ends and all; an
+    // older server's answer, or a blank one, has none - and never on the public health answer.
+    // ###########################################################################################
+    [Fact]
+    public void The_server_status_reads_back_the_servers_changelog()
+    {
+        const string changelog = "# 12.2.0, 2026-November-24\n--------------------------\n- \"Server version\" shows this changelog\n\n# 12.1.1, 2026-November-24\n---\n- Two";
+
+        Assert.Equal(
+            changelog,
+            ReviewApiParser.ParseServerStatus(ReviewWireContractTests.Answer(new ServerStatusAnswer(0, null, changelog)))!.Changelog);
+
+        Assert.Null(ReviewApiParser.ParseServerStatus(ReviewWireContractTests.Answer(new ServerStatusAnswer(0, null, "  \n ")))!.Changelog);
+        Assert.Null(ReviewApiParser.ParseServerStatus(ReviewWireContractTests.Answer(new ServerStatusAnswer(2)))!.Changelog);
+
+        Assert.DoesNotContain(
+            typeof(HealthStatus).GetProperties(),
+            property => property.Name.Contains("Changelog", StringComparison.OrdinalIgnoreCase));
     }
 
     // ###########################################################################################

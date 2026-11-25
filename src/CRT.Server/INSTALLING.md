@@ -373,6 +373,10 @@ ProxyTimeout     300
 ProxyPass        /api/  http://127.0.0.1:5199/api/
 ProxyPassReverse /api/  http://127.0.0.1:5199/api/
 
+# The account web pages (server 13.0.0): making an account, confirming its address, a new password.
+ProxyPass        /account/  http://127.0.0.1:5199/account/
+ProxyPassReverse /account/  http://127.0.0.1:5199/account/
+
 # The addresses CRT 2.x and older send to, answered by the service:
 ProxyPass        /app-checkin/           http://127.0.0.1:5199/api/usage/check-in
 ProxyPassReverse /app-checkin/           http://127.0.0.1:5199/api/usage/check-in
@@ -398,6 +402,46 @@ RequestHeader set X-Forwarded-Proto "https" "expr=%{HTTPS} == 'on'"
   the links in its mails from that header. (`ProxyPass` cannot go inside an `<If>` - Apache refuses it.)
 - **Place the block before any rewrite rule that catches unknown paths**, or `/api/` answers with the
   site's own page.
+- **`/account/` - the account web pages** (server 13.0.0): somebody with no CRT at hand makes an account,
+  confirms its address and sets a new password with a mailed code there. The service builds every link to
+  them from `PublicApiBaseUrl` less its `/api`, so the live pages are `https://classic-repair-toolbox.dk/account/`
+  and the test instance's `.../crt-test/account/` (its own lines, "A test instance for pre-releases", step 7).
+  The site has no `account` folder of its own, so nothing there is hidden by this.
+
+**The account web pages, on a box set up before 13.0.0** - add the two `/account/` lines above to the
+vhost (and the test instance's two), then check and reload:
+
+```bash
+sudo apachectl configtest && sudo systemctl reload httpd
+curl -s -m 10 -o /dev/null -D - --resolve classic-repair-toolbox.dk:443:127.0.0.1 \
+  https://classic-repair-toolbox.dk/account/register | grep -iE '^HTTP|^server|^content-security'
+curl -s -m 10 -o /dev/null -D - --resolve classic-repair-toolbox.dk:443:127.0.0.1 \
+  https://classic-repair-toolbox.dk/crt-test/account/register | grep -iE '^HTTP|^server'
+```
+
+- **`--resolve ...:127.0.0.1`**, as every check here run on the box: the box cannot reach its own public address,
+  and without it curl waits for ever. **`-m 10`** gives up after ten seconds whatever happens.
+- **A GET, never `curl -I`**: the pages answer GET only, and a HEAD request is answered 405.
+- **What it says:** `HTTP/1.1 200 OK`, `Server: Kestrel` and `Content-Security-Policy: default-src 'none'; style-src
+  'sha256-...` once the service is 13.0.0 or later. Before that, `404 Not Found` with `Server: Kestrel` - Apache forwards
+  the path, and the service has no page there yet - which is fine: the lines can go in before the build does. A 404
+  WITHOUT `Server: Kestrel` is the website answering, so the `ProxyPass` lines are not in effect (placed after a
+  rewrite rule, or Apache not reloaded).
+
+Until they are in, the link to the "I forgot my password" page in a reset mail lands on the website's own
+page; CRT and the confirmation link (still under `/api/`) work either way.
+
+**Display names are unique from 13.0.0** - a name being set is refused when another account has it,
+ignoring capitals. Names set before were never held to that, so two old accounts may share one; nothing
+breaks, but it is worth knowing (in the `crt_review` database, and `crt_review_test` for the test instance):
+
+```sql
+SELECT UPPER(TRIM(display_name)) AS name, COUNT(*) AS accounts, GROUP_CONCAT(id) AS ids
+FROM accounts GROUP BY UPPER(TRIM(display_name)) HAVING COUNT(*) > 1;
+```
+
+No rows: every name is one account's. A row: those accounts keep the name until one of them changes it
+(under "My account"), which the rule then holds.
 
 **Let large feedback through.** CRT sends feedback attachments of up to 250 MB. Apache allows 1 GB
 by default, but a smaller `LimitRequestBody` set anywhere would refuse it first:
@@ -501,8 +545,10 @@ SELECT id, email, is_verified, is_administrator, is_locked FROM crt_review.accou
 row: verified, administrator, not locked. No restart is needed.
 
 **Maintainers are added from CRT**, never in SQL: in CRT, check **Enable "Maintainer" tab** in the
-Configuration tab, sign in on the Maintainer tab, and use **Account > Maintainers** - add somebody who
-has an account, or invite somebody new by email. You can add yourself too.
+Configuration tab, sign in (the account icon in the top right corner of CRT's window, or "Sign in" on the
+Maintainer tab), and use **Management > Maintainers** - add somebody who has an account, or invite
+somebody new by email. You can add yourself too. Since server 13.0.0 anybody can make an account (in CRT,
+or on the `/account/` pages); an account is a maintainer only once it is in a board's pool.
 
 ## 11. Check it end to end
 
@@ -938,7 +984,8 @@ sudo systemctl restart smb      # a share picks up a new group only on a new con
 
 ## Accounts and sessions
 
-A sign-in in CRT's Maintainer tab lasts until it has not been used for `RefreshTokenDays`; every use
+A sign-in in CRT (its account icon, or the Maintainer tab's "Sign in") lasts until it has not been used
+for `RefreshTokenDays`; every use
 pushes the end further out. On Windows CRT keeps it encrypted to the Windows user; on Linux and macOS
 it keeps nothing, and asks at every launch.
 
@@ -1232,8 +1279,10 @@ What it publishes is test data, seen by CRT's alphas and betas only.
    systemctl reload httpd`:
 
    ```apache
-   ProxyPass        /crt-test/api/  http://127.0.0.1:5198/api/
-   ProxyPassReverse /crt-test/api/  http://127.0.0.1:5198/api/
+   ProxyPass        /crt-test/api/      http://127.0.0.1:5198/api/
+   ProxyPassReverse /crt-test/api/      http://127.0.0.1:5198/api/
+   ProxyPass        /crt-test/account/  http://127.0.0.1:5198/account/
+   ProxyPassReverse /crt-test/account/  http://127.0.0.1:5198/account/
    ```
 
    **Check:** `curl -i -m 10 --resolve classic-repair-toolbox.dk:443:127.0.0.1
@@ -1249,7 +1298,7 @@ What it publishes is test data, seen by CRT's alphas and betas only.
    Open the link in the mail ("Classic Repair Toolbox (test)"), then
    `UPDATE crt_review_test.accounts SET is_administrator = 1 WHERE email_normalised = 'you@example.com';`
 
-9. **End to end, with a CRT pre-release**: the Maintainer tab says it signs in to the test server;
+9. **End to end, with a CRT pre-release**: CRT's account window says it signs in to the test server;
    Account > **Server version** shows the test instance's version and API 2 on both lines; CRT's log names
    `app-data-v4-test` for its data; a small change sent from the Contribute tab (whose Submit dialog says it
    goes to the test server) reaches the queue; approving it changes `app-data-v4-test-BETA/dataChecksums.json`,

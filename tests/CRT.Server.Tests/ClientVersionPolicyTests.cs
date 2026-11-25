@@ -65,11 +65,24 @@ namespace CRT.Server.Tests
         [InlineData("/api/legacy/contribution", ClientArea.Forever)]
         [InlineData("/api/reviewer", ClientArea.Forever)]
         [InlineData("/api/submissionsX", ClientArea.Forever)]
+        [InlineData("/account", ClientArea.Web)]
+        [InlineData("/account/register", ClientArea.Web)]
+        [InlineData("/accounts", ClientArea.Forever)]
         [InlineData("", ClientArea.Forever)]
         [InlineData(null, ClientArea.Forever)]
         public void Each_path_belongs_to_one_area(string? path, ClientArea expected)
         {
             Assert.Equal(expected, ClientVersionPolicy.AreaOf(path));
+        }
+
+        // The account web pages (2026-11-25) are a browser's: no CRT, however old, is turned away from them - however the
+        // gated areas' minimums and revision are set.
+        [Theory]
+        [InlineData("/account/register", "CRT 2.5.0", "1")]
+        [InlineData("/account/verify", "Mozilla/5.0", null)]
+        public void A_web_page_is_never_refused(string path, string userAgent, string? revision)
+        {
+            Assert.Null(ClientVersionPolicyTests.Strict.Refuse(path, userAgent, revision));
         }
 
         // ###########################################################################################

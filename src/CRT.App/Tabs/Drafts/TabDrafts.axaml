@@ -305,8 +305,12 @@
 
 	<Grid RowDefinitions="Auto,Auto,*">
 
-		<!-- The tab's own line: what it is for, then "My drafts", "My submissions" and "Add a new board". -->
-		<Grid Grid.Row="0" ColumnDefinitions="*,16,Auto" Margin="16,16,16,8">
+		<!-- The tab's own line: what it is for, then "My drafts", "My submissions" and "Add a new board" - BESIDE it, or
+		     UNDER it on a tab too narrow to leave the words a line's room (2026-11-25; TabDrafts.Workspace.cs,
+		     PlaceTopButtons, TopLineGeometry): beside, on CRT's narrowest window the words ran to a dozen lines and pushed
+		     the workspace below the window. The buttons move between these cells by Grid.Row and Grid.Column - the
+		     definitions never change. -->
+		<Grid Grid.Row="0" x:Name="TopLineGrid" ColumnDefinitions="*,16,Auto" RowDefinitions="Auto,Auto" Margin="16,16,16,8">
 			<StackPanel Grid.Column="0" Spacing="4">
 				<TextBlock Text="Contribute"
 						   FontSize="16"
@@ -329,7 +333,7 @@
 						   IsVisible="False" />
 			</StackPanel>
 
-			<StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top">
+			<StackPanel Grid.Column="2" x:Name="TopButtons" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top">
 				<!-- "My drafts" (the plan: "A My drafts list in the header switches between boards"):
 				     picking one shows that board, everywhere in CRT. A list that falls back to its
 				     placeholder after each pick, so it reads as a menu, never as a second board name. -->

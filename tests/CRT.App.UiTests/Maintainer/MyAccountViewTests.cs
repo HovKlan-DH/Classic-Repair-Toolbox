@@ -115,26 +115,54 @@ public sealed class MyAccountViewTests
         });
     }
 
+    // ###########################################################################################
+    // *** A NAME BREAKING THE RULE IS SAID AS IT IS TYPED, AND CANNOT BE SAVED (owner request, 2026-11-25: only A-Z, 0-9
+    // and + - / @ . [ ] ( ), 30 characters at most). *** The rule's own sentence under the box - the server's - gone once
+    // the name keeps it; a sentence the server said is left alone.
+    // ###########################################################################################
+    [Fact]
+    public void A_name_breaking_the_rule_is_said_under_the_box_and_cannot_be_saved()
+    {
+        UiTest.Run(() =>
+        {
+            Opened opened = MyAccountViewTests.Open(_ => AnsweringHttpHandler.Refused());
+            MyAccountView view = opened.View;
+
+            MyAccountViewTests.Type(view, "NameTextBox", "Dennis Hansen");
+
+            Assert.False(MyAccountViewTests.IsOn(view, "SaveNameButton"));
+            Assert.True(MyAccountViewTests.Shown(view, "NameMessageText"));
+            Assert.Equal(Handlers.DataHandling.DisplayNames.Problem("Dennis Hansen", sayRule: false), MyAccountViewTests.Said(view, "NameMessageText"));
+
+            MyAccountViewTests.Type(view, "NameTextBox", "Dennis@CRT");
+
+            Assert.True(MyAccountViewTests.IsOn(view, "SaveNameButton"));
+            Assert.False(MyAccountViewTests.Shown(view, "NameMessageText"));
+
+            opened.Window.Close();
+        });
+    }
+
     [Fact]
     public async Task A_saved_name_is_passed_on_at_once()
     {
         await UiTest.RunAsync(async () =>
         {
-            Opened opened = MyAccountViewTests.Open(_ => MyAccountViewTests.Changed("Your name is now Dennis H.", "dh@example.com", "Dennis H"));
+            Opened opened = MyAccountViewTests.Open(_ => MyAccountViewTests.Changed("Your name is now Dennis-H.", "dh@example.com", "Dennis-H"));
             MyAccountView view = opened.View;
 
-            MyAccountViewTests.Type(view, "NameTextBox", "Dennis H");
+            MyAccountViewTests.Type(view, "NameTextBox", "Dennis-H");
             Assert.True(MyAccountViewTests.IsOn(view, "SaveNameButton"));
 
             await view.SaveNameAsync();
 
             Assert.Equal(["/api/accounts/me/name"], opened.Paths);
-            Assert.Equal("Dennis H", Assert.Single(opened.PassedOn).DisplayName);
-            Assert.Equal("Dennis H", view.Session!.DisplayName);
+            Assert.Equal("Dennis-H", Assert.Single(opened.PassedOn).DisplayName);
+            Assert.Equal("Dennis-H", view.Session!.DisplayName);
             Assert.Equal("token", view.Session.BearerToken);
-            Assert.Equal("Signed in as Dennis H (dh@example.com)", MyAccountViewTests.SignedIn(view));
+            Assert.Equal("Signed in as Dennis-H (dh@example.com)", MyAccountViewTests.SignedIn(view));
 
-            Assert.Equal("Your name is now Dennis H.", MyAccountViewTests.Said(view, "NameMessageText"));
+            Assert.Equal("Your name is now Dennis-H.", MyAccountViewTests.Said(view, "NameMessageText"));
             Assert.Equal(MyAccountViewTests.ThemeColour(view, "Text_Success_Fg"), MyAccountViewTests.ColourOf(view, "NameMessageText"));
 
             // Nothing left to save.
@@ -191,7 +219,9 @@ public sealed class MyAccountViewTests
     }
 
     // ###########################################################################################
-    // The owner's words (2026-10-03): "Name or handle", "New email address", "I have received a
+    // The owner's words (2026-10-03): "Name or handle" - "Display name" since 2026-11-25, said to be the name others
+    // see, unique, and what it may hold (owner request: "elaborated that this is the display name others will see, and
+    // that it needs to be unique for all users") - "New email address", "I have received a
     // code" - and no current-password box anywhere. The email section says how the code is typed
     // in. A code asked for earlier, with another screen shown or CRT closed in between, goes in the
     // same way. The view is headed "My account", the entry's own name.
@@ -207,7 +237,11 @@ public sealed class MyAccountViewTests
             List<string?> texts = view.GetLogicalDescendants().OfType<TextBlock>().Select(text => text.Text).ToList();
 
             Assert.Contains(MaintainerScreenWording.MyAccount, texts);
-            Assert.Contains("Name or handle", texts);
+            Assert.Contains("Display name", texts);
+            Assert.Contains(Handlers.DataHandling.DisplayNames.Explanation, texts);
+            Assert.Contains(Handlers.DataHandling.DisplayNames.AllowedLine, texts);
+            Assert.DoesNotContain("Name or handle", texts);
+            Assert.Equal(Handlers.DataHandling.DisplayNames.MaximumLength, view.FindControl<TextBox>("NameTextBox")!.MaxLength);
             Assert.Contains("New email address", texts);
             Assert.DoesNotContain("Current password", texts);
             Assert.Contains(texts, text => text?.Contains("Type that code in with \"I have received a code\"", StringComparison.Ordinal) == true);
@@ -372,10 +406,10 @@ public sealed class MyAccountViewTests
             Assert.Equal("Dennis H", MyAccountViewTests.Typed(view, "NameTextBox"));
             Assert.Equal("Signed in as Dennis H (bench@example.com)", MyAccountViewTests.SignedIn(view));
 
-            MyAccountViewTests.Type(view, "NameTextBox", "Somebody else");
+            MyAccountViewTests.Type(view, "NameTextBox", "Somebody-else");
             view.UseAccount(MyAccountViewTests.Session with { DisplayName = "Dennis HH", Email = "bench@example.com" });
 
-            Assert.Equal("Somebody else", MyAccountViewTests.Typed(view, "NameTextBox"));
+            Assert.Equal("Somebody-else", MyAccountViewTests.Typed(view, "NameTextBox"));
             Assert.Equal("Signed in as Dennis HH (bench@example.com)", MyAccountViewTests.SignedIn(view));
             Assert.True(MyAccountViewTests.IsOn(view, "SaveNameButton"));
 

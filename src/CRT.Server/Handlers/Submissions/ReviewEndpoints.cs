@@ -2,6 +2,7 @@ using CRT.Server.Configuration;
 using Handlers.DataHandling;
 using CRT.Server.Handlers.Accounts;
 using CRT.Server.Handlers.Email;
+using CRT.Server.Handlers.Health;
 using CRT.Server.Handlers.Updates;
 
 namespace CRT.Server.Handlers.Submissions
@@ -123,7 +124,8 @@ namespace CRT.Server.Handlers.Submissions
 
             ServerUpdatesAnswer updates = ServerUpdateStatus.AnswerFrom(ServerUpdateStatus.Locate(environment.ContentRootPath));
 
-            return Results.Ok(new ServerStatusAnswer(unsent, updates));
+            // And the changelog of this very build (server 12.2.0; ServerReleaseNotes).
+            return Results.Ok(new ServerStatusAnswer(unsent, updates, ServerReleaseNotes.Text));
         }
 
         // ###########################################################################################

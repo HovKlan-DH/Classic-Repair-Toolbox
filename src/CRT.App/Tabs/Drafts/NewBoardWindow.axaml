@@ -13,7 +13,16 @@
         Background="{DynamicResource Bg}"
         Foreground="{DynamicResource Fg}">
 
-	<StackPanel Margin="18" Spacing="4">
+	<!-- NO TALLER THAN ITS SCREEN, ITS FORM SCROLLING ABOVE ITS BUTTONS (2026-11-25, after the owner's report of the
+	     "Maintainer" tab's sign-in out of reach on Linux): 732 high as made, more with a "Did you mean" line - past the
+	     bottom of a 768 screen, "Create board" with it, and the window cannot be resized. ScreenSizedDialog caps it to
+	     the screen's working area, as the Submit dialog's. -->
+	<Grid RowDefinitions="*,Auto" Margin="18">
+	<ScrollViewer Grid.Row="0"
+				  x:Name="FormScroller"
+				  HorizontalScrollBarVisibility="Disabled"
+				  VerticalScrollBarVisibility="Auto">
+	<StackPanel Spacing="4">
 		<TextBlock Text="Add a new board"
 				   FontSize="16"
 				   FontWeight="Bold"
@@ -56,8 +65,10 @@
 				   IsVisible="False"
 				   FontWeight="Bold"
 				   Foreground="{DynamicResource Text_Fail_Fg}" />
+	</StackPanel>
+	</ScrollViewer>
 
-		<StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right" Margin="0,16,0,0">
+		<StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right" Margin="0,16,0,0">
 			<Button Content="Cancel" Click="OnCancelClick" />
 
 			<!-- IsDefault: Enter creates once the form is filled in (code review, 2026-11-02) - never over
@@ -69,5 +80,5 @@
 					IsDefault="True"
 					Click="OnCreateClick" />
 		</StackPanel>
-	</StackPanel>
+	</Grid>
 </Window>

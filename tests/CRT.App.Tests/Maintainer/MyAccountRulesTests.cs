@@ -26,17 +26,43 @@ public sealed class MyAccountRulesTests
         Assert.Equal([new ReviewNoteRun("dh@example.com", true)], MyAccountRules.SignedInAs(null, "dh@example.com"));
     }
 
+    // Typed, different - and, since 2026-11-25, keeping CRT.Data's DisplayNames rule (only A-Z, 0-9 and + - / @ . [ ] ( ),
+    // at most 30): "Dennis H" was a name until then, and its space keeps "Save name" off now.
     [Theory]
-    [InlineData("Dennis", "Dennis H", true)]
-    [InlineData("Dennis", "  Dennis H  ", true)]
+    [InlineData("Dennis", "Dennis@CRT", true)]
+    [InlineData("Dennis", "  Dennis-H  ", true)]
+    [InlineData("Dennis", "Dennis H", false)]
     [InlineData("Dennis", "Dennis", false)]
     [InlineData("Dennis", "  Dennis ", false)]
     [InlineData("Dennis", "   ", false)]
     [InlineData("Dennis", null, false)]
     [InlineData("Dennis", "dennis", true)]
-    public void A_name_can_be_saved_when_it_is_typed_and_different(string current, string? typed, bool expected)
+    public void A_name_can_be_saved_when_it_is_typed_different_and_keeps_the_rule(string current, string? typed, bool expected)
     {
         Assert.Equal(expected, MyAccountRules.CanSaveName(current, typed));
+    }
+
+    // ###########################################################################################
+    // What is said under the name's box as it is typed: the rule's own sentence for a name breaking it - nothing for an empty
+    // box, nor for the name the account has now, which may be an old one of the earlier rule (kept until it is changed).
+    // ###########################################################################################
+    [Theory]
+    [InlineData("Dennis", "Dennis H")]
+    [InlineData("Dennis", "Søren")]
+    [InlineData("Dennis", "D")]
+    public void A_name_breaking_the_rule_is_said_in_the_rules_words(string current, string typed)
+    {
+        Assert.Equal(Handlers.DataHandling.DisplayNames.Problem(typed, sayRule: false), MyAccountRules.NameProblem(current, typed));
+    }
+
+    [Theory]
+    [InlineData("Dennis Hansen", "Dennis Hansen")]
+    [InlineData("Dennis", "   ")]
+    [InlineData("Dennis", null)]
+    [InlineData("Dennis", "Dennis@CRT")]
+    public void Nothing_is_said_of_an_empty_box_the_name_there_now_or_a_name_keeping_the_rule(string current, string? typed)
+    {
+        Assert.Null(MyAccountRules.NameProblem(current, typed));
     }
 
     // The same address in other capitals IS a change - the server makes it at once, with no code.

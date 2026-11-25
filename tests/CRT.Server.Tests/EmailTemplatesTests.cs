@@ -23,6 +23,9 @@ namespace CRT.Server.Tests
         // nothing at (only POST /reset-password exists), so every reset link 404'd from Phase 3
         // until the project owner clicked one on 2026-09-22. These tests asserted the dead URL was
         // present, which is why they never caught it.
+        // Where the reset mails send somebody with no CRT at hand (2026-11-25) - the account web page, which takes the code.
+        private const string ForgotUrl = "https://classic-repair-toolbox.dk/account/forgot-password";
+
         private const string ResetCode = "iAXr2z0PPffPwpmzHR-bOFo5ZPCPfHEK1hZbFAKAoYQ";
 
         // -----------------------------------------------------------------------------------
@@ -182,7 +185,7 @@ namespace CRT.Server.Tests
             // Someone re-registering is usually a person who forgot they had an account, so the
             // useful answer is a way back in.
             EmailMessage message = EmailTemplates.AlreadyRegistered(
-                "dennis@example.com", "Dennis", EmailTemplatesTests.ResetCode, 2);
+                "dennis@example.com", "Dennis", EmailTemplatesTests.ResetCode, 2, EmailTemplatesTests.ForgotUrl);
 
             Assert.Contains(EmailTemplatesTests.ResetCode, message.Body, StringComparison.Ordinal);
             Assert.DoesNotContain(EmailTemplatesTests.VerifyUrl, message.Body, StringComparison.Ordinal);
@@ -193,7 +196,7 @@ namespace CRT.Server.Tests
         {
             // If it was not them, this is a security notification they would want.
             EmailMessage message = EmailTemplates.AlreadyRegistered(
-                "dennis@example.com", "Dennis", EmailTemplatesTests.ResetCode, 2);
+                "dennis@example.com", "Dennis", EmailTemplatesTests.ResetCode, 2, EmailTemplatesTests.ForgotUrl);
 
             Assert.Contains("Someone just tried", message.Body, StringComparison.Ordinal);
             Assert.Contains("not you", message.Body, StringComparison.Ordinal);
@@ -205,7 +208,7 @@ namespace CRT.Server.Tests
             // The reassurance is the point: the recipient should understand that their account is
             // not exposed by this message existing.
             EmailMessage message = EmailTemplates.AlreadyRegistered(
-                "dennis@example.com", "Dennis", EmailTemplatesTests.ResetCode, 2);
+                "dennis@example.com", "Dennis", EmailTemplatesTests.ResetCode, 2, EmailTemplatesTests.ForgotUrl);
 
             Assert.Contains("was not told whether this address is registered", message.Body, StringComparison.Ordinal);
         }
@@ -219,7 +222,7 @@ namespace CRT.Server.Tests
             // sent to somebody else's inbox. The caller must pass the account's own name, or
             // nothing; passing nothing must produce a clean greeting rather than an empty one.
             EmailMessage message = EmailTemplates.AlreadyRegistered(
-                "dennis@example.com", displayName: null!, EmailTemplatesTests.ResetCode, 2);
+                "dennis@example.com", displayName: null!, EmailTemplatesTests.ResetCode, 2, EmailTemplatesTests.ForgotUrl);
 
             Assert.Contains("Hi there,", message.Body, StringComparison.Ordinal);
             Assert.DoesNotContain("Hi ,", message.Body, StringComparison.Ordinal);
@@ -233,53 +236,70 @@ namespace CRT.Server.Tests
         public void The_reset_mail_says_the_code_is_single_use()
         {
             EmailMessage message = EmailTemplates.PasswordReset(
-                "dennis@example.com", "Dennis", EmailTemplatesTests.ResetCode, 2);
+                "dennis@example.com", "Dennis", EmailTemplatesTests.ResetCode, 2, EmailTemplatesTests.ForgotUrl);
 
             Assert.Contains(EmailTemplatesTests.ResetCode, message.Body, StringComparison.Ordinal);
             Assert.Contains("once", message.Body, StringComparison.Ordinal);
         }
 
+        // ###########################################################################################
+        // *** THE REGRESSION TEST FOR THE 404 THAT REACHED A REAL USER. *** This mail used to print
+        // "https://<host>/api/accounts/reset?token=...". Nothing is mapped at that path - completing a
+        // reset needs a new PASSWORD, so it is POST /reset-password, which a browser click cannot
+        // reach. Every reset mail sent between Phase 3 and 2026-09-22 led to "This page can't be found".
+        //
+        // It carried NO link at all from then until 2026-11-25, when accounts opened to everybody and the
+        // account web pages came: somebody who made an account on the website may have no CRT, so the mail
+        // now links the page the code is pasted into. ONE link, to that page, and the code in no link - a
+        // link that carried it would redeem nothing (the page asks for a password too) but would put the
+        // code into the web server's log and the browser's history. Asserted on every address in the mail,
+        // so a later "or click here" with the code in it fails here.
+        // ###########################################################################################
         [Fact]
-        public void The_reset_mail_contains_NO_CLICKABLE_LINK_at_all()
+        public void The_reset_mail_links_only_the_page_to_paste_the_code_into_and_never_the_code()
         {
-            // *** THE REGRESSION TEST FOR THE 404 THAT REACHED A REAL USER. *** This mail used to
-            // print "https://<host>/api/accounts/reset?token=...". Nothing is mapped at that path -
-            // completing a reset needs a new PASSWORD, so it is POST /reset-password, which a
-            // browser click cannot reach. Every reset mail sent between Phase 3 and 2026-09-22 led
-            // to "This page can't be found".
-            //
-            // Asserting on the ABSENCE of a URL rather than on the code's presence is deliberate:
-            // a future edit that helpfully adds "or click here" would reintroduce exactly the
-            // original bug, and only this shape of assertion catches that.
             EmailMessage message = EmailTemplates.PasswordReset(
-                "dennis@example.com", "Dennis", EmailTemplatesTests.ResetCode, 2);
+                "dennis@example.com", "Dennis", EmailTemplatesTests.ResetCode, 2, EmailTemplatesTests.ForgotUrl);
 
-            Assert.DoesNotContain("http://", message.Body, StringComparison.OrdinalIgnoreCase);
-            Assert.DoesNotContain("https://", message.Body, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal([EmailTemplatesTests.ForgotUrl], EmailTemplatesTests.AddressesIn(message.Body));
             Assert.DoesNotContain("token=", message.Body, StringComparison.OrdinalIgnoreCase);
+            Assert.Contains(EmailTemplatesTests.ResetCode, message.Body, StringComparison.Ordinal);
         }
 
         [Fact]
-        public void The_ALREADY_REGISTERED_mail_carries_no_link_either()
+        public void The_ALREADY_REGISTERED_mail_links_only_that_page_too()
         {
             // It offers a reset for the same reason and carried the same dead URL.
             EmailMessage message = EmailTemplates.AlreadyRegistered(
-                "dennis@example.com", "Dennis", EmailTemplatesTests.ResetCode, 2);
+                "dennis@example.com", "Dennis", EmailTemplatesTests.ResetCode, 2, EmailTemplatesTests.ForgotUrl);
 
-            Assert.DoesNotContain("https://", message.Body, StringComparison.OrdinalIgnoreCase);
+            Assert.Equal([EmailTemplatesTests.ForgotUrl], EmailTemplatesTests.AddressesIn(message.Body));
             Assert.Contains(EmailTemplatesTests.ResetCode, message.Body, StringComparison.Ordinal);
         }
+
+        // Every web address in a mail's text, as written.
+        private static IReadOnlyList<string> AddressesIn(string body) =>
+            System.Text.RegularExpressions.Regex.Matches(body, @"https?://[^\s<>""]+")
+                .Select(match => match.Value)
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
 
         [Fact]
         public void The_reset_mail_SAYS_WHERE_TO_PASTE_THE_CODE()
         {
             // A bare code with no instructions is worse than the broken link was: at least the
-            // link said what to do with it. The mail must name the application and the button.
+            // link said what to do with it. The mail must name the place in CRT and the button - the
+            // account icon since 2026-11-25 (the Maintainer tab's sign-in screen until then) - in CRT's
+            // own words, and the page for somebody with no CRT at hand.
             EmailMessage message = EmailTemplates.PasswordReset(
-                "dennis@example.com", "Dennis", EmailTemplatesTests.ResetCode, 2);
+                "dennis@example.com", "Dennis", EmailTemplatesTests.ResetCode, 2, EmailTemplatesTests.ForgotUrl);
 
-            Assert.Contains("the \"Maintainer\" tab", message.Body, StringComparison.Ordinal);
-            Assert.Contains("I forgot my password", message.Body, StringComparison.Ordinal);
+            Assert.Contains(
+                $"In CRT, open {(global::Handlers.DataHandling.AccountWording.WhereInCrt)} and choose \"I forgot my password\", then paste this code",
+                message.Body,
+                StringComparison.Ordinal);
+            Assert.Contains("Or do the same on the website: " + EmailTemplatesTests.ForgotUrl, message.Body, StringComparison.Ordinal);
+            Assert.DoesNotContain("\"Maintainer\" tab", message.Body, StringComparison.Ordinal);
             Assert.DoesNotContain("CRT Maintainer", message.Body, StringComparison.Ordinal);
         }
 
@@ -287,7 +307,7 @@ namespace CRT.Server.Tests
         public void The_reset_mail_reassures_someone_who_did_not_ask_for_it()
         {
             EmailMessage message = EmailTemplates.PasswordReset(
-                "dennis@example.com", "Dennis", EmailTemplatesTests.ResetCode, 2);
+                "dennis@example.com", "Dennis", EmailTemplatesTests.ResetCode, 2, EmailTemplatesTests.ForgotUrl);
 
             Assert.Contains("password has not changed", message.Body, StringComparison.Ordinal);
         }
@@ -325,10 +345,13 @@ namespace CRT.Server.Tests
 
             Assert.Equal("bench@example.com", message.ToAddress);
             Assert.Contains(message.Body.Split("\r\n"), line => line.Trim() == EmailTemplatesTests.ResetCode);
-            // The way in, in the Maintainer tab's own words (owner wording, 2026-10-03): since
-            // 2026-10-04 the "Account" tab and its "My account" entry, where the "Your account"
-            // window's sections now are. Written out, so a change to the shared words fails here.
-            Assert.Contains("choose \"Account\" and \"My account\", then \"I have received a code\"", message.Body, StringComparison.Ordinal);
+            // The way in (owner wording, 2026-10-03): the account icon since 2026-11-25, when accounts
+            // opened to everybody - the Maintainer tab's "Account" > "My account" until then. Written out,
+            // so a change to the shared words fails here.
+            Assert.Contains(
+                "In CRT, open the account icon in the top right corner of CRT's window, press \"I have received a code\"",
+                message.Body,
+                StringComparison.Ordinal);
             Assert.Contains("24 hours", message.Body, StringComparison.Ordinal);
             Assert.Contains("nothing changes unless the code is used", message.Body, StringComparison.Ordinal);
             Assert.DoesNotContain("https://", message.Body, StringComparison.OrdinalIgnoreCase);
@@ -380,8 +403,8 @@ namespace CRT.Server.Tests
             var messages = new[]
             {
                 EmailTemplates.Verification("a@b.com", "A", EmailTemplatesTests.VerifyUrl, 24),
-                EmailTemplates.AlreadyRegistered("a@b.com", "A", EmailTemplatesTests.ResetCode, 2),
-                EmailTemplates.PasswordReset("a@b.com", "A", EmailTemplatesTests.ResetCode, 2),
+                EmailTemplates.AlreadyRegistered("a@b.com", "A", EmailTemplatesTests.ResetCode, 2, EmailTemplatesTests.ForgotUrl),
+                EmailTemplates.PasswordReset("a@b.com", "A", EmailTemplatesTests.ResetCode, 2, EmailTemplatesTests.ForgotUrl),
                 EmailTemplates.PasswordChanged("a@b.com", "A")
             };
 
@@ -404,8 +427,8 @@ namespace CRT.Server.Tests
             var messages = new[]
             {
                 EmailTemplates.Verification("a@b.com", "A", EmailTemplatesTests.VerifyUrl, 24),
-                EmailTemplates.AlreadyRegistered("a@b.com", "A", EmailTemplatesTests.ResetCode, 2),
-                EmailTemplates.PasswordReset("a@b.com", "A", EmailTemplatesTests.ResetCode, 2),
+                EmailTemplates.AlreadyRegistered("a@b.com", "A", EmailTemplatesTests.ResetCode, 2, EmailTemplatesTests.ForgotUrl),
+                EmailTemplates.PasswordReset("a@b.com", "A", EmailTemplatesTests.ResetCode, 2, EmailTemplatesTests.ForgotUrl),
                 EmailTemplates.PasswordChanged("a@b.com", "A")
             };
 
@@ -423,8 +446,8 @@ namespace CRT.Server.Tests
             var messages = new[]
             {
                 EmailTemplates.Verification("a@b.com", "A", EmailTemplatesTests.VerifyUrl, 24),
-                EmailTemplates.AlreadyRegistered("a@b.com", "A", EmailTemplatesTests.ResetCode, 2),
-                EmailTemplates.PasswordReset("a@b.com", "A", EmailTemplatesTests.ResetCode, 2),
+                EmailTemplates.AlreadyRegistered("a@b.com", "A", EmailTemplatesTests.ResetCode, 2, EmailTemplatesTests.ForgotUrl),
+                EmailTemplates.PasswordReset("a@b.com", "A", EmailTemplatesTests.ResetCode, 2, EmailTemplatesTests.ForgotUrl),
                 EmailTemplates.PasswordChanged("a@b.com", "A")
             };
 
@@ -448,8 +471,8 @@ namespace CRT.Server.Tests
         private static IReadOnlyList<EmailMessage> EveryMail() =>
         [
             EmailTemplates.Verification("a@b.com", "A", EmailTemplatesTests.VerifyUrl, 24),
-            EmailTemplates.AlreadyRegistered("a@b.com", "A", EmailTemplatesTests.ResetCode, 2),
-            EmailTemplates.PasswordReset("a@b.com", "A", EmailTemplatesTests.ResetCode, 2),
+            EmailTemplates.AlreadyRegistered("a@b.com", "A", EmailTemplatesTests.ResetCode, 2, EmailTemplatesTests.ForgotUrl),
+            EmailTemplates.PasswordReset("a@b.com", "A", EmailTemplatesTests.ResetCode, 2, EmailTemplatesTests.ForgotUrl),
             EmailTemplates.PasswordChanged("a@b.com", "A"),
             EmailTemplates.EmailChangeCode("a@b.com", "A", EmailTemplatesTests.ResetCode, 24),
             EmailTemplates.EmailChangeAddressTaken("a@b.com", "A"),

@@ -37,11 +37,28 @@ namespace Handlers.MaintainerHandling
                 : [new ReviewNoteRun(name, IsCount: true), new ReviewNoteRun($" ({email})", IsCount: false)];
         }
 
+        // ###########################################################################################
+        // A display name is held to CRT.Data's DisplayNames as it is typed (owner requests, 2026-11-25: unique, only A-Z, 0-9
+        // and + - / @ . [ ] ( ), 30 characters at most) - the very rule the server holds, so this is said once, here and there
+        // in the same words. Nothing is said of an empty box or the name there now (an old name of the earlier rule is kept
+        // until changed). Whether another account has it is the server's to say.
+        // ###########################################################################################
+        public static string? NameProblem(string currentName, string? typed)
+        {
+            string name = typed?.Trim() ?? string.Empty;
+
+            return name.Length == 0 || string.Equals(name, currentName, StringComparison.Ordinal)
+                ? null
+                : Handlers.DataHandling.DisplayNames.Problem(name, sayRule: false);
+        }
+
         public static bool CanSaveName(string currentName, string? typed)
         {
             string name = typed?.Trim() ?? string.Empty;
 
-            return name.Length > 0 && !string.Equals(name, currentName, StringComparison.Ordinal);
+            return name.Length > 0 &&
+                !string.Equals(name, currentName, StringComparison.Ordinal) &&
+                MyAccountRules.NameProblem(currentName, typed) is null;
         }
 
         // Exactly the address there now is no change; the same address in other capitals IS one (the

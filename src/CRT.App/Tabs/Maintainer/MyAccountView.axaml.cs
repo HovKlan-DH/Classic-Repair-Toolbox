@@ -12,10 +12,12 @@ namespace CRT
     // ###########################################################################################
     // "MY ACCOUNT" (owner requests, 2026-10-03: the maintainer "can edit his/her own email address
     // and name"; and 2026-10-04: moved from the "Your account" window, opened from the bottom-left
-    // corner, to the first entry under the "Account" screen, Sign out with it). Shown by
-    // TabMaintainer.Account.cs; the server's side is AccountSelfServiceFlows.
+    // corner, to the first entry under the "Account" screen, Sign out with it). In CRT's ACCOUNT
+    // WINDOW since 2026-11-25 (AccountWindow, from the account icon in the top right corner), when
+    // accounts opened to everybody; the server's side is AccountSelfServiceFlows.
     //
-    //   NAME     - one request ("Name or handle").
+    //   NAME     - one request ("Display name" - "Name or handle" until 2026-11-25), held to
+    //              CRT.Data's DisplayNames as it is typed.
     //   ADDRESS  - two: "Send code" mails a code to the new address, and the code typed in after
     //              "I have received a code" makes the change ("Change address"). Another screen can
     //              be shown, or CRT closed, in between (owner wording, 2026-10-03).
@@ -45,6 +47,9 @@ namespace CRT
     {
         private ReviewApiClient? thisClient;
         private ReviewSession? thisSession;
+
+        // The name's line holds the rule's sentence, put there as the name was typed (RefreshButtons).
+        private bool thisNameRuleShown;
 
         public MyAccountView()
         {
@@ -77,6 +82,8 @@ namespace CRT
 
             foreach (string message in new[] { "NameMessageText", "EmailMessageText", "PasswordMessageText" })
                 this.ShowMessage(message, null);
+
+            this.thisNameRuleShown = false;
 
             this.Panel("CodePanel").IsVisible = false;
             this.Box("NameTextBox").Text = session?.DisplayName ?? string.Empty;
@@ -126,6 +133,7 @@ namespace CRT
                 return;
 
             this.ShowMessage("NameMessageText", null);
+            this.thisNameRuleShown = false;
 
             ReviewApiResult<AccountChangeAnswer> result = await ServerWait.CallAsync(
                 this, MaintainerWaitWording.SavingName, token => client.ChangeNameAsync(session, wanted, token));
@@ -356,6 +364,19 @@ namespace CRT
             }
 
             this.Button("SaveNameButton").IsEnabled = MyAccountRules.CanSaveName(session.DisplayName, this.Box("NameTextBox").Text);
+
+            // A name breaking the rule is said under the box as it is typed (2026-11-25) - and the line cleared once it is
+            // fixed, but only a line this put there: the server's answer stays until the next change.
+            if (MyAccountRules.NameProblem(session.DisplayName, this.Box("NameTextBox").Text) is string nameProblem)
+            {
+                this.ShowMessage("NameMessageText", nameProblem);
+                this.thisNameRuleShown = true;
+            }
+            else if (this.thisNameRuleShown)
+            {
+                this.ShowMessage("NameMessageText", null);
+                this.thisNameRuleShown = false;
+            }
 
             this.Button("SendCodeButton").IsEnabled = MyAccountRules.CanAskForCode(session.Email, this.Box("NewEmailTextBox").Text);
 

@@ -12,7 +12,9 @@ namespace ClassicRepairToolbox.Tests;
 //
 // This reads every such method in the areas that review covered and fails on one that awaits
 // anywhere but inside a top-level try with a catch-all (comments and strings set aside). An
-// expression-bodied one must call a method that guards itself, named below with the reason.
+// expression-bodied one must call a method that guards itself, named below with the reason. An
+// await of HandlerGuard.RunAsync - itself one try with a catch-all - counts as guarded wherever it
+// stands (2026-11-25, the account window's handlers, which came from the Maintainer tab with it).
 // ###########################################################################################
 public sealed class AsyncVoidHandlersGuardTests
 {
@@ -64,27 +66,43 @@ public sealed class AsyncVoidHandlersGuardTests
         string code = CommentOrLiteral.Replace(source, match => new string(' ', match.Length));
         var unguarded = new List<string>();
 
+        // ###########################################################################################
+        // *** A CALL TO HandlerGuard.RunAsync IS GUARDED AS A WHOLE BY ITSELF *** - one try with a catch-all that logs and
+        // says what failed (HandlerGuardTests). The Maintainer tab's way, which its folder is left out of this scan for, and
+        // since 2026-11-25 the account window's (Main/Account/, Main.Account.cs), which came from that tab's sign-in with it.
+        // Its await is set aside here, so any OTHER await in the method is still held to the rule.
+        // ###########################################################################################
+        string guardSetAside = GuardedAwait.Replace(code, match => new string(' ', match.Length));
+
         foreach (Match method in AsyncVoid.Matches(code))
         {
             string name = method.Groups[1].Value;
 
             if (method.Groups[2].Value == "=>")
             {
-                if (!ExpressionBodiedAllowed.ContainsKey(name))
+                int end = code.IndexOf(';', method.Index + method.Length);
+                string expression = code[(method.Index + method.Length)..(end < 0 ? code.Length : end)];
+                bool throughGuard = Regex.IsMatch(expression, @"^\s*await\s+HandlerGuard\.RunAsync\s*\(") &&
+                                    !Regex.IsMatch(guardSetAside[(method.Index + method.Length)..(end < 0 ? code.Length : end)], @"\bawait\b");
+
+                if (!throughGuard && !ExpressionBodiedAllowed.ContainsKey(name))
                     unguarded.Add(name);
 
                 continue;
             }
 
             int open = method.Index + method.Length - 1;
-            int close = MatchingBrace(code, open);
+            int close = MatchingBrace(guardSetAside, open);
+            string body = guardSetAside[(open + 1)..close];
 
-            if (!IsGuarded(code[(open + 1)..close]))
+            if (Regex.IsMatch(body, @"\bawait\b") && !IsGuarded(body))
                 unguarded.Add(name);
         }
 
         return unguarded;
     }
+
+    private static readonly Regex GuardedAwait = new(@"\bawait\s+HandlerGuard\.RunAsync\s*\(", RegexOptions.CultureInvariant);
 
     // ###########################################################################################
     // Whether a method body awaits only inside top-level try blocks that catch everything. Plain
@@ -261,6 +279,11 @@ public sealed class AsyncVoidHandlersGuardTests
     [InlineData("async void A() => await X();", false)]
     [InlineData("async void OnInstallUpdateClick() => await X();", true)]
     [InlineData("async void A() { // await here\n try { await X(); } catch (Exception) { Log(\"} oops {\"); } }", true)]
+    // HandlerGuard.RunAsync guards itself as a whole (2026-11-25) - but only its own await.
+    [InlineData("async void A() => await HandlerGuard.RunAsync(this.GoAsync, this.Show);", true)]
+    [InlineData("async void A(object s, KeyEventArgs e) { if (e.Key != Key.Enter) return; e.Handled = true; await HandlerGuard.RunAsync(this.GoAsync, m => this.Say(m)); }", true)]
+    [InlineData("async void A() { await HandlerGuard.RunAsync(this.GoAsync, this.Show); await Y(); }", false)]
+    [InlineData("async void A() => await HandlerGuardX.RunAsync(this.GoAsync, this.Show);", false)]
     public void The_scanner_tells_a_guarded_body_from_an_unguarded_one(string source, bool guarded)
     {
         Assert.Equal(guarded, UnguardedIn(source).Count == 0);

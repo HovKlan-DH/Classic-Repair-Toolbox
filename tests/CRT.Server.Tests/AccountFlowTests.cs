@@ -2,6 +2,7 @@ using CRT.Server.Configuration;
 using CRT.Server.Handlers.Accounts;
 using CRT.Server.Handlers.Email;
 using CRT.Server.Tests.Fakes;
+using Handlers.DataHandling;
 
 namespace CRT.Server.Tests
 {
@@ -100,7 +101,7 @@ namespace CRT.Server.Tests
             (FakeAccountStore store, FakeEmailSender mailer, _) = await AccountFlowTests.RegisteredAsync();
 
             RegistrationOutcome second = await AccountFlows.RegisterAsync(
-                new RegistrationRequest("dennis@example.com", "a completely different password", "Someone Else", "203.0.113.9"),
+                new RegistrationRequest("dennis@example.com", "a completely different password", "Someone-Else", "203.0.113.9"),
                 store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
 
             Assert.True(second.IsAccepted);
@@ -113,7 +114,7 @@ namespace CRT.Server.Tests
             (FakeAccountStore store, FakeEmailSender mailer, _) = await AccountFlowTests.RegisteredAsync();
 
             await AccountFlows.RegisterAsync(
-                new RegistrationRequest("dennis@example.com", "a completely different password", "Someone Else", null),
+                new RegistrationRequest("dennis@example.com", "a completely different password", "Someone-Else", null),
                 store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
 
             Assert.Single(store.Accounts);
@@ -128,7 +129,7 @@ namespace CRT.Server.Tests
             string originalHash = store.Accounts.Values.Single().PasswordHash;
 
             await AccountFlows.RegisterAsync(
-                new RegistrationRequest("dennis@example.com", "attacker chosen password", "Someone Else", null),
+                new RegistrationRequest("dennis@example.com", "attacker chosen password", "Someone-Else", null),
                 store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
 
             Assert.Equal(originalHash, store.Accounts.Values.Single().PasswordHash);
@@ -143,12 +144,12 @@ namespace CRT.Server.Tests
             (FakeAccountStore store, FakeEmailSender mailer, _) = await AccountFlowTests.RegisteredAsync();
 
             await AccountFlows.RegisterAsync(
-                new RegistrationRequest("dennis@example.com", "another password", "ATTACKER TEXT", null),
+                new RegistrationRequest("dennis@example.com", "another password", "ATTACKER-TEXT", null),
                 store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
 
             Assert.Equal("dennis@example.com", mailer.Last!.ToAddress);
             Assert.Contains("Hi Dennis,", mailer.Last.Body, StringComparison.Ordinal);
-            Assert.DoesNotContain("ATTACKER TEXT", mailer.Last.Body, StringComparison.Ordinal);
+            Assert.DoesNotContain("ATTACKER-TEXT", mailer.Last.Body, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -159,7 +160,7 @@ namespace CRT.Server.Tests
             (FakeAccountStore store, FakeEmailSender mailer, _) = await AccountFlowTests.RegisteredAsync();
 
             await AccountFlows.RegisterAsync(
-                new RegistrationRequest("DENNIS@Example.COM", AccountFlowTests.GoodPassword, "Dennis", null),
+                new RegistrationRequest("DENNIS@Example.COM", AccountFlowTests.GoodPassword, "Dennis-again", null),
                 store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
 
             Assert.Single(store.Accounts);
@@ -185,7 +186,7 @@ namespace CRT.Server.Tests
                 store, mailer, forNewAddress, AccountFlowTests.Options(), AccountFlowTests.Now);
 
             await AccountFlows.RegisterAsync(
-                new RegistrationRequest("dennis@example.com", "a completely different password", "Someone Else", null),
+                new RegistrationRequest("dennis@example.com", "a completely different password", "Someone-Else", null),
                 store, mailer, forTakenAddress, AccountFlowTests.Options(), AccountFlowTests.Now);
 
             Assert.Equal(1, forNewAddress.Computations);
@@ -208,6 +209,64 @@ namespace CRT.Server.Tests
             Assert.True(outcome.Failures.Count >= 3, $"Got: {string.Join(" | ", outcome.Failures)}");
 
             Assert.Empty(mailer.Sent);
+            Assert.Empty(store.Accounts);
+        }
+
+        // ###########################################################################################
+        // *** A DISPLAY NAME IS ONE ACCOUNT'S (owner request, 2026-11-25: "it needs to be unique for all users"). *** The same
+        // name in other capitals or with spaces round it is the same name; refused before anything is made or mailed.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_display_name_another_account_has_is_refused_in_any_capitals_and_nothing_is_made_or_mailed()
+        {
+            (FakeAccountStore store, FakeEmailSender mailer, _) = await AccountFlowTests.RegisteredAsync();
+            mailer.Sent.Clear();
+
+            RegistrationOutcome outcome = await AccountFlows.RegisterAsync(
+                new RegistrationRequest("anna@example.com", AccountFlowTests.GoodPassword, " DENNIS ", "198.51.100.4"),
+                store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
+
+            Assert.False(outcome.IsAccepted);
+            Assert.Equal([DisplayNames.Taken], outcome.Failures);
+            Assert.Single(store.Accounts);
+            Assert.Empty(mailer.Sent);
+        }
+
+        // ###########################################################################################
+        // *** "THAT NAME IS TAKEN" SAYS NOTHING OF THE ADDRESS. *** A name is what others see, so saying it is taken tells
+        // nobody anything; asked whatever the address is, the answer is the same for an address with an account and one
+        // without - the registration's anti-enumeration property kept (AccountFlows' header). Asked any other way (the name
+        // judged only against OTHER accounts than the address's) it would pair a public name with its private address.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_taken_name_is_answered_alike_whether_or_not_the_address_has_an_account()
+        {
+            (FakeAccountStore store, FakeEmailSender mailer, _) = await AccountFlowTests.RegisteredAsync();
+
+            RegistrationOutcome atTheOwnersAddress = await AccountFlows.RegisterAsync(
+                new RegistrationRequest("dennis@example.com", AccountFlowTests.GoodPassword, "Dennis", null),
+                store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
+
+            RegistrationOutcome atAFreeAddress = await AccountFlows.RegisterAsync(
+                new RegistrationRequest("free@example.com", AccountFlowTests.GoodPassword, "Dennis", null),
+                store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
+
+            Assert.Equal(atAFreeAddress.IsAccepted, atTheOwnersAddress.IsAccepted);
+            Assert.Equal(atAFreeAddress.Failures, atTheOwnersAddress.Failures);
+        }
+
+        // A name of the old rule's (any letters, spaces) is refused for a NEW account - CRT.Data's DisplayNames is asked.
+        [Fact]
+        public async Task A_display_name_outside_the_rule_is_refused_at_registration()
+        {
+            var store = new FakeAccountStore();
+            var mailer = new FakeEmailSender();
+
+            RegistrationOutcome outcome = await AccountFlows.RegisterAsync(
+                new RegistrationRequest("dennis@example.com", AccountFlowTests.GoodPassword, "Dennis Hansen", null),
+                store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
+
+            Assert.Equal([DisplayNames.Problem("Dennis Hansen")!], outcome.Failures);
             Assert.Empty(store.Accounts);
         }
 
@@ -479,7 +538,7 @@ namespace CRT.Server.Tests
             {
                 await AccountFlows.RegisterAsync(
                     new RegistrationRequest(
-                        $"victim{attempt}@example.com", AccountFlowTests.GoodPassword, "Dennis", "192.0.2.9"),
+                        $"victim{attempt}@example.com", AccountFlowTests.GoodPassword, $"Victim{attempt}", "192.0.2.9"),
                     store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
             }
 
@@ -502,7 +561,7 @@ namespace CRT.Server.Tests
             {
                 outcome = await AccountFlows.RegisterAsync(
                     new RegistrationRequest(
-                        $"victim{attempt}@example.com", AccountFlowTests.GoodPassword, "Dennis", "192.0.2.9"),
+                        $"victim{attempt}@example.com", AccountFlowTests.GoodPassword, $"Victim{attempt}", "192.0.2.9"),
                     store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
             }
 
@@ -575,14 +634,14 @@ namespace CRT.Server.Tests
             {
                 await AccountFlows.RegisterAsync(
                     new RegistrationRequest(
-                        $"victim{attempt}@example.com", AccountFlowTests.GoodPassword, "Dennis", "192.0.2.9"),
+                        $"victim{attempt}@example.com", AccountFlowTests.GoodPassword, $"Victim{attempt}", "192.0.2.9"),
                     store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
             }
 
             int spent = mailer.Sent.Count;
 
             await AccountFlows.RegisterAsync(
-                new RegistrationRequest("someone@example.com", AccountFlowTests.GoodPassword, "Dennis", "198.51.100.4"),
+                new RegistrationRequest("someone@example.com", AccountFlowTests.GoodPassword, "Someone", "198.51.100.4"),
                 store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
 
             Assert.Equal(spent + 1, mailer.Sent.Count);
@@ -601,14 +660,14 @@ namespace CRT.Server.Tests
             {
                 await AccountFlows.RegisterAsync(
                     new RegistrationRequest(
-                        $"victim{attempt}@example.com", AccountFlowTests.GoodPassword, "Dennis", "192.0.2.9"),
+                        $"victim{attempt}@example.com", AccountFlowTests.GoodPassword, $"Victim{attempt}", "192.0.2.9"),
                     store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
             }
 
             int spent = mailer.Sent.Count;
 
             await AccountFlows.RegisterAsync(
-                new RegistrationRequest("later@example.com", AccountFlowTests.GoodPassword, "Dennis", "192.0.2.9"),
+                new RegistrationRequest("later@example.com", AccountFlowTests.GoodPassword, "Later", "192.0.2.9"),
                 store,
                 mailer,
                 AccountFlowTests.Hasher(),

@@ -18,7 +18,9 @@ namespace CRT.Server.Handlers.Accounts
         // Twelve, not eight. A long passphrase is both stronger and easier to remember than a
         // short mangled word, and this audience logs in rarely enough that typing a few more
         // characters costs nothing.
-        public const int MinimumPasswordLength = 12;
+        // CRT.Data's number since 2026-11-25, so the sentence CRT's account window and the account web pages say beside the
+        // box (AccountWording.PasswordLine) is held to it.
+        public const int MinimumPasswordLength = AccountWording.MinimumPasswordLength;
 
         // Nobody has a legitimate 200-character password, and unbounded input reaches the hasher,
         // which allocates per call. The limit is generous enough for any passphrase or password
@@ -29,8 +31,6 @@ namespace CRT.Server.Handlers.Accounts
         // Kept as an alias so existing references read naturally; the value lives in CRT.Data.
         public const int MaximumEmailLength = EmailAddressRules.MaximumLength;
 
-        public const int MinimumDisplayNameLength = 2;
-        public const int MaximumDisplayNameLength = 100;
 
         // ###########################################################################################
         // Email rules live in CRT.Data (EmailAddressRules) because BOTH SIDES need them: the app
@@ -91,48 +91,14 @@ namespace CRT.Server.Handlers.Accounts
         }
 
         // ###########################################################################################
-        // Checks a display name. This is the name shown beside a contribution, so it has to be
-        // something a human can read, but there is no reason to be restrictive about scripts -
-        // contributors are worldwide.
+        // Checks a display name being SET - at registration, under "My account" and accepting an invitation. CRT.Data's
+        // DisplayNames is the rule (owner requests, 2026-11-25: unique, "only normal A-Z + 0-9 and then some common special
+        // charatcers like: +-/@.[]()", "max length 30"), so CRT's account window says the very sentence as the name is typed.
+        // Any script was taken until then, 2 to 100 characters with no control character. Whether another account has the
+        // name is asked apart (IAccountStore.IsDisplayNameTakenAsync) - this needs no database. A control character, which
+        // would let a name break a log line or a mail header, is outside the rule's characters too.
         // ###########################################################################################
-        public static IReadOnlyList<string> ValidateDisplayName(string? displayName)
-        {
-            var failures = new List<string>();
-
-            if (string.IsNullOrWhiteSpace(displayName))
-            {
-                failures.Add("A display name is required. It is shown beside your contributions.");
-                return failures;
-            }
-
-            string trimmed = displayName.Trim();
-
-            if (trimmed.Length < AccountRules.MinimumDisplayNameLength)
-            {
-                failures.Add(string.Create(
-                    CultureInfo.InvariantCulture,
-                    $"The display name must be at least {AccountRules.MinimumDisplayNameLength} characters."));
-            }
-
-            if (trimmed.Length > AccountRules.MaximumDisplayNameLength)
-            {
-                failures.Add(string.Create(
-                    CultureInfo.InvariantCulture,
-                    $"The display name must be at most {AccountRules.MaximumDisplayNameLength} characters."));
-            }
-
-            // Control characters would let a name break a log line or a mail header. Ordinary
-            // letters, marks and punctuation from any script are fine.
-            foreach (char character in trimmed)
-            {
-                if (char.IsControl(character))
-                {
-                    failures.Add("The display name cannot contain control characters.");
-                    break;
-                }
-            }
-
-            return failures;
-        }
+        public static IReadOnlyList<string> ValidateDisplayName(string? displayName) =>
+            DisplayNames.Problem(displayName) is string problem ? [problem] : [];
     }
 }

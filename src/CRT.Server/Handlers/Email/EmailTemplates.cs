@@ -63,12 +63,15 @@ namespace CRT.Server.Handlers.Email
         // the contributor can find it as written. The tab reads the same constant.
         public const string BetaCheckBoxLabel = global::Handlers.DataHandling.ConfigurationWording.BetaSourceCheckBox;
 
-        // The Maintainer tab's words for the way to "My account" (2026-10-04) - named in the
-        // address-change code mail, so the maintainer finds the screen and the entry as written.
-        // The tab's strip and list read the same constants.
-        private const string AccountScreenQuoted = global::Handlers.DataHandling.MaintainerScreenWording.AccountQuoted;
+        // ###########################################################################################
+        // WHERE AN ACCOUNT LIVES IN CRT, and the buttons a mail names, in CRT's own words (CRT.Data's AccountWording - the
+        // account window labels its buttons with these very constants). The account icon in the top right corner of CRT's
+        // window since 2026-11-25, when accounts opened to everybody; the Maintainer tab's sign-in screen and its "Account" >
+        // "My account" until then.
+        // ###########################################################################################
+        private const string WhereInCrt = global::Handlers.DataHandling.AccountWording.WhereInCrt;
 
-        private const string MyAccountQuoted = global::Handlers.DataHandling.MaintainerScreenWording.MyAccountQuoted;
+        private static string Quoted(string button) => $"\"{button}\"";
 
         // ###########################################################################################
         // Sent when a NEW address registers. Carries the link that proves the address is theirs.
@@ -85,7 +88,9 @@ namespace CRT.Server.Handlers.Email
             return EmailTemplates.Greeted(displayName)
                 .Paragraph($"Thanks for signing up to {EmailTemplates.ProductName}. Open this link to confirm your address:")
                 .Paragraph(MailText.Link(verificationUrl, verificationUrl))
-                .Paragraph($"The link works for {validHours} hours. If it expires, you can ask for a new one from the app.")
+                .Paragraph(
+                    $"The link works for {validHours} hours. If it expires, sign in to CRT through {EmailTemplates.WhereInCrt} " +
+                    $"and press {EmailTemplates.Quoted(global::Handlers.DataHandling.AccountWording.SendMailAgainButton)} - a new link is mailed to you.")
                 .Paragraph("If you did not sign up, you can ignore this message - the address will not be used for anything else.")
                 .WithContactLine()
                 .ToMessage(toAddress, $"Confirm your {EmailTemplates.ProductName} address")
@@ -108,16 +113,18 @@ namespace CRT.Server.Handlers.Email
             string toAddress,
             string displayName,
             string resetCode,
-            int validHours)
+            int validHours,
+            string forgotPasswordPageUrl)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(toAddress);
             ArgumentException.ThrowIfNullOrWhiteSpace(resetCode);
 
-            return EmailTemplates.Greeted(displayName)
-                .Paragraph($"Someone just tried to create a {EmailTemplates.ProductName} account with this address, but you already have one.")
-                .Paragraph("If that was you and you have forgotten your password, here is a reset code:")
-                .Code(resetCode)
-                .Paragraph("Open CRT, go to the \"Maintainer\" tab, choose \"I forgot my password\", then paste this code and type the password you want.")
+            return EmailTemplates.WhereTheResetCodeGoes(
+                    EmailTemplates.Greeted(displayName)
+                        .Paragraph($"Someone just tried to create a {EmailTemplates.ProductName} account with this address, but you already have one.")
+                        .Paragraph("If that was you and you have forgotten your password, here is a reset code:")
+                        .Code(resetCode),
+                    forgotPasswordPageUrl)
                 .Paragraph($"The code works for {validHours} hours.")
                 .Paragraph("If it was not you, there is nothing to do. Your account has not changed, and whoever tried was not told whether this address is registered.")
                 .WithContactLine()
@@ -134,10 +141,11 @@ namespace CRT.Server.Handlers.Email
         // click cannot reach - so every reset mail ever sent led to a 404. Reported from live use
         // on 2026-09-22, having been unreachable since Phase 3.
         //
-        // The fix could have been an HTML form served by the API. It is a pasted code instead
-        // (owner's choice) because the audience is a handful of maintainers who are already
-        // sitting in front of the Maintainer tab, and serving HTML would mean the API growing a page
-        // to style, escape and keep accessible for one form.
+        // The fix could have been an HTML form served by the API. It was a pasted code instead
+        // (owner's choice) because the audience was a handful of maintainers already sitting in
+        // front of the Maintainer tab. Since 2026-11-25 everybody may have an account, and there IS
+        // such a form - the account web pages (AccountPages) - but the mail still carries a CODE,
+        // pasted into CRT's account window or into that page, never a link that redeems it.
         //
         // *** A PREFETCHING MAIL CLIENT CANNOT BURN THIS. *** The old link was a GET, so a scanner
         // or preview pane following it would redeem a single-use token before the person read the
@@ -148,21 +156,36 @@ namespace CRT.Server.Handlers.Email
             string toAddress,
             string displayName,
             string resetCode,
-            int validHours)
+            int validHours,
+            string forgotPasswordPageUrl)
         {
             ArgumentException.ThrowIfNullOrWhiteSpace(toAddress);
             ArgumentException.ThrowIfNullOrWhiteSpace(resetCode);
 
-            return EmailTemplates.Greeted(displayName)
-                .Paragraph($"Here is your {EmailTemplates.ProductName} password reset code:")
-                .Code(resetCode)
-                .Paragraph("Open CRT, go to the \"Maintainer\" tab, choose \"I forgot my password\", then paste this code and type the password you want.")
+            return EmailTemplates.WhereTheResetCodeGoes(
+                    EmailTemplates.Greeted(displayName)
+                        .Paragraph($"Here is your {EmailTemplates.ProductName} password reset code:")
+                        .Code(resetCode),
+                    forgotPasswordPageUrl)
                 .Paragraph($"The code works for {validHours} hours and can only be used once.")
                 .Paragraph("If you did not ask for this, you can ignore it - your password has not changed.")
                 .WithContactLine()
                 .ToMessage(toAddress, $"Set a new {EmailTemplates.ProductName} password")
                 with { CarriesCredential = true };
         }
+
+        // ###########################################################################################
+        // Where a reset code is pasted - CRT's account window, or the account web page for somebody with no CRT at hand
+        // (2026-11-25: an account made on the website may never have seen CRT). The page is linked, the code never put
+        // into the link: a link that carried it would be in the web server's log and the browser's history.
+        // ###########################################################################################
+        private static MailBody WhereTheResetCodeGoes(MailBody body, string forgotPasswordPageUrl) =>
+            body
+                .Paragraph(
+                    $"In CRT, open {EmailTemplates.WhereInCrt} and choose " +
+                    $"{EmailTemplates.Quoted(global::Handlers.DataHandling.AccountWording.ForgotPasswordButton)}, " +
+                    "then paste this code and type the password you want.")
+                .Paragraph("Or do the same on the website: ", MailText.Link(forgotPasswordPageUrl, forgotPasswordPageUrl));
 
         // Where CRT is downloaded. A maintainer uses CRT's own Maintainer tab since 2026-09-29; the
         // separate CRT Maintainer application, and the repository its releases lived in, are gone.
@@ -212,9 +235,9 @@ namespace CRT.Server.Handlers.Email
                 .Paragraph("To accept it:")
                 .Steps(
                     ["Install Classic Repair Toolbox (CRT) from ", MailText.Link(EmailTemplates.CrtDownloadUrl, EmailTemplates.CrtDownloadUrl), ", or use the one you already have."],
-                    ["In CRT's \"Configuration\" tab, check the box that turns on the \"Maintainer\" tab."],
-                    ["Open the \"Maintainer\" tab and choose \"I have an invitation\"."],
-                    ["Paste the code, and pick the name others will see and a password."])
+                    [$"In CRT, open {EmailTemplates.WhereInCrt} and choose {EmailTemplates.Quoted(global::Handlers.DataHandling.AccountWording.HaveInvitationButton)}."],
+                    ["Paste the code, and pick the name others will see and a password - then sign in with this email address and that password."],
+                    ["In CRT's \"Configuration\" tab, check the box that turns on the \"Maintainer\" tab."])
                 .Paragraph($"The code works for {validDays} days and can only be used once.")
                 .Paragraph("If you were not expecting this, you can ignore it - nothing happens unless the code is used.")
                 .WithContactLine()
@@ -247,8 +270,8 @@ namespace CRT.Server.Handlers.Email
                     "for everybody who uses the data. You get an email when somebody sends one.")
                 .Paragraph("To review them:")
                 .Steps(
-                    ["In CRT's \"Configuration\" tab, check the box that turns on the \"Maintainer\" tab."],
-                    ["Open the \"Maintainer\" tab and sign in with this email address and your password."])
+                    [$"In CRT, sign in through {EmailTemplates.WhereInCrt} with this email address and your password."],
+                    ["In CRT's \"Configuration\" tab, check the box that turns on the \"Maintainer\" tab."])
                 .WithContactLine()
                 .ToMessage(toAddress, $"For CRT you are now the maintainer of the [{board}] board");
         }
@@ -265,7 +288,9 @@ namespace CRT.Server.Handlers.Email
             return EmailTemplates.Greeted(displayName)
                 .Paragraph($"Your {EmailTemplates.ProductName} password was just changed.")
                 .Paragraph("If that was you, nothing further is needed.")
-                .Paragraph("If it was not, your account may have been taken over. Use \"I forgot my password\" in the app to take it back, and any other sessions will be signed out.")
+                .Paragraph(
+                    $"If it was not, your account may have been taken over. Use {EmailTemplates.Quoted(global::Handlers.DataHandling.AccountWording.ForgotPasswordButton)} " +
+                    $"- in CRT, through {EmailTemplates.WhereInCrt}, or on the website - to take it back, and any other sessions will be signed out.")
                 .WithContactLine()
                 .ToMessage(toAddress, $"Your {EmailTemplates.ProductName} password was changed");
         }
@@ -276,9 +301,9 @@ namespace CRT.Server.Handlers.Email
         //
         //   EmailChangeCode          - to the NEW address: the code that proves it is theirs. A code
         //                              to type in, not a link to click, for the reason PasswordReset
-        //                              gives. It names the way in - the "Account" tab, "My
-        //                              account", then "I have received a code" - in the
-        //                              Maintainer tab's own words (MaintainerScreenWording).
+        //                              gives. It names the way in - the account icon (AccountWording,
+        //                              since 2026-11-25; the Maintainer tab's "Account" > "My account"
+        //                              until then), then "I have received a code".
         //   EmailChangeAddressTaken  - to an address that ALREADY has an account, instead of a code.
         //                              The requester is told "a code is on its way" either way, so
         //                              only this mailbox's owner learns the address is registered -
@@ -300,7 +325,7 @@ namespace CRT.Server.Handlers.Email
             return EmailTemplates.Greeted(displayName)
                 .Paragraph($"You asked to use this address for your {EmailTemplates.ProductName} account. Here is the code that confirms it:")
                 .Code(code)
-                .Paragraph($"In CRT's \"Maintainer\" tab, choose {EmailTemplates.AccountScreenQuoted} and {EmailTemplates.MyAccountQuoted}, then \"I have received a code\", and type it in. Your address does not change until the code is used.")
+                .Paragraph($"In CRT, open {EmailTemplates.WhereInCrt}, press \"I have received a code\", and type it in. Your address does not change until the code is used.")
                 .Paragraph($"The code works for {validHours} hours and can only be used once.")
                 .Paragraph("If you did not ask for this, you can ignore it - nothing changes unless the code is used.")
                 .WithContactLine()

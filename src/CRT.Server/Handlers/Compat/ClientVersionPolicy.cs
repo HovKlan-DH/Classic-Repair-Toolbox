@@ -14,13 +14,16 @@ namespace CRT.Server.Handlers.Compat
     // change that truly cannot be made that way: the CRTs below it are then told, in words, to
     // update (ClientVersionContract.Outdated, HTTP 426), instead of failing in a way nobody can read.
     //
-    // Three areas:
+    // Four areas:
     //   - Forever: the launch check-in, feedback, board views, the health check and the old 2.x
     //     contribution address. NEVER refused, whatever the minimums say - every CRT ever released
     //     sends these, and the owner's promise is that they keep working.
     //   - Submissions: what the Drafts tab's Submit and its status checks use.
     //   - Maintainer: the review, administration and account routes - the Maintainer tab. Its users
     //     are few and known, so this is where a minimum is acceptable sooner (owner, 2026-10-04).
+    //   - Web: the pages a BROWSER opens (2026-11-25, the account web pages under "/account/") - no CRT calls them, so no
+    //     CRT is ever turned away from them. Never refused, like Forever, but a list of its own: Forever is the promise to
+    //     every CRT released, and a page is not one.
     //
     // Two ways a gated area turns a CRT away, both answered with the same "update CRT" (426):
     //   - THE API REVISION (2026-10-04) - the one in force. A CRT built for an older revision than
@@ -38,7 +41,8 @@ namespace CRT.Server.Handlers.Compat
     {
         Forever,
         Submissions,
-        Maintainer
+        Maintainer,
+        Web
     }
 
     public sealed class ClientVersionPolicy
@@ -58,7 +62,8 @@ namespace CRT.Server.Handlers.Compat
             ("/api/submissions", ClientArea.Submissions),
             ("/api/review", ClientArea.Maintainer),
             ("/api/admin", ClientArea.Maintainer),
-            ("/api/accounts", ClientArea.Maintainer)
+            ("/api/accounts", ClientArea.Maintainer),
+            ("/account", ClientArea.Web)
         ];
 
         public ClientVersionPolicy(CrtVersion? submissions, CrtVersion? maintainer, int? apiRevision = null)
@@ -109,7 +114,7 @@ namespace CRT.Server.Handlers.Compat
         {
             ClientArea area = ClientVersionPolicy.AreaOf(path);
 
-            if (area == ClientArea.Forever)
+            if (area is ClientArea.Forever or ClientArea.Web)
                 return null;
 
             CrtVersion? client = CrtVersion.FromUserAgent(userAgent);

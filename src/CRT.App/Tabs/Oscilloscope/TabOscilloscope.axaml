@@ -9,8 +9,14 @@
 			<ColumnDefinition Width="*" MinWidth="200" />
 		</Grid.ColumnDefinitions>
 
-		<Border Grid.Column="0"
-				Padding="16">
+		<!-- THE SETTINGS SCROLL ON A WINDOW TOO LOW FOR THEM (owner report, 2026-11-25, of the "Maintainer" tab's sign-in:
+		     "outside viewport and there is no possibility for me to scroll down" - this column needed 588 high, and below
+		     that "Auto-connect oscilloscope", "Connect to oscilloscope" and "Run full test suite" were out of reach). -->
+		<ScrollViewer Grid.Column="0"
+					  x:Name="SettingsScroller"
+					  HorizontalScrollBarVisibility="Disabled"
+					  VerticalScrollBarVisibility="Auto">
+		<Border Padding="16">
 			<Grid RowDefinitions="Auto,Auto,*">
 
 				<Grid Grid.Row="0"
@@ -160,6 +166,7 @@
 
 			</Grid>
 		</Border>
+		</ScrollViewer>
 
 		<GridSplitter Grid.Column="1"
 					  ResizeDirection="Columns"

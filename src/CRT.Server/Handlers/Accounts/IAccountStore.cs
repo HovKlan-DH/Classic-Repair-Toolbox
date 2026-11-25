@@ -40,6 +40,15 @@ namespace CRT.Server.Handlers.Accounts
         // Returns the new account's id. The caller has already validated everything; this inserts.
         Task<long> CreateAccountAsync(NewAccount account, CancellationToken cancellationToken = default);
 
+        // ###########################################################################################
+        // Whether ANOTHER account has this display name, ignoring capitals and the spaces around it (owner request,
+        // 2026-11-25: "it needs to be unique for all users"; CRT.Data's DisplayNames.SameName is the rule). `exceptAccountId`
+        // is the account being renamed: its own name in other capitals is no clash. Asked before a name is set - at
+        // registration, under "My account" and accepting an invitation; two people taking one new name in the same moment
+        // could both pass, which no index holds against (names set before were never unique, so none could be made).
+        // ###########################################################################################
+        Task<bool> IsDisplayNameTakenAsync(string displayName, long? exceptAccountId, CancellationToken cancellationToken = default);
+
         Task SetPasswordHashAsync(long accountId, string passwordHash, CancellationToken cancellationToken = default);
 
         Task SetVerifiedAsync(long accountId, CancellationToken cancellationToken = default);

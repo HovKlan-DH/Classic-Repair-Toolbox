@@ -1,18 +1,19 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:data="clr-namespace:Handlers.DataHandling;assembly=CRT.Data"
              x:Class="CRT.MyAccountView">
 
     <!--
-    "MY ACCOUNT" - THE FIRST ENTRY UNDER THE MAINTAINER TAB'S "ACCOUNT" SCREEN (owner request,
-    2026-10-04: "Move the current account functionality from the bottom-left corner to a new
-    left-side entry named "My account""). Until then this was the "Your account" WINDOW, opened by
-    "Account" beside "Sign out" under the lists (owner request, 2026-10-03: the maintainer "can edit
-    his/her own email address and name"). Both buttons went from there; "Sign out" is the last
-    section here.
+    "MY ACCOUNT" - IN CRT'S ACCOUNT WINDOW SINCE 2026-11-25 (AccountWindow, opened by the account icon in the
+    window's top right corner), when accounts opened to everybody: an account is no longer the Maintainer tab's.
+    From 2026-10-04 it was the first entry under the Maintainer tab's "Account" screen (owner request: "Move the
+    current account functionality from the bottom-left corner to a new left-side entry named "My account""), and
+    before that the "Your account" WINDOW, opened by "Account" beside "Sign out" under the lists (owner request,
+    2026-10-03: the maintainer "can edit his/her own email address and name"). "Sign out" is the last section here.
 
     Four sections, each with its own button and its own message line, so the answer to a change
-    is read where the change was made. Every request waits under CRT's window's one BusyOverlay,
-    found up the tree (ServerWait) - this is a panel of the tab now, not a dialog with its own.
+    is read where the change was made. Every request waits under the account window's BusyOverlay,
+    found up the tree (ServerWait).
 
     NO CURRENT PASSWORD ANYWHERE (owner decision, 2026-10-03: "no need for that, as I see it as you
     are already logged in"). The labels and the email section's wording are the owner's too.
@@ -35,16 +36,27 @@
                 <TextBlock x:Name="SignedInLineText" Opacity="0.75" TextWrapping="Wrap" />
             </StackPanel>
 
-            <!-- ================= Name ================= -->
+            <!-- ================= Name =================
+                 "DISPLAY NAME", what others see - unique, and only A-Z, 0-9 and + - / @ . [ ] ( ), 30 characters at most
+                 (owner requests, 2026-11-25: "elaborated that this is the display name others will see, and that it needs to
+                 be unique for all users"; "Name or handle" until then, of any letters). The words and the rule are CRT.Data's
+                 DisplayNames, the server's own; what is wrong with the name typed is said under the box as it is typed
+                 (MyAccountRules.NameProblem), and the server says when another account has it. -->
             <StackPanel Spacing="4">
-                <TextBlock Text="Name or handle" FontWeight="SemiBold" />
+                <TextBlock Text="Display name" FontWeight="SemiBold" />
                 <TextBlock TextWrapping="Wrap"
                            Opacity="0.75"
                            FontSize="12"
-                           Text="What other maintainers see, and what the mails call you." />
+                           Text="{x:Static data:DisplayNames.Explanation}" />
+                <TextBlock TextWrapping="Wrap"
+                           Opacity="0.75"
+                           FontSize="12"
+                           Text="{x:Static data:DisplayNames.AllowedLine}" />
 
                 <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0">
-                    <TextBox x:Name="NameTextBox" TextChanged="OnTextChanged" />
+                    <TextBox x:Name="NameTextBox"
+                             MaxLength="{x:Static data:DisplayNames.MaximumLength}"
+                             TextChanged="OnTextChanged" />
                     <Button Grid.Column="1"
                             Classes="Accept"
                             x:Name="SaveNameButton"

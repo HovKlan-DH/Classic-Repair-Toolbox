@@ -125,31 +125,61 @@ namespace CRT
         // Signs in (or out) without the server, for a test of what the rest of CRT does with it.
         internal void UseSessionForTests(ReviewSession? session) => this.UseSession(session);
 
+        // The client the session's requests go through - "My account" in CRT's account window uses it, so the server's
+        // sliding expiry is followed for those requests too (OnSessionAccepted).
+        internal ReviewApiClient? ClientInUse => this.thisClient;
+
         // ###########################################################################################
-        // The line under "Sign in" saying a sign-in is not remembered on this system - shown off
-        // Windows only (ReviewSessionStore.NotRememberedNote). From the constructor, with the
-        // platform's answer; internal so a test on any platform can show both.
+        // *** A SIGN-IN MADE IN CRT'S ACCOUNT WINDOW (2026-11-25, accounts for everybody) - this tab's sign-in form until
+        // then, which did all of this itself. *** The session and the client it was got with are taken over, remembered
+        // (ReviewSessionStore.Remember - on a sign-in that worked, never a token not proved), and shared with the rest of CRT
+        // (SignedInChanged). Then GET /api/accounts/me - whether the account maintains anything - and, for one that does, the
+        // lists: at once under CRT's "please wait" when the tab is on screen, else the badge's quietly when the tab is turned
+        // on (`readLists`, "Enable Maintainer tab"), and the rest when it is first shown (thisListsWanted).
         // ###########################################################################################
-        internal void ShowNotRememberedNote(bool isSupported)
+        internal async Task UseSignInAsync(ReviewSession session, ReviewApiClient client, bool readLists)
         {
-            if (this.FindControl<TextBlock>("NotRememberedText") is not TextBlock text)
+            ArgumentNullException.ThrowIfNull(session);
+            ArgumentNullException.ThrowIfNull(client);
+
+            if (!ReferenceEquals(this.thisClient, client))
+                this.thisClient?.Dispose();
+
+            this.UseClient(client);
+            this.UseSession(session);
+
+            // The question the launch asks is answered: this is the sign-in.
+            this.thisSessionRestoreTried = true;
+
+            ReviewSessionStore.Remember(session);
+
+            this.ShowQueuePanel();
+
+            // Whether it maintains anything - an account that does not is said so instead of reading lists the server would
+            // refuse (TabMaintainer.Account.cs, ApplyStanding).
+            this.thisAccountRead = false;
+            await this.ReadAccountQuietlyAsync();
+
+            if (this.thisMaintainsNothing || !this.IsSessionInUse(session))
                 return;
 
-            string? note = ReviewSessionStore.NotRememberedNote(isSupported);
-            text.Text = note ?? string.Empty;
-            text.IsVisible = note is not null;
-        }
-
-        // The line above the sign-in saying it is the TEST instance's (ContributionServer.SignInNote)
-        // - from the constructor, with AppConfig's answer; internal so a test can show both.
-        internal void ShowTestServerNote(bool usesTestServer)
-        {
-            if (this.FindControl<TextBlock>("TestServerSignInText") is not TextBlock text)
+            if (TopLevel.GetTopLevel(this) is not null)
+            {
+                await this.ReadListsAsync();
                 return;
+            }
 
-            text.Text = usesTestServer ? Handlers.Online.ContributionServer.SignInNote : string.Empty;
-            text.IsVisible = usesTestServer;
+            this.thisListsWanted = true;
+
+            if (readLists)
+            {
+                this.thisBadgeListsAsked = true;
+                await this.RefreshBadgesInBackgroundAsync();
+            }
         }
+
+        // A sign-in taken over while the tab was not on screen: its lists are read the first time it is shown (OnAttached).
+        private bool thisListsWanted;
 
         protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
         {
@@ -162,6 +192,13 @@ namespace CRT
                 // Posted, not run inside the attach: the tab is still being laid out, and the
                 // restore reads the lists under CRT's window's "please wait" overlay.
                 Dispatcher.UIThread.Post(async () => await HandlerGuard.RunAsync(this.RestoreRememberedSessionAsync, this.ShowHandlerFailure));
+            }
+            else if (this.thisListsWanted && this.thisSession is not null && !this.thisMaintainsNothing)
+            {
+                this.thisListsWanted = false;
+
+                // A sign-in made in the account window while the tab was away (UseSignInAsync).
+                Dispatcher.UIThread.Post(async () => await HandlerGuard.RunAsync(this.ReadListsAsync, this.ShowHandlerFailure));
             }
 
             this.AttachQueueChecks();

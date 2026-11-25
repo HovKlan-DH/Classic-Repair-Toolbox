@@ -44,10 +44,13 @@ namespace CRT
     //
     // "SERVER VERSION" (owner requests, 2026-10-04: "I would like to see the server version listed,
     // so it is clear to me what has been deployed", then as an entry of its own, and the same day
-    // every maintainer's): the server's version and API revision and this CRT's revision, three
-    // lines ServerVersionDisplay words. GET /api/health, asked with no session every time the entry
-    // is shown - chosen, or Account shown again with it chosen - so a deploy shows the next time;
-    // quietly, with no "please wait", since nobody is waiting for those lines.
+    // every maintainer's): since 2026-11-24 a panel each for the server deployed, its automatic
+    // updates and mail it could not send, and the server's own changelog under them
+    // (ServerVersionView, worded by ServerVersionDisplay - owner requests: "make the "Account" page a
+    // little prettier ... so it is more easy to overview", and 'have a "Changelog" like there is in
+    // "About"'). GET /api/health, asked with no session, and GET /api/review/server-status with it,
+    // every time the entry is shown - chosen, or Account shown again with it chosen - so a deploy
+    // shows the next time; quietly, with no "please wait", since nobody is waiting for them.
     //
     // THE ADMINISTRATOR'S ENTRIES - the Management screen's - and what each reads:
     //
@@ -234,6 +237,9 @@ namespace CRT
             if (this.thisSession is not { } session)
                 return;
 
+            // Asked before "nothing changed": whether the account maintains anything moves without its name or address.
+            this.ApplyStanding(account);
+
             ReviewSession updated = session.WithAccount(account);
 
             if (Equals(updated, session))
@@ -248,6 +254,44 @@ namespace CRT
             this.ShowSignedInAs();
             this.MyAccountDetail.UseAccount(updated);
         }
+
+        // ###########################################################################################
+        // *** AN ACCOUNT THAT MAINTAINS NO BOARD IS SAID SO (2026-11-25, accounts for everybody). *** Until then every account
+        // was a maintainer's - only an invitation made one. Now anybody's account can sign in, and with "Enable Maintainer tab"
+        // checked it would meet lists the server refuses it. So, from the server's own answer (GET /api/accounts/me: no board's
+        // pool and no administrator), the sign-in panel says so instead of the queue - and the queue comes back, its lists read,
+        // the moment the server says otherwise (an administrator made it a maintainer, read again at the next launch or sign-in).
+        // ###########################################################################################
+        private bool thisMaintainsNothing;
+
+        private void ApplyStanding(AccountAnswer account)
+        {
+            bool maintainsNothing = !account.IsAdministrator && account.MaintainerOf.Count == 0;
+
+            if (maintainsNothing == this.thisMaintainsNothing)
+                return;
+
+            this.thisMaintainsNothing = maintainsNothing;
+
+            if (this.FindControl<Control>("SignInPanel") is not Control signIn || this.FindControl<Grid>("QueuePanel") is not Grid queue)
+                return;
+
+            if (maintainsNothing)
+            {
+                this.StopQueueChecks();
+                queue.IsVisible = false;
+                signIn.IsVisible = true;
+                this.ShowSignInPanelState(maintainsNothing: true);
+                return;
+            }
+
+            this.ShowSignInPanelState(maintainsNothing: false);
+            this.ShowQueuePanel();
+            _ = HandlerGuard.RunAsync(this.ReadListsAsync, this.ShowHandlerFailure);
+        }
+
+        // Whether the sign-in panel says the account maintains no board - for tests.
+        internal bool SaysAccountMaintainsNothingForTests => this.FindControl<TextBlock>("NotMaintainerText")?.IsVisible == true;
 
         private async Task ReadAccountQuietlyAsync()
         {
@@ -279,20 +323,26 @@ namespace CRT
         // Server version
         // -----------------------------------------------------------------------------------
 
-        // What the server reports - the lines on screen stay until the next answer replaces them.
+        private ServerVersionView ServerVersionPage => this.FindControl<ServerVersionView>("ServerVersionView")!;
+
+        // ###########################################################################################
+        // What the server reports - the panels on screen stay until the next answer replaces them, and the
+        // changelog is built again only when its text changed (ServerVersionView). "Asking" is said only on a
+        // page with nothing on it yet.
+        // ###########################################################################################
         private async Task ReadServerVersionAsync()
         {
             if (this.thisClient is not ReviewApiClient client)
                 return;
 
-            if (this.FindControl<StackPanel>("ServerVersionLines") is { Children.Count: 0 })
-                this.ShowServerVersionLines(ServerVersionDisplay.Lines(null, null, ClientVersionContract.ApiRevision, asking: true));
+            if (!this.ServerVersionPage.HasPanels)
+                this.ServerVersionPage.ShowPanels(ServerVersionDisplay.Panels(null, null, ClientVersionContract.ApiRevision, asking: true));
 
             ReviewApiResult<HealthStatus> answer = await client.GetServerVersionAsync();
 
-            // The mails it could not send (2026-10-13), and how it keeps itself up to date (2026-11-09) -
-            // asked with the session, from a server that answered at all; an older server's 404 simply
-            // says nothing about either.
+            // The mails it could not send (2026-10-13), how it keeps itself up to date (2026-11-09) and its
+            // changelog (2026-11-24) - asked with the session, from a server that answered at all; an older
+            // server's 404 simply says nothing about any of them.
             ServerStatusAnswer? serverStatus = null;
 
             if (answer.IsOk && this.thisSession is ReviewSession session)
@@ -301,36 +351,25 @@ namespace CRT
                 serverStatus = status.IsOk ? status.Value : null;
             }
 
-            this.ShowServerVersionLines(ServerVersionDisplay.Lines(
+            this.ServerVersionPage.ShowPanels(ServerVersionDisplay.Panels(
                 answer.IsOk ? answer.Value?.Version : null,
                 answer.IsOk ? answer.Value?.ApiRevision : null,
                 ClientVersionContract.ApiRevision,
                 unsentMails: serverStatus?.UnsentMails,
                 updates: serverStatus?.Updates));
+
+            // The changelog only from a server that said how it stands; one that answered with none is older.
+            this.ServerVersionPage.ShowChangelog(serverStatus?.Changelog, answered: serverStatus is not null);
         }
 
-        // One TextBlock a line, its value bold; none clears the panel.
-        private void ShowServerVersionLines(IReadOnlyList<IReadOnlyList<ReviewNoteRun>>? lines)
-        {
-            if (this.FindControl<StackPanel>("ServerVersionLines") is not StackPanel panel)
-                return;
-
-            panel.Children.Clear();
-
-            foreach (IReadOnlyList<ReviewNoteRun> line in lines ?? [])
-            {
-                var block = new TextBlock { TextWrapping = Avalonia.Media.TextWrapping.Wrap };
-                TabMaintainer.ShowCounts(block, line);
-                panel.Children.Add(block);
-            }
-        }
-
-        // The lines as shown, one per line - null while the panel is not shown. For tests.
+        // The page's cards as lines, one per line - null while the page is not shown. For tests.
         internal string? ServerVersionLineForTests =>
-            this.FindControl<Control>("ServerVersionView") is { IsVisible: true } &&
-            this.FindControl<StackPanel>("ServerVersionLines") is StackPanel panel
-                ? string.Join("\n", panel.Children.OfType<TextBlock>().Select(TabMaintainer.TextOf))
+            this.FindControl<Control>("ServerVersionView") is { IsVisible: true }
+                ? string.Join("\n", this.ServerVersionPage.PanelLinesForTests)
                 : null;
+
+        // The page itself, for a test reading its changelog.
+        internal ServerVersionView ServerVersionPageForTests => this.ServerVersionPage;
 
         // A client for a test, as signing in would give the tab - never the real server.
         internal void UseClientForTests(ReviewApiClient client) => this.UseClient(client);
@@ -371,7 +410,7 @@ namespace CRT
             if (this.FindControl<ListBox>("ManagementList") is ListBox management)
                 management.SelectedItem = null;
 
-            this.ShowServerVersionLines(null);
+            this.ServerVersionPage.Clear();
             this.MaintainerPoolAdmin.Clear();
             this.BoardOrderAdmin.Clear();
             this.UnusedFilesAdmin.Clear();

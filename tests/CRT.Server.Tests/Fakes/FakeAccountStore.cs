@@ -79,6 +79,12 @@ namespace CRT.Server.Tests.Fakes
 
         public int FindByIdsCount { get; private set; }
 
+        // CRT.Data's rule, as the database's query compares: trimmed, ignoring capitals.
+        public Task<bool> IsDisplayNameTakenAsync(string displayName, long? exceptAccountId, CancellationToken cancellationToken = default) =>
+            Task.FromResult(this.Accounts.Values.Any(account =>
+                account.Id != exceptAccountId &&
+                global::Handlers.DataHandling.DisplayNames.SameName(account.DisplayName, displayName)));
+
         public Task<long> CreateAccountAsync(NewAccount account, CancellationToken cancellationToken = default)
         {
             long id = this.thisNextAccountId++;

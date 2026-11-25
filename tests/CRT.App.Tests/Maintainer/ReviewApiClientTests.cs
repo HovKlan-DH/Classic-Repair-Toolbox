@@ -355,6 +355,62 @@ public sealed class ReviewApiClientTests
     }
 
     // ###########################################################################################
+    // *** MAKING AN ACCOUNT (2026-11-25, accounts for everybody). *** The name, address and password go as CRT.Data's
+    // RegisterAccountRequest - the record the server binds - with no token (nobody is signed in); the 202's neutral sentence
+    // comes back as it is, the same whatever the address. Every rule a 400 lists is shown, not the first alone, and a 5xx or a
+    // 429 is no refusal of the account.
+    // ###########################################################################################
+    [Fact]
+    public async Task Making_an_account_sends_the_record_with_no_token_and_brings_back_the_neutral_sentence()
+    {
+        HttpRequestMessage? seen = null;
+        string body = string.Empty;
+
+        var handler = new AnsweringHttpHandler(request =>
+        {
+            seen = request;
+            body = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            return new HttpResponseMessage(System.Net.HttpStatusCode.Accepted)
+            {
+                Content = new StringContent("""{"message":"If that address can receive mail, a message is on its way to it."}""", System.Text.Encoding.UTF8, "application/json")
+            };
+        });
+
+        using var client = new ReviewApiClient("https://review.invalid", new HttpClient(handler));
+
+        ReviewApiResult<string> result = await client.RegisterAsync("anna@example.com", "correct horse battery staple", "Anna");
+
+        Assert.True(result.IsOk, result.Message);
+        Assert.Equal("If that address can receive mail, a message is on its way to it.", result.Value);
+        Assert.Equal(HttpMethod.Post, seen!.Method);
+        Assert.Equal("https://review.invalid/api/accounts/register", seen.RequestUri!.ToString());
+        Assert.Null(seen.Headers.Authorization);
+        Assert.Equal(
+            new Handlers.DataHandling.RegisterAccountRequest("anna@example.com", "correct horse battery staple", "Anna"),
+            System.Text.Json.JsonSerializer.Deserialize<Handlers.DataHandling.RegisterAccountRequest>(body, Handlers.DataHandling.ReviewApiContract.WireSettings));
+    }
+
+    [Theory]
+    [InlineData(400, """{"errors":["That display name is taken - choose another.","Too short."]}""", ReviewApiFailure.Refused, "That display name is taken - choose another. Too short.")]
+    [InlineData(400, "", ReviewApiFailure.Refused, "The account was not made.")]
+    [InlineData(503, "", ReviewApiFailure.ServerError, "The server answered 503.")]
+    [InlineData(429, "", ReviewApiFailure.RateLimited, "Too many attempts. Wait a moment and try again.")]
+    public async Task A_refused_account_says_every_rule_broken_and_a_server_failure_is_no_refusal(int status, string body, ReviewApiFailure failure, string message)
+    {
+        var handler = new AnsweringHttpHandler(_ => new HttpResponseMessage((System.Net.HttpStatusCode)status)
+        {
+            Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json")
+        });
+
+        using var client = new ReviewApiClient("https://review.invalid", new HttpClient(handler));
+
+        ReviewApiResult<string> result = await client.RegisterAsync("anna@example.com", "short", "Dennis");
+
+        Assert.Equal(failure, result.Failure);
+        Assert.Equal(message, result.Message);
+    }
+
+    // ###########################################################################################
     // The deployed server's version (2026-10-04): GET /api/health, and WITHOUT the bearer token -
     // the route is public, and the token is sent nowhere it is not needed.
     // ###########################################################################################

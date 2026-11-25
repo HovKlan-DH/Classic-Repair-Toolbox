@@ -61,6 +61,46 @@ public sealed class NewBoardWindowTests : IDisposable
     // The boxes are the shared BoardNameFields' (2026-11-01).
     private static BoardNameFields FieldsOf(NewBoardWindow window) => window.GetControl<BoardNameFields>("Fields");
 
+    // ###########################################################################################
+    // NO TALLER THAN ITS SCREEN, ITS FORM SCROLLING ABOVE "Create board" (2026-11-25, found looking for what else was out
+    // of reach after the owner's report of the "Maintainer" tab's sign-in on Linux): 732 high as made, past the bottom of
+    // a 768 screen, and the dialog cannot be resized - "Create board" was below the screen. ScreenSizedDialog caps it at
+    // the working area of the screen it opens on; held to a low screen's cap, every box and both buttons can be reached.
+    // ###########################################################################################
+    [Fact]
+    public void On_a_low_screen_the_form_scrolls_and_its_buttons_stay_in_the_dialog()
+    {
+        UiTest.Run(() =>
+        {
+            NewBoardWindow window = NewBoardWindowTests.WindowWith();
+            window.Show();
+
+            try
+            {
+                ControlsInReach.Settle(window);
+                Assert.False(double.IsPositiveInfinity(window.MaxHeight), "the dialog was not capped to the screen it opened on");
+
+                // A low screen's cap: lower than the form.
+                window.MaxHeight = 400;
+                ControlsInReach.Settle(window);
+
+                Assert.True(window.ClientSize.Height <= 401, $"the dialog is {window.ClientSize.Height} high under a cap of 400");
+                Assert.Empty(ControlsInReach.OutOfReach(window, sideways: false));
+
+                Button create = window.GetControl<Button>("CreateButton");
+                Assert.True(ControlsInReach.PlaceIn(create, window)!.Value.Bottom <= window.ClientSize.Height + 1, "Create board is below the dialog");
+
+                // Not vacuous: the form is taller than the dialog, and scrolls.
+                ScrollViewer form = window.GetControl<ScrollViewer>("FormScroller");
+                Assert.True(form.Extent.Height > form.Viewport.Height + 1, "the form fits, so nothing here needed to scroll");
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
     private static NewBoardWindow WindowWith(params HardwareBoardEntry[] existing)
     {
         var window = new NewBoardWindow();

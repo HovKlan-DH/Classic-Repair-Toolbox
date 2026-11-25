@@ -58,6 +58,11 @@ namespace CRT.Server.Handlers
 
         public const long DefaultBytes = 64L * 1024;
 
+        // A form on the account web pages (2026-11-25, AccountPageEndpoints): a name, an address, a password or a code - a
+        // few hundred bytes. Smaller than the default, as a browser form is the one body anybody on the internet can post
+        // with no CRT at all.
+        public const long FormBytes = 16L * 1024;
+
         // The limit for the endpoint routing chose, or the default when it chose none.
         public static long For(Endpoint? endpoint) =>
             endpoint?.Metadata.GetMetadata<BodyLimit>()?.Bytes ?? RequestBodyLimits.DefaultBytes;

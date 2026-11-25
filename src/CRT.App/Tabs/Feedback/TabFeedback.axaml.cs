@@ -49,6 +49,37 @@ namespace CRT
                         this._customAttachments.Add(path);
                 }
             };
+
+            this.PageGrid.LayoutUpdated += (_, _) => this.FitPage();
+        }
+
+        // ###########################################################################################
+        // *** THE PAGE FILLS THE TAB, AND SCROLLS ONCE THE TAB IS TOO LOW FOR IT (owner report, 2026-11-25: "the UI
+        // useless in these situation" - on CRT's smallest window the text box was squeezed to nothing and "Send
+        // feedback" lay below the tab, with nothing to scroll). *** The page is as high as the tab while that leaves the
+        // text box FeedbackBoxLeast; below that it is just high enough for everything and that least, and scrolls
+        // (ScrollingPageGeometry). Set after every layout pass, as the parts above and below the text box grow and
+        // shrink - the account's note, a send's outcome, the text wrapping - and only when it changes, so it settles.
+        // ###########################################################################################
+        internal const double FeedbackBoxLeast = 140;
+
+        private void FitPage()
+        {
+            double fixedParts =
+                this.PageGrid.Margin.Top + this.PageGrid.Margin.Bottom
+                + this.ContactPanel.DesiredSize.Height
+                + this.FeedbackLabel.DesiredSize.Height + this.FeedbackArea.Margin.Top + this.FeedbackArea.Margin.Bottom
+                + this.AttachmentsPanel.DesiredSize.Height
+                + this.StatusTextBlock.DesiredSize.Height
+                + this.SubmitButton.DesiredSize.Height;
+
+            double page = Handlers.Geometry.ScrollingPageGeometry.PageHeight(this.PageScroller.Bounds.Height, fixedParts, TabFeedback.FeedbackBoxLeast);
+            double height = Math.Max(0, page - this.PageGrid.Margin.Top - this.PageGrid.Margin.Bottom);
+
+            if (double.IsNaN(this.PageGrid.Height) || Math.Abs(this.PageGrid.Height - height) > 0.5)
+            {
+                this.PageGrid.Height = height;
+            }
         }
 
         // ###########################################################################################

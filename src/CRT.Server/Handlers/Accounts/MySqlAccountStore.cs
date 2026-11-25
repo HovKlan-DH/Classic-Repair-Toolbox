@@ -56,6 +56,24 @@ namespace CRT.Server.Handlers.Accounts
             return await MySqlAccountStore.ReadAccountAsync(command, cancellationToken);
         }
 
+        // Compared as CRT.Data's DisplayNames.Key compares: trimmed, in capitals. UPPER on both sides keeps it so whatever the
+        // column's collation does with capitals; a case- and accent-insensitive collation (utf8mb4_unicode_ci) also takes an
+        // old name with an accent as the same as one without - only ever refusing more, never letting a clash through. The
+        // table holds one row per account, so reading all of it is nothing.
+        public async Task<bool> IsDisplayNameTakenAsync(string displayName, long? exceptAccountId, CancellationToken cancellationToken = default)
+        {
+            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
+            await using MySqlCommand command = connection.CreateCommand();
+
+            command.CommandText =
+                "SELECT 1 FROM accounts WHERE UPPER(TRIM(display_name)) = UPPER(TRIM(@name)) " +
+                "AND (@except IS NULL OR id <> @except) LIMIT 1;";
+            command.Parameters.AddWithValue("@name", displayName);
+            command.Parameters.AddWithValue("@except", exceptAccountId is long id ? id : DBNull.Value);
+
+            return await command.ExecuteScalarAsync(cancellationToken) is not null and not DBNull;
+        }
+
         public async Task<AccountRecord?> FindByIdAsync(long accountId, CancellationToken cancellationToken = default)
         {
             await using MySqlConnection connection = await this.OpenAsync(cancellationToken);

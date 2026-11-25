@@ -1,4 +1,5 @@
 using CRT.Server.Handlers.Accounts;
+using Handlers.DataHandling;
 
 namespace CRT.Server.Tests
 {
@@ -158,17 +159,23 @@ namespace CRT.Server.Tests
         // Display name.
         // -----------------------------------------------------------------------------------
 
+        // CRT.Data's DisplayNames is the rule; these hold that the server asks it (DisplayNamesTests has the rule's cases).
+
         [Fact]
         public void An_ordinary_display_name_is_accepted()
         {
             Assert.Empty(AccountRules.ValidateDisplayName("Dennis"));
+            Assert.Empty(AccountRules.ValidateDisplayName("Dennis@CRT"));
         }
 
+        // Taken until 2026-11-25 (any script); the owner's rule since: "only normal A-Z + 0-9 and then some common special
+        // charatcers ... In this way we avoid these weird names i foreign languages".
         [Fact]
-        public void A_non_latin_display_name_is_accepted()
+        public void A_display_name_in_another_alphabet_is_refused()
         {
-            // Contributors are worldwide, and the column is utf8mb4 precisely so this works.
-            Assert.Empty(AccountRules.ValidateDisplayName("Ð¯ÐµÐ¼Ð¾Ð½Ñ‚"));
+            Assert.Equal(
+                [DisplayNames.Problem("Ремонт")!],
+                AccountRules.ValidateDisplayName("Ремонт"));
         }
 
         [Theory]
@@ -177,9 +184,7 @@ namespace CRT.Server.Tests
         [InlineData("   ")]
         public void A_missing_display_name_is_rejected(string? displayName)
         {
-            Assert.Contains(
-                AccountRules.ValidateDisplayName(displayName),
-                failure => failure.Contains("required"));
+            Assert.Equal([DisplayNames.Missing], AccountRules.ValidateDisplayName(displayName));
         }
 
         [Fact]
@@ -188,7 +193,14 @@ namespace CRT.Server.Tests
             // A newline in a name would let it break a log line or a mail header.
             Assert.Contains(
                 AccountRules.ValidateDisplayName("Dennis\nBCC: someone@example.com"),
-                failure => failure.Contains("control characters"));
+                failure => failure.StartsWith("A display name cannot hold \"U+000A\"", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void A_display_name_longer_than_30_characters_is_refused()
+        {
+            Assert.Empty(AccountRules.ValidateDisplayName(new string('a', DisplayNames.MaximumLength)));
+            Assert.NotEmpty(AccountRules.ValidateDisplayName(new string('a', DisplayNames.MaximumLength + 1)));
         }
     }
 }

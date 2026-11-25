@@ -478,6 +478,43 @@ namespace CRT
 
         internal string TopLineForTests => Handlers.Theming.BoldRuns.TextOf(this.TopLineText);
 
+        // ###########################################################################################
+        // "My drafts", "My submissions" and "Add a new board" BESIDE the tab's top line, or UNDER it on a tab too narrow to
+        // leave the words TopLineGeometry.LeastTextWidth (2026-11-25: on CRT's narrowest window the words ran to a dozen
+        // lines and pushed the workspace below the window, out of reach). Moved by Grid.Row and Grid.Column between the
+        // grid's fixed cells - never by changing its definitions (the Grid trap, CLAUDE.md). Wired by the constructor; the
+        // row's width and the buttons' (a badge on "My submissions") decide it, never where the buttons stand, so it
+        // settles at once.
+        // ###########################################################################################
+        private void WireTopLine()
+        {
+            this.TopLineGrid.SizeChanged += (_, _) => this.PlaceTopButtons();
+            this.TopButtons.SizeChanged += (_, _) => this.PlaceTopButtons();
+        }
+
+        private void PlaceTopButtons()
+        {
+            bool under = Handlers.Geometry.TopLineGeometry.ButtonsGoUnder(
+                this.TopLineGrid.Bounds.Width,
+                this.TopButtons.DesiredSize.Width,
+                this.TopLineGrid.ColumnDefinitions[1].Width.Value);
+
+            int row = under ? 1 : 0;
+            int column = under ? 0 : 2;
+
+            if (Grid.GetRow(this.TopButtons) == row && Grid.GetColumn(this.TopButtons) == column)
+            {
+                return;
+            }
+
+            Grid.SetRow(this.TopButtons, row);
+            Grid.SetColumn(this.TopButtons, column);
+            Grid.SetColumnSpan(this.TopButtons, under ? 3 : 1);
+            this.TopButtons.Margin = under ? new Avalonia.Thickness(0, 8, 0, 0) : default;
+        }
+
+        internal bool TopButtonsUnderForTests => Grid.GetRow(this.TopButtons) == 1;
+
         // A component's page with no component picked: where to pick one.
         private void ShowNoComponentPage()
         {

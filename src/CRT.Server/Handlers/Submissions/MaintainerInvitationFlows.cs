@@ -236,6 +236,11 @@ namespace CRT.Server.Handlers.Submissions
             if (await accounts.FindByNormalisedEmailAsync(invitation.NormalisedEmail, cancellationToken) is not null)
                 return InvitationAcceptOutcome.Invalid(MaintainerInvitationRules.AlreadyHasAccountMessage);
 
+            // The name unique as at registration (owner request, 2026-11-25) - said on the name, so the invitee picks another
+            // and keeps the code, which is not spent by this.
+            if (await accounts.IsDisplayNameTakenAsync(displayName!.Trim(), exceptAccountId: null, cancellationToken))
+                return InvitationAcceptOutcome.Rejected([global::Handlers.DataHandling.DisplayNames.Taken]);
+
             // Every board this address is invited to - accepted together, since one account
             // answers them all.
             List<string> boards = (await accounts.ListOpenInvitationsAsync(now, cancellationToken))

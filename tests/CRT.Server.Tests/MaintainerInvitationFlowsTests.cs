@@ -86,6 +86,11 @@ namespace CRT.Server.Tests
             Assert.Equal("For CRT you are invited to maintain the [Commodore / C64 / 250407] board", mail.Subject);
             Assert.Contains("Dennis has invited you", mail.Body, StringComparison.Ordinal);
             Assert.Contains("\"I have an invitation\"", mail.Body, StringComparison.Ordinal);
+            // Accepted where every account lives since 2026-11-25 - the account icon, never the Maintainer tab's sign-in.
+            Assert.Contains(
+                $"In CRT, open {(global::Handlers.DataHandling.AccountWording.WhereInCrt)} and choose \"I have an invitation\".",
+                mail.Body,
+                StringComparison.Ordinal);
             // CRT itself, and how to show its Maintainer tab (2026-09-29) - the separate CRT
             // Maintainer application and its release repository are gone.
             Assert.Contains("HovKlan-DH/Classic-Repair-Toolbox/releases", mail.Body, StringComparison.Ordinal);
@@ -309,6 +314,28 @@ namespace CRT.Server.Tests
             Assert.True(outcome.Errors.Count >= 2);
             Assert.DoesNotContain(world.Accounts.Accounts.Values, account => account.Email == "anna@example.com");
             Assert.Single(await world.Accounts.ListOpenInvitationsAsync(MaintainerInvitationFlowsTests.Now));
+        }
+
+        // ###########################################################################################
+        // The name unique as at registration (owner request, 2026-11-25) - the administrator's "Dennis" in other capitals is
+        // refused, nothing is made, and the code is NOT spent: the invitee picks another name with the same code.
+        // ###########################################################################################
+        [Fact]
+        public async Task A_name_another_account_has_is_refused_and_the_code_still_works()
+        {
+            World world = await MaintainerInvitationFlowsTests.SetUpAsync();
+            await MaintainerInvitationFlowsTests.InviteAsync(world, "anna@example.com");
+            string code = world.Mailer.ExtractTokenFromLastMail();
+
+            InvitationAcceptOutcome taken = await MaintainerInvitationFlowsTests.AcceptAsync(world, code, name: "dennis");
+
+            Assert.False(taken.IsAccepted);
+            Assert.Equal([global::Handlers.DataHandling.DisplayNames.Taken], taken.Errors);
+            Assert.DoesNotContain(world.Accounts.Accounts.Values, account => account.Email == "anna@example.com");
+
+            InvitationAcceptOutcome accepted = await MaintainerInvitationFlowsTests.AcceptAsync(world, code, name: "Anna");
+
+            Assert.True(accepted.IsAccepted);
         }
 
         // An account made for the address since it was invited (by hand) - the code is not a second

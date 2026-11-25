@@ -74,6 +74,10 @@ public sealed class ReviewApiRoutesTests
         Assert.Equal("https://x/api/accounts/me/email/confirm", ReviewApiRoutes.ConfirmEmailChange("https://x"));
         Assert.Equal("https://x/api/accounts/me/password", ReviewApiRoutes.ChangePassword("https://x"));
 
+        // Accounts for everybody (2026-11-25) - CRT's account window: making one, and a new link to confirm the address.
+        Assert.Equal("https://x/api/accounts/register", ReviewApiRoutes.Register("https://x/"));
+        Assert.Equal("https://x/api/accounts/me/verify-again", ReviewApiRoutes.SendVerificationAgain("https://x"));
+
         // A new board's place in the drop-down lists (2026-09-27): GET the lists, POST a placement.
         Assert.Equal("https://x/api/review/boards/listing", ReviewApiRoutes.BoardListing("https://x"));
 

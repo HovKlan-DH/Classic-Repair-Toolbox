@@ -446,6 +446,11 @@ namespace CRT.Server
             // rather than presentation.
             // ---------------------------------------------------------------------------------
             app.MapAccountEndpoints();
+
+            // The account web pages (2026-11-25) - making an account, confirming its address and setting a new password in
+            // a browser, with no CRT at hand; Apache forwards "/account/" here (INSTALLING.md). A rim over AccountFlows too.
+            app.MapAccountPageEndpoints();
+
             app.MapSubmissionEndpoints();
             app.MapOscilloscopeModelEndpoints();
             app.MapReviewEndpoints();

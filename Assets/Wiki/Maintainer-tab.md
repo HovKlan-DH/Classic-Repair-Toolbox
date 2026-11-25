@@ -4,7 +4,7 @@ Review and publish the changes other people send in - for maintainers of the har
 
 ---
 
-The **Maintainer** tab is where a maintainer looks through the contributions sent in for the boards they look after, and publishes the good ones for everybody who uses CRT. It is hidden unless you turn it on, because it needs a maintainer account, and almost nobody using CRT has one - you can use every other part of CRT, and contribute data yourself, without it.
+The **Maintainer** tab is where a maintainer looks through the contributions sent in for the boards they look after, and publishes the good ones for everybody who uses CRT. It is hidden unless you turn it on, because it needs an account the administrator has made a maintainer of a board, and almost nobody using CRT is one - you can use every other part of CRT, and contribute data yourself, without it.
 
 ## Turning it on
 
@@ -16,38 +16,42 @@ While the Maintainer tab is selected, the hardware and board list on the left an
 
 Once you are signed in, a red number on the tab tells you how much is waiting for you: the boards with a contribution for you to review, plus the boards in BETA waiting for you to publish them. It is the two numbers on the **Queue: Contributor submissions** and **Queue: Awaiting push from BETA to stable** tabs added up - for the administrator, the oscilloscope models waiting too, counted on the **Management** tab and on its **Oscilloscope models** entry - and it goes away when nothing is left for you. CRT checks for new work every minute while its window is open, even when you are on another tab.
 
-## Getting a maintainer account
+## Your account
 
-You cannot create a maintainer account yourself. The administrator invites you by email, for the board or boards you will look after - or, if you created a new board yourself, the invitation comes by itself once that board is accepted. The email holds an invitation code.
+Anybody can have a Classic Repair Toolbox account - one account, the same in CRT and on the website. The person icon in the top right corner of CRT's window opens it from any tab: **Sign in**, **Create an account**, **I forgot my password** and **I have an invitation**. Without CRT at hand, the same is on the website: https://classic-repair-toolbox.dk/account/
 
-To accept it, open the Maintainer tab and choose **I have an invitation**. The sign-in boxes make way for the invitation's own: paste the code, pick the name other maintainers and contributors will see and a password, and choose **Create my account**. Your account is made for the address the invitation was sent to, and you are taken back to signing in with that address and your password already filled in. **Cancel** takes you back to signing in without creating anything.
+An account is a maintainer's once the administrator has made it the maintainer of a board. The administrator does that for an account you already have, or invites you by email - and if you created a new board yourself, the invitation comes by itself once that board is accepted. To accept an invitation, open the account icon, choose **I have an invitation**, paste the code from the email, pick your display name and a password, and choose **Create my account**. Your account is made for the address the invitation was sent to, and you are taken back to signing in with that address and your password already filled in.
+
+Your **display name** is what others see. Nobody else can have the same name, and it may hold only the letters A-Z, the digits 0-9 and + - / @ . [ ] ( ), at most 30 characters, no spaces. A name you chose before those rules stays until you change it.
 
 ## Signing in
 
-Sign in with your email address and password. If you have forgotten your password, choose **I forgot my password**: you are sent a code by email, which you paste into the tab together with the new password you want.
+Sign in with your email address and password in the account window - **Sign in** on the Maintainer tab opens it too. If you have forgotten your password, choose **I forgot my password**: ask for a code, which is sent to you by email, then type the code and the new password you want - in CRT, or on the website's page.
 
-On Windows, CRT remembers that you are signed in, and signs you back in by itself when it starts, so the number on the tab is there without opening the tab first. What it keeps is encrypted to your Windows user account and cannot be used from another computer or another user. On Linux and macOS there is no such safe place to keep it, so you sign in each time you open CRT - the sign-in screen says so under **Sign in**.
+On Windows, CRT remembers that you are signed in, and signs you back in by itself when it starts, so the number on the tab is there without opening the tab first. What it keeps is encrypted to your Windows user account and cannot be used from another computer or another user. On Linux and macOS there is no such safe place to keep it, so you sign in each time you open CRT - the account window says so under **Sign in**.
 
 With the tab turned on, CRT keeps in touch with the server while it runs, and that keeps you signed in: open CRT at least once every two weeks and you are not asked again. Leave it longer, and you may be asked to sign in again - at the latest 30 days after CRT last used your sign-in.
 
+If you are signed in with an account that is not a maintainer of any board, the Maintainer tab says so instead of showing the queue.
+
 If the server ends your sign-in while a table holds a change you have not saved - you signed out on another computer, say - the tab does not throw the change away: it stops checking for new work, and the line above the list says the change can no longer be saved. Copy anything you need, then sign out and in again to carry on.
 
-Under the list on the left, the tab always says who is signed in - **Signed in as:**, then your name in bold and your email address - so you can see which account you are acting as. **Sign out** is under **Account** > **My account** (below); it signs you out and forgets the remembered sign-in on this computer.
+Under the list on the left, the tab always says who is signed in - **Signed in as:**, then your name in bold and your email address - so you can see which account you are acting as. **Sign out** is under **My account** (below); it signs you out and forgets the remembered sign-in on this computer.
 
-**While you are signed in, CRT uses your account's email address everywhere it asks for one.** The "Feedback" tab shows it, and so do the dialog that submits a draft from the "Contribute" tab and "Submit this model for everybody" on the "Oscilloscope" tab - both of which also send with your account, so whoever reviews it sees that the address is checked. None of those boxes can be changed while you are signed in - whatever the Configuration tab says, even with the Maintainer tab turned off or hidden; sign out to use another address, or change your account's address (below). CRT remembers the sign-in between launches until you sign out.
+**While you are signed in, CRT uses your account's email address everywhere it asks for one.** The "Feedback" tab shows it, and so do the dialog that submits a draft from the "Contribute" tab and "Submit this model for everybody" on the "Oscilloscope" tab - both of which also send with your account. None of those boxes can be changed while you are signed in - whatever the Configuration tab says, even with the Maintainer tab turned off or hidden; sign out to use another address, or change your account's address (below). CRT remembers the sign-in between launches until you sign out.
 
 ## My account
 
-**Account** > **My account** is where you change your own details, and sign out:
+Once you are signed in, the account icon opens **My account** - and **Account** > **My account** on the Maintainer tab is the same. It is where you change your own details, and sign out:
 
-- **Name or handle** - what other maintainers see, and what the emails call you. Type the new one and choose **Save name**.
+- **Display name** - what others see, by the rules above. Type the new one and choose **Save name**; a name breaking a rule is said under the box as you type.
 - **Email address** - type the new email address and choose **Send code**. A code is sent to the new email address; when it arrives, choose **I have received a code**, type the code in and choose **Change address**. Your address does not change until the code is used, so a mistyped address cannot lock you out. You can go to another screen, or close CRT, in between - the code works for 24 hours. Your old address then gets an email saying the address was changed.
 - **Password** - type the new password twice and choose **Change password**. You get an email saying it was changed.
 - **Sign out** - signs you out and forgets the remembered sign-in on this computer. If a table holds changes you have not saved, you are asked about them first.
 
-You are already signed in, so none of these asks for your current password.
+You are already signed in, so none of these asks for your current password. While your address is not confirmed yet - the link in the email you got when you made the account - a note at the top says so, with **Send the mail again** for a new link.
 
-When you change your email address or your password, every other computer where you are signed in is signed out - its Maintainer tab asks you to sign in again. The computer you made the change on stays signed in, and the Feedback tab and the submit dialog use the new address straight away. A new name shows on your other computers the next time CRT starts there with the Maintainer tab turned on.
+When you change your email address or your password, every other computer where you are signed in is signed out - it asks you to sign in again. The computer you made the change on stays signed in, and the Feedback tab and the submit dialog use the new address straight away. A new name shows on your other computers the next time CRT starts there.
 
 ## When CRT has to be updated
 
@@ -112,26 +116,31 @@ For now, only the administrator publishes to the stable source: for everybody el
 **Account** - for every maintainer:
 
 - **My account** - your name, email address and password, and signing out - see [My account](#my-account) above. The screen opens on it.
-- **Server version** - what is deployed on the server, as three lines: the server version, the API
-  server version and the API application version. The two API versions are the API revision - a
-  number that changes only when the server changes in a way an older CRT cannot follow - of the
-  server and of this CRT. When they are the same, the two work together. When the server's is
-  higher, this CRT is behind and has to be updated: the server turns it away from submitting and
-  from this tab, saying so. When this CRT's is higher, the newer server has not been deployed yet.
-  The server is asked every time you open this, so after an update the new version shows straight
-  away. When the server has mails it could not send yet - the mail system on the server was down -
-  a fourth line says how many. The server tries them again every few minutes for three days. A mail
-  with a confirmation link or a code in it (signing up, a new password, a new address, an
-  invitation) is not sent again: the person asks for a new one, or the administrator invites again.
-  The last lines say how the server keeps itself up to date: every minute it looks on GitHub for a
-  newer server - the live server for the one that came with the newest CRT release, the test server
-  for the one built from the newest change to the project - installs it once GitHub proves the
-  project's own build made it, and goes back to the server before if the new one does not start.
-  **Automatic updates** says which builds it installs,
-  **Last look** when it last looked and what it found - or what waits and why - and **Last
-  installed** the newest server it installed and the one that server replaced. A last look over ten
-  minutes old means the updater has stopped. A server set up without it says "not set up on this
-  server".
+- **Server version** - how the server stands, as a panel each, and the server's changelog under
+  them. Each panel has a line saying how it stands, and its edge and icon say the same: green with a
+  check when all is well, amber when something waits, red when something needs a look. The server is
+  asked every time you open this, so after an update the new version shows straight away.
+  - **Server** - the version deployed, its **API revision** and **This CRT's API revision**. The API
+    revision is a number that changes only when the server changes in a way an older CRT cannot
+    follow, and the panel says what the two mean together: the same, and the two work together; the
+    server's higher, and this CRT is behind and has to be updated - the server turns it away from
+    submitting and from this tab, saying so; this CRT's higher, and the newer server has not been
+    deployed yet.
+  - **Automatic updates** - how the server keeps itself up to date: every minute it looks on GitHub
+    for a newer server - the live server for the one that came with the newest CRT release, the test
+    server for the one built from the newest change to the project - installs it once GitHub proves
+    the project's own build made it, and goes back to the server before if the new one does not
+    start. **Installs** says which builds it takes, **Last look** when it last looked, **Found** what
+    it found - or what waits and why - and **Last installed** the newest server it installed and the
+    one that server replaced. A last look over ten minutes old means the updater has stopped. A
+    server set up without it says "Not set up on this server".
+  - **Mail** - only while the server has mails it could not send yet (the mail system on the server
+    was down): how many. The server tries them again every few minutes for three days. A mail with a
+    confirmation link or a code in it (signing up, a new password, a new address, an invitation) is
+    not sent again: the person asks for a new one, or the administrator invites again.
+  - **Full changelog for server** - what changed in each version of the server, newest first, as the
+    **About** tab lists CRT's own changes. It is the changelog of the server CRT talks to: the live
+    server's, or the test server's for a pre-release of CRT.
 
 **Management** - the administrator's eight tools, on a tab of its own before **Account**, marked with a padlock. Nobody else sees the tab, and the server turns everybody else away from the tools anyway. While an oscilloscope model waits, a red number on the tab and on **Oscilloscope models** says how many, and **Management** opens on that entry; otherwise it opens on **Maintainers**:
 

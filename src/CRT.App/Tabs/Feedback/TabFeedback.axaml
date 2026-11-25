@@ -2,10 +2,18 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:local="using:CRT"
              x:Class="CRT.TabFeedback">
-	<Grid RowDefinitions="Auto,*,Auto,Auto,Auto" Margin="16">
+	<!-- THE PAGE SCROLLS ONCE THE TAB IS TOO LOW FOR IT (owner report, 2026-11-25: on a low window the text box was
+	     squeezed to nothing and "Send feedback" lay below the tab, with nothing to scroll). It fills the tab while that
+	     leaves the text box TabFeedback.FeedbackBoxLeast high, and is that high and scrolls below it - its height set by
+	     TabFeedback.FitPage (ScrollingPageGeometry), never left to the scroll viewer's endless measure, where a long text
+	     would stretch the page instead of scrolling in its box. -->
+	<ScrollViewer x:Name="PageScroller"
+	              HorizontalScrollBarVisibility="Disabled"
+	              VerticalScrollBarVisibility="Auto">
+	<Grid x:Name="PageGrid" RowDefinitions="Auto,*,Auto,Auto,Auto" Margin="16" VerticalAlignment="Top">
 
 		<!-- Contact Info -->
-        <StackPanel Grid.Row="0" Spacing="4" Margin="0,0,0,16">
+        <StackPanel x:Name="ContactPanel" Grid.Row="0" Spacing="4" Margin="0,0,0,16">
             <TextBlock
                 Text="Email address (optional, but required if you want any reply):" FontSize="12" />
             <TextBox
@@ -48,8 +56,8 @@
         <!-- Feedback Area: the text with pictures in it (FeedbackComposer, 2026-10-15) - a paste or
              a drop puts a picture where the caret is; what is sent is plain text with a marker line
              per picture, the pictures in the zip. -->
-        <Grid Grid.Row="1" RowDefinitions="Auto,*" Margin="0,0,0,16">
-            <TextBlock Grid.Row="0" Text="Your feedback:" FontSize="12" Margin="0,0,0,4" />
+        <Grid x:Name="FeedbackArea" Grid.Row="1" RowDefinitions="Auto,*" Margin="0,0,0,16">
+            <TextBlock x:Name="FeedbackLabel" Grid.Row="0" Text="Your feedback:" FontSize="12" Margin="0,0,0,4" />
             <local:FeedbackComposer Grid.Row="1" x:Name="FeedbackText"
                                     PlaceholderText="Describe your issue, suggestion or question. A screenshot can be pasted or dropped straight into the text." />
         </Grid>
@@ -111,4 +119,5 @@
 			Foreground="{DynamicResource Feedback_Submit_Fg}"
 			Click="OnSubmitClick" />
 	</Grid>
+	</ScrollViewer>
 </UserControl>

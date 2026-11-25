@@ -121,58 +121,13 @@ namespace CRT
             this.Closing += this.OnWindowClosing;
 
             this.ShowTestServerNote(AppConfig.UsesTestServer);
-        }
 
-        // ###########################################################################################
-        // *** NO TALLER THAN ITS SCREEN, AND CENTRED OVER CRT AS ITS PANELS CHANGE (owner report,
-        // 2026-11-01: "it seems to take full height ... I cannot see the submit button", and the
-        // progress panel stood at the top). *** The dialog sizes itself to its content, which the
-        // changes and the credit make long: capped at the screen's working area its
-        // content scrolls, the buttons below it (DialogPlacement). A window sized to its content keeps
-        // its top edge as it shrinks, so every change of size centres it over CRT again.
-        // ###########################################################################################
-        protected override void OnOpened(EventArgs e)
-        {
-            base.OnOpened(e);
-
-            if (this.Screens.ScreenFromWindow(this) is { } screen)
-            {
-                this.MaxHeight = DialogPlacement.MaxHeight(screen.WorkingArea.Height, screen.Scaling);
-            }
-
-            this.CentreOnOwner();
-        }
-
-        protected override void OnPropertyChanged(Avalonia.AvaloniaPropertyChangedEventArgs change)
-        {
-            base.OnPropertyChanged(change);
-
-            if (change.Property == ClientSizeProperty && this.IsVisible)
-            {
-                Dispatcher.UIThread.Post(this.CentreOnOwner);
-            }
-        }
-
-        private void CentreOnOwner()
-        {
-            if (this.Owner is not Window owner || this.FrameSize is not { } frame || owner.FrameSize is not { } ownerFrame)
-            {
-                return;
-            }
-
-            double ownerScaling = owner.DesktopScaling;
-            var ownerBounds = new Avalonia.PixelRect(
-                owner.Position,
-                new Avalonia.PixelSize((int)Math.Round(ownerFrame.Width * ownerScaling), (int)Math.Round(ownerFrame.Height * ownerScaling)));
-
-            Avalonia.Platform.Screen? screen = this.Screens.ScreenFromWindow(owner);
-
-            Avalonia.PixelPoint wanted = DialogPlacement.CentredOver(ownerBounds, frame, this.DesktopScaling, screen?.WorkingArea ?? default);
-
-            if (wanted != this.Position)
-            {
-                this.Position = wanted;
-            }
+            // *** NO TALLER THAN ITS SCREEN, AND CENTRED OVER CRT AS ITS PANELS CHANGE (owner report,
+            // 2026-11-01: "it seems to take full height ... I cannot see the submit button", and the
+            // progress panel stood at the top). *** The dialog sizes itself to its content, which the
+            // changes and the credit make long: capped at the screen's working area its content scrolls,
+            // the buttons below it. ScreenSizedDialog, which "Add a new board" uses too.
+            Handlers.Theming.ScreenSizedDialog.Use(this);
         }
 
         // The line saying a pre-release sends to the test instance (ContributionServer.SubmitNote);

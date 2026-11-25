@@ -41,8 +41,10 @@ namespace CRT
         //   BarPickerLinePanel.cs     - (a class of its own) a line of those drop-downs, its badge at the end
         //   Main.ComponentPopup.cs    - component filter/search, component info popup, blink, region
         //   Main.ContributeLists.cs   - the Contribute tab's own lists on the far left, its selector
+        //   Main.SideLists.cs         - the category lists on the far left leaving the component list its half
         //   Main.DataSyncStatus.cs    - sync settings reactions, sync status icon, background cleanup
         //   Main.ThemeToggle.cs       - the theme's icon in the top right corner: the moon to go dark, the sun to go light
+        //   Main.Account.cs           - the account icon right of it, opening the account window (Account/AccountWindow)
         //   Main.ModeHint.cs          - the mode-hint label shown while a mode awaits user action
         //   Main.Notices.cs           - what the notice cards over the tabs' bottom-right corner share
         //   Main.NoticeDemo.cs        - "--demo-notices": every notice played once after launch
@@ -268,6 +270,9 @@ namespace CRT
 
             // The tab's "My devices" stands in the left panel while it is shown (Main.DeviceList.cs).
             this.PlaceDeviceList();
+
+            // The category lists never take the component list's room (Main.SideLists.cs).
+            this.WireSideLists();
             this.TabDrafts.Initialize(this);
             this.TabConfiguration.Initialize(this);
             this.WireThemeToggle();
@@ -286,6 +291,7 @@ namespace CRT
                 boardId => UserSettings.MaintainerLastBoardId = boardId);
             this.TabMaintainer.UseTabBadge(() => this.MaintainerTabBadgeCanBeSeen, this.ShowMaintainerTabBadge);
             this.TabMaintainer.SignedInChanged += this.ShareMaintainerSignIn;
+            this.WireAccountIcon();
 
             // "CRT has to be updated" on either tab: its one button (Main.UpdateRequired.cs).
             this.TabDrafts.UpdateRequiredActionClicked += this.OnUpdateRequiredAction;

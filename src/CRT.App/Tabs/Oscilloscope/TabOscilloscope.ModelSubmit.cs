@@ -146,7 +146,7 @@ namespace CRT
             this.SubmitModelEmailTextBox.Text = address.Email;
             this.SubmitModelEmailTextBox.IsReadOnly = address.IsFromAccount;
             this.SubmitModelEmailNoteText.Text = address.IsFromAccount
-                ? "Your maintainer account's address, as you are signed in on the \"Maintainer\" tab."
+                ? ContactAddress.ModelNote
                 : "Used only to tell you whether your model was published.";
         }
 

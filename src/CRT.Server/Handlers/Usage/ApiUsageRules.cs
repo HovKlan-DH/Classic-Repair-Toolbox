@@ -44,7 +44,10 @@ namespace CRT.Server.Handlers.Usage
 
         // ###########################################################################################
         // The method and pattern of a route, as RequestBodyLimitsTests names them ("POST",
-        // "/api/submissions" - no trailing slash), or null for anything that is not a route.
+        // "/api/submissions" - no trailing slash), or null for anything that is not a route - nor for
+        // a route outside "/api/": the account web pages (2026-11-25, "/account/...") are a browser's,
+        // which no CRT calls and so none can be retired from - counting them would only add rows to a
+        // screen that exists to decide what installed CRTs still use.
         // ###########################################################################################
         public static (string Method, string Route)? RouteOf(Endpoint? endpoint)
         {
@@ -58,6 +61,9 @@ namespace CRT.Server.Handlers.Usage
 
             if (!pattern.StartsWith('/'))
                 pattern = "/" + pattern;
+
+            if (!pattern.StartsWith("/api/", StringComparison.OrdinalIgnoreCase))
+                return null;
 
             string method = route.Metadata.GetMetadata<IHttpMethodMetadata>()?.HttpMethods.FirstOrDefault() ?? "*";
 
