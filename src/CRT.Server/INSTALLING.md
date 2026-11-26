@@ -442,9 +442,9 @@ mysql -u root -e "SELECT UPPER(TRIM(display_name)) AS name, COUNT(*) AS accounts
 No rows (it prints nothing): every name is one account's. A row: those accounts keep the name until one of them changes it
 (under "My account"), which the rule then holds.
 
-**An address not confirmed cannot sign in from 13.0.0** - it is answered as a wrong password, so that
+**An address not confirmed cannot sign in from 14.0.0** - it is answered as a wrong password, so that
 signing in never tells whether an address has an account. An account an invitation made is confirmed
-already; one registered before 13.0.0 whose link was never opened stops signing in. To see any
+already; one registered before 14.0.0 whose link was never opened stops signing in. To see any
 (`crt_review_test` in place of `crt_review` for the test instance):
 
 ```bash

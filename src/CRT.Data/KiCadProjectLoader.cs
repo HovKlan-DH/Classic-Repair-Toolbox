@@ -40,6 +40,12 @@ namespace Handlers.DataHandling
             string boardName = "",
             CancellationToken cancellationToken = default)
         {
+            // An asker gone already starts no parse at all.
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return null;
+            }
+
             var existingPaths = rawPaths
                 .Where(path => !string.IsNullOrWhiteSpace(path))
                 .Select(Path.GetFullPath)
@@ -93,7 +99,11 @@ namespace Handlers.DataHandling
 
             try
             {
-                return await load.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+                // *** WaitAsync HANDS BACK A TASK ALREADY DONE WHATEVER THE TOKEN SAYS (CI, 2026-11-25). *** A small
+                // project parsed before the wait began answered an asker that had stopped waiting - 2 of 6,000 such
+                // askers in a stress run - so the token is asked once more after it.
+                KiCadProjectBundle? bundle = await load.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
+                return cancellationToken.IsCancellationRequested ? null : bundle;
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {

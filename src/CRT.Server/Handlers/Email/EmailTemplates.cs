@@ -73,7 +73,7 @@ namespace CRT.Server.Handlers.Email
 
         // ###########################################################################################
         // *** AND THE WAY IN FOR A CRT FROM BEFORE THE ICON *** (code review, 2026-11-25; "Installed CRTs keep working"). The
-        // live server takes 13.0.0 with CRT 4.1.0's release, and a maintainer still on 4.0 or older has no account icon: its
+        // live server takes the server CRT 4.1.0 is released with, and a maintainer still on 4.0 or older has no account icon: its
         // sign-in, "I forgot my password" and "I have an invitation" are the "Maintainer" tab's (turned on in "Configuration"),
         // "My account" is under that tab's "Account". The buttons' words are the same. Said in brackets after the icon, in the
         // mails such a CRT's user can get - not the verification mail, whose "Send the mail again" no older CRT has.

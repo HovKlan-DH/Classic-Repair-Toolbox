@@ -67,7 +67,7 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
-        // Signed in with an address NOT confirmed: a session from before server 13.0.0, when such an address could still sign
+        // Signed in with an address NOT confirmed: a session from before server 14.0.0, when such an address could still sign
         // in (AccountFlows.LoginAsync refuses it since 2026-11-25) - "Send the mail again" is for those.
         // ###########################################################################################
         private static async Task<Setup> SignedInUnconfirmedAsync()
