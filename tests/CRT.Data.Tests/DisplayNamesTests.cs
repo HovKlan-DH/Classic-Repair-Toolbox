@@ -4,7 +4,8 @@ namespace ClassicRepairToolbox.Tests;
 
 // ###########################################################################################
 // DisplayNames - the name others see (owner requests, 2026-11-25: "it needs to be unique for all users", "allow only normal
-// A-Z + 0-9 and then some common special charatcers like: +-/@.[]() ... Make the max length 30 characters"). The ONE rule
+// A-Z + 0-9 and then some common special charatcers like: +-/@.[]() ... Make the max length 30 characters"; 2026-11-26:
+// spaces and "_" too). The ONE rule
 // the server holds and CRT's account window says as a name is typed; uniqueness is the server's database's
 // (AccountFlowTests and AccountSelfServiceFlowsTests hold a name taken in other capitals to it, through FakeAccountStore).
 // ###########################################################################################
@@ -18,18 +19,22 @@ public sealed class DisplayNamesTests
     [InlineData("AB")]
     [InlineData("  Padded  ")]
     [InlineData("123456789012345678901234567890")]
+
+    // Spaces and "_" too (owner, 2026-11-26: "allow those two also").
+    [InlineData("Dennis Hansen")]
+    [InlineData("under_score")]
+    [InlineData("C64 fixer_2 (DK)")]
     public void A_name_of_the_allowed_characters_and_length_is_taken(string name)
     {
         Assert.Null(DisplayNames.Problem(name));
     }
 
-    // The point of the rule: nothing outside A-Z, 0-9 and the eight marks - so no name in lookalike letters of another
-    // alphabet, and no space to pad one name into another.
+    // The point of the rule: nothing outside A-Z, 0-9, single spaces and the marks - so no name in lookalike letters of
+    // another alphabet.
     [Theory]
-    [InlineData("Dennis Hansen", "A display name cannot hold a space.")]
     [InlineData("Dеnnis", "A display name cannot hold \"е\".")] // a Cyrillic "е" (U+0435) in place of the Latin "e"
     [InlineData("Søren", "A display name cannot hold \"ø\".")]
-    [InlineData("under_score", "A display name cannot hold \"_\".")]
+    [InlineData("Dennis#CRT", "A display name cannot hold \"#\".")]
     [InlineData("Fix😀er", "A display name cannot hold \"😀\".")] // said whole, never as half of a surrogate pair
     [InlineData("Tab\there", "A display name cannot hold \"U+0009\".")] // a character nobody can see is said by its code
     [InlineData("Zero​width", "A display name cannot hold \"U+200B\".")]
@@ -44,10 +49,19 @@ public sealed class DisplayNamesTests
 
     // Where the rule stands beside the box already (CRT's account window, "My account"), the sentence leaves it out -
     // said twice, it read as a wall of text; a limit, with nothing after it, reads the same either way.
+    // Two spaces in a row would let "Dennis  Hansen" pass for another "Dennis Hansen" - uniqueness ignores only the spaces
+    // around a name.
+    [Fact]
+    public void Two_spaces_in_a_row_are_refused()
+    {
+        Assert.Equal("A display name cannot hold two spaces in a row.", DisplayNames.Problem("Dennis  Hansen"));
+        Assert.Null(DisplayNames.Problem("  Dennis Hansen  "));
+    }
+
     [Fact]
     public void Beside_a_box_showing_the_rule_the_sentence_leaves_the_rule_out()
     {
-        Assert.Equal("A display name cannot hold a space.", DisplayNames.Problem("Dennis Hansen", sayRule: false));
+        Assert.Equal("A display name cannot hold \"#\".", DisplayNames.Problem("Dennis#CRT", sayRule: false));
         Assert.Equal(DisplayNames.Problem("D"), DisplayNames.Problem("D", sayRule: false));
         Assert.Null(DisplayNames.Problem("Dennis", sayRule: false));
     }
@@ -81,5 +95,7 @@ public sealed class DisplayNamesTests
         {
             Assert.Contains($" {mark}", DisplayNames.AllowedLine, StringComparison.Ordinal);
         }
+
+        Assert.Contains("single spaces", DisplayNames.AllowedLine, StringComparison.Ordinal);
     }
 }

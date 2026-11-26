@@ -70,6 +70,11 @@ CRT.Data.Tests.csproj, which solved this first.
     <ProjectReference Include="..\..\src\CRT.Data\CRT.Data.csproj" />
   </ItemGroup>
 
+  <!-- The PNG files the collection tests are made of, shared with CRT.Data.Tests (TestPng's header). -->
+  <ItemGroup>
+    <Compile Include="..\CRT.Data.Tests\TestPng.cs" Link="Shared\TestPng.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <None Update="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

@@ -6,16 +6,17 @@ namespace Handlers.DataHandling
     // AN ACCOUNT'S DISPLAY NAME - the name others see (owner requests, 2026-11-25, as accounts opened to everybody: "this
     // should be elaborated that this is the display name others will see, and that it needs to be unique for all users", then
     // "allow only normal A-Z + 0-9 and then some common special charatcers like: +-/@.[]() ... In this way we avoid these
-    // weird names i foreign languages. Make the max length 30 characters"). Until then a name was 2 to 100 characters of any
-    // script, and two accounts could share one.
+    // weird names i foreign languages. Make the max length 30 characters"; and 2026-11-26: spaces and "_" "allow those two
+    // also"). Until then a name was 2 to 100 characters of any script, and two accounts could share one.
     //
     // THE ONE RULE, on both sides: the server holds registration, a name changed under "My account" and an accepted invitation
     // to it (AccountRules.ValidateDisplayName), and CRT's account window says the same sentence under the box as it is typed,
     // its boxes taking no more than MaximumLength.
     //
     //   - 2 to 30 characters, counted as kept - trimmed;
-    //   - only the letters A-Z (either case), the digits 0-9 and + - / @ . [ ] ( ) - no spaces, no letters of other
+    //   - only the letters A-Z (either case), the digits 0-9, spaces, and _ + - / @ . [ ] ( ) - no letters of other
     //     alphabets, so no name can be written in lookalike letters ("Dennis" with a Cyrillic "e");
+    //   - a space only between characters, ONE at a time - "Dennis  Hansen" would pass for another "Dennis Hansen";
     //   - UNIQUE, ignoring capitals and the spaces around it: "Dennis" and "dennis" are one name. That half is the server's,
     //     which alone knows the other names, and asks its database (IAccountStore.IsDisplayNameTakenAsync).
     //
@@ -28,8 +29,9 @@ namespace Handlers.DataHandling
 
         public const int MaximumLength = 30;
 
-        // The marks a name may hold besides letters and digits, in the order the owner listed them.
-        public const string AllowedMarks = "+-/@.[]()";
+        // The marks a name may hold besides letters, digits and single spaces - "_" (2026-11-26), then the ones the owner listed
+        // first, in his order.
+        public const string AllowedMarks = "_+-/@.[]()";
 
         // ###########################################################################################
         // What a person reads beside the box - in CRT's account window and on the account web pages. Two sentences: what the
@@ -37,7 +39,7 @@ namespace Handlers.DataHandling
         // ###########################################################################################
         public const string Explanation = "The name others will see. It must be unique - nobody else can have the same name.";
 
-        public const string AllowedLine = "2 to 30 characters: the letters A-Z, the digits 0-9 and + - / @ . [ ] ( ) - no spaces.";
+        public const string AllowedLine = "2 to 30 characters: the letters A-Z, the digits 0-9, single spaces and _ + - / @ . [ ] ( ).";
 
         public const string Taken = "That display name is taken - choose another.";
 
@@ -73,10 +75,13 @@ namespace Handlers.DataHandling
             {
                 if (!character.IsAscii || !DisplayNames.IsAllowed((char)character.Value))
                 {
-                    return character.Value == ' '
-                        ? "A display name cannot hold a space. " + DisplayNames.AllowedLine
-                        : $"A display name cannot hold \"{DisplayNames.Shown(character)}\". " + DisplayNames.AllowedLine;
+                    return $"A display name cannot hold \"{DisplayNames.Shown(character)}\". " + DisplayNames.AllowedLine;
                 }
+            }
+
+            if (kept.Contains("  ", StringComparison.Ordinal))
+            {
+                return "A display name cannot hold two spaces in a row.";
             }
 
             if (kept.Length < DisplayNames.MinimumLength)
@@ -93,7 +98,7 @@ namespace Handlers.DataHandling
         }
 
         public static bool IsAllowed(char character) =>
-            character is (>= 'A' and <= 'Z') or (>= 'a' and <= 'z') or (>= '0' and <= '9') ||
+            character is (>= 'A' and <= 'Z') or (>= 'a' and <= 'z') or (>= '0' and <= '9') or ' ' ||
             DisplayNames.AllowedMarks.Contains(character, StringComparison.Ordinal);
 
         // A character as a sentence can show it - one that cannot be seen (a control character, a zero-width one) by its

@@ -1,0 +1,266 @@
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using System.Security.Cryptography;
+
+namespace Handlers.DataHandling
+{
+    // ###########################################################################################
+    // OSCILLOSCOPE COLLECTIONS (owner requests, 2026-11-25: "a possibility for a user to capture one or more oscilloscope images
+    // and make that a "collection". Then that collection can be shared to the internet on various forums like Lemon64, Forum64
+    // or Reddit ... the goal would be for the user to get input from the community"). EVERY RULE BOTH ENDS KEEP: what a
+    // collection's id looks like, when it is deleted, and what it may hold - CRT checks a collection before it shares it, and
+    // the server again as it takes it (CollectionFlows), in these words.
+    //
+    //   - A collection is ONE BOARD'S, made from captures taken in CRT's component info window, kept on the computer until it
+    //     is shared (CRT's own store) - only an account may share one, and only from CRT.
+    //   - Its page is https://classic-repair-toolbox.dk/collections/<id> - anybody with the link sees it, nobody gets a list of
+    //     them, no search engine is asked to keep it, and it names nobody (owner decision, 2026-11-25).
+    //   - "Delete in" 1 month, 6 months, 1 year (the default) or 5 years - extended at any time, never past 5 years ahead.
+    // ###########################################################################################
+    public static class CollectionRules
+    {
+        // ---------------------------------------------------------------------------------------
+        // THE ID: 12 characters of lower-case letters and digits, none that looks like another (no 0, o, 1 or l) - it cannot be
+        // guessed (32^12, 60 bits), and it is typed right from a screenshot.
+        // ---------------------------------------------------------------------------------------
+        public const string IdCharacters = "abcdefghijkmnpqrstuvwxyz23456789";
+
+        public const int IdLength = 12;
+
+        public static string NewId()
+        {
+            Span<char> id = stackalloc char[CollectionRules.IdLength];
+
+            for (int i = 0; i < id.Length; i++)
+                id[i] = CollectionRules.IdCharacters[RandomNumberGenerator.GetInt32(CollectionRules.IdCharacters.Length)];
+
+            return new string(id);
+        }
+
+        public static bool IsId(string? id) =>
+            id is { Length: CollectionRules.IdLength } && id.All(c => CollectionRules.IdCharacters.Contains(c, StringComparison.Ordinal));
+
+        // ---------------------------------------------------------------------------------------
+        // "DELETE IN" (owner decision, 2026-11-25: "no need to show the "2 years""). A choice counts from the day it is made; a
+        // collection's date can be moved later, never more than MaximumYearsAhead ahead.
+        // ---------------------------------------------------------------------------------------
+        public sealed record Lifetime(string Key, string Words, int Months);
+
+        public static readonly IReadOnlyList<Lifetime> Lifetimes =
+        [
+            new("1m", "1 month", 1),
+            new("6m", "6 months", 6),
+            new("1y", "1 year", 12),
+            new("5y", "5 years", 60)
+        ];
+
+        public const string DefaultLifetimeKey = "1y";
+
+        public const int MaximumYearsAhead = 5;
+
+        public static Lifetime LifetimeOf(string? key) =>
+            CollectionRules.Lifetimes.FirstOrDefault(lifetime => string.Equals(lifetime.Key, key, StringComparison.Ordinal)) ??
+            CollectionRules.Lifetimes.First(lifetime => lifetime.Key == CollectionRules.DefaultLifetimeKey);
+
+        public static DateTimeOffset DeleteAt(DateTimeOffset from, string? lifetimeKey) =>
+            from.ToUniversalTime().AddMonths(CollectionRules.LifetimeOf(lifetimeKey).Months);
+
+        // The latest a deletion may be set to from `now` - a day of room, so a date worked out on a computer whose clock is a
+        // little ahead is not refused.
+        public static DateTimeOffset LatestDeleteAt(DateTimeOffset now) =>
+            now.ToUniversalTime().AddYears(CollectionRules.MaximumYearsAhead).AddDays(1);
+
+        // When the owner is reminded by mail that the collection is about to go.
+        public static readonly TimeSpan ReminderBefore = TimeSpan.FromDays(30);
+
+        // ---------------------------------------------------------------------------------------
+        // WHAT A COLLECTION MAY HOLD. A 40-pin chip is 40 captures; a whole board's worth of chips a few hundred.
+        // ---------------------------------------------------------------------------------------
+        public const int MaximumImages = 300;
+
+        public const int MaximumTitleLength = 120;
+
+        public const int MaximumDescriptionLength = 4000;
+
+        public const int MaximumCaptionLength = 1000;
+
+        public const int MaximumNameLength = 100;
+
+        public const int MaximumSettingLength = 40;
+
+        public const int MaximumForumLinks = 10;
+
+        public const int MaximumLinkLength = 500;
+
+        // How many collections one account keeps at once, and how many it may make, and captures it may upload, in a day -
+        // the server's (CollectionFlows), said here so CRT says the same numbers.
+        public const int MaximumLiveCollectionsPerAccount = 100;
+
+        public const int MaximumCollectionsPerDay = 20;
+
+        public const int MaximumUploadsPerDay = 1000;
+
+        // ###########################################################################################
+        // A link to a forum thread: an http or https address with a host, as typed - the page shows it as a link that carries
+        // nothing of the page (rel="nofollow ugc noopener noreferrer").
+        // ###########################################################################################
+        public static bool IsForumLink(string? link)
+        {
+            string text = link?.Trim() ?? string.Empty;
+
+            return text.Length is > 0 and <= CollectionRules.MaximumLinkLength &&
+                   !text.Any(char.IsWhiteSpace) &&
+                   Uri.TryCreate(text, UriKind.Absolute, out Uri? uri) &&
+                   (uri.Scheme == Uri.UriSchemeHttps || uri.Scheme == Uri.UriSchemeHttp) &&
+                   uri.Host.Length > 0;
+        }
+
+        // ###########################################################################################
+        // Everything wrong with a collection as sent - CRT before it shares, the server as it takes it. Images not uploaded yet
+        // are the server's to say (CollectionFlows), as only it knows.
+        // ###########################################################################################
+        public static IReadOnlyList<string> ProblemsOf(CollectionContentRequest? content, DateTimeOffset now)
+        {
+            var problems = new List<string>();
+
+            if (content is null)
+            {
+                problems.Add("Nothing was sent.");
+                return problems;
+            }
+
+            CollectionRules.Required(problems, content.HardwareName, "the hardware", "The hardware's name");
+            CollectionRules.Required(problems, content.BoardName, "the board", "The board's name");
+            CollectionRules.AtMost(problems, content.Region, CollectionRules.MaximumNameLength, "The region");
+            CollectionRules.AtMost(problems, content.Title, CollectionRules.MaximumTitleLength, "The title");
+            CollectionRules.AtMost(problems, content.Description, CollectionRules.MaximumDescriptionLength, "The description");
+
+            IReadOnlyList<string> links = content.ForumLinks ?? [];
+
+            if (links.Count > CollectionRules.MaximumForumLinks)
+                problems.Add($"A collection links to at most {CollectionRules.MaximumForumLinks} forum threads.");
+
+            foreach (string link in links)
+            {
+                if (!CollectionRules.IsForumLink(link))
+                    problems.Add($"[{CollectionRules.Shortened(link)}] is no web address - a forum thread's link starts with https://.");
+            }
+
+            if (content.DeleteAtUtc <= now)
+                problems.Add("The date it is deleted on has passed - choose how long to keep it again.");
+            else if (content.DeleteAtUtc > CollectionRules.LatestDeleteAt(now))
+                problems.Add($"A collection is kept at most {CollectionRules.MaximumYearsAhead} years ahead.");
+
+            IReadOnlyList<CollectionImageEntry> images = content.Images ?? [];
+
+            if (images.Count == 0)
+                problems.Add("A collection holds at least one capture.");
+            else if (images.Count > CollectionRules.MaximumImages)
+                problems.Add($"A collection holds at most {CollectionRules.MaximumImages} captures - this one has {images.Count}.");
+
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+
+            foreach (CollectionImageEntry image in images)
+            {
+                string where = CollectionRules.WhereOf(image);
+
+                if (!DataTreeLayout.IsSha256(image.Sha256))
+                    problems.Add($"{where}: the capture's checksum is not one.");
+                else if (!seen.Add(image.Sha256))
+                    problems.Add($"{where}: the same capture is in the collection twice.");
+
+                if (string.IsNullOrWhiteSpace(image.ComponentLabel))
+                    problems.Add("A capture names no component.");
+
+                CollectionRules.AtMost(problems, image.ComponentLabel, CollectionRules.MaximumNameLength, $"{where}: the component");
+                CollectionRules.AtMost(problems, image.Pin, CollectionRules.MaximumNameLength, $"{where}: the pin");
+                CollectionRules.AtMost(problems, image.SignalName, CollectionRules.MaximumNameLength, $"{where}: the signal name");
+                CollectionRules.AtMost(problems, image.ExpectedReading, CollectionRules.MaximumNameLength, $"{where}: the expected reading");
+                CollectionRules.AtMost(problems, image.TimePerDivision, CollectionRules.MaximumSettingLength, $"{where}: T/DIV");
+                CollectionRules.AtMost(problems, image.VoltsPerDivision, CollectionRules.MaximumSettingLength, $"{where}: V/DIV");
+                CollectionRules.AtMost(problems, image.TriggerLevel, CollectionRules.MaximumSettingLength, $"{where}: the trigger level");
+                CollectionRules.AtMost(problems, image.Caption, CollectionRules.MaximumCaptionLength, $"{where}: the note");
+
+                if (image.Baseline is { } baseline)
+                {
+                    if (baseline.Sha256 is not null && !DataTreeLayout.IsSha256(baseline.Sha256))
+                        problems.Add($"{where}: the baseline's checksum is not one.");
+
+                    CollectionRules.AtMost(problems, baseline.FileName, 260, $"{where}: the baseline's file name");
+                    CollectionRules.AtMost(problems, baseline.TimePerDivision, CollectionRules.MaximumSettingLength, $"{where}: the baseline's T/DIV");
+                    CollectionRules.AtMost(problems, baseline.VoltsPerDivision, CollectionRules.MaximumSettingLength, $"{where}: the baseline's V/DIV");
+                    CollectionRules.AtMost(problems, baseline.TriggerLevel, CollectionRules.MaximumSettingLength, $"{where}: the baseline's trigger level");
+                }
+            }
+
+            return problems;
+        }
+
+        // "U7, pin 12" - a capture as a person names it.
+        public static string WhereOf(CollectionImageEntry image)
+        {
+            string label = string.IsNullOrWhiteSpace(image.ComponentLabel) ? "A capture" : image.ComponentLabel.Trim();
+
+            return string.IsNullOrWhiteSpace(image.Pin) ? label : $"{label}, pin {image.Pin.Trim()}";
+        }
+
+        // ###########################################################################################
+        // Each capture's anchor on the page, in the page's order: "U7-12" - letters, digits and "-" only, made unique with
+        // "-2", "-3" when two share one. The page gives each capture its own (CollectionPages), and CRT's "Copy for forum"
+        // links straight to one, so a forum reply can point at pin 12 - one rule for both.
+        // ###########################################################################################
+        public static IReadOnlyList<string> AnchorsOf(IReadOnlyList<CollectionImageEntry> images)
+        {
+            var anchors = new List<string>(images.Count);
+            var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "top" };
+
+            foreach (CollectionImageEntry image in images)
+            {
+                string raw = string.IsNullOrWhiteSpace(image.Pin) ? image.ComponentLabel : $"{image.ComponentLabel}-{image.Pin}";
+                string anchor = string.Concat((raw ?? string.Empty).Select(c => char.IsAsciiLetterOrDigit(c) ? c : '-')).Trim('-');
+
+                if (anchor.Length == 0 || !char.IsAsciiLetter(anchor[0]))
+                    anchor = "capture-" + anchor;
+
+                string unique = anchor;
+
+                for (int n = 2; !taken.Add(unique); n++)
+                    unique = $"{anchor}-{n}";
+
+                anchors.Add(unique);
+            }
+
+            return anchors;
+        }
+
+        // The date a person reads, as CRT writes dates: "2026-November-26".
+        public static string DateText(DateTimeOffset when) =>
+            when.ToUniversalTime().ToString("yyyy-MMMM-d", CultureInfo.InvariantCulture);
+
+        // A collection's page, under the site's address (the public API's address less its "/api").
+        public static string PageUrl(string siteBaseUrl, string id) => $"{siteBaseUrl.TrimEnd('/')}{CollectionRoutes.PagePath}/{id}";
+
+        private static void Required(List<string> problems, string? value, string what, string name)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                problems.Add($"The collection does not say {what} it is about.");
+            else
+                CollectionRules.AtMost(problems, value, CollectionRules.MaximumNameLength, name);
+        }
+
+        private static void AtMost(List<string> problems, string? value, int limit, string what)
+        {
+            if (value is not null && value.Trim().Length > limit)
+                problems.Add($"{what} is at most {limit} characters.");
+        }
+
+        private static string Shortened(string? text)
+        {
+            string value = (text ?? string.Empty).Trim();
+
+            return value.Length <= 60 ? value : value[..57] + "...";
+        }
+    }
+}

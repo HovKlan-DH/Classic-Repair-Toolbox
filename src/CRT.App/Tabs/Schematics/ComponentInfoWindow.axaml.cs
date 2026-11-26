@@ -36,6 +36,9 @@ namespace CRT
         public string TriggerLevelVolts { get; set; } = string.Empty;
         public string Note { get; set; } = string.Empty;
         public ComponentImageEntry? SourceEntry { get; set; }
+
+        // Where the image was read from - its checksum names a baseline in a shared collection (ComponentInfoWindow.Collections.cs).
+        public string? FullPath { get; set; }
         public bool LabelVisible => !string.IsNullOrEmpty(this.Label);
     }
 
@@ -74,6 +77,8 @@ namespace CRT
     //                                    beside or under the drawing, each column as wide as its longest text
     //   ComponentInfoWindow.Regions.cs - the region buttons in the footer, one per region of the board, and the region
     //                                    label over the picture
+    //   ComponentInfoWindow.Collections.cs - "Collect captures into": each capture also kept in the board's oscilloscope
+    //                                    collection picked, to be shared for a forum's help (2026-11-26)
     // ###########################################################################################
     public partial class ComponentInfoWindow : Window
     {
@@ -1207,6 +1212,7 @@ namespace CRT
                 var loaded = await Task.Run(() =>
                 {
                     var bitmaps = new Bitmap?[displayableEntries.Count];
+                    var paths = new string?[displayableEntries.Count];
 
                     try
                     {
@@ -1228,6 +1234,7 @@ namespace CRT
                                     if (File.Exists(fullPath))
                                     {
                                         bitmaps[at] = new Bitmap(fullPath);
+                                        paths[at] = fullPath;
                                     }
                                 }
                                 catch
@@ -1243,12 +1250,12 @@ namespace CRT
                         // Overtaken: what was decoded is let go of below, as an overtaken load's always was.
                     }
 
-                    return displayableEntries.Select((entry, at) => (Entry: entry, Bitmap: bitmaps[at])).ToList();
+                    return displayableEntries.Select((entry, at) => (Entry: entry, Bitmap: bitmaps[at], Path: paths[at])).ToList();
                 });
 
                 if (cts.Token.IsCancellationRequested)
                 {
-                    foreach (var (_, bmp) in loaded)
+                    foreach (var (_, bmp, _) in loaded)
                         bmp?.Dispose();
                     return;
                 }
@@ -1257,7 +1264,7 @@ namespace CRT
                 var oldBitmaps = new List<Bitmap>(this._loadedBitmaps);
                 this._loadedBitmaps.Clear();
 
-                foreach (var (_, bmp) in loaded)
+                foreach (var (_, bmp, _) in loaded)
                 {
                     if (bmp != null)
                         this._loadedBitmaps.Add(bmp);
@@ -1275,7 +1282,8 @@ namespace CRT
                         VoltsDiv = x.Entry.VoltsDiv,
                         TriggerLevelVolts = x.Entry.TriggerLevelVolts,
                         Note = x.Entry.Note,
-                        SourceEntry = x.Entry
+                        SourceEntry = x.Entry,
+                        FullPath = x.Path
                     })
                     .ToList();
 
@@ -1572,6 +1580,9 @@ private void OnIcTestPanelCloseRequested() => this.IcTestPanel.IsVisible = false
 
             this.UpdateOscilloscopeControlsAvailability();
             this.ApplyOscilloscopeSessionTitleState();
+
+            // "Collect captures into" shows once there is an oscilloscope to capture from (ComponentInfoWindow.Collections.cs).
+            this.ShowCollectionChoices();
         }
 
         // ###########################################################################################
@@ -1729,6 +1740,9 @@ private void OnIcTestPanelCloseRequested() => this.IcTestPanel.IsVisible = false
                 await Dispatcher.UIThread.InvokeAsync(
                     () => this.ShowTemporaryCapturedOscilloscopeImage(savedFilePath),
                     DispatcherPriority.Background);
+
+                // Into the collection picked too, if any (ComponentInfoWindow.Collections.cs).
+                await this.CollectCaptureAsync(selectedEntry, selectedItem!.FullPath, savedFilePath);
             }
             finally
             {
@@ -2061,6 +2075,9 @@ private void OnIcTestPanelCloseRequested() => this.IcTestPanel.IsVisible = false
             // earlier capture after the user has navigated to another thumbnail.
             this.thisCapturedScopeImagePath = null;
             this.AttachCapturedImageButton.IsVisible = false;
+
+            // And what the banner said of the collection, for the same reason (ComponentInfoWindow.Collections.cs).
+            this.ForgetCollectedCapture();
 
             if (this.thisTemporaryCapturedScopeBitmap != null)
             {

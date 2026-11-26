@@ -15,6 +15,20 @@ next push. The sections from 10.4.1 down to 1.0.0 were written from VERSION.md's
 - Plain ASCII punctuation.
 -->
 
+# 14.1.0, 2026-November-26
+--------------------------
+- CRT can share oscilloscope captures as a collection - a page anybody with its link can see, at /collections/ and the collection's id
+- A collection's page shows each capture beside CRT's own baseline for that pin, with the settings that differ marked, and names nobody
+- Only an account with a confirmed address shares a collection, and only pictures its own CRT sent
+- A capture is taken only as a plain PNG of at most 2048 x 1536 pixels and 2 MB
+- A collection is deleted when its time is up, its owner mailed a month before; its page then says when it went
+- Sharing stays off until the new collections folder is set up on the server
+- "Reset contribution data" also takes down the collections of the accounts it deletes
+- A display name may now hold spaces (one at a time) and "_" too
+- Anybody signed in can comment on each capture of a collection's page, and its owner can answer from CRT too
+- The owner gets a mail for every comment, and can hide any comment on the collection; a writer can edit and delete their own
+- The website has a sign-in of its own, the same account and 30 days as in CRT, so comments can be written there
+
 # 14.0.0, 2026-November-25
 --------------------------
 - An account can sign in only once its address is confirmed - until then it is answered as a wrong password, so nothing tells whether an address has an account

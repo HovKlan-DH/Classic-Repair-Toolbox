@@ -159,19 +159,19 @@ namespace CRT.Server.Tests
             Assert.Equal("DENNIS", AccountSelfServiceFlowsTests.Account(setup).DisplayName);
         }
 
-        // A name set before 2026-11-25 under the old rule (a space) is kept, and sent back as it is it is no refusal - the
+        // A name set before 2026-11-25 under the old rule (a letter of another alphabet) is kept, and sent back as it is it is no refusal - the
         // rule is asked of a name being SET.
         [Fact]
         public async Task A_name_from_the_old_rule_sent_back_unchanged_is_no_refusal()
         {
             Setup setup = await AccountSelfServiceFlowsTests.SignedInAsync();
-            setup.Store.Accounts[setup.AccountId] = AccountSelfServiceFlowsTests.Account(setup) with { DisplayName = "Dennis Hansen" };
+            setup.Store.Accounts[setup.AccountId] = AccountSelfServiceFlowsTests.Account(setup) with { DisplayName = "Søren Hansen" };
 
             AccountChangeOutcome outcome = await AccountSelfServiceFlows.ChangeNameAsync(
-                setup.Token, "Dennis Hansen", setup.Store, AccountSelfServiceFlowsTests.Options(), AccountSelfServiceFlowsTests.Now);
+                setup.Token, "Søren Hansen", setup.Store, AccountSelfServiceFlowsTests.Options(), AccountSelfServiceFlowsTests.Now);
 
             Assert.True(outcome.IsDone);
-            Assert.Equal("Dennis Hansen", AccountSelfServiceFlowsTests.Account(setup).DisplayName);
+            Assert.Equal("Søren Hansen", AccountSelfServiceFlowsTests.Account(setup).DisplayName);
             Assert.DoesNotContain(setup.Store.Audit, entry => entry.Action == AccountSelfServiceFlows.NameChangedAction);
         }
 

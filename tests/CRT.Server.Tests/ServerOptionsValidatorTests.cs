@@ -802,5 +802,58 @@ namespace CRT.Server.Tests
             Assert.Contains("FeedbackRoot is not writable", failure, StringComparison.Ordinal);
             Assert.Contains("Folders and permissions", failure, StringComparison.Ordinal);
         }
+
+        // -----------------------------------------------------------------------------------
+        // Shared collections' captures (2026-11-26): OPTIONAL - a service updated before the folder is made still starts,
+        // sharing off - and once set, a folder of their own, there and writable.
+        // -----------------------------------------------------------------------------------
+
+        private static string CollectionsPath() => Path.Combine(Path.GetTempPath(), "crt-test", "collections");
+
+        [Fact]
+        public void No_collections_folder_is_sharing_off_and_starts()
+        {
+            ServerOptions options = ServerOptionsValidatorTests.ValidOptions(
+                ServerOptionsValidatorTests.BetaPath(), ServerOptionsValidatorTests.ProductionPath());
+
+            Assert.Empty(ServerOptionsValidatorTests.Validate(options));
+            Assert.False(options.IsCollectionSharingConfigured);
+
+            options.CollectionsRoot = ServerOptionsValidatorTests.CollectionsPath();
+
+            Assert.Empty(ServerOptionsValidatorTests.Validate(options));
+            Assert.True(options.IsCollectionSharingConfigured);
+        }
+
+        [Fact]
+        public void A_collections_folder_inside_a_data_tree_or_the_feedback_refuses_to_start()
+        {
+            ServerOptions inBeta = ServerOptionsValidatorTests.ValidOptions(ServerOptionsValidatorTests.BetaPath(), ServerOptionsValidatorTests.ProductionPath());
+            inBeta.CollectionsRoot = Path.Combine(ServerOptionsValidatorTests.BetaPath(), "collections");
+
+            ServerOptions inFeedback = ServerOptionsValidatorTests.ValidOptions(ServerOptionsValidatorTests.BetaPath(), ServerOptionsValidatorTests.ProductionPath());
+            inFeedback.CollectionsRoot = Path.Combine(inFeedback.FeedbackRoot!, "collections");
+
+            Assert.Contains(ServerOptionsValidatorTests.Validate(inBeta), failure => failure.Contains("CollectionsRoot", StringComparison.Ordinal) && failure.Contains("overlaps DataTreeRoot", StringComparison.Ordinal));
+            Assert.Contains(ServerOptionsValidatorTests.Validate(inFeedback), failure => failure.Contains("overlaps FeedbackRoot", StringComparison.Ordinal));
+        }
+
+        [Fact]
+        public void A_collections_folder_that_is_missing_relative_or_not_writable_refuses_to_start()
+        {
+            ServerOptions options = ServerOptionsValidatorTests.ValidOptions(
+                ServerOptionsValidatorTests.BetaPath(), ServerOptionsValidatorTests.ProductionPath());
+
+            options.CollectionsRoot = "collections";
+            Assert.Contains(ServerOptionsValidatorTests.Validate(options), failure => failure.Contains("CollectionsRoot must be an absolute path", StringComparison.Ordinal));
+
+            options.CollectionsRoot = ServerOptionsValidatorTests.CollectionsPath();
+
+            IReadOnlyList<string> missing = ServerOptionsValidator.Validate(options, path => !path.EndsWith("collections", StringComparison.Ordinal), _ => true);
+            Assert.Contains("CollectionsRoot does not exist", Assert.Single(missing), StringComparison.Ordinal);
+
+            IReadOnlyList<string> readOnly = ServerOptionsValidator.Validate(options, _ => true, path => !path.EndsWith("collections", StringComparison.Ordinal));
+            Assert.Contains("CollectionsRoot is not writable", Assert.Single(readOnly), StringComparison.Ordinal);
+        }
     }
 }

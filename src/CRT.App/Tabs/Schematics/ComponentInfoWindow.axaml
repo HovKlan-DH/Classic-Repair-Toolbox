@@ -267,6 +267,23 @@
 									Padding="8,3"
 									IsVisible="False"
 									Click="OnAttachCapturedImageClick" />
+
+							<!-- Into the collection picked under "Collect captures into" (ComponentInfoWindow.Collections.cs). -->
+							<TextBlock x:Name="CollectedText"
+									   FontSize="12"
+									   TextWrapping="Wrap"
+									   MaxWidth="260"
+									   HorizontalAlignment="Center"
+									   Foreground="{DynamicResource ComponentPopup_OscilloscopeExpected_Fg}"
+									   IsVisible="False" />
+							<Button x:Name="TakeOutOfCollectionButton"
+									Classes="Danger"
+									Content="Take out of the collection"
+									HorizontalAlignment="Center"
+									FontSize="12"
+									Padding="8,3"
+									IsVisible="False"
+									Click="OnTakeOutOfCollectionClick" />
 						</StackPanel>
 					</Border>
 
@@ -423,7 +440,7 @@
 		<!-- Right panel: component info -->
 		<Grid Grid.Column="2"
 			  Margin="12"
-			  RowDefinitions="Auto,Auto,*,Auto">
+			  RowDefinitions="Auto,Auto,*,Auto,Auto">
 
 			<Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,8">
 				<SelectableTextBlock x:Name="TitleText"
@@ -860,9 +877,37 @@
 				</StackPanel>
 			</ScrollViewer>
 
+			<!-- Collecting captures into an oscilloscope collection (2026-11-26; ComponentInfoWindow.Collections.cs) - shown once an
+			     oscilloscope session has been seen, as only a capture goes into one. -->
+			<Border x:Name="CollectionRow"
+					Grid.Row="3"
+					BorderBrush="{DynamicResource Splitter}"
+					BorderThickness="0,1,0,0"
+					Padding="0,6,0,0"
+					Margin="0,6,0,0"
+					IsVisible="False">
+				<Grid ColumnDefinitions="Auto,6,*,6,Auto">
+					<TextBlock Text="Collect captures into"
+							   FontSize="11"
+							   VerticalAlignment="Center" />
+					<ComboBox x:Name="CollectionComboBox"
+							  Grid.Column="2"
+							  FontSize="11"
+							  MinWidth="100"
+							  HorizontalAlignment="Stretch"
+							  SelectionChanged="OnCollectionPicked" />
+					<Button x:Name="ShowCollectionButton"
+							Grid.Column="4"
+							Content="Show collection"
+							FontSize="11"
+							Padding="8,3"
+							Click="OnShowCollectionClick" />
+				</Grid>
+			</Border>
+
 			<!-- Footer controls: local region, mousewheel behavior, keyboard handling, close -->
 			<Border x:Name="RegionControlsBorder"
-					Grid.Row="3"
+					Grid.Row="4"
 					BorderBrush="{DynamicResource Splitter}"
 					BorderThickness="0,1,0,0"
 					Padding="0,6,0,0"
@@ -977,7 +1022,7 @@
 			     left-hand pinout/thumbnails untouched. Hidden by default. -->
 			<local:IcTestPanel x:Name="IcTestPanel"
 								Grid.Row="2"
-								Grid.RowSpan="2"
+								Grid.RowSpan="3"
 								IsVisible="False" />
 
 		</Grid>

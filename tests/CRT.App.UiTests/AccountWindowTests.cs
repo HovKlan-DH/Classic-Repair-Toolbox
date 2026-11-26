@@ -328,10 +328,10 @@ public sealed class AccountWindowTests
             Assert.Equal(DisplayNames.MaximumLength, name.MaxLength);
 
             // TextChanged is posted (Avalonia), so the line follows once the jobs have run.
-            name.Text = "Dennis Hansen";
+            name.Text = "Dennis#CRT";
             Dispatcher.UIThread.RunJobs();
             Assert.True(AccountWindowTests.Shows(window, "RegisterNameProblemText"));
-            Assert.Equal(DisplayNames.Problem("Dennis Hansen", sayRule: false), AccountWindowTests.Text(window, "RegisterNameProblemText"));
+            Assert.Equal(DisplayNames.Problem("Dennis#CRT", sayRule: false), AccountWindowTests.Text(window, "RegisterNameProblemText"));
 
             window.GetControl<TextBox>("RegisterEmailTextBox").Text = "dennis@example.com";
             window.GetControl<TextBox>("RegisterPasswordTextBox").Text = AccountWindowTests.Password;
@@ -339,7 +339,7 @@ public sealed class AccountWindowTests
             await window.RegisterAsync();
 
             Assert.Empty(seen.Requests);
-            Assert.Equal(DisplayNames.Problem("Dennis Hansen", sayRule: false), AccountWindowTests.Text(window, "RegisterMessageText"));
+            Assert.Equal(DisplayNames.Problem("Dennis#CRT", sayRule: false), AccountWindowTests.Text(window, "RegisterMessageText"));
 
             name.Text = "Dennis@CRT";
             Dispatcher.UIThread.RunJobs();
@@ -536,12 +536,12 @@ public sealed class AccountWindowTests
 
             AccountWindowTests.Press(window, "HaveInvitationButton");
             window.GetControl<TextBox>("InvitationCodeTextBox").Text = "old-code";
-            window.GetControl<TextBox>("InvitationNameTextBox").Text = "Anna Hansen";
+            window.GetControl<TextBox>("InvitationNameTextBox").Text = "Anna#Hansen";
             window.GetControl<TextBox>("InvitationPasswordTextBox").Text = AccountWindowTests.Password;
 
             await window.AcceptInvitationAsync();
             Assert.Equal(0, asked);
-            Assert.Equal(DisplayNames.Problem("Anna Hansen", sayRule: false), AccountWindowTests.Text(window, "InvitationMessageText"));
+            Assert.Equal(DisplayNames.Problem("Anna#Hansen", sayRule: false), AccountWindowTests.Text(window, "InvitationMessageText"));
 
             window.GetControl<TextBox>("InvitationNameTextBox").Text = "Anna";
             await window.AcceptInvitationAsync();

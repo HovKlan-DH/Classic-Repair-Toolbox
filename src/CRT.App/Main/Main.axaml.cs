@@ -40,6 +40,8 @@ namespace CRT
         //   BarPickersPanel.cs        - (a class of its own) those drop-downs side by side, each as wide as its text
         //   BarPickerLinePanel.cs     - (a class of its own) a line of those drop-downs, its badge at the end
         //   Main.ComponentPopup.cs    - component filter/search, component info popup, blink, region
+        //   Main.Collections.cs       - oscilloscope collections: what a popup collects into, a collection's window
+        //                               (Collections/CollectionWindow) and sharing it with the account signed in
         //   Main.ContributeLists.cs   - the Contribute tab's own lists on the far left, its selector
         //   Main.SideLists.cs         - the category lists on the far left leaving the component list its half
         //   Main.DataSyncStatus.cs    - sync settings reactions, sync status icon, background cleanup

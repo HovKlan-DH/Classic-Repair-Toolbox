@@ -23,7 +23,9 @@ Environment=ASPNETCORE_URLS=http://127.0.0.1:5199
 Environment=DOTNET_PRINT_TELEMETRY_MESSAGE=false
 
 # Hardening. ProtectSystem=strict makes the whole filesystem read-only to the service except
-# the folders below: the BETA and stable data, the stored uploads and the saved feedback. The
+# the folders below: the BETA and stable data, the stored uploads, the saved feedback and the
+# captures of shared oscilloscope collections. That last one starts with "-": systemd starts the service
+# whether or not the folder is there yet - the CollectionsRoot setting is optional (INSTALLING.md). The
 # service's own folder (its program files and settings) is deliberately NOT among them.
 #
 # Server 4.0.0 and newer write the CRT 4.0 trees (app-data-v4-BETA, app-data-v4) and never the
@@ -40,7 +42,7 @@ ProtectHome=true
 ProtectKernelTunables=true
 ProtectControlGroups=true
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
-ReadWritePaths=/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4-BETA /mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4 /mydir/http/classic-repair-toolbox.dk/crt-server/blobs /mydir/http/classic-repair-toolbox.dk/user-feedback
+ReadWritePaths=/mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4-BETA /mydir/http/classic-repair-toolbox.dk/public_html/app-data-v4 /mydir/http/classic-repair-toolbox.dk/crt-server/blobs /mydir/http/classic-repair-toolbox.dk/user-feedback -/mydir/http/classic-repair-toolbox.dk/crt-server/collections
 
 [Install]
 WantedBy=multi-user.target

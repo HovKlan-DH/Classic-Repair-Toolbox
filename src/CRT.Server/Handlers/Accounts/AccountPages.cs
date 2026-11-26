@@ -47,8 +47,10 @@ namespace CRT.Server.Handlers.Accounts
                 baseUrl,
                 "Your account",
                 $"<p>{Encode(AccountWording.OneAccount)}</p>" +
-                $"<p>To sign in, open Classic Repair Toolbox and use {Encode(AccountWording.WhereInCrt)}.</p>" +
+                $"<p>In Classic Repair Toolbox, sign in through {Encode(AccountWording.WhereInCrt)}. Here, sign in to comment on " +
+                "shared oscilloscope collections.</p>" +
                 "<ul>" +
+                $"<li><a href=\"{Encode(AccountPages.Link(baseUrl, "sign-in"))}\">{Encode(AccountWording.SignInButton)}</a></li>" +
                 $"<li><a href=\"{Encode(AccountPages.Link(baseUrl, "register"))}\">{Encode(AccountWording.CreateAccountButton)}</a></li>" +
                 $"<li><a href=\"{Encode(AccountPages.Link(baseUrl, "forgot-password"))}\">{Encode(AccountWording.ForgotPasswordButton)}</a></li>" +
                 "</ul>");
@@ -148,6 +150,42 @@ namespace CRT.Server.Handlers.Accounts
                 $"<p class=\"muted\">{Encode(AccountWording.PasswordLine)}</p>" +
                 "<button type=\"submit\">Set password</button>" +
                 "</form>");
+
+        // ###########################################################################################
+        // "Sign in" on the website (step 3, 2026-11-26) - to comment on a shared collection. `returnTo`: the collection's page
+        // to go back to (WebSessions.ReturnPath decided it is one), carried in the form. A refusal is said without saying why,
+        // as every sign-in is (AccountFlows' header).
+        // ###########################################################################################
+        public const string SignInRefused = "The address or the password is not right.";
+
+        public const string SignInSlowDown = "Too many tries - wait a few minutes, then try again.";
+
+        public static string SignIn(string baseUrl, string? email = null, string? returnTo = null, IReadOnlyList<string>? errors = null) =>
+            AccountPages.Layout(
+                baseUrl,
+                AccountWording.SignInButton,
+                AccountPages.Errors(errors) +
+                "<p>Signed in, you can comment on shared oscilloscope collections. The same account signs in to Classic Repair " +
+                "Toolbox.</p>" +
+                $"<form method=\"post\" action=\"{Encode(AccountPages.Link(baseUrl, "sign-in"))}\">" +
+                (returnTo is null ? string.Empty : $"<input type=\"hidden\" name=\"return\" value=\"{Encode(returnTo)}\">") +
+                "<label for=\"email\">Email address</label>" +
+                $"<input type=\"email\" id=\"email\" name=\"email\" maxlength=\"{EmailAddressRules.MaximumLength}\" autocomplete=\"email\" required value=\"{Encode(email)}\">" +
+                "<label for=\"password\">Password</label>" +
+                "<input type=\"password\" id=\"password\" name=\"password\" autocomplete=\"current-password\" required>" +
+                $"<button type=\"submit\">{Encode(AccountWording.SignInButton)}</button>" +
+                "</form>" +
+                $"<p class=\"muted\"><a href=\"{Encode(AccountPages.Link(baseUrl, "register"))}\">{Encode(AccountWording.CreateAccountButton)}</a> | " +
+                $"<a href=\"{Encode(AccountPages.Link(baseUrl, "forgot-password"))}\">{Encode(AccountWording.ForgotPasswordButton)}</a></p>");
+
+        public static string SignedOut(string baseUrl) =>
+            AccountPages.Layout(baseUrl, "You are signed out", "<p>This browser is no longer signed in.</p>");
+
+        public static string SignedIn(string baseUrl, string displayName) =>
+            AccountPages.Layout(
+                baseUrl,
+                "You are signed in",
+                $"<p>Signed in as <b>{Encode(displayName)}</b>. Open a shared collection's link to comment on its captures.</p>");
 
         public static string PasswordSet(string baseUrl) =>
             AccountPages.Layout(

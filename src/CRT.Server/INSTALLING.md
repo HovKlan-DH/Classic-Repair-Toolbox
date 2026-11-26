@@ -130,11 +130,14 @@ service owns that one:
 
 ```bash
 S=/mydir/http/classic-repair-toolbox.dk/crt-server
-sudo mkdir -p $S/app $S/blobs
+sudo mkdir -p $S/app $S/blobs $S/collections
 sudo chown -R root:crt-data $S
 sudo chmod -R 0750 $S
-sudo chown -R crt-server:crt-data $S/blobs
+sudo chown -R crt-server:crt-data $S/blobs $S/collections
 ```
+
+(`collections` holds the captures of shared oscilloscope collections - "Shared oscilloscope collections" in part
+two.)
 
 **The feedback folder.** Owned by the service, group `crt-server`, setgid, so every folder and file
 the service saves there gets the group and can be deleted through your share (see "Deleting feedback
@@ -153,6 +156,7 @@ sudo chmod 2775 $F
 for D in /mydir/http/classic-repair-toolbox.dk/public_html/app-data-BETA/Data \
          /mydir/http/classic-repair-toolbox.dk/public_html/app-data/Data \
          /mydir/http/classic-repair-toolbox.dk/crt-server/blobs \
+         /mydir/http/classic-repair-toolbox.dk/crt-server/collections \
          /mydir/http/classic-repair-toolbox.dk/user-feedback; do
   sudo -u crt-server touch $D/.probe && sudo rm -f $D/.probe && echo "$D writable (correct)" \
     || echo "*** $D NOT WRITABLE ***"
@@ -310,6 +314,7 @@ Then edit it. Every setting is explained in the file itself; for this server:
 | `BlobStoreRoot` | `/mydir/http/classic-repair-toolbox.dk/crt-server/blobs` |
 | `FeedbackRoot` | `/mydir/http/classic-repair-toolbox.dk/user-feedback` |
 | `FeedbackToAddress` | the address feedback mail goes to |
+| `CollectionsRoot` | `/mydir/http/classic-repair-toolbox.dk/crt-server/collections` - empty, sharing oscilloscope collections is off ("Shared oscilloscope collections" in part two) |
 | `ConnectionString` | the database user and password from step 4 |
 | `PublicApiBaseUrl` | `https://classic-repair-toolbox.dk/api` |
 | `MailFromAddress` | the address the service's mail comes from |
@@ -376,6 +381,10 @@ ProxyPassReverse /api/  http://127.0.0.1:5199/api/
 # The account web pages (server 13.0.0): making an account, confirming its address, a new password.
 ProxyPass        /account/  http://127.0.0.1:5199/account/
 ProxyPassReverse /account/  http://127.0.0.1:5199/account/
+
+# Shared oscilloscope collections' pages (server 14.1.0): https://classic-repair-toolbox.dk/collections/<id>.
+ProxyPass        /collections/  http://127.0.0.1:5199/collections/
+ProxyPassReverse /collections/  http://127.0.0.1:5199/collections/
 
 # The addresses CRT 2.x and older send to, answered by the service:
 ProxyPass        /app-checkin/           http://127.0.0.1:5199/api/usage/check-in
@@ -1003,7 +1012,11 @@ sudo systemctl restart smb      # a share picks up a new group only on a new con
 A sign-in in CRT (its account icon, or the Maintainer tab's "Sign in") lasts until it has not been used
 for `RefreshTokenDays`; every use
 pushes the end further out. On Windows CRT keeps it encrypted to the Windows user; on Linux and macOS
-it keeps nothing, and asks at every launch.
+it keeps nothing, and asks at every launch. **From server 14.1.0 the website has a sign-in too**
+(`/account/sign-in`, for writing comments on a collection's page): the same kind of session, the same
+`RefreshTokenDays`, kept in the browser as a cookie only the service reads (`crt_session`, the test instance's
+`crt_session_crt_test`, each sent only to its own instance's addresses). It is a row of `sessions` like CRT's, so
+the commands below sign it out too.
 
 | To | Do |
 | --- | --- |
@@ -1019,6 +1032,91 @@ SELECT s.id, a.email, s.created_utc, s.last_used_utc, s.expires_utc
  WHERE s.revoked_utc IS NULL AND s.expires_utc > UTC_TIMESTAMP()
  ORDER BY s.last_used_utc DESC;
 ```
+
+## Shared oscilloscope collections
+
+From server 14.1.0 an account shares oscilloscope captures taken in CRT as a page anybody with its link can see -
+`https://classic-repair-toolbox.dk/collections/<id>`, the test instance's `.../crt-test/collections/<id>`. The pictures
+are kept in a folder of their own (`CollectionsRoot`), once each however many collections show them. **Until that
+setting is set, sharing is off** and CRT says so - the service runs as before.
+
+**On a box set up before 14.1.0, once per instance** (the test instance's names in brackets):
+
+1. **The folder**, the service's own:
+
+   ```bash
+   S=/mydir/http/classic-repair-toolbox.dk/crt-server        # (crt-server-test)
+   sudo mkdir -p $S/collections
+   sudo chown crt-server:crt-data $S/collections
+   sudo chmod 0750 $S/collections
+   ```
+
+2. **The unit.** 14.1.0's unit names that folder in `ReadWritePaths=` - with a `-` before it, so systemd starts the
+   service whether or not it is there - so the updater HOLDS 14.1.0 until the new unit is installed ("When an update
+   waits for you", above, and Account > "Server version" give the commands): `sudo install -m 0644
+   $S/releases/14.1.0/crt-server.service /etc/systemd/system/` (`crt-server-test.service`), then `sudo systemctl
+   daemon-reload`. The next minute's look installs 14.1.0.
+
+3. **The setting**, in `$S/settings/appsettings.Production.json`, then `sudo systemctl restart crt-server`
+   (`crt-server-test`):
+
+   ```json
+   "CollectionsRoot": "/mydir/http/classic-repair-toolbox.dk/crt-server/collections"
+   ```
+
+   A folder named here that is not there, or the service cannot write, stops it from starting - the journal names
+   it. Left out, sharing stays off.
+
+4. **Apache** - the `/collections/` lines of step 8 (the test instance's `/crt-test/collections/` lines of its step
+   7), then `sudo apachectl configtest && sudo systemctl reload httpd`.
+
+**Check** - a collection nobody shared:
+
+```bash
+curl -s -m 10 -o /dev/null -D - --resolve classic-repair-toolbox.dk:443:127.0.0.1 \
+  https://classic-repair-toolbox.dk/crt-test/collections/aaaaaaaaaaaa | grep -iE '^HTTP|^server|^x-robots'
+```
+
+`HTTP/1.1 404 Not Found`, `Server: Kestrel` and `X-Robots-Tag: noindex, nofollow, noarchive` - the service's "There is
+no such collection" page. `503` with Kestrel: the setting is not set yet. A 404 WITHOUT `Server: Kestrel` is the
+website answering, so the `ProxyPass` lines are not in effect.
+
+**What the service does by itself:** every hour it deletes the collections whose time is up (their pages then say
+when they went), mails each owner 30 days before (only for a collection kept longer than two months), and deletes a
+picture once no collection shows it, a day after its upload. An account keeps at most 100 collections, shares 20 new
+ones and 1,000 captures a day; all pictures together take at most `CollectionsMaxStoredBytes` (20 GiB by default).
+
+**Comments** (also 14.1.0, migration 0026 - run by the service as it starts, nothing to do by hand): anybody signed in
+with a confirmed address writes them under each capture on the page (the page's own "Sign in" link), and the owner in
+CRT too. Plain text, at most 2,000 characters, 100 a day per account. The owner gets a mail per comment (not for their
+own); a writer edits and deletes their own; the owner and an administrator hide any (and show it again), an
+administrator deletes any. A collection deleted takes its comments. Nothing to set up: `/account/` and `/collections/`
+are forwarded already.
+
+**To see what is shared** (`crt_review_test` for the test instance):
+
+```bash
+mysql -u root -e "SELECT c.id, a.display_name, c.hardware_name, c.board_name, c.title, c.created_utc, c.delete_at_utc, (SELECT COUNT(*) FROM crt_review.collection_images i WHERE i.collection_id = c.id) AS captures FROM crt_review.collections c JOIN crt_review.accounts a ON a.id = c.account_id WHERE c.deleted_utc IS NULL ORDER BY c.created_utc DESC LIMIT 20;"
+```
+
+**To take one down** - until CRT has a screen for it (the server already lets an administrator's account delete any
+collection, its page then saying it was removed) - in SQL; the hourly sweep then deletes its pictures:
+
+```bash
+mysql -u root -e "UPDATE crt_review.collections SET deleted_utc = UTC_TIMESTAMP(3), deleted_reason = 'administrator', title = NULL, description = NULL, forum_links_json = NULL WHERE id = '<id>'; DELETE FROM crt_review.collection_images WHERE collection_id = '<id>'; DELETE FROM crt_review.collection_comments WHERE collection_id = '<id>';"
+```
+
+**To see the newest comments**:
+
+```bash
+mysql -u root -e "SELECT m.id, m.collection_id, a.display_name, m.created_utc, m.hidden_utc, m.deleted_utc, LEFT(m.body, 80) AS body FROM crt_review.collection_comments m JOIN crt_review.accounts a ON a.id = m.account_id ORDER BY m.id DESC LIMIT 20;"
+```
+
+**Moving the pictures to another disk later** (owner, 2026-11-25: "will later be moved to a new USB device"): stop the
+service, `sudo cp -a` the folder to the new place, point `CollectionsRoot` there - and the unit's `ReadWritePaths=` must
+name the new folder, a change to the shipped unit (ask for it), or the service cannot write there. **Backups**: the
+folder and the four `collection*` tables are worth backing up with the rest, or deliberately not - collections end by
+themselves.
 
 ## Resetting the contribution data
 
@@ -1239,9 +1337,9 @@ What it publishes is test data, seen by CRT's alphas and betas only.
 
    ```bash
    S=/mydir/http/classic-repair-toolbox.dk/crt-server-test
-   sudo mkdir -p $S/app $S/blobs $S/feedback
+   sudo mkdir -p $S/app $S/blobs $S/feedback $S/collections
    sudo chown -R root:crt-data $S && sudo chmod -R 0750 $S
-   sudo chown -R crt-server:crt-data $S/blobs
+   sudo chown -R crt-server:crt-data $S/blobs $S/collections
    sudo chown crt-server:crt-server $S/feedback && sudo chmod 2775 $S/feedback
    ```
 
@@ -1273,6 +1371,7 @@ What it publishes is test data, seen by CRT's alphas and betas only.
    | `ProductionPublicDataBaseUrl` | `https://classic-repair-toolbox.dk/app-data-v4-test/Data` |
    | `BlobStoreRoot` | `/mydir/http/classic-repair-toolbox.dk/crt-server-test/blobs` |
    | `FeedbackRoot` | `/mydir/http/classic-repair-toolbox.dk/crt-server-test/feedback` |
+   | `CollectionsRoot` | `/mydir/http/classic-repair-toolbox.dk/crt-server-test/collections` |
    | `ConnectionString` | `crt_review_test` and the password from 3. |
    | `PublicApiBaseUrl` | `https://classic-repair-toolbox.dk/crt-test/api` - the links in its mails |
    | `MailFromDisplayName` | `Classic Repair Toolbox (test)`, so its mails are told apart |
@@ -1299,6 +1398,8 @@ What it publishes is test data, seen by CRT's alphas and betas only.
    ProxyPassReverse /crt-test/api/      http://127.0.0.1:5198/api/
    ProxyPass        /crt-test/account/  http://127.0.0.1:5198/account/
    ProxyPassReverse /crt-test/account/  http://127.0.0.1:5198/account/
+   ProxyPass        /crt-test/collections/  http://127.0.0.1:5198/collections/
+   ProxyPassReverse /crt-test/collections/  http://127.0.0.1:5198/collections/
    ```
 
    **Check:** `curl -i -m 10 --resolve classic-repair-toolbox.dk:443:127.0.0.1

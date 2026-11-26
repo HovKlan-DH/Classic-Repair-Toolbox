@@ -128,11 +128,11 @@ public sealed class MyAccountViewTests
             Opened opened = MyAccountViewTests.Open(_ => AnsweringHttpHandler.Refused());
             MyAccountView view = opened.View;
 
-            MyAccountViewTests.Type(view, "NameTextBox", "Dennis Hansen");
+            MyAccountViewTests.Type(view, "NameTextBox", "Dennis#CRT");
 
             Assert.False(MyAccountViewTests.IsOn(view, "SaveNameButton"));
             Assert.True(MyAccountViewTests.Shown(view, "NameMessageText"));
-            Assert.Equal(Handlers.DataHandling.DisplayNames.Problem("Dennis Hansen", sayRule: false), MyAccountViewTests.Said(view, "NameMessageText"));
+            Assert.Equal(Handlers.DataHandling.DisplayNames.Problem("Dennis#CRT", sayRule: false), MyAccountViewTests.Said(view, "NameMessageText"));
 
             MyAccountViewTests.Type(view, "NameTextBox", "Dennis@CRT");
 

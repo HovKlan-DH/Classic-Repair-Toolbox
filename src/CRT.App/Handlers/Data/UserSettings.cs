@@ -204,6 +204,7 @@ namespace Handlers.DataHandling
 
         // A region of a board's own picked on that board (2026-11-09) - "region" stays PAL or NTSC, as CRT 3.x reads it.
         [JsonPropertyName("regionByBoard")] public Dictionary<string, string> RegionByBoard { get; set; } = new();
+        [JsonPropertyName("collectionByBoard")] public Dictionary<string, string> CollectionByBoard { get; set; } = new();
         [JsonPropertyName("theme")] public string ThemeVariant { get; set; } = "Light";
         [JsonPropertyName("hasWindowPlacement")] public bool HasWindowPlacement { get; set; } = false;
         [JsonPropertyName("windowState")] public string WindowState { get; set; } = "Normal";
@@ -1470,6 +1471,32 @@ namespace Handlers.DataHandling
             if (!string.IsNullOrWhiteSpace(region))
             {
                 byBoard[boardKey] = region;
+            }
+
+            if (changes)
+            {
+                Save();
+            }
+        }
+
+        // ###########################################################################################
+        // The oscilloscope collection the component info window collects captures into, per board (2026-11-26; its local id,
+        // CollectionStore) - null for none. Kept for the board, so a popup opened another day goes on filling the same one.
+        // Named "...ByBoard", so a board renamed takes it along (BoardKeyMove).
+        // ###########################################################################################
+        public static string? CollectionOfBoard(string boardKey) =>
+            (_data.CollectionByBoard ??= new()).TryGetValue(boardKey, out string? localId) ? localId : null;
+
+        public static void SetCollectionOfBoard(string boardKey, string? localId)
+        {
+            Dictionary<string, string> byBoard = _data.CollectionByBoard ??= new();
+            bool changes = string.IsNullOrWhiteSpace(localId)
+                ? byBoard.Remove(boardKey)
+                : !byBoard.TryGetValue(boardKey, out string? was) || !string.Equals(was, localId, StringComparison.Ordinal);
+
+            if (!string.IsNullOrWhiteSpace(localId))
+            {
+                byBoard[boardKey] = localId;
             }
 
             if (changes)

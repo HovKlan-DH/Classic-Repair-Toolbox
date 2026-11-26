@@ -22,7 +22,7 @@ Anybody can have a Classic Repair Toolbox account - one account, the same in CRT
 
 An account is a maintainer's once the administrator has made it the maintainer of a board. The administrator does that for an account you already have, or invites you by email - and if you created a new board yourself, the invitation comes by itself once that board is accepted. To accept an invitation, open the account icon, choose **I have an invitation**, paste the code from the email, pick your display name and a password, and choose **Create my account**. Your account is made for the address the invitation was sent to, and you are taken back to signing in with that address and your password already filled in.
 
-Your **display name** is what others see. Nobody else can have the same name, and it may hold only the letters A-Z, the digits 0-9 and + - / @ . [ ] ( ), at most 30 characters, no spaces. A name you chose before those rules stays until you change it.
+Your **display name** is what others see. Nobody else can have the same name, and it may hold only the letters A-Z, the digits 0-9, single spaces and _ + - / @ . [ ] ( ), at most 30 characters. A name you chose before those rules stays until you change it.
 
 ## Signing in
 

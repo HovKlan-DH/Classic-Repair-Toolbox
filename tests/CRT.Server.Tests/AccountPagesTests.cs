@@ -26,6 +26,9 @@ namespace CRT.Server.Tests
             yield return AccountPages.ForgotPassword(AccountPagesTests.Base, "dennis@example.com", codeAsked: true, resetErrors: ["That code is not valid."]);
             yield return AccountPages.PasswordSet(AccountPagesTests.Base);
             yield return AccountPages.FromAnotherSite(AccountPagesTests.Base);
+            yield return AccountPages.SignIn(AccountPagesTests.Base, "dennis@example.com", "/collections/k7mq3x9vbn2p", [AccountPages.SignInRefused]);
+            yield return AccountPages.SignedIn(AccountPagesTests.Base, "Dennis");
+            yield return AccountPages.SignedOut(AccountPagesTests.Base);
 
             foreach (TokenRedemptionOutcome outcome in Enum.GetValues<TokenRedemptionOutcome>())
                 yield return AccountPages.Verified(AccountPagesTests.Base, outcome).Html;
@@ -245,5 +248,24 @@ namespace CRT.Server.Tests
 
             Assert.Equal(400, AccountPages.Verified(AccountPagesTests.Base, TokenRedemptionOutcome.Invalid).Status);
         }
+
+        // ###########################################################################################
+        // Signing in on the website (step 3, 2026-11-26) - to comment on a shared collection, and back to it after.
+        // ###########################################################################################
+        [Fact]
+        public void Sign_in_posts_here_and_carries_the_page_to_go_back_to()
+        {
+            string page = AccountPages.SignIn(AccountPagesTests.Base, returnTo: "/collections/k7mq3x9vbn2p");
+
+            Assert.Contains("<form method=\"post\" action=\"https://classic-repair-toolbox.dk/account/sign-in\">", page, StringComparison.Ordinal);
+            Assert.Contains("<input type=\"hidden\" name=\"return\" value=\"/collections/k7mq3x9vbn2p\">", page, StringComparison.Ordinal);
+            Assert.Contains("autocomplete=\"current-password\"", page, StringComparison.Ordinal);
+            Assert.Contains(AccountPages.Link(AccountPagesTests.Base, "sign-in"), AccountPages.Landing(AccountPagesTests.Base), StringComparison.Ordinal);
+        }
+
+        // A refused sign-in says no reason - whether the address has an account is nobody's business (AccountFlows' header).
+        [Fact]
+        public void A_refused_sign_in_says_no_reason() =>
+            Assert.Equal("The address or the password is not right.", AccountPages.SignInRefused);
     }
 }

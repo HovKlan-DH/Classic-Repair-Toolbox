@@ -63,7 +63,10 @@ namespace CRT.Server.Handlers.Compat
             ("/api/review", ClientArea.Maintainer),
             ("/api/admin", ClientArea.Maintainer),
             ("/api/accounts", ClientArea.Maintainer),
-            ("/account", ClientArea.Web)
+            // Sharing an oscilloscope collection (2026-11-26) is a contribution of a kind - the contributors' area.
+            ("/api/collections", ClientArea.Submissions),
+            ("/account", ClientArea.Web),
+            ("/collections", ClientArea.Web)
         ];
 
         public ClientVersionPolicy(CrtVersion? submissions, CrtVersion? maintainer, int? apiRevision = null)

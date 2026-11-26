@@ -29,10 +29,11 @@ namespace CRT.Server.Tests
             {
                 (string Method, string Route)? counted = ApiUsageRules.RouteOf(endpoint);
 
-                // The account web pages (2026-11-25) are a browser's, not the API's - never counted.
+                // The account web pages (2026-11-25) and a shared collection's page (2026-11-26) are a browser's, not the
+                // API's - never counted.
                 if (!ServerRouteTable.PatternOf(endpoint).StartsWith("/api/", StringComparison.Ordinal))
                 {
-                    Assert.StartsWith("/account", ServerRouteTable.PatternOf(endpoint), StringComparison.Ordinal);
+                    Assert.Matches("^/(account|collections)/", ServerRouteTable.PatternOf(endpoint) + "/");
                     Assert.Null(counted);
                     continue;
                 }

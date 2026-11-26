@@ -151,6 +151,27 @@ namespace CRT.Server.Tests
             { "POST", "/account/register", RequestBodyLimits.FormBytes },
             { "POST", "/account/forgot-password", RequestBodyLimits.FormBytes },
             { "POST", "/account/reset-password", RequestBodyLimits.FormBytes },
+
+            // A shared oscilloscope collection (2026-11-26, CollectionEndpoints): one capture's PNG, at most what CollectionPng
+            // takes, and a collection's words and captures' details.
+            { "PUT", "/api/collections/images/{sha256}", RequestBodyLimits.CollectionImageBytes },
+            { "POST", "/api/collections", RequestBodyLimits.CollectionContentBytes },
+            { "PUT", "/api/collections/{id}", RequestBodyLimits.CollectionContentBytes },
+
+            // Comments on a collection's captures (step 3): from CRT, a comment's text or a mark - at the default; from the
+            // page, a form with a comment's text, or only its token.
+            { "POST", "/api/collections/{id}/comments", RequestBodyLimits.DefaultBytes },
+            { "PUT", "/api/collections/{id}/comments/{commentId:long}", RequestBodyLimits.DefaultBytes },
+            { "PUT", "/api/collections/{id}/comments/{commentId:long}/hidden", RequestBodyLimits.DefaultBytes },
+            { "POST", "/collections/{id}/comments", RequestBodyLimits.CommentFormBytes },
+            { "POST", "/collections/{id}/comments/{commentId:long}/edit", RequestBodyLimits.CommentFormBytes },
+            { "POST", "/collections/{id}/comments/{commentId:long}/delete", RequestBodyLimits.FormBytes },
+            { "POST", "/collections/{id}/comments/{commentId:long}/hide", RequestBodyLimits.FormBytes },
+            { "POST", "/collections/{id}/comments/{commentId:long}/show", RequestBodyLimits.FormBytes },
+
+            // Signing in and out on the website (step 3): an address and a password, or a token.
+            { "POST", "/account/sign-in", RequestBodyLimits.FormBytes },
+            { "POST", "/account/sign-out", RequestBodyLimits.FormBytes },
         };
 
         [Theory]

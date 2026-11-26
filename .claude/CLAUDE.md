@@ -2945,6 +2945,59 @@ repair on one board; it holds worklogs.
   from ONE resolution; `BoardFileListings.ReadDocument` - rows and file list from ONE read). Both open
   one save dialog (`TabWorkbooks.PickExportPathAsync`).
 
+#### Oscilloscope collections (`Handlers/Collections/`, `Main/Collections/`, the popup's `ComponentInfoWindow.Collections.cs`)
+
+**Captures taken in the component info window, shared as a page for a forum's help** (owner requests, 2026-11-25: "a
+possibility for a user to capture one or more oscilloscope images and make that a "collection". Then that collection can
+be shared to the internet on various forums like Lemon64, Forum64 or Reddit"; the plan's step 2, 2026-11-26, and
+comments on each image step 3 the same day - the signed-in web list and the administrator's screen are step 4;
+decisions in the memory note).
+Every rule both ends keep is CRT.Data's (`CollectionRules` - id, "Delete in" 1 month / 6 months / 1 year (default) / 5
+years, never past 5 years ahead, limits, the page's anchors; `CollectionPng`; `CollectionContract`'s records), CRT
+asking before it sends and the server again (`CollectionFlows`, server 14.1.0).
+
+- **A collection is ONE BOARD'S and stays on this computer until "Share"** (`CollectionStore`: a folder per collection
+  under `AppConfig.CollectionsFolder`, its captures by checksum - a test hands it a folder of its own, never the
+  user's). The popup's "Collect captures into" row - shown once an oscilloscope session has been seen - picks one PER
+  BOARD (`UserSettings.CollectionOfBoard`, "...ByBoard" so a renamed board takes it along), and every capture then goes
+  into it too, with the settings READ BACK from the oscilloscope and the baseline shown (`CollectionCaptures`); the
+  banner offers "Take out of the collection". Main hands each popup a `CollectionContext` (`Main.Collections.cs`).
+- **Share sends the WHOLE collection; the server answers 409 naming the captures it lacks, which CRT uploads, then sends
+  it again** (`CollectionClient`). A collection shows only pictures ITS OWN ACCOUNT uploaded. **The collection keeps the
+  deletion date it SENT, never the server's echo** (`Result.SentDeleteAtUtc`; 2026-11-26: the database keeps
+  milliseconds, so the echo read as "changed since it was shared" at once) - what was sent is a checksum of the request
+  (`CollectionSharing.ContentHash`), "Share" offered again only once it differs.
+- **The page names nobody** (owner decision) - the board, the id, the dates shared and deleted, each capture beside
+  CRT's baseline from the PUBLISHED data (by checksum, `CollectionBaselines`; only a file that is there is linked) -
+  built by the server with no script, everything typed encoded, `noindex`. A locked owner's collections go offline.
+- **A capture is a plain PNG or nothing** (`CollectionPng`: only the chunks a picture needs, every checksum, exactly
+  its rows, nothing after its end) - **so what CRT's encoder writes must pass it, tested on SkiaSharp itself**
+  (`CollectionPngEncoderTests`, as Avalonia.Skia's `ImageSavingHelper` encodes): the headless UI tests draw with stubs
+  (`UseHeadlessDrawing = true`) whose `Bitmap.Save` writes NOTHING, which a first test there read as Skia failing.
+- **The server's folder is an OPTIONAL setting, `CollectionsRoot`** - not set, sharing is off (503, in words) and the
+  service starts; the units name it in `ReadWritePaths=` with a "-" (systemd starts without it). Moving the pictures to
+  another disk later is a change to the shipped units.
+- **COMMENTS ON EACH CAPTURE** (step 3, 2026-11-26; owner decisions: "A mail per comment" to the owner, none to those who
+  comment "Not yet", "Writer deletes own, Owner hides comments, Writer edits own" - no "Report" link; rules CRT.Data's
+  `CollectionComments` - plain text, 2,000 characters, 100 a day per account; the server's `CollectionCommentFlows`):
+  written on the page by anybody signed in with a confirmed address, and by the owner from the collection's window in
+  CRT, which lists each capture's comments, marks those not read (`LocalCollection.SeenCommentId`) and hides, shows and
+  deletes them. The writer edits (marked "edited") and deletes their own; the owner or an administrator hides any; an
+  administrator deletes any; a hidden comment is shown only to the owner and an administrator - to its writer too it is
+  gone (`CollectionCommentFlows.ShownTo`). The popup's drop-down says which collection has comments not read, from `GET
+  /api/collections/mine`'s `latestCommentId`, asked at most every five minutes (`Main.AskForNewCommentsSoon`). A
+  collection deleted takes its comments. **What a page shows of a collection is ONE question, `CollectionFlows
+  .FindShownAsync`** (live, owner not locked) - the page, its pictures and every route that writes or changes a
+  comment ask it; only the owner's own list in CRT reads the collection as the owner's.
+- **THE WEBSITE'S SIGN-IN IS CRT'S SESSION IN A COOKIE** (owner: "30 days, like CRT"; `WebSessions`,
+  `/account/sign-in` and `/account/sign-out`): HttpOnly, Secure, SameSite=Lax, NAMED AND SCOPED PER INSTANCE
+  (`crt_session` on "/", `crt_session_crt_test` on "/crt-test/" - the two share a host, and one cookie would carry a
+  live token to the test instance). **Every form that acts is refused from another website first**
+  (`AccountPages.IsFromAnotherSite`), **then needs the session AND its token** (`WebSessions.Csrf`: made from the session
+  token, so nothing is stored - a hidden field on each form; the page has no script). **After signing in it goes back to
+  a collection's page of this site only** (`WebSessions.ReturnPath`: `/collections/<id>`, a `#` anchor - never a
+  path a link names, which would be an open redirect). A signed-in page is `Cache-Control: private, no-store`.
+
 #### Schematics (`Tabs/Schematics/`)
 
 The most complex tab: schematic/PCB images with three overlay layers (component highlights, the
@@ -3079,7 +3132,8 @@ about its centre (`Main.DataSyncStatusIconSpinAngle`). **The "KiCad nets" panel 
   password given or asking for the name given again, told whether an account had been made. Every way an address becomes
   confirmed goes through `ConfirmAddressAsync`; an expired link's way on is "I forgot my password", whose code confirms it.
 - **A DISPLAY NAME IS UNIQUE AND OF ONE RULE** (owner requests, 2026-11-25: "it needs to be unique for all users", "only
-  normal A-Z + 0-9 and then some common special charatcers like: +-/@.[]() ... max length 30"): CRT.Data's `DisplayNames`,
+  normal A-Z + 0-9 and then some common special charatcers like: +-/@.[]() ... max length 30"; 2026-11-26: spaces and "_"
+  "allow those two also" - a space never twice in a row): CRT.Data's `DisplayNames`,
   2 to 30 characters, unique ignoring capitals - asked of a name being SET (registering, "My account", an invitation), on the
   server (`AccountRules.ValidateDisplayName`, `IAccountStore.IsDisplayNameTakenAsync`) and as it is typed in CRT. A name set
   before is kept; no unique index holds it (old names may share one). Labelled **Display name**, "Name or handle" until then.

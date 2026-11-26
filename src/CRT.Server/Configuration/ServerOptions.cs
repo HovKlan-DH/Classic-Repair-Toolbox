@@ -148,6 +148,25 @@ namespace CRT.Server.Configuration
         public long FeedbackMaxStoredBytes { get; set; } = 20L * 1024 * 1024 * 1024;
 
         // -----------------------------------------------------------------------------------
+        // Oscilloscope collections (owner request, 2026-11-25 - CRT.Data's CollectionRules).
+        //
+        // CollectionsRoot is where the captures shared in collections are kept, "<ab>/<sha256>.png" - e.g.
+        // /mydir/http/classic-repair-toolbox.dk/crt-server/collections, outside the web document root (the service serves
+        // them itself, only as part of a collection's page). OPTIONAL, unlike the folders above: NOT SET, sharing a collection
+        // is off and CRT is told so - a service updated before the folder is made keeps running. It can move to another disk
+        // later (owner, 2026-11-25: "will later be moved to a new USB device"): copy the folder, change this, restart.
+        //
+        // CollectionsMaxStoredBytes is the most they may take all together, as FeedbackMaxStoredBytes is for feedback: full,
+        // a new capture is refused with a sentence and nothing else stops. Tuning, so a default: 20 GiB (some 10,000
+        // collections of a chip each, measured on the shipped baselines). 0 turns the total off.
+        // -----------------------------------------------------------------------------------
+        public string? CollectionsRoot { get; set; }
+
+        public long CollectionsMaxStoredBytes { get; set; } = 20L * 1024 * 1024 * 1024;
+
+        public bool IsCollectionSharingConfigured => !string.IsNullOrWhiteSpace(this.CollectionsRoot);
+
+        // -----------------------------------------------------------------------------------
         // Safety marker.
         // -----------------------------------------------------------------------------------
 

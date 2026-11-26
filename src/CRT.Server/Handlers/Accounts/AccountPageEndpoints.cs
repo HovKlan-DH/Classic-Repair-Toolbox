@@ -42,6 +42,99 @@ namespace CRT.Server.Handlers.Accounts
             pages.MapGet("/forgot-password", AccountPageEndpoints.ForgotPasswordForm);
             pages.MapPost("/forgot-password", AccountPageEndpoints.ForgotPasswordAsync).WithBodyLimit(RequestBodyLimits.FormBytes);
             pages.MapPost("/reset-password", AccountPageEndpoints.ResetPasswordAsync).WithBodyLimit(RequestBodyLimits.FormBytes);
+
+            // Signed in on the website, to comment on shared collections (step 3, 2026-11-26; WebSessions).
+            pages.MapGet("/sign-in", AccountPageEndpoints.SignInForm);
+            pages.MapPost("/sign-in", AccountPageEndpoints.SignInAsync).WithBodyLimit(RequestBodyLimits.FormBytes);
+            pages.MapPost("/sign-out", AccountPageEndpoints.SignOutAsync).WithBodyLimit(RequestBodyLimits.FormBytes);
+        }
+
+        private static IResult SignInForm(string? @return, HttpContext context, ServerOptions options)
+        {
+            string baseUrl = AccountPageEndpoints.BaseUrl(options);
+
+            return AccountPageEndpoints.Page(context, AccountPages.SignIn(baseUrl, returnTo: WebSessions.ReturnPath(@return, baseUrl)));
+        }
+
+        // ###########################################################################################
+        // POST /account/sign-in - AccountFlows.LoginAsync, the very sign-in CRT's is, its session kept in the browser's cookie;
+        // then back to the collection's page it came from, or "You are signed in". A refusal says no reason (AccountFlows).
+        // ###########################################################################################
+        private static async Task<IResult> SignInAsync(
+            HttpContext context,
+            IAccountStore store,
+            Argon2PasswordHasher hasher,
+            ServerOptions options,
+            CancellationToken cancellationToken)
+        {
+            if (AccountPageEndpoints.RefuseFromAnotherSite(context, options) is IResult refused)
+                return refused;
+
+            string baseUrl = AccountPageEndpoints.BaseUrl(options);
+            IFormCollection? form = await AccountPageEndpoints.FormOf(context, cancellationToken);
+            string? email = AccountPageEndpoints.Field(form, "email");
+            string? returnTo = WebSessions.ReturnPath(AccountPageEndpoints.Field(form, "return"), baseUrl);
+
+            LoginOutcome outcome = await AccountFlows.LoginAsync(
+                new LoginRequest(email, AccountPageEndpoints.Field(form, "password"), context.Request.Headers.UserAgent.ToString(), context.Connection.RemoteIpAddress?.ToString()),
+                store,
+                hasher,
+                options,
+                DateTimeOffset.UtcNow,
+                cancellationToken);
+
+            if (!outcome.IsSuccess || outcome.Session is null || outcome.Account is null)
+            {
+                return AccountPageEndpoints.Page(
+                    context,
+                    AccountPages.SignIn(baseUrl, email, returnTo, [outcome.IsRateLimited ? AccountPages.SignInSlowDown : AccountPages.SignInRefused]),
+                    outcome.IsRateLimited ? StatusCodes.Status429TooManyRequests : StatusCodes.Status401Unauthorized);
+            }
+
+            WebSessions.Keep(context.Response, baseUrl, outcome.Session.RefreshToken, outcome.Session.ExpiresUtc);
+
+            return returnTo is not null
+                ? AccountPageEndpoints.SeeOther(context, returnTo)
+                : AccountPageEndpoints.Page(context, AccountPages.SignedIn(baseUrl, outcome.Account.DisplayName));
+        }
+
+        // ###########################################################################################
+        // POST /account/sign-out - the session ended on the server (AccountFlows.LogoutAsync) and the cookie forgotten. The
+        // form carries its token, so no other site can sign a visitor out.
+        // ###########################################################################################
+        private static async Task<IResult> SignOutAsync(
+            HttpContext context,
+            IAccountStore store,
+            ServerOptions options,
+            CancellationToken cancellationToken)
+        {
+            if (AccountPageEndpoints.RefuseFromAnotherSite(context, options) is IResult refused)
+                return refused;
+
+            string baseUrl = AccountPageEndpoints.BaseUrl(options);
+            IFormCollection? form = await AccountPageEndpoints.FormOf(context, cancellationToken);
+            string? token = WebSessions.TokenOf(context.Request, baseUrl);
+
+            if (token is not null && WebSessions.CsrfMatches(token, AccountPageEndpoints.Field(form, "csrf")))
+            {
+                await AccountFlows.LogoutAsync(token, store, DateTimeOffset.UtcNow, cancellationToken);
+                WebSessions.Forget(context.Response, baseUrl);
+            }
+
+            string? returnTo = WebSessions.ReturnPath(AccountPageEndpoints.Field(form, "return"), baseUrl);
+
+            return returnTo is not null
+                ? AccountPageEndpoints.SeeOther(context, returnTo)
+                : AccountPageEndpoints.Page(context, AccountPages.SignedOut(baseUrl));
+        }
+
+        // A form done: on to `path` (a GET, so a reload posts nothing again).
+        internal static IResult SeeOther(HttpContext context, string path)
+        {
+            context.Response.Headers.Location = path;
+            context.Response.Headers.CacheControl = "no-store";
+
+            return Results.StatusCode(StatusCodes.Status303SeeOther);
         }
 
         // ###########################################################################################
@@ -63,7 +156,7 @@ namespace CRT.Server.Handlers.Accounts
         }
 
         // A form posted from another website: 403 and a page saying so, nothing read and nothing done (the header).
-        private static IResult? RefuseFromAnotherSite(HttpContext context, ServerOptions options)
+        internal static IResult? RefuseFromAnotherSite(HttpContext context, ServerOptions options)
         {
             IHeaderDictionary headers = context.Request.Headers;
             string baseUrl = AccountPageEndpoints.BaseUrl(options);
@@ -192,7 +285,7 @@ namespace CRT.Server.Handlers.Accounts
 
         // The posted form, or none for a request that sent no form or one that cannot be read - a field of none is null,
         // which the flows refuse in their own words. A body over the route's limit is the framework's 413, as everywhere.
-        private static async Task<IFormCollection?> FormOf(HttpContext context, CancellationToken cancellationToken)
+        internal static async Task<IFormCollection?> FormOf(HttpContext context, CancellationToken cancellationToken)
         {
             if (!context.Request.HasFormContentType)
                 return null;
@@ -208,7 +301,7 @@ namespace CRT.Server.Handlers.Accounts
         }
 
         // One value of a field; a field sent twice is no field (a form posts each once).
-        private static string? Field(IFormCollection? form, string name) =>
+        internal static string? Field(IFormCollection? form, string name) =>
             form is not null && form.TryGetValue(name, out StringValues values) && values.Count == 1 ? values[0] : null;
     }
 }

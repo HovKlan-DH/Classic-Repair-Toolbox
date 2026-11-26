@@ -128,7 +128,20 @@ namespace CRT.Server.Handlers.Submissions
                 "DELETE FROM rate_limit_events;",
 
                 // Oscilloscope models sent in from CRT (migration 0024) - contribution data too.
-                "DELETE FROM oscilloscope_submissions;"
+                "DELETE FROM oscilloscope_submissions;",
+
+                // Shared collections (migration 0025) go with the accounts that shared them: marked deleted by the
+                // administrator, so their pages say they went, and their captures' rows taken. The hourly sweep then deletes
+                // the uploads nothing shows and their pictures (CollectionFlows.SweepAsync) - the files are not this
+                // transaction's to delete.
+                "UPDATE collections SET deleted_utc = UTC_TIMESTAMP(3), deleted_reason = 'administrator', title = NULL, " +
+                "description = NULL, forum_links_json = NULL WHERE deleted_utc IS NULL AND account_id NOT IN (SELECT id FROM accounts);",
+                "DELETE FROM collection_images WHERE collection_id IN (SELECT id FROM collections WHERE deleted_utc IS NOT NULL);",
+
+                // Their comments (migration 0026) - those the deleted accounts wrote anywhere, and every one on a collection
+                // taken down.
+                "DELETE FROM collection_comments WHERE account_id NOT IN (SELECT id FROM accounts) " +
+                "OR collection_id IN (SELECT id FROM collections WHERE deleted_utc IS NOT NULL);"
             ];
 
             foreach (string sql in deletes)

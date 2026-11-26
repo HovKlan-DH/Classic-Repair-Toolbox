@@ -462,7 +462,7 @@ namespace CRT.Server.Handlers.Accounts
 
         // Pulls the token out of "Authorization: Bearer <token>". Anything else yields null, which
         // the caller turns into a 401.
-        private static string? BearerToken(HttpContext context)
+        internal static string? BearerToken(HttpContext context)
         {
             string header = context.Request.Headers.Authorization.ToString();
 

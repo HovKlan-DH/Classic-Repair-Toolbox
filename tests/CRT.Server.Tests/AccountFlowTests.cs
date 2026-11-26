@@ -269,10 +269,10 @@ namespace CRT.Server.Tests
             var mailer = new FakeEmailSender();
 
             RegistrationOutcome outcome = await AccountFlows.RegisterAsync(
-                new RegistrationRequest("dennis@example.com", AccountFlowTests.GoodPassword, "Dennis Hansen", null),
+                new RegistrationRequest("dennis@example.com", AccountFlowTests.GoodPassword, "Dennis#CRT", null),
                 store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
 
-            Assert.Equal([DisplayNames.Problem("Dennis Hansen")!], outcome.Failures);
+            Assert.Equal([DisplayNames.Problem("Dennis#CRT")!], outcome.Failures);
             Assert.Empty(store.Accounts);
         }
 

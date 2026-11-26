@@ -63,6 +63,17 @@ namespace CRT.Server.Handlers
         // with no CRT at all.
         public const long FormBytes = 16L * 1024;
 
+        // A shared collection (2026-11-26, CollectionEndpoints): one capture's PNG at most as large as CRT.Data's CollectionPng
+        // takes - so the body limit and the picture rule are one number - and a collection's words and captures' details, a
+        // few hundred captures of a kilobyte or two at most.
+        public const long CollectionImageBytes = CollectionPng.MaximumBytes;
+
+        public const long CollectionContentBytes = 2L * 1024 * 1024;
+
+        // A comment posted from a collection's page (step 3): its text of at most CollectionComments.MaximumLength characters -
+        // up to nine bytes each as a form sends a letter of three UTF-8 bytes - and its token.
+        public const long CommentFormBytes = 32L * 1024;
+
         // The limit for the endpoint routing chose, or the default when it chose none.
         public static long For(Endpoint? endpoint) =>
             endpoint?.Metadata.GetMetadata<BodyLimit>()?.Bytes ?? RequestBodyLimits.DefaultBytes;

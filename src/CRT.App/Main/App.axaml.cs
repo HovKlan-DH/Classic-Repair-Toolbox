@@ -132,6 +132,15 @@ namespace CRT
         // the user's real folder, where one a failing test left stayed). Set as a test assembly loads (TestScopeCaptures.cs).
         internal static string? ScopeCaptureWaitFolderForTests { get; set; }
 
+        // Where oscilloscope collections are kept on this computer until shared, and after (2026-11-26; CollectionStore) - one
+        // folder each, its captures in it by checksum. In the user's own app data folder, as everything CRT keeps of theirs.
+        // A test never touches it: it hands CollectionStore a folder of its own.
+        // Used by: Main.Collections.cs
+        public static string CollectionsFolder => Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            AppFolderName,
+            "Collections");
+
         // Where the Maintainer tab saves a file from the server to open it - in the user's OWN app
         // data folder, for the same reason (code review, 2026-11-02: under the shared /tmp another
         // account could make the folder first, read a contributor's files there, or swap one between

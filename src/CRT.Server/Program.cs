@@ -2,6 +2,7 @@ using System.Reflection;
 using System.Text.Json;
 using CRT.Server.Configuration;
 using CRT.Server.Handlers.Accounts;
+using CRT.Server.Handlers.Collections;
 using CRT.Server.Handlers.Compat;
 using CRT.Server.Handlers.Database;
 using CRT.Server.Handlers.DataTree;
@@ -318,6 +319,12 @@ namespace CRT.Server
             // OscilloscopeModelFlows.
             services.AddSingleton<IOscilloscopeModelStore, MySqlOscilloscopeModelStore>();
 
+            // Oscilloscope collections shared from CRT (2026-11-26, migration 0025) - see CollectionFlows. The sweeper deletes
+            // those whose time is up; it does nothing while CollectionsRoot is not set.
+            services.AddSingleton<ICollectionStore, MySqlCollectionStore>();
+            services.AddCollectionRateLimit();
+            services.AddHostedService<CollectionSweeper>();
+
             // Every contributor route's per-address limit (code review, 2026-10-13) - see
             // SubmissionEndpoints.MapSubmissionEndpoints.
             services.AddSubmissionRateLimit();
@@ -453,6 +460,11 @@ namespace CRT.Server
 
             app.MapSubmissionEndpoints();
             app.MapOscilloscopeModelEndpoints();
+
+            // Oscilloscope collections (2026-11-26): CRT shares through the routes, anybody with a link reads the page - Apache
+            // forwards "/collections/" here (INSTALLING.md). Rims over CollectionFlows and CollectionPages.
+            app.MapCollectionEndpoints();
+            app.MapCollectionPageEndpoints();
             app.MapReviewEndpoints();
             app.MapAdminEndpoints();
             app.MapProductionEndpoints();

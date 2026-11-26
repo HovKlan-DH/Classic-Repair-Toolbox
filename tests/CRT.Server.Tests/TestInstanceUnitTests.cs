@@ -70,6 +70,9 @@ namespace CRT.Server.Tests
                     TestInstanceUnitTests.Site + "/public_html/app-data-v4-test",
                     TestInstanceUnitTests.Site + "/crt-server-test/blobs",
                     TestInstanceUnitTests.Site + "/crt-server-test/feedback",
+
+                    // Optional ("-"): its shared collections' captures, once CollectionsRoot is set (2026-11-26).
+                    "-" + TestInstanceUnitTests.Site + "/crt-server-test/collections",
                 ],
                 paths);
 

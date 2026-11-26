@@ -26,12 +26,15 @@ public sealed class MyAccountRulesTests
         Assert.Equal([new ReviewNoteRun("dh@example.com", true)], MyAccountRules.SignedInAs(null, "dh@example.com"));
     }
 
-    // Typed, different - and, since 2026-11-25, keeping CRT.Data's DisplayNames rule (only A-Z, 0-9 and + - / @ . [ ] ( ),
-    // at most 30): "Dennis H" was a name until then, and its space keeps "Save name" off now.
+    // Typed, different - and, since 2026-11-25, keeping CRT.Data's DisplayNames rule (A-Z, 0-9, _ + - / @ . [ ] ( ) and
+    // single spaces - those two since 2026-11-26 - at most 30): "Dennis H" is a name, two spaces in a row keep "Save name"
+    // off, and so does a mark the rule has not.
     [Theory]
     [InlineData("Dennis", "Dennis@CRT", true)]
     [InlineData("Dennis", "  Dennis-H  ", true)]
-    [InlineData("Dennis", "Dennis H", false)]
+    [InlineData("Dennis", "Dennis H", true)]
+    [InlineData("Dennis", "Dennis  H", false)]
+    [InlineData("Dennis", "Dennis#H", false)]
     [InlineData("Dennis", "Dennis", false)]
     [InlineData("Dennis", "  Dennis ", false)]
     [InlineData("Dennis", "   ", false)]
@@ -47,19 +50,23 @@ public sealed class MyAccountRulesTests
     // box, nor for the name the account has now, which may be an old one of the earlier rule (kept until it is changed).
     // ###########################################################################################
     [Theory]
-    [InlineData("Dennis", "Dennis H")]
+    [InlineData("Dennis", "Dennis  H")]
     [InlineData("Dennis", "Søren")]
     [InlineData("Dennis", "D")]
     public void A_name_breaking_the_rule_is_said_in_the_rules_words(string current, string typed)
     {
-        Assert.Equal(Handlers.DataHandling.DisplayNames.Problem(typed, sayRule: false), MyAccountRules.NameProblem(current, typed));
+        string? said = MyAccountRules.NameProblem(current, typed);
+
+        Assert.NotNull(said);
+        Assert.Equal(Handlers.DataHandling.DisplayNames.Problem(typed, sayRule: false), said);
     }
 
     [Theory]
-    [InlineData("Dennis Hansen", "Dennis Hansen")]
+    [InlineData("Søren", "Søren")]
     [InlineData("Dennis", "   ")]
     [InlineData("Dennis", null)]
     [InlineData("Dennis", "Dennis@CRT")]
+    [InlineData("Dennis", "Dennis H")]
     public void Nothing_is_said_of_an_empty_box_the_name_there_now_or_a_name_keeping_the_rule(string current, string? typed)
     {
         Assert.Null(MyAccountRules.NameProblem(current, typed));

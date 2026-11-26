@@ -463,6 +463,7 @@ namespace CRT
                     pinNets);
 
                 popup.OfferEdit(edit, boardShown);
+                popup.UseCollections(this.CollectionContextForPopup(regions));
 
                 popup.UpdateOscilloscopeSessionTitleState(
                     this.TabOscilloscopeControl.HasSeenEstablishedOscilloscopeSessionForTitleState(),
@@ -509,6 +510,7 @@ namespace CRT
                 pinNets);
 
             this._singleComponentInfoWindow.OfferEdit(edit, boardShown);
+            this._singleComponentInfoWindow.UseCollections(this.CollectionContextForPopup(regions));
 
             this._singleComponentInfoWindow.UpdateOscilloscopeSessionTitleState(
                 this.TabOscilloscopeControl.HasSeenEstablishedOscilloscopeSessionForTitleState(),

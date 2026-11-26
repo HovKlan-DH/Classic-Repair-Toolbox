@@ -684,6 +684,73 @@ namespace CRT.Server.Handlers.Email
                 .ToMessage(toAddress, "Your oscilloscope model is published");
         }
 
+        // ###########################################################################################
+        // A SHARED COLLECTION GOES IN 30 DAYS (2026-11-26; CollectionFlows.SweepAsync) - to its owner, once. Keeping it longer is
+        // the collection's "Delete in" in CRT; nothing is needed to let it go.
+        // ###########################################################################################
+        public static EmailMessage CollectionDeletingSoon(
+            string toAddress,
+            string? displayName,
+            string collectionName,
+            DateTimeOffset deleteAtUtc,
+            string pageUrl)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(toAddress);
+
+            return EmailTemplates.Greeted(displayName)
+                .Paragraph(
+                    "Your shared oscilloscope collection ",
+                    MailText.Named($"[{collectionName}]"),
+                    $" is deleted on {(global::Handlers.DataHandling.CollectionRules.DateText(deleteAtUtc))}, as you chose when you shared it. " +
+                    "After that its page says it was deleted:")
+                .Paragraph(MailText.Link(pageUrl, pageUrl))
+                .Paragraph(
+                    "To keep it longer, open the collection in Classic Repair Toolbox and choose for how long under \"Delete in\" - " +
+                    "it can be kept up to 5 years ahead. To let it go, there is nothing to do.")
+                .WithContactLine()
+                .ToMessage(toAddress, "Your shared collection is deleted in 30 days");
+        }
+
+        // ###########################################################################################
+        // A COMMENT ON A SHARED COLLECTION (step 3, 2026-11-26; CollectionCommentFlows.AddAsync) - to the collection's owner, for
+        // every comment but their own (owner decision, 2026-11-26: "A mail per comment"). The comment quoted, and the link to
+        // it on the page, where it is answered.
+        // ###########################################################################################
+        public static EmailMessage CollectionCommented(
+            string toAddress,
+            string? ownerName,
+            string collectionName,
+            string commenterName,
+            string captureName,
+            string comment,
+            string commentUrl)
+        {
+            ArgumentException.ThrowIfNullOrWhiteSpace(toAddress);
+
+            return EmailTemplates.Greeted(ownerName)
+                .Paragraph(
+                    MailText.Named(commenterName),
+                    " commented on ",
+                    MailText.Named($"[{captureName}]"),
+                    " in your shared oscilloscope collection ",
+                    MailText.Named($"[{collectionName}]"),
+                    ":")
+                .Quote(comment, "(no text)")
+                .Paragraph("Read it and answer on the page - or in Classic Repair Toolbox, in the collection's window:")
+                .Paragraph(MailText.Link(commentUrl, commentUrl))
+                .WithContactLine()
+                .ToMessage(toAddress, $"A comment on your collection {EmailTemplates.OneLine(collectionName)}");
+        }
+
+        // A name somebody typed, fit for a subject line: no line break or other control character - in a header one would
+        // start another header - and no longer than a subject reads.
+        internal static string OneLine(string text)
+        {
+            string line = string.Concat(text.Select(c => char.IsControl(c) ? ' ' : c)).Trim();
+
+            return line.Length <= 80 ? line : line[..77] + "...";
+        }
+
         public static EmailMessage OscilloscopeModelRejected(
             string toAddress,
             string modelName,

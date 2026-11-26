@@ -55,6 +55,7 @@ namespace CRT.Server.Configuration
             ServerOptionsValidator.ValidateManifestSettings(options, failures);
             ServerOptionsValidator.ValidateRequiredValues(options, failures);
             ServerOptionsValidator.ValidateFeedback(options, directoryExists, directoryWritable, failures);
+            ServerOptionsValidator.ValidateCollections(options, directoryExists, directoryWritable, failures);
             ServerOptionsValidator.ValidateHashingParameters(options, failures);
             ServerOptionsValidator.ValidateTokenLifetimes(options, failures);
 
@@ -554,6 +555,74 @@ namespace CRT.Server.Configuration
                     $"{prefix}:FeedbackRoot is not writable by the service user: [{feedback}]. It needs the " +
                     "group and the unit's ReadWritePaths in INSTALLING.md (\"Folders and permissions\").");
             }
+        }
+
+        // ###########################################################################################
+        // Oscilloscope collections (2026-11-26): the folder their captures are kept in. OPTIONAL - not set, sharing a
+        // collection is off and the routes say so (CollectionEndpoints), so a service updated before the folder is made still
+        // starts. Set, it must exist, be writable and stay apart from everything else the service keeps: strangers' pictures
+        // must never be published with a data tree, nor sit among submissions' blobs or feedback.
+        // ###########################################################################################
+        private static void ValidateCollections(
+            ServerOptions options,
+            Func<string, bool> directoryExists,
+            Func<string, bool> directoryWritable,
+            List<string> failures)
+        {
+            string prefix = ServerOptions.SectionName;
+
+            if (string.IsNullOrWhiteSpace(options.CollectionsRoot))
+                return;
+
+            if (!Path.IsPathRooted(options.CollectionsRoot.Trim()))
+            {
+                failures.Add($"{prefix}:CollectionsRoot must be an absolute path, but is [{options.CollectionsRoot}]");
+                return;
+            }
+
+            if (!ServerOptionsValidator.TryNormalisePath(options.CollectionsRoot, out string collections))
+            {
+                failures.Add($"{prefix}:CollectionsRoot is not a usable path: [{options.CollectionsRoot}]");
+                return;
+            }
+
+            var others = new (string Name, string? Value)[]
+            {
+                ("DataTreeRoot", options.DataTreeRoot),
+                ("ProductionTreeRoot", options.ProductionTreeRoot),
+                ("ProductionDataTreeRoot", options.ProductionDataTreeRoot),
+                ("BlobStoreRoot", options.BlobStoreRoot),
+                ("FeedbackRoot", options.FeedbackRoot)
+            };
+
+            foreach ((string name, string? value) in others)
+            {
+                if (!ServerOptionsValidator.TryNormalisePath(value, out string other))
+                    continue;
+
+                if (ServerOptionsValidator.PathsAreEqual(collections, other) ||
+                    ServerOptionsValidator.PathContains(collections, other) ||
+                    ServerOptionsValidator.PathContains(other, collections))
+                {
+                    failures.Add(
+                        $"{prefix}:CollectionsRoot [{collections}] overlaps {name} [{other}]. Shared captures must be kept " +
+                        "apart from the data trees, the blob store and feedback.");
+                }
+            }
+
+            if (!directoryExists(collections))
+            {
+                failures.Add($"{prefix}:CollectionsRoot does not exist or is not a directory: [{collections}]");
+            }
+            else if (!directoryWritable(collections))
+            {
+                failures.Add(
+                    $"{prefix}:CollectionsRoot is not writable by the service user: [{collections}]. It needs the " +
+                    "group and the unit's ReadWritePaths in INSTALLING.md (\"Folders and permissions\").");
+            }
+
+            if (options.CollectionsMaxStoredBytes < 0)
+                failures.Add($"{prefix}:CollectionsMaxStoredBytes cannot be below 0.");
         }
 
         // ###########################################################################################
