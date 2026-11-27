@@ -151,5 +151,29 @@ namespace Handlers.DataHandling
                 () => WorklogManager.UpdateEntry(workbookId, entry),
                 out _);
         }
+
+        // ###########################################################################################
+        // A link of interest added to an entry nothing has open - read fresh and written back whole, as AttachToEntry does,
+        // under the next free id. An address the entry links to already is not added twice (a collection attached again).
+        // ###########################################################################################
+        public static AttachOutcome AddLinkToEntry(int workbookId, int entryId, string headline, string url)
+        {
+            var entry = WorklogManager.GetEntries(workbookId)
+                .FirstOrDefault(candidate => candidate.Id == entryId);
+
+            if (entry == null)
+            {
+                return AttachOutcome.EntryNotFound;
+            }
+
+            if (entry.Links.Any(link => string.Equals(link.Url, url, StringComparison.OrdinalIgnoreCase)))
+            {
+                return AttachOutcome.Added;
+            }
+
+            entry.Links.Add(new WorklogLinkRecord { Id = RecordIds.Next(entry.Links.Select(link => link.Id)), Headline = headline, Url = url });
+
+            return WorklogManager.UpdateEntry(workbookId, entry) ? AttachOutcome.Added : AttachOutcome.PersistFailed;
+        }
     }
 }

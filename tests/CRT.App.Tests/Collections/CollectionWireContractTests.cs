@@ -38,7 +38,7 @@ public sealed class CollectionWireContractTests
     {
         var sent = new CollectionContentRequest(
             "Commodore 64", "250407", "PAL", "No picture", "It went black.", ["https://www.lemon64.com/forum/viewtopic.php?t=1"], When.AddYears(1),
-            [new CollectionImageEntry(Sha, "U7", "12", "/RAS", "Pulsing", "50us", "2V", "1V", new CollectionBaseline(Sha, "Scope baseline/U7_12_RAS.png", "100us", "2V", "1.5V"), "Stays low", true, When)]);
+            [new CollectionImageEntry(Sha, "U7", "12", "/RAS", "Pulsing", "50us", "2V", "1V", new CollectionBaseline(Sha, "Scope baseline/U7_12_RAS.png", "100us", "2V", "1.5V"), "Stays low", When)]);
 
         CollectionContentRequest received = CollectionWireContractTests.Received(sent);
 

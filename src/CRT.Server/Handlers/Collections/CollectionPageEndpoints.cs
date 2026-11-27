@@ -18,8 +18,11 @@ namespace CRT.Server.Handlers.Collections
     //                                                      offline), 410 for one deleted, saying when. ?edit=<c> and
     //                                                      ?delete=<c> show a comment being edited or asked about, ?remove=1
     //                                                      the administrator's question before deleting the collection.
+    //                                                      Its owner stopped sharing it: 404 saying it is not shared at the
+    //                                                      moment - but to its owner and the administrator, who see it, said so.
     //   GET  /collections/{id}/{sha256}.png                a capture - only one the collection shows, while it is shown (to
     //                                                      this reader)
+    //   GET  /collections/{id}/download                    every capture in one ZIP ("Download all", 15.1.0) - as its pictures
     //   POST /collections/{id}/delete                      the administrator deletes the collection (step 4)
     //   POST /collections/{id}/comments                    a comment (step 3) - CollectionCommentFlows.AddAsync
     //   POST /collections/{id}/comments/{c}/edit|delete|hide|show
@@ -57,6 +60,7 @@ namespace CRT.Server.Handlers.Collections
             pages.MapPost("/accounts/{accountId:long}/unlock", CollectionPageEndpoints.UnlockAccountAsync).WithBodyLimit(RequestBodyLimits.FormBytes);
             pages.MapGet("/{id}", CollectionPageEndpoints.PageAsync);
             pages.MapPost("/{id}/delete", CollectionPageEndpoints.DeleteCollectionAsync).WithBodyLimit(RequestBodyLimits.FormBytes);
+            pages.MapGet("/{id}/download", CollectionPageEndpoints.DownloadAsync);
             pages.MapGet("/{id}/{file}", CollectionPageEndpoints.ImageAsync);
             pages.MapPost("/{id}/comments", CollectionPageEndpoints.AddCommentAsync).WithBodyLimit(RequestBodyLimits.CommentFormBytes);
             pages.MapPost("/{id}/comments/{commentId:long}/edit", CollectionPageEndpoints.EditCommentAsync).WithBodyLimit(RequestBodyLimits.CommentFormBytes);
@@ -255,6 +259,16 @@ namespace CRT.Server.Handlers.Collections
             if (collection.IsDeleted)
                 return CollectionPageEndpoints.Page(context, CollectionPages.Deleted(siteBaseUrl, collection), baselines, signedIn: false, StatusCodes.Status410Gone);
 
+            // Its owner stopped sharing it, and this reader is neither its owner nor the administrator: only that it is not shared
+            // at the moment - its link comes back once it is shared again (migration 0028). Never kept by a cache: it may be back
+            // any moment.
+            if (shown.IsWithheld)
+            {
+                IResult withheld = CollectionPageEndpoints.Page(context, CollectionPages.SharingStopped(siteBaseUrl, collection), baselines, signedIn: false, StatusCodes.Status404NotFound);
+                context.Response.Headers.CacheControl = "no-store";
+                return withheld;
+            }
+
             (AccountRecord? viewer, string? csrfToken) = await ReadReaderAsync(cancellationToken);
 
             var view = new CollectionPageView
@@ -313,6 +327,46 @@ namespace CRT.Server.Handlers.Collections
             context.Response.Headers.CacheControl = shown.IsOffline ? "private, no-store" : "public, no-cache";
 
             return Results.Stream(bytes, CollectionPng.ContentType, entityTag: new Microsoft.Net.Http.Headers.EntityTagHeaderValue($"\"{sha256}\""));
+        }
+
+        // ###########################################################################################
+        // "DOWNLOAD ALL" (owner request, 2026-11-27, after the owner's capture gallery): every capture of a collection shown to this
+        // reader, in one ZIP, named as the viewer's "Download" names each (CollectionDownload says how it is written).
+        // ###########################################################################################
+        private static async Task<IResult> DownloadAsync(
+            string id,
+            HttpContext context,
+            ICollectionStore store,
+            IAccountStore accounts,
+            ServerOptions options,
+            CancellationToken cancellationToken)
+        {
+            context.Response.Headers["X-Robots-Tag"] = CollectionPageEndpoints.RobotsTag;
+
+            if (!options.IsCollectionSharingConfigured)
+                return Results.NotFound();
+
+            ShownCollection? shown = await CollectionFlows.FindShownToAsync(
+                id,
+                async token => (await CollectionPageEndpoints.ReaderAsync(context, accounts, options, token)).Account,
+                store,
+                accounts,
+                DateTimeOffset.UtcNow,
+                cancellationToken);
+
+            if (shown is null || shown.IsWithheld || shown.Collection.Images.Count == 0)
+                return Results.NotFound();
+
+            var files = new CollectionFiles(options.CollectionsRoot!);
+            IReadOnlyList<CollectionDownload.Entry> entries = CollectionDownload.EntriesOf(shown.Collection);
+
+            context.Response.Headers.XContentTypeOptions = "nosniff";
+            context.Response.Headers.CacheControl = "private, no-store";
+
+            return Results.Stream(
+                body => CollectionDownload.WriteAsync(body, entries, files.OpenRead, cancellationToken),
+                CollectionDownload.ContentType,
+                CollectionDownload.FileNameOf(shown.Collection));
         }
 
         // ---- The comment forms (step 3) ------------------------------------------------------------

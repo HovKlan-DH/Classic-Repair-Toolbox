@@ -6,6 +6,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
 using Handlers.Collections;
@@ -16,7 +17,9 @@ namespace CRT
 {
     // ###########################################################################################
     // WHAT THE COLLECTION WINDOW NEEDS FROM CRT (Main.Collections.cs): the collections on this computer, the server, the
-    // account CRT is signed in to and the way to sign in, opening a link, and the clipboard. A test hands its own.
+    // account CRT is signed in to and the way to sign in, opening a link, and the clipboard - and, for "Attach to worklog",
+    // whether the worklog is turned on and the attach itself (what came of it in words, or null for nothing done). A test
+    // hands its own.
     // ###########################################################################################
     internal sealed record CollectionWindowHost(
         CollectionStore Store,
@@ -25,11 +28,13 @@ namespace CRT
         Func<Task> SignIn,
         Action<string> OpenLink,
         Func<string, Task> CopyText,
-        Action Changed);
+        Action Changed,
+        Func<bool>? WorklogIsOn = null,
+        Func<LocalCollection, Window, Task<string?>>? AttachToWorklog = null);
 
     // ###########################################################################################
-    // ONE CAPTURE AS THE WINDOW LISTS IT - a view of the collection's capture; the note and the mark are what the window
-    // writes back (CollectionWindow.EditedCollection). Its thumbnail and comments CHANGE IN PLACE as they arrive (code review,
+    // ONE CAPTURE AS THE WINDOW LISTS IT - a view of the collection's capture; the note is what the window writes back
+    // (CollectionWindow.EditedCollection). Its thumbnail and comments CHANGE IN PLACE as they arrive (code review,
     // 2026-11-27: each thumbnail decoded built the whole list again, and comments read again took the focus from a note being
     // typed).
     // ###########################################################################################
@@ -60,8 +65,6 @@ namespace CRT
         public string BaselineSettings { get; init; } = string.Empty;
 
         public bool HasBaseline { get; init; }
-
-        public bool LooksWrong { get; set; }
 
         public string? Caption { get; set; }
 
@@ -107,18 +110,24 @@ namespace CRT
 
     // ###########################################################################################
     // AN OSCILLOSCOPE COLLECTION'S WINDOW (2026-11-26; "Show collection" in the component info window). Here it is named and
-    // described, its captures noted and marked "Looks wrong" or taken out, and it is SHARED:
+    // described, its captures noted - a thumbnail clicked opens the capture large in the worklogs' zooming viewer - or taken
+    // out, and it is SHARED:
     //
     //   - "Share" sends it as it is now (CollectionClient) - the first time a page is made, its address kept; later, the page
-    //     follows the change. It needs an account (the account icon), and asks to sign in when there is none.
+    //     follows the change, and a page whose sharing was stopped comes back under its link. It needs an account (the account
+    //     icon), and asks to sign in when there is none.
+    //   - "Stop sharing" takes the page offline - its link then says it is not shared at the moment, its captures and comments
+    //     kept on the server (owner decision, 2026-11-27: "Offline, same link back").
     //   - "Delete in" is how long the server keeps the page - counted from the day it is shared, or from the day a new choice
     //     is made for one shared (and then shared again). At most 5 years ahead.
-    //   - "Open web page", and the link with a line about it for a forum ("Copy for forum", BBCode) or Reddit (Markdown),
-    //     each capture marked "Looks wrong" linked on its own.
-    //   - "Delete collection" takes it off this computer and its page off the server, after asking.
+    //   - "Open web page", and the link with a line about it for a forum ("Copy for forum", BBCode) or Reddit (Markdown).
+    //   - "Attach to worklog" copies every capture into a worklog as photos (owner decision, 2026-11-27: "A copy of its
+    //     captures"; CollectionWorklogAttach).
+    //   - "Delete collection" takes it off this computer and its page off the server, after asking. NOTHING ELSE EVER DELETES
+    //     IT FROM THIS COMPUTER (owner request, 2026-11-27): a page whose time is up only forgets its page (ForgetPage).
     //
-    // Every edit is kept on this computer as its box is left or its mark changes (SaveEdits) - nothing goes to the server
-    // until "Share".
+    // Every edit is kept on this computer as its box is left (SaveEdits) - nothing goes to the server until "Share". ("Looks
+    // wrong", a mark per capture, went on 2026-11-27 - owner request: "No need for the 'Looks wrong' checkbox".)
     // ###########################################################################################
     public partial class CollectionWindow : Window
     {
@@ -243,7 +252,6 @@ namespace CRT
                            (capture.ExpectedReading is { } reading ? $" | Expected reading: {reading}" : string.Empty),
                 BaselineSettings = CollectionSharing.SettingsLine("Baseline", capture.BaselineTimePerDivision, capture.BaselineVoltsPerDivision, capture.BaselineTriggerLevel),
                 HasBaseline = capture.BaselineTimePerDivision is not null || capture.BaselineVoltsPerDivision is not null || capture.BaselineTriggerLevel is not null,
-                LooksWrong = capture.LooksWrong,
                 Caption = capture.Caption,
                 Thumbnail = this.thisThumbnails.GetValueOrDefault(capture.Sha256)
             };
@@ -495,25 +503,47 @@ namespace CRT
         private void ShowSharedState(LocalCollection collection)
         {
             bool changed = CollectionSharing.HasChangesNotShared(collection);
+            string sharedOn = CollectionRules.DateText(collection.SharedUtc ?? collection.CreatedUtc);
 
-            this.SharedStateText.Text = !collection.IsShared
-                ? "Not shared yet - it is on this computer only. \"Share\" makes its page, which anybody with the link can see."
-                : changed
-                    ? $"Shared on {CollectionRules.DateText(collection.SharedUtc ?? collection.CreatedUtc)}, and changed since - \"Share\" sends the change."
-                    : $"Shared on {CollectionRules.DateText(collection.SharedUtc ?? collection.CreatedUtc)}: {collection.PageUrl}";
+            this.SharedStateText.Text = CollectionWindow.SharedStateLine(collection, changed, sharedOn);
 
             this.DeleteDateText.Text = collection.DeleteAtUtc is { } deleteAt
                 ? $"Its page is deleted on {CollectionRules.DateText(deleteAt)}."
                 : "Counted from the day it is shared.";
 
-            this.ShareButton.IsEnabled = !this.thisBusy && collection.Captures.Count > 0 && (!collection.IsShared || changed);
+            // Sharing stopped, "Share" brings the page back as it is - changed or not.
+            this.ShareButton.IsEnabled = !this.thisBusy && collection.Captures.Count > 0 && (!collection.IsOnline || changed);
+            this.StopSharingButton.IsVisible = collection.IsOnline;
+            this.StopSharingButton.IsEnabled = !this.thisBusy;
             this.OpenPageButton.IsEnabled = !this.thisBusy && collection.PageUrl is not null;
 
-            // What is copied names the captures by their places on the page - changed since, it would name ones the page does not
-            // have yet, or no more (code review, 2026-11-27): "Share" first.
-            this.CopyForForumButton.IsEnabled = !this.thisBusy && collection.PageUrl is not null && !changed;
-            this.CopyForRedditButton.IsEnabled = !this.thisBusy && collection.PageUrl is not null && !changed;
+            // What is copied is the page's link - changed since, the page is not what was described (code review, 2026-11-27):
+            // "Share" first. And its sharing stopped, the link says only that it is not shared at the moment.
+            this.CopyForForumButton.IsEnabled = !this.thisBusy && collection.IsOnline && !changed;
+            this.CopyForRedditButton.IsEnabled = !this.thisBusy && collection.IsOnline && !changed;
             this.DeleteButton.IsEnabled = !this.thisBusy;
+
+            this.AttachToWorklogButton.IsVisible = this.thisHost?.AttachToWorklog is not null && this.thisHost.WorklogIsOn?.Invoke() != false;
+            this.AttachToWorklogButton.IsEnabled = !this.thisBusy && collection.Captures.Count > 0;
+        }
+
+        // Where the collection stands, in a sentence - kept here only, shared, shared and changed since, or shared and stopped.
+        internal static string SharedStateLine(LocalCollection collection, bool changedSinceShared, string sharedOn)
+        {
+            ArgumentNullException.ThrowIfNull(collection);
+
+            if (!collection.IsShared)
+                return "Not shared yet - it is on this computer only. \"Share\" makes its page, which anybody with the link can see.";
+
+            if (!collection.IsOnline)
+            {
+                return $"Not shared at the moment - its page is offline, and its link says so. \"Share\" brings it back under the same " +
+                       $"link: {collection.PageUrl}";
+            }
+
+            return changedSinceShared
+                ? $"Shared on {sharedOn}, and changed since - \"Share\" sends the change."
+                : $"Shared on {sharedOn}: {collection.PageUrl}";
         }
 
         internal void Say(string text) => this.StatusText.Text = text;
@@ -542,7 +572,7 @@ namespace CRT
                 Lifetime = lifetime,
                 Captures = collection.Captures
                     .Select(capture => rows.TryGetValue(capture.Sha256, out CollectionCaptureRow? row)
-                        ? capture with { LooksWrong = row.LooksWrong, Caption = CollectionWindow.Blank(row.Caption) }
+                        ? capture with { Caption = CollectionWindow.Blank(row.Caption) }
                         : capture)
                     .ToList()
             };
@@ -589,15 +619,43 @@ namespace CRT
 
         private void OnEditLeft(object? sender, RoutedEventArgs e) => this.SaveEdits();
 
-        // *** THE MARK IS TAKEN FROM THE BOX ITSELF (code review, 2026-11-27). *** Avalonia raises IsCheckedChanged before its
-        // binding writes the row, so SaveEdits read the mark as it was, kept nothing, and "Share" stayed greyed out.
-        private void OnCaptureMarkChanged(object? sender, RoutedEventArgs e)
+        // ###########################################################################################
+        // A THUMBNAIL CLICKED OPENS THE CAPTURE LARGE (owner request, 2026-11-27: "the same possibility as other places where we
+        // have small images/thumbnails - it should open in another window and be zoomable") - the worklogs' viewer, which zooms
+        // with the wheel, its title where the capture was taken and its comment the settings, the baseline's and the note, the
+        // values bold. Shown beside this window and gone at a click outside it, as the capture window's pictures are
+        // (BaselineCaptureWindow.ShowPicture).
+        // ###########################################################################################
+        private void OnThumbnailTapped(object? sender, TappedEventArgs e)
         {
-            if (sender is CheckBox { DataContext: CollectionCaptureRow row } box)
-                row.LooksWrong = box.IsChecked == true;
-
-            this.SaveEdits();
+            if (sender is Control { DataContext: CollectionCaptureRow row })
+                this.OpenCapture(row.Sha256);
         }
+
+        internal void OpenCapture(string sha256)
+        {
+            if (this.thisHost is not { } host || !DataTreeLayout.IsSha256(sha256) ||
+                this.Collection?.Captures.FirstOrDefault(capture => capture.Sha256 == sha256) is not { } capture ||
+                this.thisRows.FirstOrDefault(row => row.Sha256 == sha256) is not { } row)
+            {
+                return;
+            }
+
+            var viewer = new WorklogPhotoViewerWindow();
+            viewer.Initialize(row.Heading, CollectionSharing.WorklogCommentOf(capture), host.Store.CapturePath(this.thisLocalId, sha256));
+            viewer.ClosesWhenLeft = true;
+
+            if (this.ShowPictureOverrideForTests is { } show)
+            {
+                show(viewer);
+                return;
+            }
+
+            viewer.Show(this);
+        }
+
+        // Stands in for showing the viewer in a test. Null in the app.
+        internal Action<WorklogPhotoViewerWindow>? ShowPictureOverrideForTests { get; set; }
 
         // ###########################################################################################
         // "Delete in": for a collection shared, a new choice counts from today - and "Share" sends it.
@@ -762,7 +820,10 @@ namespace CRT
                             SharedUtc = DateTimeOffset.UtcNow,
                             SharedContentHash = result.SharedContentHash,
                             SharedByAccountId = session.AccountId == 0 ? current.SharedByAccountId : session.AccountId,
-                            SharedByName = session.AccountId == 0 ? current.SharedByName : session.DisplayName
+                            SharedByName = session.AccountId == 0 ? current.SharedByName : session.DisplayName,
+
+                            // A share brings a page whose sharing was stopped back - the server clears it with the content.
+                            SharingStoppedUtc = null
                         },
                         out _);
 
@@ -814,7 +875,8 @@ namespace CRT
                         SharedUtc = null,
                         SharedContentHash = null,
                         SharedByAccountId = null,
-                        SharedByName = null
+                        SharedByName = null,
+                        SharingStoppedUtc = null
                     },
                     out _) is not { } unshared)
             {
@@ -848,6 +910,104 @@ namespace CRT
 
             if (this.Collection is { } collection)
                 this.ShowSharedState(collection);
+        }
+
+        // ###########################################################################################
+        // "STOP SHARING" (owner decision, 2026-11-27: "Offline, same link back"): its page offline - its link says it is not
+        // shared at the moment - its captures and comments kept on the server, its date counting; "Share" brings it back under
+        // the same link. Signed in with the account that shared it, under the window's BusyOverlay, as a comment's action is - a
+        // server not answering in the wait's time waited for still, never "it failed".
+        // ###########################################################################################
+        private async void OnStopSharingClick(object? sender, RoutedEventArgs e) =>
+            await HandlerGuard.RunAsync(this.StopSharingAsync, this.Say);
+
+        internal const string SharingStopped =
+            "Not shared any more - its page is offline, and its link says it is not shared at the moment. \"Share\" brings it back " +
+            "under the same link.";
+
+        internal async Task StopSharingAsync()
+        {
+            if (this.thisBusy || this.thisHost is not { } host || this.Collection is not { ServerId: { } serverId })
+                return;
+
+            this.SaveEdits();
+
+            if (host.SignedIn() is null)
+            {
+                this.Say(CollectionClient.SignInFirst);
+                await host.SignIn();
+            }
+
+            if (this.thisBusy || host.SignedIn() is not { } session || this.Collection is not { IsOnline: true } collection)
+                return;
+
+            if (CollectionSharing.OtherAccountLine(collection, session.AccountId) is { } otherAccount)
+            {
+                this.Say(otherAccount);
+                return;
+            }
+
+            this.SetBusy(true);
+
+            try
+            {
+                WaitResult<CollectionClient.Result> waited =
+                    await BusyOverlay.RunAsync(this, "Taking its page offline", _ => host.Client.SetSharingAsync(serverId, false, session.BearerToken));
+
+                if (waited.IsTimedOut)
+                    this.Say(CollectionWindow.NoAnswerYet);
+
+                CollectionClient.Result result = waited.IsTimedOut ? await waited.Work : waited.Value!;
+
+                switch (result.Kind)
+                {
+                    case CollectionClient.Outcome.Done:
+                        if (host.Store.Update(this.thisLocalId, current => current with { SharingStoppedUtc = DateTimeOffset.UtcNow }, out _) is { } stopped)
+                            this.ShowSharedState(stopped);
+
+                        this.Say(CollectionWindow.SharingStopped);
+                        host.Changed();
+                        break;
+
+                    case CollectionClient.Outcome.GoneFromServer:
+                        this.ForgetPage();
+                        break;
+
+                    default:
+                        this.Say(result.Message);
+                        break;
+                }
+            }
+            finally
+            {
+                this.SetBusy(false);
+            }
+        }
+
+        // ###########################################################################################
+        // "ATTACH TO WORKLOG" (owner decision, 2026-11-27: "A copy of its captures"): what the window holds kept first, then the
+        // worklog picked and the captures copied in by CRT (Main.AttachCollectionToWorklogAsync), what came of it said. One at a
+        // time, and never while a share is on its way.
+        // ###########################################################################################
+        private async void OnAttachToWorklogClick(object? sender, RoutedEventArgs e) =>
+            await HandlerGuard.RunAsync(this.AttachToWorklogAsync, this.Say);
+
+        internal async Task AttachToWorklogAsync()
+        {
+            if (this.thisBusy || this.thisHost?.AttachToWorklog is not { } attach || !this.SaveEdits() || this.Collection is not { } collection)
+                return;
+
+            this.SetBusy(true);
+
+            try
+            {
+                if (await attach(collection, this) is { } said)
+                    this.Say(said);
+            }
+            finally
+            {
+                this.SetBusy(false);
+            }
         }
 
         private void OnOpenPageClick(object? sender, RoutedEventArgs e)
@@ -899,7 +1059,7 @@ namespace CRT
         {
             this.DeleteQuestion.IsVisible = asking;
             this.ButtonsPanel.IsVisible = !asking;
-            this.DeleteButton.IsVisible = !asking;
+            this.LeftButtonsPanel.IsVisible = !asking;
         }
 
         private async void OnConfirmDeleteClick(object? sender, RoutedEventArgs e) =>

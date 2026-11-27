@@ -93,7 +93,6 @@ namespace Handlers.Collections
                         capture.BaselineTriggerLevel)
                     : null,
                 capture.Caption,
-                capture.LooksWrong,
                 capture.CapturedUtc);
 
         private static bool HasBaseline(LocalCapture capture) =>
@@ -133,48 +132,82 @@ namespace Handlers.Collections
             $"{componentLabel} captures, {CollectionRules.DateText(now)}";
 
         // ###########################################################################################
-        // "COPY FOR FORUM": the link with a line saying what it is - and each capture marked "looks wrong" linked on its own, so
-        // the post can point at exactly those. BBCode for Lemon64 and Forum64, Markdown for Reddit.
+        // "COPY FOR FORUM": the link with a line saying what it is. BBCode for Lemon64 and Forum64, Markdown for Reddit. (Each
+        // capture marked "Looks wrong" was linked on its own too, until the mark went - owner request, 2026-11-27.)
         // ###########################################################################################
         public static string ForumText(LocalCollection collection, ForumFormat format)
         {
             if (collection.PageUrl is not { } url)
                 return string.Empty;
 
-            string Link(string address, string text) => format == ForumFormat.BbCode ? $"[url={address}]{text}[/url]" : $"[{text}]({address})";
+            string link = format == ForumFormat.BbCode
+                ? $"[url={url}]{CollectionSharing.NameOf(collection)}[/url]"
+                : $"[{CollectionSharing.NameOf(collection)}]({url})";
 
-            IReadOnlyList<LocalCapture> captures = CollectionSharing.InPageOrder(collection.Captures);
-            IReadOnlyList<string> anchors = CollectionRules.AnchorsOf(captures.Select(CollectionSharing.EntryOf).ToList());
-
-            var text = new StringBuilder()
-                .Append(Link(url, CollectionSharing.NameOf(collection)))
-                .Append($" - {captures.Count} oscilloscope capture{(captures.Count == 1 ? string.Empty : "s")} of ")
+            return new StringBuilder()
+                .Append(link)
+                .Append($" - {collection.Captures.Count} oscilloscope capture{(collection.Captures.Count == 1 ? string.Empty : "s")} of ")
                 .Append($"{collection.HardwareName} {collection.BoardName}")
                 .Append(collection.Region is { } region ? $" ({region})" : string.Empty)
-                .Append(", shared with Classic Repair Toolbox");
+                .Append(", shared with Classic Repair Toolbox")
+                .ToString();
+        }
 
-            List<int> wrong = Enumerable.Range(0, captures.Count).Where(at => captures[at].LooksWrong).ToList();
+        // ###########################################################################################
+        // A CAPTURE AS A WORKLOG'S PHOTO'S COMMENT (owner decision, 2026-11-27: a collection attached to a worklog is "A copy of its
+        // captures"): where it was taken, the oscilloscope's settings and the baseline's beside them, what it should read and the
+        // note typed on it - written as a note with formatting (RichNote), the names plain and the values bold, as the capture
+        // window's large picture writes settings (ComponentPaneWording.RunSettingsNamed). A character the format reads stays a
+        // character (RichNote.Serialize).
+        // ###########################################################################################
+        public static string WorklogCommentOf(LocalCapture capture)
+        {
+            ArgumentNullException.ThrowIfNull(capture);
 
-            if (wrong.Count > 0)
+            var text = new StringBuilder();
+            var styles = new List<RichNoteStyle>();
+
+            void Line(params (string Text, bool Bold)[] parts)
             {
-                text.Append("\n\nThese look wrong to me:");
-
-                if (format == ForumFormat.BbCode)
-                    text.Append("\n[list]");
-
-                foreach (int at in wrong)
+                if (text.Length > 0)
                 {
-                    LocalCapture capture = captures[at];
-                    string name = CollectionRules.WhereOf(CollectionSharing.EntryOf(capture)) + (capture.SignalName is { } signal ? $" ({signal})" : string.Empty);
-
-                    text.Append(format == ForumFormat.BbCode ? "\n[*] " : "\n- ").Append(Link($"{url}#{anchors[at]}", name));
+                    text.Append('\n');
+                    styles.Add(RichNoteStyle.None);
                 }
 
-                if (format == ForumFormat.BbCode)
-                    text.Append("\n[/list]");
+                foreach ((string words, bool bold) in parts)
+                {
+                    text.Append(words);
+                    styles.AddRange(Enumerable.Repeat(bold ? RichNoteStyle.Bold : RichNoteStyle.None, words.Length));
+                }
             }
 
-            return text.ToString();
+            string where = CollectionRules.WhereOf(CollectionSharing.EntryOf(capture));
+
+            Line((where, true), (capture.SignalName is { } signal ? $" - {signal}" : string.Empty, false));
+            Line(CollectionSharing.SettingsRuns("This capture", capture.TimePerDivision, capture.VoltsPerDivision, capture.TriggerLevel));
+
+            if (CollectionSharing.HasBaseline(capture))
+                Line(CollectionSharing.SettingsRuns("Baseline", capture.BaselineTimePerDivision, capture.BaselineVoltsPerDivision, capture.BaselineTriggerLevel));
+
+            if (capture.ExpectedReading is { } reading)
+                Line(("Expected reading: ", false), (reading, true));
+
+            if (capture.Caption is { } caption)
+            {
+                foreach (string line in caption.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
+                    Line((line, false));
+            }
+
+            return RichNote.Serialize(new RichNoteText(text.ToString(), styles));
         }
+
+        // "This capture: T/DIV **50us** | V/DIV **2V** | Trigger level **1V**" - a setting not read said so, plain.
+        private static (string Text, bool Bold)[] SettingsRuns(string whose, string? timePerDivision, string? voltsPerDivision, string? triggerLevel) =>
+        [
+            ($"{whose}: T/DIV ", false), (timePerDivision ?? "not read", timePerDivision is not null),
+            (" | V/DIV ", false), (voltsPerDivision ?? "not read", voltsPerDivision is not null),
+            (" | Trigger level ", false), (triggerLevel ?? "not read", triggerLevel is not null)
+        ];
     }
 }

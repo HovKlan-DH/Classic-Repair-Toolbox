@@ -1280,7 +1280,6 @@ body POST /api/collections | .images[].caption string
 body POST /api/collections | .images[].capturedUtc string
 body POST /api/collections | .images[].componentLabel string
 body POST /api/collections | .images[].expectedReading string
-body POST /api/collections | .images[].looksWrong boolean
 body POST /api/collections | .images[].pin string
 body POST /api/collections | .images[].sha256 string
 body POST /api/collections | .images[].signalName string
@@ -1804,7 +1803,6 @@ body PUT /api/collections/{id} | .images[].caption string
 body PUT /api/collections/{id} | .images[].capturedUtc string
 body PUT /api/collections/{id} | .images[].componentLabel string
 body PUT /api/collections/{id} | .images[].expectedReading string
-body PUT /api/collections/{id} | .images[].looksWrong boolean
 body PUT /api/collections/{id} | .images[].pin string
 body PUT /api/collections/{id} | .images[].sha256 string
 body PUT /api/collections/{id} | .images[].signalName string
@@ -1817,6 +1815,8 @@ body PUT /api/collections/{id}/comments/{commentId:long} | (root) object
 body PUT /api/collections/{id}/comments/{commentId:long} | .body string
 body PUT /api/collections/{id}/comments/{commentId:long}/hidden | (root) object
 body PUT /api/collections/{id}/comments/{commentId:long}/hidden | .hidden boolean
+body PUT /api/collections/{id}/sharing | (root) object
+body PUT /api/collections/{id}/sharing | .shared boolean
 const BoardViewContract.PathUnderApi = "usage/board-views"
 const CheckInContract.ControlField = "control"
 const CheckInContract.ControlValue = "CRT"
@@ -1935,4 +1935,5 @@ route PUT /api/collections/images/{sha256}
 route PUT /api/collections/{id}
 route PUT /api/collections/{id}/comments/{commentId:long}
 route PUT /api/collections/{id}/comments/{commentId:long}/hidden
+route PUT /api/collections/{id}/sharing
 route PUT /api/submissions/{submissionId:long}/blobs/{hash}

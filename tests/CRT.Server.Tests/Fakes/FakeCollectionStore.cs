@@ -135,14 +135,27 @@ namespace CRT.Server.Tests.Fakes
             if (!this.Collections.TryGetValue(collection.Id, out CollectionRecord? existing) || existing.IsDeleted)
                 return Task.FromResult(false);
 
-            // As the database's UPDATE: the key CRT first shared it under stays.
+            // As the database's UPDATE: the key CRT first shared it under stays, and a share brings one whose sharing was stopped
+            // back (migration 0028).
             this.Collections[collection.Id] = collection with
             {
                 ClientKey = existing.ClientKey,
                 AccountId = existing.AccountId,
                 CreatedUtc = existing.CreatedUtc,
-                RemindedUtc = collection.DeleteAtUtc != existing.DeleteAtUtc ? collection.RemindedUtc : existing.RemindedUtc
+                RemindedUtc = collection.DeleteAtUtc != existing.DeleteAtUtc ? collection.RemindedUtc : existing.RemindedUtc,
+                UnsharedUtc = null
             };
+
+            return Task.FromResult(true);
+        }
+
+        // As the database's: stopped again keeps the first stop's time.
+        public Task<bool> SetUnsharedAsync(string id, DateTimeOffset? unsharedUtc, CancellationToken cancellationToken = default)
+        {
+            if (!this.Collections.TryGetValue(id, out CollectionRecord? existing) || existing.IsDeleted)
+                return Task.FromResult(false);
+
+            this.Collections[id] = existing with { UnsharedUtc = unsharedUtc is null ? null : existing.UnsharedUtc ?? unsharedUtc };
 
             return Task.FromResult(true);
         }

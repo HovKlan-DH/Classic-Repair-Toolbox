@@ -63,6 +63,21 @@ namespace CRT
             }
         }
 
+        // ###########################################################################################
+        // A link of interest added by something else than its "Add link" - a collection attached to a new worklog
+        // (CollectionWorklogAttach.ToEditor). An address the worklog links to already is not added twice.
+        // ###########################################################################################
+        public void AttachLink(string headline, string url)
+        {
+            if (this.thisEntry.Links.Any(link => string.Equals(link.Url, url, StringComparison.OrdinalIgnoreCase)))
+                return;
+
+            this.thisEntry.Links.Add(new WorklogLinkRecord { Id = RecordIds.Next(this.thisEntry.Links.Select(l => l.Id)), Headline = headline, Url = url });
+            this.EnsureListSectionExpanded("EditorLinksHeader");
+            this.RefreshLinkRows();
+            this.PersistEntrySilently();
+        }
+
         private void OnDeleteLinkClick(object? sender, RoutedEventArgs e)
         {
             if (sender is Button { Tag: int id })

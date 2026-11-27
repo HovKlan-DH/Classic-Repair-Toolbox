@@ -136,7 +136,7 @@ namespace CRT
             this.InitializeComponent();
 
             this.Opened += (_, _) =>
-                Dispatcher.UIThread.Post(() => this.CommentTextBox.Focus(), DispatcherPriority.Background);
+                Dispatcher.UIThread.Post(() => (this.CommentPanel.IsVisible ? this.CommentTextBox : (Control)this.EntryComboBox).Focus(), DispatcherPriority.Background);
 
             this.AddHandler(KeyDownEvent, this.OnWindowPreviewKeyDown, RoutingStrategies.Tunnel);
 
@@ -194,7 +194,39 @@ namespace CRT
                 : string.Empty;
 
             this.LoadPreview();
+            this.FillEntries(workbook, entries, componentLabel, offerNewEntry: true);
+        }
 
+        // ###########################################################################################
+        // THE SAME DIALOG FOR A WHOLE OSCILLOSCOPE COLLECTION (owner request, 2026-11-27; CollectionWorklogAttach): its first
+        // capture shown, `summary` saying what goes in, and NO comment box - each capture comes with its own comment. The
+        // caller copies the captures in. `offerNewEntry`: "Create new worklog" only while the collection's board is the one
+        // shown - a new worklog is filed against that board's schematic image.
+        // ###########################################################################################
+        public void InitializeForCollection(
+            string? previewPath,
+            string summary,
+            WorkbookRecord? workbook,
+            IReadOnlyList<WorklogEntryRecord>? entries,
+            string? componentLabel,
+            bool offerNewEntry)
+        {
+            this.Title = "Attach collection to worklog";
+            this.HeaderText.Text = "Attach collection to worklog";
+            this.ImageLabel.Text = "Collection";
+            this.CommentPanel.IsVisible = false;
+
+            this.thisSourcePath = previewPath ?? string.Empty;
+            this.SelectedFileText.Text = summary;
+
+            this.LoadPreview();
+            this.FillEntries(workbook, entries, componentLabel, offerNewEntry);
+        }
+
+        // The workbook named and its worklogs listed - component matches first, under headings - with "Create new worklog" last
+        // when offered.
+        private void FillEntries(WorkbookRecord? workbook, IReadOnlyList<WorklogEntryRecord>? entries, string? componentLabel, bool offerNewEntry)
+        {
             this.WorkbookText.Text = WorklogAttachTargets.FormatWorkbookLabel(workbook);
 
             var targets = WorklogAttachTargets.Rank(entries, componentLabel);
@@ -231,7 +263,10 @@ namespace CRT
 
             items.AddRange(others.Select(BuildChoice));
 
-            items.Add(NewEntryChoice);
+            if (offerNewEntry)
+            {
+                items.Add(NewEntryChoice);
+            }
 
             // Set BEFORE ItemsSource, since assigning it realises containers immediately and the
             // hook reads this flag to decide whether to indent them.
@@ -283,6 +318,9 @@ namespace CRT
         {
             bool isNewEntry = this.EntryComboBox.SelectedItem is EntryChoice choice && choice.Target == null;
             this.AttachButton.Content = isNewEntry ? "Create worklog" : "Attach to existing worklog";
+
+            // Nothing to pick - a collection's list with no worklog and no "Create new worklog" - is nothing to attach to.
+            this.AttachButton.IsEnabled = this.EntryComboBox.SelectedItem is EntryChoice;
         }
 
         private void OnEntrySelectionChanged(object? sender, SelectionChangedEventArgs e) =>

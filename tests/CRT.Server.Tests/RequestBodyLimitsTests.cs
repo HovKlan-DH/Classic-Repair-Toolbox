@@ -157,6 +157,7 @@ namespace CRT.Server.Tests
             { "PUT", "/api/collections/images/{sha256}", RequestBodyLimits.CollectionImageBytes },
             { "POST", "/api/collections", RequestBodyLimits.CollectionContentBytes },
             { "PUT", "/api/collections/{id}", RequestBodyLimits.CollectionContentBytes },
+            { "PUT", "/api/collections/{id}/sharing", RequestBodyLimits.DefaultBytes },
 
             // Comments on a collection's captures (step 3): from CRT, a comment's text or a mark - at the default; from the
             // page, a form with a comment's text, or only its token.

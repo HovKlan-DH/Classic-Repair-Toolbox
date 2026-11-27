@@ -19,8 +19,9 @@ namespace CRT.Server.Handlers.Collections
     //     so a wrong oscilloscope setup shows before anybody has to ask.
     //   - Every capture has its own anchor ("#U7-12"), so a forum reply can point at one pin.
     //
-    // PURE: a collection in, a page out. Every word anybody typed is HTML-ENCODED here (Encode); the page carries no script,
-    // and its one style block is allowed by its hash (StyleHash). Search engines are asked to keep nothing (noindex) - a
+    // PURE: a collection in, a page out. Every word anybody typed is HTML-ENCODED here (Encode); the page's one style block and
+    // its one small script - the viewer's keys, fixed text with nothing typed in it - are allowed by their hashes (StyleHash,
+    // ScriptHash), and nothing else may run. Search engines are asked to keep nothing (noindex) - a
     // collection is reached through its link alone; the one list of them, "Your collections" (List, step 4), shows a reader
     // only their own and those they commented on, and every one to the administrator alone.
     // ###########################################################################################
@@ -40,6 +41,15 @@ namespace CRT.Server.Handlers.Collections
         // The page of a collection shown. `baselineUrl` gives the address of a capture's baseline picture in the published data,
         // or null when it is not there.
         // ###########################################################################################
+        // ###########################################################################################
+        // *** THE LOOK IS THE OWNER'S OSCILLOSCOPE NETWORK CAPTURE GALLERY'S (owner request, 2026-11-27: "find heavy inspiration in
+        // my other project ... a nice dark view with nice UI functionalities"). *** A dark page under a frosted bar - CRT on the
+        // left, the board and the red "Will be deleted" badge in the middle, "Download all" on the right - then the captures as a
+        // grid of cards, each opening the VIEWER: the capture large, previous and next, its place in the list, "Download".
+        // The viewer is the page's own CSS (:target), so it works with no script at all; the one small script (Script, allowed
+        // by its hash) only adds the keys - the arrows and Esc. Under the grid each capture's section: beside the baseline,
+        // their settings, the note and the comments.
+        // ###########################################################################################
         public static string Page(string siteBaseUrl, CollectionRecord collection, Func<CollectionBaseline, string?> baselineUrl, CollectionPageView? view = null)
         {
             view ??= CollectionPageView.SignedOut;
@@ -48,11 +58,12 @@ namespace CRT.Server.Handlers.Collections
             IReadOnlyList<string> anchors = CollectionRules.AnchorsOf(collection.Images.Select(image => image.Entry).ToList());
             var body = new StringBuilder();
 
-            body.Append($"<p class=\"board\">{Encode(CollectionPages.BoardLine(collection))}</p>");
+            body.Append("<section class=\"panel intro\">");
+            body.Append($"<h1>{Encode(name)}</h1>");
             body.Append("<p class=\"facts\">")
                 .Append($"Collection <code>{Encode(collection.Id)}</code>")
                 .Append($" | Shared {Encode(CollectionRules.DateText(collection.CreatedUtc))}")
-                .Append($" | Deleted on {Encode(CollectionRules.DateText(collection.DeleteAtUtc))}")
+                .Append($" | {CollectionPages.Counted(collection.Images.Count, "capture")}")
                 .Append("</p>");
 
             if (view.Viewer is { } viewer)
@@ -61,11 +72,11 @@ namespace CRT.Server.Handlers.Collections
             if (view.PageErrors.Count > 0)
                 body.Append("<div class=\"errors\" role=\"alert\">" + string.Concat(view.PageErrors.Select(error => $"<p>{Encode(error)}</p>")) + "</div>");
 
-            // Shown to the administrator alone (CollectionFlows.FindShownToAsync).
+            // Shown to the administrator alone - and, sharing stopped, to its owner (CollectionFlows.FindShownToAsync).
             if (view.Offline != CollectionOffline.No)
             {
                 body.Append("<div class=\"errors\" role=\"status\"><p>")
-                    .Append(Encode(view.Offline == CollectionOffline.OwnerGone ? CollectionPages.OfflineOwnerGone : CollectionPages.OfflineOwnerLocked))
+                    .Append(Encode(CollectionPages.OfflineLine(view.Offline, ownerReads: view.Viewer is { } reader && reader.Id == collection.AccountId)))
                     .Append("</p></div>");
             }
 
@@ -83,31 +94,9 @@ namespace CRT.Server.Handlers.Collections
                 body.Append("</p>");
             }
 
-            body.Append("<nav class=\"contents\"><h2>Captures</h2><ol>");
+            body.Append("</section>");
 
-            for (int i = 0; i < collection.Images.Count; i++)
-            {
-                CollectionImageEntry image = collection.Images[i].Entry;
-
-                body.Append($"<li><a href=\"#{anchors[i]}\">{Encode(CollectionRules.WhereOf(image))}</a>");
-
-                if (image.SignalName is { } signal)
-                    body.Append($" {Encode(signal)}");
-
-                if (image.LooksWrong)
-                    body.Append(" <span class=\"flag\">Looks wrong</span>");
-
-                // The very comments the capture's own section lists for this reader - the owner's and the administrator's count
-                // hidden ones too, as that section does (code review, 2026-11-27: the two counts differed).
-                int comments = view.Comments.Count(comment => comment.ImageSha256 == image.Sha256);
-
-                if (comments > 0)
-                    body.Append($" <span class=\"muted\">({comments} comment{(comments == 1 ? string.Empty : "s")})</span>");
-
-                body.Append("</li>");
-            }
-
-            body.Append("</ol></nav>");
+            body.Append(CollectionPages.Gallery(siteBaseUrl, collection, anchors, view));
 
             for (int i = 0; i < collection.Images.Count; i++)
             {
@@ -121,6 +110,17 @@ namespace CRT.Server.Handlers.Collections
                     baselineUrl,
                     view));
             }
+
+            body.Append(CollectionPages.Viewers(siteBaseUrl, collection, anchors, baselineUrl));
+
+            string middle =
+                $"<div class=\"meta-line1\">{Encode(CollectionPages.BoardLine(collection))}</div>" +
+                $"<div class=\"meta-line2\"><span class=\"badge-red\">Will be deleted <b>{Encode(CollectionRules.DateText(collection.DeleteAtUtc))}</b></span></div>";
+
+            string actions = collection.Images.Count == 0
+                ? string.Empty
+                : $"<a class=\"btn\" href=\"{Encode(CollectionPages.DownloadUrl(siteBaseUrl, collection.Id))}\">" +
+                  $"Download {CollectionPages.Counted(collection.Images.Count, "capture")}</a>";
 
             string description2 =
                 $"{collection.Images.Count} oscilloscope capture{(collection.Images.Count == 1 ? string.Empty : "s")} of " +
@@ -144,34 +144,245 @@ namespace CRT.Server.Handlers.Collections
                     .Append("<meta name=\"twitter:card\" content=\"summary_large_image\">");
             }
 
-            return CollectionPages.Layout(siteBaseUrl, name, body.ToString(), preview.ToString());
+            return CollectionPages.Layout(siteBaseUrl, name, body.ToString(), preview.ToString(), middle: middle, actions: actions, panelled: false);
         }
 
-        // A collection deleted - when, and why in a few plain words. Its link stays answerable, so a forum reader years later
-        // learns the page went on purpose.
-        public static string Deleted(string siteBaseUrl, CollectionRecord collection)
+        // "Download all" - every capture in one ZIP (CollectionPageEndpoints.DownloadAsync).
+        public static string DownloadUrl(string siteBaseUrl, string id) => $"{CollectionRules.PageUrl(siteBaseUrl, id)}/download";
+
+        // ###########################################################################################
+        // THE GRID OF CAPTURES (the gallery's cards): each picture opens the viewer, its name goes to its section below. Three or
+        // fewer get larger cards, one a single wide card, as the gallery's few do.
+        // ###########################################################################################
+        private static string Gallery(string siteBaseUrl, CollectionRecord collection, IReadOnlyList<string> anchors, CollectionPageView view)
         {
-            string why = collection.DeletedReason switch
+            if (collection.Images.Count == 0)
+                return "<section class=\"panel\"><p class=\"muted\">No captures.</p></section>";
+
+            string grid = collection.Images.Count switch
             {
-                CollectionDeletedReasons.Expired => "Its time was up - it was kept for as long as the person who shared it chose.",
-                CollectionDeletedReasons.Owner => "The person who shared it deleted it.",
-                _ => "It was removed."
+                1 => "grid grid-few grid-single",
+                <= 3 => "grid grid-few",
+                _ => "grid"
             };
 
-            return CollectionPages.Layout(
-                siteBaseUrl,
-                "This collection was deleted",
-                $"<p>Collection <code>{Encode(collection.Id)}</code> was deleted on " +
-                $"{Encode(CollectionRules.DateText(collection.DeletedUtc ?? collection.DeleteAtUtc))}. {Encode(why)}</p>");
+            var html = new StringBuilder($"<div class=\"{grid}\">");
+
+            for (int i = 0; i < collection.Images.Count; i++)
+            {
+                CollectionImageEntry image = collection.Images[i].Entry;
+                string where = CollectionRules.WhereOf(image);
+
+                // The very comments the capture's own section lists for this reader - the owner's and the administrator's count
+                // hidden ones too, as that section does (code review, 2026-11-27: the two counts differed).
+                int comments = view.Comments.Count(comment => comment.ImageSha256 == image.Sha256);
+
+                html.Append("<figure class=\"card\">")
+                    .Append($"<a class=\"thumb\" href=\"#{CollectionPages.ViewerId(anchors[i])}\" aria-label=\"{Encode($"Open {where} large")}\">")
+                    .Append($"<img class=\"thumb-img\" src=\"{Encode(CollectionPages.ImageUrl(siteBaseUrl, collection.Id, image.Sha256))}\" ")
+                    .Append($"width=\"{collection.Images[i].Width}\" height=\"{collection.Images[i].Height}\" loading=\"lazy\" alt=\"{Encode($"Oscilloscope capture of {where}")}\">")
+                    .Append("</a><figcaption class=\"caption\">")
+                    .Append($"<a class=\"cap-title\" href=\"#{anchors[i]}\">{Encode(where)}</a>")
+                    .Append("<div class=\"cap-sub\">");
+
+                var sub = new List<string>();
+
+                if (image.SignalName is { } signal)
+                    sub.Add(Encode(signal));
+
+                if (comments > 0)
+                    sub.Add(CollectionPages.Counted(comments, "comment"));
+
+                html.Append(sub.Count == 0 ? "&nbsp;" : string.Join(" | ", sub))
+                    .Append("</div></figcaption></figure>");
+            }
+
+            return html.Append("</div>").ToString();
         }
 
+        // ###########################################################################################
+        // THE VIEWER - one per capture, and one per baseline shown - opened by its id in the address (#view.U7-12), closed by any
+        // other ("#viewer.closed", no element's, so the page does not move). The ids hold a ".", which a capture's anchor never
+        // does (letters, digits and "-" - CollectionRules.AnchorsOf), so none can be taken for another. Previous and next go
+        // round, as the gallery's did.
+        // ###########################################################################################
+        public const string ViewerClosed = "viewer.closed";
+
+        public static string ViewerId(string anchor) => $"view.{anchor}";
+
+        public static string BaselineViewerId(string anchor) => $"base.{anchor}";
+
+        // A capture saved from the viewer, or in "Download all"'s ZIP: its place on the page and its anchor - "001-U7-12.png".
+        public static string CaptureFileName(int index, string anchor) =>
+            $"{(index + 1).ToString("D3", System.Globalization.CultureInfo.InvariantCulture)}-{anchor}.png";
+
+        private static string Viewers(string siteBaseUrl, CollectionRecord collection, IReadOnlyList<string> anchors, Func<CollectionBaseline, string?> baselineUrl)
+        {
+            var html = new StringBuilder();
+            int count = collection.Images.Count;
+
+            for (int i = 0; i < count; i++)
+            {
+                CollectionImageEntry image = collection.Images[i].Entry;
+                string where = CollectionRules.WhereOf(image) + (image.SignalName is { } signal ? $" - {signal}" : string.Empty);
+                string picture = CollectionPages.ImageUrl(siteBaseUrl, collection.Id, image.Sha256);
+
+                html.Append(CollectionPages.Viewer(
+                    CollectionPages.ViewerId(anchors[i]),
+                    picture,
+                    $"Oscilloscope capture of {CollectionRules.WhereOf(image)}",
+                    where,
+                    CollectionPages.SettingsText(image.TimePerDivision, image.VoltsPerDivision, image.TriggerLevel),
+                    previous: count > 1 ? CollectionPages.ViewerId(anchors[(i - 1 + count) % count]) : null,
+                    next: count > 1 ? CollectionPages.ViewerId(anchors[(i + 1) % count]) : null,
+                    counter: $"{i + 1} / {count}",
+                    downloadName: CollectionPages.CaptureFileName(i, anchors[i])));
+
+                if (image.Baseline is { Sha256: not null } baseline && baselineUrl(baseline) is { } baselinePicture)
+                {
+                    html.Append(CollectionPages.Viewer(
+                        CollectionPages.BaselineViewerId(anchors[i]),
+                        baselinePicture,
+                        $"Classic Repair Toolbox's baseline of {CollectionRules.WhereOf(image)}",
+                        $"{where} - Classic Repair Toolbox's baseline",
+                        CollectionPages.SettingsText(baseline.TimePerDivision, baseline.VoltsPerDivision, baseline.TriggerLevel),
+                        previous: null,
+                        next: null,
+                        counter: string.Empty,
+                        downloadName: null));
+                }
+            }
+
+            return html.ToString();
+        }
+
+        private static string Viewer(string id, string picture, string alt, string title, string settings, string? previous, string? next, string counter, string? downloadName) =>
+            $"<div class=\"modal\" id=\"{Encode(id)}\" role=\"dialog\" aria-modal=\"true\" aria-label=\"{Encode(title)}\">" +
+            $"<a class=\"backdrop\" href=\"#{CollectionPages.ViewerClosed}\" aria-label=\"Close\"></a>" +
+            "<div class=\"dialog\">" +
+            $"<a class=\"iconbtn close\" href=\"#{CollectionPages.ViewerClosed}\" title=\"Close (Esc)\">&#215;</a>" +
+            "<div class=\"viewer\">" +
+            (previous is null ? "<span></span>" : $"<a class=\"nav prev\" href=\"#{Encode(previous)}\" title=\"Previous (left arrow)\">&#8249;</a>") +
+            $"<div class=\"stage\"><img src=\"{Encode(picture)}\" loading=\"lazy\" alt=\"{Encode(alt)}\"></div>" +
+            (next is null ? "<span></span>" : $"<a class=\"nav next\" href=\"#{Encode(next)}\" title=\"Next (right arrow)\">&#8250;</a>") +
+            "</div><div class=\"footer\"><div class=\"title\">" +
+            $"<div class=\"m-name\">{Encode(title)}</div>" +
+            $"<div class=\"m-time\">{Encode(settings)}</div></div>" +
+            "<div class=\"actions\">" +
+            (downloadName is null ? string.Empty : $"<a class=\"btn\" href=\"{Encode(picture)}\" download=\"{Encode(downloadName)}\">Download</a>") +
+            (counter.Length == 0 ? string.Empty : $"<span class=\"counter\">{Encode(counter)}</span>") +
+            "</div></div></div></div>";
+
+        // "T/DIV 50us | V/DIV 2V | Trigger level 1V" - what was read back, the rest left out.
+        private static string SettingsText(string? timePerDivision, string? voltsPerDivision, string? triggerLevel)
+        {
+            var parts = new List<string>();
+
+            if (timePerDivision is not null)
+                parts.Add($"T/DIV {timePerDivision}");
+
+            if (voltsPerDivision is not null)
+                parts.Add($"V/DIV {voltsPerDivision}");
+
+            if (triggerLevel is not null)
+                parts.Add($"Trigger level {triggerLevel}");
+
+            return string.Join(" | ", parts);
+        }
+
+        // ###########################################################################################
+        // *** A COLLECTION DELETED KEEPS ITS PAGE FOR GOOD (owner request, 2026-11-27: "replaced by a standard web page, explaining
+        // the deletion period has passed etc. ... and do keep this page forever"). *** Its row stays in the database - only its
+        // words, captures and comments go (ICollectionStore.MarkDeletedAsync) - so the link a forum post holds answers years
+        // later: what the page was, when and why it went, that it went on purpose, and what CRT is. It names nobody, as the
+        // page did not.
+        // ###########################################################################################
+        public const string DeletedTitle = "This collection has been deleted";
+
+        public const string DeletedWhatItWas =
+            "This page showed an oscilloscope collection: captures of a vintage computer's signals, taken with Classic Repair " +
+            "Toolbox and shared so that others could help read them.";
+
+        public const string DeletedForGood =
+            "This page stays here for good, so anybody following a link to it knows the collection went on purpose - and if you came " +
+            "from a forum post, the discussion there may still say what was found.";
+
+        public static string DeletedWhy(CollectionRecord collection)
+        {
+            string when = CollectionRules.DateText(collection.DeletedUtc ?? collection.DeleteAtUtc);
+
+            return collection.DeletedReason switch
+            {
+                CollectionDeletedReasons.Expired =>
+                    $"It was deleted on {when}, as the time it was shared for had passed. Whoever shares a collection chooses how long " +
+                    "it stays online - from one month to five years - and when that time is up, its captures and comments go.",
+                CollectionDeletedReasons.Owner =>
+                    $"Its owner deleted it on {when}, and its captures and comments went with it.",
+                CollectionDeletedReasons.Administrator =>
+                    $"It was taken down by the site's administrator on {when}, and its captures and comments went with it.",
+                _ => $"It was deleted on {when}."
+            };
+        }
+
+        public static string Deleted(string siteBaseUrl, CollectionRecord collection) =>
+            CollectionPages.Layout(
+                siteBaseUrl,
+                CollectionPages.DeletedTitle,
+                $"<p class=\"lead\">{Encode(CollectionPages.DeletedWhatItWas)}</p>" +
+                $"<p>{Encode(CollectionPages.DeletedWhy(collection))}</p>" +
+                $"<p>{Encode(CollectionPages.DeletedForGood)}</p>" +
+                $"<p class=\"facts\">Collection <code>{Encode(collection.Id)}</code></p>" +
+                CollectionPages.WhatCrtIs(),
+                middle: "<div class=\"meta-line2\"><span class=\"badge-red badge-large\">Deleted " +
+                        $"<b>{Encode(CollectionRules.DateText(collection.DeletedUtc ?? collection.DeleteAtUtc))}</b></span></div>");
+
+        // ###########################################################################################
+        // ITS OWNER STOPPED SHARING IT (migration 0028) - what everybody but its owner and the administrator sees: nothing of it,
+        // and that the page may come back under this same link.
+        // ###########################################################################################
+        public const string SharingStoppedTitle = "This collection is not shared at the moment";
+
+        public const string SharingStoppedText =
+            "Its owner has stopped sharing it for now, so its captures and comments are not shown. If they share it again, it comes " +
+            "back under this same link - so try it again later.";
+
+        public static string SharingStopped(string siteBaseUrl, CollectionRecord collection) =>
+            CollectionPages.Layout(
+                siteBaseUrl,
+                CollectionPages.SharingStoppedTitle,
+                $"<p class=\"lead\">{Encode(CollectionPages.SharingStoppedText)}</p>" +
+                $"<p class=\"facts\">Collection <code>{Encode(collection.Id)}</code></p>" +
+                CollectionPages.WhatCrtIs(),
+                middle: "<div class=\"meta-line2\"><span class=\"badge-grey badge-large\">Not shared at the moment</span></div>");
+
+        // What Classic Repair Toolbox is, for a reader who knows nothing of it.
+        private static string WhatCrtIs() =>
+            "<h2>What is Classic Repair Toolbox?</h2>" +
+            "<p>A free program that helps hobbyists repair vintage computers - schematics, component data and oscilloscope " +
+            "baselines for Commodore, Amstrad and ZX Spectrum boards, and the captures of your own oscilloscope beside them. " +
+            $"<a href=\"{Encode(EmailTemplates.CrtDownloadUrl)}\">Download it</a>.</p>";
+
         // A collection offline for everybody else, as the administrator sees it - nobody can comment on it, and its comments are
-        // still hidden or deleted here.
+        // still hidden or deleted here - or, its sharing stopped, as its owner and the administrator see it.
         public const string OfflineOwnerLocked =
             "Offline: its owner's account is locked, so only you see this page. Nobody can comment on it until the account is unlocked.";
 
         public const string OfflineOwnerGone =
             "Offline: its owner has no account any more, so only you see this page. Nobody can comment on it.";
+
+        public const string OfflineSharingStoppedOwner =
+            "Not shared: you stopped sharing it, so only you and the administrator see this page. \"Share\" in CRT brings it back " +
+            "under this same link.";
+
+        public const string OfflineSharingStoppedAdministrator =
+            "Not shared: its owner stopped sharing it, so only its owner and you see this page. Nobody can comment on it meanwhile.";
+
+        private static string OfflineLine(CollectionOffline offline, bool ownerReads) => offline switch
+        {
+            CollectionOffline.OwnerGone => CollectionPages.OfflineOwnerGone,
+            CollectionOffline.SharingStopped => ownerReads ? CollectionPages.OfflineSharingStoppedOwner : CollectionPages.OfflineSharingStoppedAdministrator,
+            _ => CollectionPages.OfflineOwnerLocked
+        };
 
         public static string NotFound(string siteBaseUrl) =>
             CollectionPages.Layout(
@@ -195,6 +406,8 @@ namespace CRT.Server.Handlers.Collections
         public const string OwnerLockedFlag = "Owner locked - offline";
 
         public const string OwnerGoneFlag = "No owner account - offline";
+
+        public const string NotSharedFlag = "Not shared - offline";
 
         // ###########################################################################################
         // `locking` is the account the administrator asked to lock (?lock=<id>) - asked first, as a page of its own state - and
@@ -339,6 +552,10 @@ namespace CRT.Server.Handlers.Collections
                 if (flag is not null)
                     html.Append($" <span class=\"flag\">{Encode(flag)}</span>");
 
+                // Its owner stopped sharing it - offline to everybody but its owner and the administrator (migration 0028).
+                if (collection.IsSharingStopped)
+                    html.Append($" <span class=\"flag\">{CollectionPages.NotSharedFlag}</span>");
+
                 html.Append("<br><span class=\"muted\">")
                     .Append(Encode(CollectionPages.BoardLine(collection)))
                     .Append($" | {CollectionPages.Counted(collection.ImageCount, "capture")} | {CollectionPages.Counted(collection.CommentCount, "comment")}")
@@ -459,25 +676,25 @@ namespace CRT.Server.Handlers.Collections
             string? baselinePicture = baseline is { Sha256: not null } ? baselineUrl(baseline) : null;
             var html = new StringBuilder();
 
-            html.Append($"<section class=\"capture\" id=\"{anchor}\">");
+            html.Append($"<section class=\"panel capture\" id=\"{anchor}\">");
             html.Append($"<h2>{Encode(where)}");
 
             if (image.SignalName is { } signal)
                 html.Append($" <span class=\"signal\">{Encode(signal)}</span>");
 
-            if (image.LooksWrong)
-                html.Append(" <span class=\"flag\">Looks wrong</span>");
-
+            // Each picture opens the viewer (Viewers), as the grid's cards do.
             html.Append("</h2><div class=\"pair\">");
             html.Append("<figure>")
-                .Append($"<img src=\"{Encode(CollectionPages.ImageUrl(siteBaseUrl, collection.Id, image.Sha256))}\" width=\"{capture.Width}\" height=\"{capture.Height}\" alt=\"{Encode($"Oscilloscope capture of {where}")}\">")
-                .Append("<figcaption>This capture</figcaption></figure>");
+                .Append($"<a class=\"framed\" href=\"#{CollectionPages.ViewerId(anchor)}\">")
+                .Append($"<img src=\"{Encode(CollectionPages.ImageUrl(siteBaseUrl, collection.Id, image.Sha256))}\" width=\"{capture.Width}\" height=\"{capture.Height}\" loading=\"lazy\" alt=\"{Encode($"Oscilloscope capture of {where}")}\">")
+                .Append("</a><figcaption>This capture</figcaption></figure>");
 
             if (baselinePicture is not null)
             {
                 html.Append("<figure>")
-                    .Append($"<img src=\"{Encode(baselinePicture)}\" alt=\"{Encode($"Classic Repair Toolbox's baseline of {where}")}\">")
-                    .Append("<figcaption>Classic Repair Toolbox's baseline</figcaption></figure>");
+                    .Append($"<a class=\"framed\" href=\"#{CollectionPages.BaselineViewerId(anchor)}\">")
+                    .Append($"<img src=\"{Encode(baselinePicture)}\" loading=\"lazy\" alt=\"{Encode($"Classic Repair Toolbox's baseline of {where}")}\">")
+                    .Append("</a><figcaption>Classic Repair Toolbox's baseline</figcaption></figure>");
             }
 
             html.Append("</div>");
@@ -662,7 +879,19 @@ namespace CRT.Server.Handlers.Collections
         private static string LinkText(string link) =>
             Uri.TryCreate(link, UriKind.Absolute, out Uri? uri) ? (uri.Host + uri.PathAndQuery).TrimEnd('/') : link;
 
-        private static string Layout(string siteBaseUrl, string title, string body, string head = "", string kind = "Oscilloscope collection")
+        // ###########################################################################################
+        // Every page of collections: the frosted bar - CRT on the left, `middle` (HTML) in the middle, `actions` (HTML) on the
+        // right - then the page. `panelled`: the title and `body` in one panel; else `body` is the page's own panels.
+        // ###########################################################################################
+        private static string Layout(
+            string siteBaseUrl,
+            string title,
+            string body,
+            string head = "",
+            string kind = "Oscilloscope collection",
+            string middle = "",
+            string actions = "",
+            bool panelled = true)
         {
             string site = Uri.TryCreate(siteBaseUrl, UriKind.Absolute, out Uri? uri) ? uri.GetLeftPart(UriPartial.Authority) + "/" : "/";
 
@@ -672,67 +901,142 @@ namespace CRT.Server.Handlers.Collections
                 $"<title>{Encode(title)} - Classic Repair Toolbox</title>" +
                 head +
                 $"<style>{CollectionPages.Css}</style></head><body id=\"top\">" +
-                $"<header><a href=\"{Encode(site)}\">Classic Repair Toolbox</a><span>{Encode(kind)}</span></header>" +
-                $"<main><h1>{Encode(title)}</h1>{body}</main>" +
+                "<header class=\"topbar\">" +
+                $"<div class=\"brand\"><a class=\"brand-title\" href=\"{Encode(site)}\">Classic Repair Toolbox</a>" +
+                $"<div class=\"brand-sub\">{Encode(kind)}</div></div>" +
+                $"<div class=\"meta\">{middle}</div>" +
+                $"<div class=\"header-actions\">{actions}</div>" +
+                "</header>" +
+                "<main class=\"container\">" +
+                (panelled ? $"<section class=\"panel\"><h1>{Encode(title)}</h1>{body}</section>" : body) +
+                "</main>" +
                 "<footer><p>Shared with Classic Repair Toolbox, which helps hobbyists repair vintage computers. " +
                 $"<a href=\"{Encode(EmailTemplates.CrtDownloadUrl)}\">Download it</a> - it is free.</p>" +
                 $"<p>Something on this page that should not be here? Mail <a href=\"mailto:{Encode(EmailTemplates.ContactAddress)}\">" +
                 $"{Encode(EmailTemplates.ContactAddress)}</a> with its address.</p></footer>" +
+                $"<script>{CollectionPages.Script}</script>" +
                 "</body></html>";
         }
 
         private static string Encode(string? text) => WebUtility.HtmlEncode(text ?? string.Empty);
 
         // ###########################################################################################
-        // The page's one style block, light and dark by the reader's system - the account pages' colors. Its hash goes into the
-        // Content-Security-Policy, which allows no other style and no script at all.
+        // The page's one style block - the owner's capture gallery's look (Page says it): a dark slate page lit from its top
+        // left, a frosted bar, light rounded cards that lift under the pointer, the viewer. Its hash goes into the
+        // Content-Security-Policy, which allows no other style. A phone gets the bar stacked and not fixed.
         // ###########################################################################################
         public const string Css =
-            ":root{color-scheme:light dark;--bg:#f4f5f7;--card:#ffffff;--fg:#1d1f23;--muted:#555b66;--edge:#d5d8de;--link:#2a78d6;--flag:#bc5454;--diff:#fff3cd;--go:#497f54;--fail:#bc5454}" +
-            "@media (prefers-color-scheme:dark){:root{--bg:#1b1d21;--card:#25282d;--fg:#e6e8eb;--muted:#a9afb8;--edge:#3a3e45;--link:#7fb2f0;--flag:#e08a8a;--diff:#4a4020;--go:#497f54;--fail:#bc5454}}" +
-            "body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,-apple-system,\"Segoe UI\",Roboto,sans-serif}" +
-            "header{display:flex;justify-content:space-between;gap:12px;padding:14px 20px;border-bottom:1px solid var(--edge);background:var(--card)}" +
-            "header a{color:var(--fg);font-weight:600;text-decoration:none}header span{color:var(--muted)}" +
-            "main{max-width:1100px;margin:24px auto;padding:24px;background:var(--card);border:1px solid var(--edge);border-radius:8px}" +
-            "h1{font-size:1.5em;margin:0 0 6px}h2{font-size:1.15em;margin:0 0 10px}p{margin:0 0 12px}" +
-            ".board{font-size:1.1em;margin-bottom:4px}.facts{color:var(--muted);font-size:.9em}" +
-            ".text{white-space:pre-wrap;overflow-wrap:anywhere}.discussion{overflow-wrap:anywhere}a{color:var(--link)}code{font-size:.95em}" +
-            ".contents ol{margin:0 0 8px;padding-left:24px;columns:2 260px}.contents h2{margin-top:20px}" +
-            ".capture{border-top:1px solid var(--edge);padding-top:20px;margin-top:24px}" +
+            ":root{--bg0:#eef3f9;--bg1:#303841;--card:#e3e6ea;--card2:#f4f6f8;--text:#0f172a;--muted:#475467;" +
+            "--border:rgba(15,23,42,.12);--border2:rgba(15,23,42,.18);--link:#075985;--red:#bc5454;--go:#497f54;--diff:#fff3cd;" +
+            "--shadow:0 12px 30px rgba(15,23,42,.18);--radius:14px;--topbar-h:74px}" +
+            "*{box-sizing:border-box}html{scroll-padding-top:calc(var(--topbar-h) + 16px)}" +
+            "body{margin:0;min-height:100vh;color:var(--text);font:16px/1.5 ui-sans-serif,system-ui,-apple-system,\"Segoe UI\",Roboto,Arial,sans-serif;" +
+            "background:radial-gradient(900px 480px at 20% 0%,#dfeaf9 0%,var(--bg1) 55%),linear-gradient(180deg,var(--bg1),var(--bg0));background-attachment:fixed}" +
+            "body:has(.modal:target){overflow:hidden}a{color:var(--link)}" +
+            ".topbar{position:fixed;top:0;left:0;right:0;z-index:50;height:var(--topbar-h);padding:0 20px;display:grid;grid-template-columns:1fr auto 1fr;" +
+            "align-items:center;gap:14px;background:rgba(255,255,255,.72);border-bottom:1px solid var(--border);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}" +
+            ".brand{grid-column:1;justify-self:start;display:flex;flex-direction:column;gap:2px;min-width:0}" +
+            ".brand-title{font-size:20px;font-weight:750;letter-spacing:.2px;line-height:1.15;white-space:nowrap;color:var(--text);text-decoration:none}" +
+            ".brand-title:hover{text-decoration:underline}.brand-sub{font-size:14px;color:var(--muted);line-height:1.15;white-space:nowrap}" +
+            ".meta{grid-column:2;justify-self:center;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;white-space:nowrap;font-size:12px;color:var(--muted)}" +
+            ".meta-line1{font-size:18px;color:rgba(15,23,42,.78)}.meta-line2{font-size:14px}.header-actions{grid-column:3;justify-self:end;display:flex;align-items:center;gap:10px}" +
+            ".badge-red,.badge-grey{display:inline-block;padding:.35em .65em;font-size:.85em;line-height:1.1;border-radius:.375rem;color:#fff;" +
+            "border:1px solid rgba(0,0,0,.08);box-shadow:0 1px 2px rgba(0,0,0,.1)}.badge-red{background:var(--red)}.badge-grey{background:#5b6472}" +
+            ".badge-large{font-size:1.3em;padding:.45em .8em}" +
+            ".btn{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;border:1px solid rgba(2,132,199,.25);" +
+            "background:rgba(2,132,199,.12);color:var(--link);padding:8px 12px;border-radius:10px;font-weight:650;white-space:nowrap}" +
+            ".btn:hover{border-color:rgba(2,132,199,.38);background:rgba(2,132,199,.16)}" +
+            ".container{max-width:1200px;margin:0 auto;padding:calc(var(--topbar-h) + 18px) 18px 10px}" +
+            ".panel{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px 22px;margin:0 0 18px}" +
+            "h1{font-size:1.5em;margin:0 0 6px;line-height:1.25}h2{font-size:1.15em;margin:0 0 10px}h3{font-size:1em;margin:0 0 8px}p{margin:0 0 12px}" +
+            ".lead{font-size:1.1em}.facts{color:var(--muted);font-size:.9em}.muted{color:var(--muted)}" +
+            "code{font-size:.95em;background:rgba(2,132,199,.08);border:1px solid rgba(2,132,199,.18);padding:1px 6px;border-radius:999px;color:var(--link)}" +
+            ".text{white-space:pre-wrap;overflow-wrap:anywhere}.discussion{overflow-wrap:anywhere}" +
+            ".grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px;margin:0 0 18px}" +
+            ".grid.grid-few{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}" +
+            ".grid.grid-single{justify-content:center}.grid.grid-single>.card{grid-column:1/-1;max-width:640px;width:100%;justify-self:center}" +
+            ".card{margin:0;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);" +
+            "transition:transform 140ms ease,box-shadow 140ms ease,border-color 140ms ease}" +
+            ".card:hover{transform:translateY(-2px);box-shadow:0 16px 38px rgba(15,23,42,.26);border-color:var(--border2)}" +
+            ".thumb{display:block;padding:12px 12px 0}.framed{display:block}" +
+            ".thumb-img,.framed img{display:block;width:100%;height:auto;aspect-ratio:5/3;object-fit:contain;background:#0b1220;border-radius:12px;" +
+            "border:1px solid rgba(15,23,42,.18);box-shadow:inset 0 0 0 1px rgba(255,255,255,.35),0 8px 18px rgba(15,23,42,.18)}" +
+            ".caption{padding:10px 12px 14px;font-size:13px;color:var(--text);border-top:1px solid var(--border);margin-top:12px}" +
+            ".cap-title{display:block;font-weight:650;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text);text-decoration:none}" +
+            ".cap-title:hover{text-decoration:underline}" +
+            ".cap-sub{display:block;margin-top:4px;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}" +
             ".signal{color:var(--muted);font-weight:normal}" +
-            ".flag{display:inline-block;font-size:.75em;font-weight:600;color:var(--flag);border:1px solid var(--flag);border-radius:10px;padding:0 8px;vertical-align:middle}" +
-            ".pair{display:flex;flex-wrap:wrap;gap:16px;margin-bottom:12px}" +
-            "figure{margin:0;flex:1 1 400px;max-width:100%}figure img{display:block;max-width:100%;height:auto;border:1px solid var(--edge)}" +
-            "figcaption{color:var(--muted);font-size:.9em;margin-top:4px}" +
+            ".flag{display:inline-block;font-size:.75em;font-weight:600;color:var(--red);border:1px solid var(--red);border-radius:10px;padding:0 8px;vertical-align:middle}" +
+            ".badge{display:inline-block;font-size:.75em;font-weight:600;color:#fff;background:var(--link);border-radius:10px;padding:0 8px;vertical-align:middle}" +
+            "figure{margin:0}.pair{display:flex;flex-wrap:wrap;gap:16px;margin-bottom:12px}.pair figure{flex:1 1 400px;max-width:100%}" +
+            "figcaption{color:var(--muted);font-size:.9em;margin-top:6px}" +
             ".settings{border-collapse:collapse;margin-bottom:12px}.settings th,.settings td{text-align:left;padding:4px 14px 4px 0}" +
             ".settings thead th{color:var(--muted);font-weight:600;font-size:.9em}.settings b{background:var(--diff);padding:0 4px;border-radius:3px}" +
-            ".muted{color:var(--muted)}.steps{font-size:.9em;color:var(--muted)}" +
-            ".signedin{font-size:.9em;color:var(--muted);margin:0 0 12px}" +
-            ".comments{margin:8px 0 12px;padding:12px 16px;border:1px solid var(--edge);border-radius:6px;background:var(--bg)}" +
-            ".comments h3{font-size:1em;margin:0 0 8px}.comment{border-top:1px solid var(--edge);padding:8px 0}.comment:first-of-type{border-top:0}" +
+            ".steps{font-size:.9em;color:var(--muted);margin:0}.signedin{font-size:.9em;color:var(--muted);margin:0 0 12px}" +
+            ".comments{margin:8px 0 12px;padding:12px 16px;border:1px solid var(--border);border-radius:10px;background:var(--card2)}" +
+            ".comment{border-top:1px solid var(--border);padding:8px 0}.comment:first-of-type{border-top:0}" +
             ".comment.hidden{opacity:.65}.who{margin:0 0 4px}.comment .text{margin:0 0 4px}.actions{font-size:.9em;margin:4px 0 0}" +
-            ".badge{display:inline-block;font-size:.75em;font-weight:600;color:var(--card);background:var(--link);border-radius:10px;padding:0 8px;vertical-align:middle}" +
             "label{display:block;font-weight:600;margin:8px 0 4px}" +
-            "textarea{box-sizing:border-box;width:100%;padding:8px 10px;font:inherit;color:var(--fg);background:var(--card);border:1px solid var(--edge);border-radius:4px}" +
-            "button{padding:6px 14px;font:inherit;color:#ffffff;background:var(--go);border:0;border-radius:4px;cursor:pointer}" +
-            "button.danger{background:var(--fail)}button.link{padding:0;color:var(--link);background:none;text-decoration:underline}" +
+            "textarea{width:100%;padding:8px 10px;font:inherit;color:var(--text);background:#fff;border:1px solid var(--border2);border-radius:8px}" +
+            "button{padding:6px 14px;font:inherit;color:#fff;background:var(--go);border:0;border-radius:8px;cursor:pointer}" +
+            "button.danger{background:var(--red)}button.link{padding:0;color:var(--link);background:none;text-decoration:underline;border-radius:0}" +
             "form.inline{display:inline}" +
-            ".errors{border:1px solid var(--fail);color:var(--fail);border-radius:4px;padding:8px 12px;margin:8px 0}.errors p{margin:0}" +
+            ".errors{border:1px solid var(--red);color:#8f2f2f;background:rgba(188,84,84,.08);border-radius:8px;padding:8px 12px;margin:8px 0}.errors p{margin:0}" +
             ".list h2{margin-top:24px}.collections{list-style:none;padding:0;margin:0 0 12px}" +
-            ".collections li{padding:8px 0;border-top:1px solid var(--edge);overflow-wrap:anywhere}.collections li:first-child{border-top:0}" +
-            ".admin{margin:0 0 12px;padding:8px 12px;border:1px dashed var(--edge);border-radius:6px}.admin p{margin:0 0 6px}" +
-            "footer{max-width:1100px;margin:0 auto 28px;padding:0 24px;color:var(--muted);font-size:.85em}";
+            ".collections li{padding:8px 0;border-top:1px solid var(--border);overflow-wrap:anywhere}.collections li:first-child{border-top:0}" +
+            ".admin{margin:0 0 12px;padding:8px 12px;border:1px dashed var(--border2);border-radius:8px}.admin p{margin:0 0 6px}" +
+            "footer{max-width:1164px;width:calc(100% - 36px);margin:0 auto 28px;padding:10px 22px;color:var(--muted);font-size:.85em;" +
+            "background:rgba(255,255,255,.72);border:1px solid var(--border);border-radius:var(--radius)}footer p{margin:4px 0}" +
+            ".modal{display:none;position:fixed;inset:0;z-index:2000}.modal:target{display:block}" +
+            ".backdrop{position:absolute;inset:0;background:rgba(15,23,42,.6)}" +
+            ".dialog{position:relative;width:85vw;max-width:1600px;height:92vh;margin:4vh auto;display:flex;flex-direction:column;" +
+            "background:rgba(255,255,255,.94);border:1px solid var(--border);border-radius:16px;box-shadow:0 26px 70px rgba(15,23,42,.36);overflow:hidden}" +
+            ".close{position:absolute;top:10px;right:10px;z-index:1;width:40px;height:40px;display:grid;place-items:center;border-radius:12px;" +
+            "border:1px solid var(--border);background:rgba(255,255,255,.9);color:var(--text);font-size:22px;line-height:1;text-decoration:none}" +
+            ".close:hover{border-color:var(--border2)}" +
+            ".viewer{display:grid;grid-template-columns:64px 1fr 64px;align-items:stretch;flex:1 1 auto;min-height:0}" +
+            ".nav{display:grid;place-items:center;color:rgba(15,23,42,.75);font-size:46px;text-decoration:none}.nav:hover{color:rgba(15,23,42,.95)}" +
+            ".stage{display:grid;place-items:center;padding:14px;min-height:0;overflow:hidden;" +
+            "background:radial-gradient(900px 600px at 30% 20%,rgba(14,165,233,.14),transparent 60%),linear-gradient(180deg,rgba(2,6,23,.06),rgba(2,6,23,.02))}" +
+            ".stage img{width:100%;height:100%;object-fit:contain;border-radius:12px;background:#0b1220;border:1px solid rgba(15,23,42,.22);" +
+            "box-shadow:inset 0 0 0 1px rgba(255,255,255,.25),0 18px 45px rgba(15,23,42,.24)}" +
+            ".modal .footer{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:14px;padding:12px 14px;border-top:1px solid var(--border);color:var(--muted);font-size:13px}" +
+            ".modal .title{grid-column:2;justify-self:center;text-align:center;display:flex;flex-direction:column;gap:2px;min-width:0}" +
+            ".m-name{color:var(--text);font-weight:750;font-size:14px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}" +
+            ".m-time{color:var(--muted);font-size:12px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}" +
+            ".modal .actions{grid-column:3;justify-self:end;display:flex;align-items:center;gap:10px;margin:0;font-size:13px}" +
+            "@media (max-width:720px){.topbar{position:static;height:auto;grid-template-columns:1fr;justify-items:center;padding:10px 14px;gap:8px}" +
+            ".brand,.meta,.header-actions{grid-column:1;justify-self:center;align-items:center;text-align:center}.meta{white-space:normal}" +
+            ".container{padding:14px 10px 6px}html{scroll-padding-top:12px}.grid.grid-few{grid-template-columns:1fr}.panel{padding:14px}" +
+            "footer{width:calc(100% - 20px)}.dialog{width:96vw;height:96vh;margin:2vh auto}.viewer{grid-template-columns:36px 1fr 36px}.nav{font-size:34px}" +
+            ".modal .footer{grid-template-columns:1fr;justify-items:center}.modal .title,.modal .actions{grid-column:1;justify-self:center}}";
 
         public static readonly string StyleHash =
             "sha256-" + Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(CollectionPages.Css)));
 
-        // Nothing but the style above may run, pictures only from this site or where the published data is served, and forms
-        // post only to this site (the comments and signing out).
+        // ###########################################################################################
+        // THE PAGE'S ONE SCRIPT - the viewer's keys, as the gallery had them: Esc closes it, the arrows go to the previous and next
+        // capture. Nothing else: the viewer itself is CSS (:target) and works without it. Fixed text, nothing anybody typed in
+        // it, and allowed by its hash alone (ScriptHash) - no other script can run on the page. The address is REPLACED, so the
+        // arrows leave no trail of captures for "Back" to walk through.
+        // ###########################################################################################
+        public const string Script =
+            "document.addEventListener(\"keydown\",function(e){" +
+            "var m=document.querySelector(\".modal:target\");if(!m||e.altKey||e.ctrlKey||e.metaKey)return;" +
+            "var s=e.key===\"Escape\"?\".close\":e.key===\"ArrowRight\"?\".next\":e.key===\"ArrowLeft\"?\".prev\":null;" +
+            "var l=s&&m.querySelector(s);if(l){e.preventDefault();location.replace(l.getAttribute(\"href\"));}});";
+
+        public static readonly string ScriptHash =
+            "sha256-" + Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(CollectionPages.Script)));
+
+        // Nothing but the style and the script above may run, pictures only from this site or where the published data is
+        // served, and forms post only to this site (the comments and signing out).
         public static string ContentSecurityPolicy(IEnumerable<string> imageOrigins)
         {
             string origins = string.Join(" ", imageOrigins.Distinct(StringComparer.OrdinalIgnoreCase));
 
-            return $"default-src 'none'; style-src '{CollectionPages.StyleHash}'; img-src 'self'{(origins.Length > 0 ? " " + origins : string.Empty)}; " +
+            return $"default-src 'none'; style-src '{CollectionPages.StyleHash}'; script-src '{CollectionPages.ScriptHash}'; " +
+                   $"img-src 'self'{(origins.Length > 0 ? " " + origins : string.Empty)}; " +
                    "form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
         }
     }

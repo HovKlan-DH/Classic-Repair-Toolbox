@@ -9,7 +9,7 @@ namespace CRT.Server.Handlers.Collections
     //
     //   - Shared by you: the reader's collections not deleted, newest first.
     //   - You commented on: other people's with a comment of the reader's on them, the last commented first - only while
-    //     shown, so a locked owner's are left out (CollectionFlows.FindShownAsync's rule).
+    //     shown, so a locked owner's, and one its owner stopped sharing, are left out (CollectionFlows.FindShownAsync's rule).
     //   - The administrator alone, besides: every collection not deleted (at most AllShownAtMost), each with its owner's name
     //     and address and whether the owner is locked - or has no account at all - the newest comments on them
     //     (NewestCommentsShownAtMost), hidden ones and a locked account's too - where moderating starts - and the accounts
@@ -50,8 +50,10 @@ namespace CRT.Server.Handlers.Collections
                 commented.Concat(all).Select(collection => collection.AccountId).Distinct().ToList(),
                 cancellationToken);
 
+            // Nor one its owner stopped sharing - offline to everybody but its owner and the administrator (migration 0028).
             List<CollectionRecord> commentedShown = commented
-                .Where(collection => owners.TryGetValue(collection.AccountId, out AccountRecord? owner) && !owner.IsLocked)
+                .Where(collection => !collection.IsSharingStopped &&
+                                     owners.TryGetValue(collection.AccountId, out AccountRecord? owner) && !owner.IsLocked)
                 .ToList();
 
             if (!reader.IsAdministrator)

@@ -1089,6 +1089,13 @@ ones and 1,000 captures a day; all pictures together take at most `CollectionsMa
 A first share carries the collection's key from CRT (15.0.0, migration 0027 - run by the service as it starts, nothing to
 do by hand), so one whose answer was lost and is sent again changes the page it made instead of making a second.
 
+**"Stop sharing"** (15.1.0, migration 0028 - run by the service as it starts, nothing to do by hand): the owner takes a
+page offline from CRT; its link then says it is not shared at the moment, its captures and comments stay, its date keeps
+counting, and "Share" brings it back under the same link. Only its owner and the administrator see it meanwhile. **"Download
+all"** on a page (`/collections/<id>/download`, under the `/collections/` lines Apache has already) sends every capture in one
+ZIP, built in the service's own `/tmp` past 4 MB (`PrivateTmp=true` in the unit). **A deleted collection's page stays for
+good**, saying what it was and why it went - the row is kept, its words, captures and comments are not.
+
 **Comments** (also 14.1.0, migration 0026 - run by the service as it starts, nothing to do by hand): anybody signed in
 with a confirmed address writes them under each capture on the page (the page's own "Sign in" link), and the owner in
 CRT too. Plain text, at most 2,000 characters, 100 a day per account. The owner gets a mail per comment (not for their
@@ -1099,7 +1106,7 @@ are forwarded already.
 **To see what is shared** (`crt_review_test` for the test instance):
 
 ```bash
-mysql -u root -e "SELECT c.id, a.display_name, c.hardware_name, c.board_name, c.title, c.created_utc, c.delete_at_utc, (SELECT COUNT(*) FROM crt_review.collection_images i WHERE i.collection_id = c.id) AS captures FROM crt_review.collections c JOIN crt_review.accounts a ON a.id = c.account_id WHERE c.deleted_utc IS NULL ORDER BY c.created_utc DESC LIMIT 20;"
+mysql -u root -e "SELECT c.id, a.display_name, c.hardware_name, c.board_name, c.title, c.created_utc, c.delete_at_utc, c.unshared_utc, (SELECT COUNT(*) FROM crt_review.collection_images i WHERE i.collection_id = c.id) AS captures FROM crt_review.collections c JOIN crt_review.accounts a ON a.id = c.account_id WHERE c.deleted_utc IS NULL ORDER BY c.created_utc DESC LIMIT 20;"
 ```
 
 **"Your collections"** (15.0.0): `https://classic-repair-toolbox.dk/collections/` (the test instance's

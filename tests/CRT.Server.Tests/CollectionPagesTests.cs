@@ -30,8 +30,8 @@ namespace CRT.Server.Tests
                 Directory.Delete(this.thisTree, recursive: true);
         }
 
-        private static CollectionImageRecord Capture(string sha, string label, string pin, CollectionBaseline? baseline = null, bool looksWrong = false, string? caption = null) =>
-            new(new CollectionImageEntry(sha, label, pin, "/RAS", "Pulsing", "100us", "2V", "1V", baseline, caption, looksWrong, Created), 800, 480);
+        private static CollectionImageRecord Capture(string sha, string label, string pin, CollectionBaseline? baseline = null, string? caption = null) =>
+            new(new CollectionImageEntry(sha, label, pin, "/RAS", "Pulsing", "100us", "2V", "1V", baseline, caption, Created), 800, 480);
 
         private static CollectionRecord Collection(params CollectionImageRecord[] images) =>
             new("k7mq3x9vbn2p", 42, "Commodore 64", "250407", "PAL", "No picture after changing the PLA", "It went black.\nThen it smelled.",
@@ -49,7 +49,7 @@ namespace CRT.Server.Tests
             Assert.Contains("Commodore 64 - 250407 (PAL)", html, StringComparison.Ordinal);
             Assert.Contains("<code>k7mq3x9vbn2p</code>", html, StringComparison.Ordinal);
             Assert.Contains("Shared 2026-November-26", html, StringComparison.Ordinal);
-            Assert.Contains("Deleted on 2027-November-26", html, StringComparison.Ordinal);
+            Assert.Contains("<span class=\"badge-red\">Will be deleted <b>2027-November-26</b></span>", html, StringComparison.Ordinal);
             Assert.Contains("Shared with Classic Repair Toolbox", html, StringComparison.Ordinal);
         }
 
@@ -154,12 +154,69 @@ namespace CRT.Server.Tests
             Assert.DoesNotContain("<th>Baseline</th>", html, StringComparison.Ordinal);
         }
 
-        [Fact]
-        public void A_capture_the_owner_marked_says_it_looks_wrong_in_the_list_and_at_itself()
-        {
-            string html = Page(Collection(Capture(ShaA, "U7", "12", looksWrong: true)));
+        // ---- The viewer and "Download all" (owner request, 2026-11-27: the owner's capture gallery's look) -------------------
 
-            Assert.Equal(2, html.Split("<span class=\"flag\">Looks wrong</span>").Length - 1);
+        // Each card's picture and each section's open the capture's viewer; its previous and next go round, it says where in the
+        // list it is, and "Download" saves it under its place and anchor - with no script at all (:target).
+        [Fact]
+        public void Each_capture_opens_in_a_viewer_whose_previous_and_next_go_round()
+        {
+            string html = Page(Collection(Capture(ShaA, "U7", "12"), Capture(ShaB, "U8", "3")));
+
+            // Its card in the grid, its section's picture, and the other capture's viewer's previous and next.
+            Assert.Equal(4, html.Split("href=\"#view.U7-12\"").Length - 1);
+            Assert.Contains("<div class=\"modal\" id=\"view.U7-12\"", html, StringComparison.Ordinal);
+            Assert.Contains("<a class=\"nav prev\" href=\"#view.U8-3\"", html, StringComparison.Ordinal);
+            Assert.Contains("<a class=\"nav next\" href=\"#view.U8-3\"", html, StringComparison.Ordinal);
+            Assert.Contains("<span class=\"counter\">1 / 2</span>", html, StringComparison.Ordinal);
+            Assert.Contains("<span class=\"counter\">2 / 2</span>", html, StringComparison.Ordinal);
+            Assert.Contains($"href=\"{Site}/collections/k7mq3x9vbn2p/{ShaA}.png\" download=\"001-U7-12.png\"", html, StringComparison.Ordinal);
+            Assert.Contains($"href=\"#{CollectionPages.ViewerClosed}\"", html, StringComparison.Ordinal);
+            Assert.Contains("<div class=\"m-time\">T/DIV 100us | V/DIV 2V | Trigger level 1V</div>", html, StringComparison.Ordinal);
+        }
+
+        // One capture: nothing to step to.
+        [Fact]
+        public void A_single_capture_s_viewer_has_no_previous_or_next()
+        {
+            string html = Page(Collection(Capture(ShaA, "U7", "12")));
+
+            Assert.DoesNotContain("class=\"nav ", html, StringComparison.Ordinal);
+            Assert.Contains("class=\"grid grid-few grid-single\"", html, StringComparison.Ordinal);
+        }
+
+        // The viewers' ids hold a ".", which no capture's anchor does - so no capture can take a viewer's place.
+        [Fact]
+        public void A_viewer_s_id_is_never_a_capture_s_anchor()
+        {
+            IReadOnlyList<string> anchors = CollectionRules.AnchorsOf(
+                [Capture(ShaA, "view", "U7-12").Entry, Capture(ShaB, "viewer", "closed").Entry]);
+
+            Assert.DoesNotContain(anchors, anchor => anchor.Contains('.', StringComparison.Ordinal));
+            Assert.DoesNotContain(CollectionPages.ViewerClosed, anchors);
+        }
+
+        [Fact]
+        public void A_capture_s_baseline_opens_in_a_viewer_of_its_own()
+        {
+            CollectionBaseline baseline = new(BaselineSha, "Scope baseline/U7_12.png", "50us", "2V", null);
+
+            string html = Page(Collection(Capture(ShaA, "U7", "12", baseline)), baselineUrl: _ => "https://example/baseline.png");
+
+            Assert.Contains("href=\"#base.U7-12\"", html, StringComparison.Ordinal);
+            Assert.Contains("<div class=\"modal\" id=\"base.U7-12\"", html, StringComparison.Ordinal);
+            Assert.Contains("U7, pin 12 - /RAS - Classic Repair Toolbox&#39;s baseline", html, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void The_page_offers_every_capture_in_one_download()
+        {
+            Assert.Contains(
+                $"<a class=\"btn\" href=\"{Site}/collections/k7mq3x9vbn2p/download\">Download 2 captures</a>",
+                Page(Collection(Capture(ShaA, "U7", "12"), Capture(ShaB, "U8", "3"))),
+                StringComparison.Ordinal);
+
+            Assert.DoesNotContain("/download\"", Page(Collection()), StringComparison.Ordinal);
         }
 
         // A forum's link preview runs no script - the server's page carries the title and the first picture.
@@ -177,31 +234,78 @@ namespace CRT.Server.Tests
         public void Search_engines_are_asked_to_keep_nothing() =>
             Assert.Contains("<meta name=\"robots\" content=\"noindex, nofollow\">", Page(Collection(Capture(ShaA, "U7", "12"))), StringComparison.Ordinal);
 
+        // Owner request, 2026-11-27: "a standard web page, explaining the deletion period has passed etc. ... what this was and
+        // why it was deleted" - kept for good, naming nobody.
         [Theory]
-        [InlineData(CollectionDeletedReasons.Expired, "Its time was up")]
-        [InlineData(CollectionDeletedReasons.Owner, "The person who shared it deleted it.")]
-        [InlineData(CollectionDeletedReasons.Administrator, "It was removed.")]
-        public void A_deleted_collection_says_when_it_went_and_why(string reason, string why)
+        [InlineData(CollectionDeletedReasons.Expired, "It was deleted on 2027-January-26, as the time it was shared for had passed.")]
+        [InlineData(CollectionDeletedReasons.Owner, "Its owner deleted it on 2027-January-26")]
+        [InlineData(CollectionDeletedReasons.Administrator, "It was taken down by the site&#39;s administrator on 2027-January-26")]
+        public void A_deleted_collection_says_what_it_was_when_it_went_and_why(string reason, string why)
         {
             CollectionRecord gone = Collection() with { DeletedUtc = Created.AddMonths(2), DeletedReason = reason, Title = null };
 
             string html = CollectionPages.Deleted(Site, gone);
 
-            Assert.Contains("was deleted on 2027-January-26", html, StringComparison.Ordinal);
+            Assert.Contains($"<h1>{CollectionPages.DeletedTitle}</h1>", html, StringComparison.Ordinal);
             Assert.Contains(why, html, StringComparison.Ordinal);
+            Assert.Contains("This page showed an oscilloscope collection", html, StringComparison.Ordinal);
+            Assert.Contains("This page stays here for good", html, StringComparison.Ordinal);
+            Assert.Contains("<span class=\"badge-red badge-large\">Deleted <b>2027-January-26</b></span>", html, StringComparison.Ordinal);
+            Assert.Contains("What is Classic Repair Toolbox?", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("shared by", html, StringComparison.OrdinalIgnoreCase);
         }
 
-        // The policy allows the page's one style by its hash - a style changed without it would be blocked, so the two are one.
+        // Its owner stopped sharing it (migration 0028): to everybody else, only that - the page may come back under the link.
         [Fact]
-        public void The_policy_allows_the_page_s_own_style_and_no_script()
+        public void A_collection_its_owner_stopped_sharing_says_only_that_it_is_not_shared_at_the_moment()
+        {
+            string html = CollectionPages.SharingStopped(Site, Collection(Capture(ShaA, "U7", "12")) with { UnsharedUtc = Created.AddDays(3) });
+
+            Assert.Contains($"<h1>{CollectionPages.SharingStoppedTitle}</h1>", html, StringComparison.Ordinal);
+            Assert.Contains("comes back under this same link", html, StringComparison.Ordinal);
+            Assert.DoesNotContain(ShaA, html, StringComparison.Ordinal);
+            Assert.DoesNotContain("No picture after changing the PLA", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("It went black", html, StringComparison.Ordinal);
+        }
+
+        // Its owner and the administrator see it still, each told who else does - and nobody is offered a comment form.
+        [Fact]
+        public void A_collection_whose_sharing_stopped_tells_its_owner_and_the_administrator_who_sees_it()
+        {
+            CollectionRecord stopped = Collection(Capture(ShaA, "U7", "12")) with { UnsharedUtc = Created.AddDays(3) };
+
+            string asOwner = Page(stopped, view: SignedIn(42) with { Offline = CollectionOffline.SharingStopped });
+            string asAdministrator = Page(stopped, view: new CollectionPageView { Viewer = new CollectionViewer(1, "Dennis@CRT", true), Offline = CollectionOffline.SharingStopped });
+
+            Assert.Contains(CollectionPages.OfflineSharingStoppedOwner.Replace("\"", "&quot;", StringComparison.Ordinal), asOwner, StringComparison.Ordinal);
+            Assert.Contains(CollectionPages.OfflineSharingStoppedAdministrator, asAdministrator, StringComparison.Ordinal);
+            Assert.DoesNotContain("<textarea", asOwner, StringComparison.Ordinal);
+        }
+
+        // The policy allows the page's one style and its one script by their hashes - either changed without its hash would be
+        // blocked, so each is one with its hash.
+        [Fact]
+        public void The_policy_allows_the_page_s_own_style_and_script_and_nothing_else()
         {
             string policy = CollectionPages.ContentSecurityPolicy([Site]);
-            string hash = "sha256-" + Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(CollectionPages.Css)));
+            string style = "sha256-" + Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(CollectionPages.Css)));
+            string script = "sha256-" + Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(CollectionPages.Script)));
 
-            Assert.Contains($"style-src '{hash}'", policy, StringComparison.Ordinal);
+            Assert.Contains($"style-src '{style}'", policy, StringComparison.Ordinal);
+            Assert.Contains($"script-src '{script}';", policy, StringComparison.Ordinal);
             Assert.Contains($"img-src 'self' {Site};", policy, StringComparison.Ordinal);
             Assert.Contains("default-src 'none'", policy, StringComparison.Ordinal);
-            Assert.DoesNotContain("script-src", policy, StringComparison.Ordinal);
+            Assert.DoesNotContain("unsafe", policy, StringComparison.Ordinal);
+        }
+
+        // The script is the page's own fixed text, exactly as its hash allows it - nothing anybody typed reaches it.
+        [Fact]
+        public void The_page_carries_its_one_script_as_its_hash_allows_it()
+        {
+            string html = Page(Collection(Capture(ShaA, "U7", "12", caption: "</script><script>alert(1)</script>")));
+
+            Assert.Equal(1, html.Split("<script>").Length - 1);
+            Assert.Contains($"<script>{CollectionPages.Script}</script>", html, StringComparison.Ordinal);
         }
 
         // ---- Comments (step 3) ------------------------------------------------------------
@@ -222,7 +326,7 @@ namespace CRT.Server.Tests
             Assert.Contains("<p class=\"text\">Check R7.</p>", html, StringComparison.Ordinal);
             Assert.Contains($"{Site}/account/sign-in?return=%2Fcollections%2Fk7mq3x9vbn2p%23comments-U7-12", html, StringComparison.Ordinal);
             Assert.DoesNotContain("<textarea", html, StringComparison.Ordinal);
-            Assert.Contains("(1 comment)", html, StringComparison.Ordinal);
+            Assert.Contains("<div class=\"cap-sub\">/RAS | 1 comment</div>", html, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -290,9 +394,9 @@ namespace CRT.Server.Tests
             Assert.Contains($"action=\"{Site}/collections/k7mq3x9vbn2p/comments/5/show\"", html, StringComparison.Ordinal);
             Assert.Contains(">Show again</button>", html, StringComparison.Ordinal);
 
-            // The list of captures counts what the capture's section shows this reader - the owner sees the hidden one, so it
+            // The grid of captures counts what the capture's section shows this reader - the owner sees the hidden one, so it
             // counts (code review, 2026-11-27: the two counts differed).
-            Assert.Contains("(1 comment)", html, StringComparison.Ordinal);
+            Assert.Contains("<div class=\"cap-sub\">/RAS | 1 comment</div>", html, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -373,6 +477,19 @@ namespace CRT.Server.Tests
         [Fact]
         public void Nobody_else_is_asked_to_delete_it_whatever_the_link_says() =>
             Assert.DoesNotContain(CollectionPages.RemoveQuestion, Page(Collection(Capture(ShaA, "U7", "12")), view: SignedIn(7) with { RemovingCollection = true }), StringComparison.Ordinal);
+
+        [Fact]
+        public void Your_collections_marks_one_whose_sharing_its_owner_stopped()
+        {
+            string html = CollectionPages.List(Site, Bo, Token, new CollectionListView(
+                [Listed("annafirst222", "My PLA", 1, 0) with { UnsharedUtc = Created.AddDays(1) }, Listed("annasecond22", "My VIC", 1, 0)],
+                [],
+                null,
+                null));
+
+            Assert.Equal(1, html.Split($"<span class=\"flag\">{CollectionPages.NotSharedFlag}</span>").Length - 1);
+            Assert.Contains($"My PLA</a> <span class=\"flag\">{CollectionPages.NotSharedFlag}</span>", html, StringComparison.Ordinal);
+        }
 
         [Fact]
         public void Your_collections_lists_the_reader_s_own_and_those_they_commented_on()

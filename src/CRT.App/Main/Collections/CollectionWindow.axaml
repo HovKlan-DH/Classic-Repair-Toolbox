@@ -22,11 +22,15 @@
 				<TextBlock Text="Title" FontWeight="SemiBold" />
 				<TextBox x:Name="TitleBox" LostFocus="OnEditLeft" />
 
+				<!-- Grows with what is typed, up to a height that leaves the captures their room - then it scrolls (owner request,
+				     2026-11-27: "a textarea that auto-expands"). -->
 				<TextBlock Text="What is wrong, and what was tried so far" FontWeight="SemiBold" Margin="0,8,0,0" />
 				<TextBox x:Name="DescriptionBox"
 						 AcceptsReturn="True"
 						 TextWrapping="Wrap"
-						 Height="90"
+						 MinHeight="90"
+						 MaxHeight="220"
+						 VerticalContentAlignment="Top"
 						 LostFocus="OnEditLeft" />
 
 				<TextBlock Text="Forum threads it is posted in - one link a line" FontWeight="SemiBold" Margin="0,8,0,0" />
@@ -46,6 +50,15 @@
 				<TextBlock x:Name="DeleteDateText" TextWrapping="Wrap" FontSize="12" />
 
 				<TextBlock x:Name="SharedStateText" TextWrapping="Wrap" Margin="0,10,0,0" />
+
+				<!-- Its page offline, kept under its link until "Share" brings it back (owner decision, 2026-11-27: "Offline, same
+				     link back"). Only while the page is up. -->
+				<Button x:Name="StopSharingButton"
+						Classes="Danger"
+						Content="Stop sharing"
+						HorizontalAlignment="Left"
+						Margin="0,6,0,0"
+						Click="OnStopSharingClick" />
 			</StackPanel>
 		</Grid>
 
@@ -63,10 +76,15 @@
 							<DataTemplate x:DataType="local:CollectionCaptureRow">
 								<Border BorderBrush="{DynamicResource Form_Border}" BorderThickness="0,1,0,0" Padding="10,8">
 									<Grid ColumnDefinitions="200,12,*,6,Auto">
+										<!-- Clicked, the capture large in the worklogs' zooming viewer, as every small picture in CRT
+										     opens (owner request, 2026-11-27). -->
 										<Image Source="{Binding Thumbnail}"
 											   Width="200"
 											   Stretch="Uniform"
-											   VerticalAlignment="Top" />
+											   VerticalAlignment="Top"
+											   Cursor="Hand"
+											   ToolTip.Tip="Click to see it larger"
+											   Tapped="OnThumbnailTapped" />
 
 										<StackPanel Grid.Column="2" Spacing="4">
 											<TextBlock Text="{Binding Heading}" FontWeight="SemiBold" TextWrapping="Wrap" />
@@ -75,13 +93,14 @@
 													   FontSize="12"
 													   TextWrapping="Wrap"
 													   IsVisible="{Binding HasBaseline}" />
-											<CheckBox Content="Looks wrong"
-													  IsChecked="{Binding LooksWrong}"
-													  IsCheckedChanged="OnCaptureMarkChanged" />
+											<!-- Several lines from the start, and growing with what is typed (owner request, 2026-11-27: "a textarea that
+											     auto-expands") - no height of its own, so the list scrolls instead. -->
 											<TextBox Text="{Binding Caption}"
 													 PlaceholderText="A note on this capture"
 													 AcceptsReturn="True"
 													 TextWrapping="Wrap"
+													 MinHeight="64"
+													 VerticalContentAlignment="Top"
 													 LostFocus="OnEditLeft" />
 
 											<!-- Its comments on the page (step 3), once the collection is shared and they are read. -->
@@ -197,21 +216,27 @@
 				   TextWrapping="Wrap"
 				   Margin="0,10,0,0" />
 
-		<!-- The buttons - or, while a delete is being asked, the question. -->
-		<Grid Grid.Row="3" ColumnDefinitions="Auto,*,Auto" Margin="0,10,0,0">
-			<Button x:Name="DeleteButton"
-					Grid.Column="0"
-					Classes="Danger"
-					Content="Delete collection"
-					Click="OnDeleteClick" />
+		<!-- The buttons - or, while a delete is being asked, the question. The right-hand ones wrap onto a second line in a
+		     narrow window, so every one stays in reach. -->
+		<Grid Grid.Row="3" ColumnDefinitions="Auto,6,*" Margin="0,10,0,0">
+			<StackPanel x:Name="LeftButtonsPanel" Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Top">
+				<Button x:Name="DeleteButton"
+						Classes="Danger"
+						Content="Delete collection"
+						Click="OnDeleteClick" />
+				<Button x:Name="AttachToWorklogButton"
+						Classes="Accept"
+						Content="Attach to worklog"
+						Click="OnAttachToWorklogClick" />
+			</StackPanel>
 
-			<StackPanel x:Name="ButtonsPanel" Grid.Column="2" Orientation="Horizontal" Spacing="6">
+			<WrapPanel x:Name="ButtonsPanel" Grid.Column="2" HorizontalAlignment="Right" ItemSpacing="6" LineSpacing="6">
 				<Button x:Name="ShareButton" Classes="Accept" Content="Share" Click="OnShareClick" />
 				<Button x:Name="OpenPageButton" Content="Open web page" Click="OnOpenPageClick" />
 				<Button x:Name="CopyForForumButton" Content="Copy for forum" Click="OnCopyForForumClick" />
 				<Button x:Name="CopyForRedditButton" Content="Copy for Reddit" Click="OnCopyForRedditClick" />
 				<Button Content="Close" Click="OnCloseClick" />
-			</StackPanel>
+			</WrapPanel>
 
 			<Border x:Name="DeleteQuestion"
 					Grid.Column="0"

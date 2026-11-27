@@ -13,12 +13,12 @@ namespace CRT.Server.Handlers.Collections
     {
         private const string CollectionColumns =
             "c.id, c.account_id, c.hardware_name, c.board_name, c.region, c.title, c.description, c.forum_links_json, " +
-            "c.created_utc, c.updated_utc, c.delete_at_utc, c.reminded_utc, c.deleted_utc, c.deleted_reason";
+            "c.created_utc, c.updated_utc, c.delete_at_utc, c.reminded_utc, c.deleted_utc, c.deleted_reason, c.unshared_utc";
 
         private const string ImageColumns =
             "position, sha256, width, height, component_label, pin, signal_name, expected_reading, time_per_division, " +
             "volts_per_division, trigger_level, baseline_sha256, baseline_file_name, baseline_time_per_division, " +
-            "baseline_volts_per_division, baseline_trigger_level, caption, looks_wrong, captured_utc";
+            "baseline_volts_per_division, baseline_trigger_level, caption, captured_utc";
 
         private readonly string thisConnectionString;
 
@@ -136,8 +136,8 @@ namespace CRT.Server.Handlers.Collections
             {
                 collections.Add(MySqlCollectionStore.ReadCollection(reader) with
                 {
-                    CommentCount = Convert.ToInt32(reader.GetValue(15)),
-                    LatestCommentId = Convert.ToInt64(reader.GetValue(16))
+                    CommentCount = Convert.ToInt32(reader.GetValue(16)),
+                    LatestCommentId = Convert.ToInt64(reader.GetValue(17))
                 });
             }
 
@@ -221,7 +221,9 @@ namespace CRT.Server.Handlers.Collections
                     // A new date takes what the flow decided of its reminder (CollectionFlows.ReminderSettledAt); the same date keeps
                     // what was decided - the sweep's mark too, set meanwhile. Before delete_at_utc's own assignment, which MariaDB
                     // makes in order.
-                    "reminded_utc = CASE WHEN @deleteAt <> delete_at_utc THEN @reminded ELSE reminded_utc END, delete_at_utc = @deleteAt " +
+                    "reminded_utc = CASE WHEN @deleteAt <> delete_at_utc THEN @reminded ELSE reminded_utc END, delete_at_utc = @deleteAt, " +
+                    // Shared again: "Share" brings a collection whose sharing was stopped back under its link (migration 0028).
+                    "unshared_utc = NULL " +
                     "WHERE id = @id AND deleted_utc IS NULL;";
                 MySqlCollectionStore.AddContent(update, collection);
 
@@ -241,6 +243,23 @@ namespace CRT.Server.Handlers.Collections
             await transaction.CommitAsync(cancellationToken);
 
             return true;
+        }
+
+        public async Task<bool> SetUnsharedAsync(string id, DateTimeOffset? unsharedUtc, CancellationToken cancellationToken = default)
+        {
+            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
+            await using MySqlCommand update = connection.CreateCommand();
+
+            // Stopped again keeps the first stop's time; the row counts as changed by its id alone (ROW_COUNT would read 0 for a
+            // value set to what it was, which is no refusal).
+            update.CommandText =
+                "UPDATE collections SET unshared_utc = CASE WHEN @when IS NULL THEN NULL ELSE COALESCE(unshared_utc, @when) END " +
+                "WHERE id = @id AND deleted_utc IS NULL;" +
+                "SELECT COUNT(*) FROM collections WHERE id = @id AND deleted_utc IS NULL;";
+            update.Parameters.AddWithValue("@id", id);
+            update.Parameters.AddWithValue("@when", unsharedUtc is { } when ? when.UtcDateTime : DBNull.Value);
+
+            return Convert.ToInt32(await update.ExecuteScalarAsync(cancellationToken)) > 0;
         }
 
         public async Task<bool> MarkDeletedAsync(string id, string reason, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
@@ -644,7 +663,7 @@ namespace CRT.Server.Handlers.Collections
                 insert.CommandText =
                     $"INSERT INTO collection_images (collection_id, {ImageColumns}) VALUES " +
                     "(@id, @position, @sha, @width, @height, @label, @pin, @signal, @reading, @tdiv, @vdiv, @trigger, " +
-                    "@baselineSha, @baselineFile, @baselineTdiv, @baselineVdiv, @baselineTrigger, @caption, @wrong, @captured);";
+                    "@baselineSha, @baselineFile, @baselineTdiv, @baselineVdiv, @baselineTrigger, @caption, @captured);";
                 insert.Parameters.AddWithValue("@id", collection.Id);
                 insert.Parameters.AddWithValue("@position", position);
                 insert.Parameters.AddWithValue("@sha", entry.Sha256);
@@ -663,7 +682,6 @@ namespace CRT.Server.Handlers.Collections
                 insert.Parameters.AddWithValue("@baselineVdiv", (object?)entry.Baseline?.VoltsPerDivision ?? DBNull.Value);
                 insert.Parameters.AddWithValue("@baselineTrigger", (object?)entry.Baseline?.TriggerLevel ?? DBNull.Value);
                 insert.Parameters.AddWithValue("@caption", (object?)entry.Caption ?? DBNull.Value);
-                insert.Parameters.AddWithValue("@wrong", entry.LooksWrong);
                 insert.Parameters.AddWithValue("@captured", (object?)entry.CapturedUtc?.UtcDateTime ?? DBNull.Value);
 
                 await insert.ExecuteNonQueryAsync(cancellationToken);
@@ -703,7 +721,8 @@ namespace CRT.Server.Handlers.Collections
                 reader.IsDBNull(12) ? null : MySqlCollectionStore.Utc(reader.GetDateTime(12)),
                 MySqlCollectionStore.Text(reader, 13),
                 [],
-                Convert.ToInt32(reader.GetValue(14)));
+                Convert.ToInt32(reader.GetValue(15)),
+                UnsharedUtc: reader.IsDBNull(14) ? null : MySqlCollectionStore.Utc(reader.GetDateTime(14)));
         }
 
         // ImageColumns, in order.
@@ -729,8 +748,7 @@ namespace CRT.Server.Handlers.Collections
                 MySqlCollectionStore.Text(reader, 10),
                 hasBaseline ? new CollectionBaseline(baselineSha, baselineFile, baselineTdiv, baselineVdiv, baselineTrigger) : null,
                 MySqlCollectionStore.Text(reader, 16),
-                reader.GetBoolean(17),
-                reader.IsDBNull(18) ? null : MySqlCollectionStore.Utc(reader.GetDateTime(18)));
+                reader.IsDBNull(17) ? null : MySqlCollectionStore.Utc(reader.GetDateTime(17)));
 
             return new CollectionImageRecord(entry, reader.GetInt32(2), reader.GetInt32(3));
         }

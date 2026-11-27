@@ -166,7 +166,86 @@ namespace CRT
                     if (TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
                         await clipboard.SetTextAsync(text);
                 },
-                Changed: this.ShowCollectionChoicesInPopups);
+                Changed: this.ShowCollectionChoicesInPopups,
+                WorklogIsOn: () => UserSettings.EnableWorklog,
+                AttachToWorklog: this.AttachCollectionToWorklogAsync);
+
+        // ###########################################################################################
+        // "ATTACH TO WORKLOG" ON A COLLECTION'S WINDOW (owner request, 2026-11-27; asked, "A copy of its captures" -
+        // CollectionWorklogAttach): into a worklog of the workbook worked in on the COLLECTION'S board, picked in the oscilloscope
+        // capture's own dialog - or, while that board is the one shown, a new worklog filed against its schematic image shown,
+        // as the capture's "Create new worklog" files one (ComponentInfoWindow.CreateWorklogEntryForCaptureAsync). What came of
+        // it in words for the window, or null when nothing was done.
+        // ###########################################################################################
+        private async Task<string?> AttachCollectionToWorklogAsync(LocalCollection collection, Window owner)
+        {
+            string boardKey = $"{collection.HardwareName}|{collection.BoardName}";
+
+            if (Main.ResolveActiveWorkbookForBoard(boardKey) is not { } workbook)
+                return CollectionWorklogAttach.NoWorkbook(collection);
+
+            string CapturePath(string sha256) => this.Collections.CapturePath(collection.LocalId, sha256);
+
+            IReadOnlyList<(LocalCapture Capture, string Path)> captures = CollectionWorklogAttach.CapturesOf(collection, CapturePath);
+
+            if (captures.Count == 0)
+                return CollectionWorklogAttach.NothingToAttach;
+
+            bool BoardShown() => string.Equals(this.GetCurrentBoardKey(), boardKey, StringComparison.Ordinal);
+
+            List<WorklogEntryRecord> entries = WorklogManager.GetEntries(workbook.Id);
+
+            if (entries.Count == 0 && !BoardShown())
+                return CollectionWorklogAttach.NoWorklogYet(collection);
+
+            // The component the captures are of, when they are all of one - its worklogs are listed first.
+            List<string> components = captures.Select(pair => pair.Capture.ComponentLabel).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+
+            var dialog = new WorklogAttachCaptureWindow();
+            dialog.InitializeForCollection(
+                captures[0].Path,
+                CollectionWorklogAttach.Summary(collection, captures.Count),
+                workbook,
+                entries,
+                components.Count == 1 ? components[0] : null,
+                offerNewEntry: BoardShown());
+
+            if (await dialog.ShowDialog<WorklogAttachCaptureWindow.AttachResult?>(owner) is not { } result)
+                return null;
+
+            if (result.EntryId is { } entryId)
+            {
+                CollectionWorklogAttach.Outcome outcome = CollectionWorklogAttach.ToEntry(workbook.Id, entryId, collection, CapturePath);
+                this.RefreshWorklogBar();
+
+                return CollectionWorklogAttach.Said(outcome, $"worklog #{entryId.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
+            }
+
+            // A new worklog is filed against the schematic image shown - of the collection's board, which may have been changed
+            // while the dialog was open.
+            if (!BoardShown())
+                return CollectionWorklogAttach.BoardNoLongerShown(collection);
+
+            var editor = new WorklogEntryEditorWindow();
+            editor.InitializeForNewEntry(
+                workbook.Id,
+                this.TabSchematicsControl?.GetCurrentSchematicName() ?? string.Empty,
+                default,
+                this.TabSchematicsControl?.currentFullResBitmap);
+            editor.SetShowMarkedAreaForNewEntry(false);
+
+            CollectionWorklogAttach.Outcome added = CollectionWorklogAttach.ToEditor(collection, CapturePath, editor.AttachCapturedPhoto, editor.AttachLink);
+
+            // Nothing could be copied in: no editor that looks as if it all went well - it is not opened at all (the capture's own
+            // rule, ComponentInfoWindow.CreateWorklogEntryForCaptureAsync).
+            if (added.Added == 0)
+                return CollectionWorklogAttach.Said(added, "a new worklog");
+
+            await editor.ShowDialog(owner);
+            this.RefreshWorklogBar();
+
+            return editor.WasSaved ? CollectionWorklogAttach.Said(added, "a new worklog") : null;
+        }
 
         // Every component info window open shows the board's collections as they now are.
         private void ShowCollectionChoicesInPopups()

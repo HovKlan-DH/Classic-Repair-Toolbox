@@ -2980,7 +2980,31 @@ asking before it sends and the server again (`CollectionFlows`, server 14.1.0).
   (`CollectionSharing.ContentHash`), "Share" offered again only once it differs.
 - **The page names nobody** (owner decision) - the board, the id, the dates shared and deleted, each capture beside
   CRT's baseline from the PUBLISHED data (by checksum, `CollectionBaselines`; only a file that is there is linked) -
-  built by the server with no script, everything typed encoded, `noindex`. A locked owner's collections go offline.
+  built by the server, everything typed encoded, `noindex`. A locked owner's collections go offline.
+- **THE PAGES LOOK AS THE OWNER'S OSCILLOSCOPE NETWORK CAPTURE GALLERY DID** (owner request, 2026-11-27: "find heavy inspiration
+  in my other project ... a nice dark view with nice UI functionalities" - the archived `Z:\mydir\http\!OLD\commodore-repair-toolbox.dk\public_html\onc`;
+  `CollectionPages.Css`, server 15.1.0): a dark slate page under a frosted bar (CRT, the board and the red "Will be deleted"
+  badge, "Download N captures"), the captures as cards, each capture's and baseline's VIEWER made of CSS alone (`:target`,
+  ids "view.<anchor>" and "base.<anchor>" - a "." no anchor holds), and **ONE small fixed script for the viewer's keys** (arrows,
+  Esc), allowed by its hash (`CollectionPages.Script`/`ScriptHash` in the Content-Security-Policy) - nothing typed ever goes
+  into it, and nothing else may run. "Download all" (`/collections/<id>/download`, `CollectionDownload`) **goes through
+  ASP.NET's `FileBufferingWriteStream`: .NET 10's ZipArchive writes each entry's data descriptor SYNCHRONOUSLY even through its
+  async API** (measured by `CollectionFlowsTests`' async-only stream), and Kestrel refuses that.
+- **"STOP SHARING": THE PAGE OFFLINE, THE SAME LINK BACK** (owner decision, 2026-11-27: "Offline, same link back"; migration
+  0028's `unshared_utc`, `PUT /api/collections/<id>/sharing`, `CollectionFlows.SetSharedAsync`; CRT's `SharingStoppedUtc`,
+  `IsOnline`): its link then says only that it is not shared at the moment (`ShownCollection.IsWithheld` - its pictures, "Download
+  all", its comments and "You commented on" too) to all but its owner and the administrator, who see it, said so; its captures,
+  comments and date stay. "Share" - the content sent again - brings it back (`ReplaceContentAsync` clears it).
+- **A DELETED COLLECTION'S PAGE STAYS FOR GOOD, AND SAYS WHAT IT WAS AND WHY IT WENT** (owner request, 2026-11-27: "keep this page
+  forever"; `CollectionPages.Deleted`): its row is never deleted - only its words, captures and comments (`MarkDeletedAsync`).
+  **And nothing deletes a collection from THIS COMPUTER but its own "Delete collection"** (owner request, the same day): a page
+  whose time is up, or taken down, only makes CRT forget the page (`CollectionWindow.ForgetPage`); "Share" makes a new one.
+- **"Attach to worklog" COPIES the captures in** (owner decision, 2026-11-27: "A copy of its captures"; `CollectionWorklogAttach`,
+  `Main.AttachCollectionToWorklogAsync`): each a photo of a worklog of the workbook worked in on the COLLECTION'S board, picked in
+  the capture's own dialog (`WorklogAttachCaptureWindow.InitializeForCollection`, no comment box), its comment its place,
+  settings, baseline, reading and note (`CollectionSharing.WorklogCommentOf`), and the page's link under "Links of interest"
+  while it is up; "Create new worklog" only while that board is the one shown. A thumbnail clicked opens the capture in the
+  worklogs' zooming viewer. ("Looks wrong", a mark per capture, went the same day - owner request.)
 - **A capture is a plain PNG or nothing** (`CollectionPng`: only the chunks a picture needs, every checksum, exactly
   its rows, nothing after its end) - **so what CRT's encoder writes must pass it, tested on SkiaSharp itself**
   (`CollectionPngEncoderTests`, as Avalonia.Skia's `ImageSavingHelper` encodes): the headless UI tests draw with stubs

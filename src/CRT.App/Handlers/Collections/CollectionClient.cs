@@ -149,6 +149,14 @@ namespace Handlers.Collections
         }
 
         // ###########################################################################################
+        // "STOP SHARING" (owner decision, 2026-11-27: "Offline, same link back"), and sharing it again with nothing changed - its
+        // page offline or back, under the same link, its captures and comments kept on the server either way. Done, or what
+        // came of it; a page the server no longer has (410) is GoneFromServer.
+        // ###########################################################################################
+        public Task<Result> SetSharingAsync(string serverId, bool shared, string bearerToken, CancellationToken cancellationToken = default) =>
+            this.CommentRequestAsync(HttpMethod.Put, CollectionRoutes.SharingOf(Uri.EscapeDataString(serverId)), bearerToken, new CollectionSharingRequest(shared), cancellationToken);
+
+        // ###########################################################################################
         // COMMENTS (step 3, 2026-11-26) - the owner's: every comment on the collection, hidden ones too; answering one capture;
         // deleting the owner's own; hiding and showing others'. Editing is the page's.
         // ###########################################################################################

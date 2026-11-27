@@ -296,6 +296,38 @@ namespace CRT.Server.Handlers.Collections
             return CollectionOutcome.Removed();
         }
 
+        // ###########################################################################################
+        // PUT /api/collections/<id>/sharing - ITS OWNER STOPS SHARING IT, OR SHARES IT AGAIN (owner decision, 2026-11-27: "Offline,
+        // same link back"; migration 0028). Stopped, its page is offline - its link says it is not shared at the moment, its
+        // captures and comments are kept, its deletion date keeps counting; shared again, it is back under the same link. The
+        // owner's alone, as sharing it is: anybody else's is "not found". Doing what is done already is done.
+        // ###########################################################################################
+        public static async Task<CollectionOutcome> SetSharedAsync(
+            AccountRecord? account,
+            string? id,
+            bool shared,
+            ICollectionStore store,
+            string siteBaseUrl,
+            DateTimeOffset now,
+            CancellationToken cancellationToken)
+        {
+            if (CollectionFlows.Refuse(account) is { } refused)
+                return refused;
+
+            CollectionRecord? existing = CollectionRules.IsId(id) ? await store.FindAsync(id!, cancellationToken) : null;
+
+            if (existing is null || existing.AccountId != account!.Id)
+                return CollectionOutcome.Refused(CollectionVerdict.NotFound, CollectionFlows.NoSuchCollection);
+
+            if (CollectionFlows.IsGone(existing, now))
+                return CollectionOutcome.Refused(CollectionVerdict.Gone, CollectionFlows.DeletedLine(existing));
+
+            if (!await store.SetUnsharedAsync(existing.Id, shared ? null : now, cancellationToken))
+                return CollectionOutcome.Refused(CollectionVerdict.Gone, "That collection was deleted meanwhile.");
+
+            return CollectionOutcome.Done(CollectionFlows.AnswerOf(existing, siteBaseUrl));
+        }
+
         public const string OnlyTheAdministratorDeletesHere =
             "Only the administrator deletes a collection on the website - its owner deletes it in CRT.";
 
@@ -451,7 +483,9 @@ namespace CRT.Server.Handlers.Collections
             DateTimeOffset now,
             CancellationToken cancellationToken,
             bool evenIfDeleted = false) =>
-            (await CollectionFlows.FindShownToAsync(id, viewer: null, store, accounts, now, cancellationToken, evenIfDeleted))?.Collection;
+            (await CollectionFlows.FindShownToAsync(id, viewer: null, store, accounts, now, cancellationToken, evenIfDeleted)) is { IsWithheld: false } shown
+                ? shown.Collection
+                : null;
 
         // ###########################################################################################
         // THE SAME QUESTION, ASKED BY A READER (code review, 2026-11-27: the administrator's "Every collection" linked a locked
@@ -491,7 +525,7 @@ namespace CRT.Server.Handlers.Collections
             ShownCollection? shown = await CollectionFlows.ShownToAsync(
                 await store.FindWithImageAsync(id!, sha256!, cancellationToken), viewer, accounts, now, cancellationToken, evenIfDeleted: false);
 
-            return shown is not null && shown.Collection.Images.Any(image => image.Entry.Sha256 == sha256) ? shown : null;
+            return shown is { IsWithheld: false } && shown.Collection.Images.Any(image => image.Entry.Sha256 == sha256) ? shown : null;
         }
 
         private static async Task<ShownCollection?> ShownToAsync(
@@ -516,7 +550,20 @@ namespace CRT.Server.Handlers.Collections
             AccountRecord? owner = await accounts.FindByIdAsync(collection.AccountId, cancellationToken);
 
             if (owner is { IsLocked: false })
-                return new ShownCollection(collection, CollectionOffline.No);
+            {
+                if (!collection.IsSharingStopped)
+                    return new ShownCollection(collection, CollectionOffline.No);
+
+                // ###########################################################################################
+                // ITS OWNER STOPPED SHARING IT (migration 0028; owner decision, 2026-11-27: "Offline, same link back"): its own
+                // page to its owner and the administrator, said so - to everybody else only that it is not shared at the moment
+                // (`IsWithheld`), never its captures, words or comments. The reader is asked only here.
+                // ###########################################################################################
+                AccountRecord? reader = viewer is null ? null : await viewer(cancellationToken);
+                bool mayRead = reader is not null && (reader.Id == collection.AccountId || reader.IsAdministrator);
+
+                return new ShownCollection(collection, CollectionOffline.SharingStopped, IsWithheld: !mayRead);
+            }
 
             CollectionOffline offline = owner is null ? CollectionOffline.OwnerGone : CollectionOffline.OwnerLocked;
 
@@ -715,8 +762,10 @@ namespace CRT.Server.Handlers.Collections
     public sealed record CollectionSweepResult(int Expired, int Reminded, int FilesDeleted, IReadOnlyList<string>? FilesNotDeleted = null);
 
     // A collection a reader may see, and whether it is offline for everybody else (FindShownToAsync) - only ever so for the
-    // administrator.
-    public sealed record ShownCollection(CollectionRecord Collection, CollectionOffline Offline)
+    // administrator, and for its owner when they stopped sharing it. `IsWithheld`: the reader may learn only that it is not
+    // shared at the moment - nothing of it is shown (its sharing stopped, and the reader neither its owner nor the
+    // administrator).
+    public sealed record ShownCollection(CollectionRecord Collection, CollectionOffline Offline, bool IsWithheld = false)
     {
         public bool IsOffline => this.Offline != CollectionOffline.No;
     }
@@ -725,6 +774,9 @@ namespace CRT.Server.Handlers.Collections
     {
         No,
         OwnerLocked,
-        OwnerGone
+        OwnerGone,
+
+        // Its owner pressed "Stop sharing" in CRT (migration 0028).
+        SharingStopped
     }
 }

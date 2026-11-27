@@ -50,7 +50,7 @@ public sealed class CollectionWindowTests : IDisposable
     {
         LocalCollection made = this.thisStore.Create("Commodore 64", "250407", "PAL", "No picture", DateTimeOffset.UtcNow)!;
 
-        return this.thisStore.AddCapture(made.LocalId, CRT.Data.Tests.TestPng.Rgb(16, 10), new LocalCapture { ComponentLabel = "U7", Pin = "12", LooksWrong = true, CapturedUtc = DateTimeOffset.UtcNow }).Collection!;
+        return this.thisStore.AddCapture(made.LocalId, CRT.Data.Tests.TestPng.Rgb(16, 10), new LocalCapture { ComponentLabel = "U7", Pin = "12", CapturedUtc = DateTimeOffset.UtcNow }).Collection!;
     }
 
     // Held, a request that is no GET waits for it to be let go - an answer on its way while the test clicks again.
@@ -59,11 +59,17 @@ public sealed class CollectionWindowTests : IDisposable
     // The keys first shares were sent under (CollectionRoutes.ClientKeyHeader).
     private readonly List<string> thisKeysSent = [];
 
-    private CollectionWindow Window(LocalCollection collection)
+    // The bodies of the requests sent, as JSON.
+    private readonly List<string> thisBodies = [];
+
+    private CollectionWindow Window(LocalCollection collection, Func<bool>? worklogIsOn = null, Func<LocalCollection, Avalonia.Controls.Window, Task<string?>>? attach = null)
     {
         var client = new CollectionClient("https://classic-repair-toolbox.dk", new HttpClient(new AnsweringHttpHandler(async (request, _) =>
         {
             this.thisRequests.Add((request.Method, request.RequestUri!.AbsolutePath));
+
+            if (request.Content is { } content)
+                this.thisBodies.Add(await content.ReadAsStringAsync());
 
             if (request.Headers.TryGetValues(CollectionRoutes.ClientKeyHeader, out IEnumerable<string>? keys))
                 this.thisKeysSent.AddRange(keys);
@@ -93,7 +99,9 @@ public sealed class CollectionWindowTests : IDisposable
                 this.thisCopied.Add(text);
                 return Task.CompletedTask;
             },
-            Changed: () => { });
+            Changed: () => { },
+            WorklogIsOn: worklogIsOn,
+            AttachToWorklog: attach);
 
         var window = new CollectionWindow();
         window.Initialize(host, collection.LocalId);
@@ -113,8 +121,9 @@ public sealed class CollectionWindowTests : IDisposable
             Assert.Equal("No picture", window.TitleBox.Text);
             Assert.Equal("Commodore 64 - 250407 (PAL)", window.BoardText.Text);
             Assert.Equal("1 year", window.LifetimeComboBox.SelectedItem);
-            Assert.True(Assert.Single(window.RowsForTests).LooksWrong);
+            Assert.Single(window.RowsForTests);
             Assert.StartsWith("Not shared yet", window.SharedStateText.Text, StringComparison.Ordinal);
+            Assert.False(window.StopSharingButton.IsVisible);
 
             window.TitleBox.Text = "Found the bad trace";
             window.ForumLinksBox.Text = "https://www.lemon64.com/forum/viewtopic.php?t=1\n\n";
@@ -219,7 +228,7 @@ public sealed class CollectionWindowTests : IDisposable
     }
 
     [Fact]
-    public async Task Copy_for_forum_puts_the_link_and_what_looks_wrong_on_the_clipboard()
+    public async Task Copy_for_forum_puts_the_link_on_the_clipboard()
     {
         LocalCollection collection = this.Collection();
         this.thisStore.Save(this.thisStore.Find(collection.LocalId)! with { ServerId = "k7mq3x9vbn2p", PageUrl = "https://x/collections/k7mq3x9vbn2p" });
@@ -233,7 +242,6 @@ public sealed class CollectionWindowTests : IDisposable
             string copied = Assert.Single(this.thisCopied);
 
             Assert.StartsWith("[url=https://x/collections/k7mq3x9vbn2p]No picture[/url]", copied, StringComparison.Ordinal);
-            Assert.Contains("#U7-12]", copied, StringComparison.Ordinal);
         });
     }
 
@@ -791,10 +799,32 @@ public sealed class CollectionWindowTests : IDisposable
         });
     }
 
-    // A click on "Looks wrong" is kept at once - Avalonia raises IsCheckedChanged before its binding writes the row, and the save
-    // read the mark as it was (code review, 2026-11-27: "Share" stayed greyed out on a shared collection).
+    // Owner request, 2026-11-27: a thumbnail clicked opens "in another window and be zoomable" - the worklogs' viewer, gone at
+    // a click outside it, its title where the capture was taken and its comment the settings.
     [Fact]
-    public void Looks_wrong_clicked_is_kept_at_once()
+    public void A_capture_opened_from_its_thumbnail_is_shown_large_in_the_zooming_viewer()
+    {
+        LocalCollection collection = this.Collection();
+        string sha = collection.Captures[0].Sha256;
+
+        UiTest.Run(() =>
+        {
+            CollectionWindow window = this.Window(collection);
+            WorklogPhotoViewerWindow? shown = null;
+            window.ShowPictureOverrideForTests = viewer => shown = viewer;
+
+            window.OpenCapture(sha);
+
+            Assert.NotNull(shown);
+            Assert.Equal("U7, pin 12", shown.ShownTitleForTests);
+            Assert.Equal(CollectionSharing.WorklogCommentOf(collection.Captures[0]), shown.CommentForTests);
+            Assert.True(shown.ClosesWhenLeft);
+        });
+    }
+
+    // Owner request, 2026-11-27: the note "a textarea that auto-expands" - several lines from the start, growing with its text.
+    [Fact]
+    public void A_capture_s_note_grows_with_what_is_typed()
     {
         LocalCollection collection = this.Collection();
 
@@ -804,16 +834,157 @@ public sealed class CollectionWindowTests : IDisposable
             window.Show();
             window.UpdateLayout();
 
-            Avalonia.Controls.CheckBox mark = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window)
-                .OfType<Avalonia.Controls.CheckBox>()
-                .Single(box => Equals(box.Content, "Looks wrong"));
+            Avalonia.Controls.TextBox note = Avalonia.VisualTree.VisualExtensions.GetVisualDescendants(window)
+                .OfType<Avalonia.Controls.TextBox>()
+                .Single(box => box.PlaceholderText == "A note on this capture");
 
-            Assert.True(mark.IsChecked);
+            double empty = note.Bounds.Height;
 
-            mark.IsChecked = false;
+            note.Text = string.Join("\n", Enumerable.Range(1, 12).Select(line => $"Line {line}"));
+            window.UpdateLayout();
 
-            Assert.False(this.thisStore.Find(collection.LocalId)!.Captures[0].LooksWrong);
+            Assert.True(empty >= 64, $"The note starts {empty} high.");
+            Assert.True(note.Bounds.Height > empty * 2, $"The note is {note.Bounds.Height} high with twelve lines, {empty} empty.");
             window.Close();
+        });
+    }
+
+    // ---- "Stop sharing" (owner decision, 2026-11-27: "Offline, same link back") -------------------------------------------
+
+    private LocalCollection SharedCollection()
+    {
+        LocalCollection collection = this.Collection();
+        DateTimeOffset deleteAt = DateTimeOffset.UtcNow.AddYears(1);
+        LocalCollection kept = this.thisStore.Find(collection.LocalId)! with
+        {
+            ServerId = "k7mq3x9vbn2p",
+            PageUrl = "https://classic-repair-toolbox.dk/collections/k7mq3x9vbn2p",
+            DeleteAtUtc = deleteAt,
+            SharedUtc = DateTimeOffset.UtcNow,
+            SharedByAccountId = 1,
+            SharedByName = "Anna"
+        };
+
+        this.thisStore.Save(kept with { SharedContentHash = CollectionSharing.ContentHash(CollectionSharing.RequestOf(kept, deleteAt)) });
+
+        return this.thisStore.Find(collection.LocalId)!;
+    }
+
+    [Fact]
+    public async Task Stop_sharing_takes_the_page_offline_and_Share_brings_it_back_under_the_same_link()
+    {
+        LocalCollection collection = this.SharedCollection();
+        CollectionAnswer page = new("k7mq3x9vbn2p", "https://classic-repair-toolbox.dk/collections/k7mq3x9vbn2p", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddYears(1), 1);
+
+        this.thisSession = Session();
+        this.thisAnswer = request => request.Method == HttpMethod.Get
+            ? Json(HttpStatusCode.OK, new CollectionCommentsAnswer([]))
+            : Json(HttpStatusCode.OK, page);
+
+        await UiTest.RunAsync(async () =>
+        {
+            CollectionWindow window = this.Window(collection);
+
+            Assert.True(window.StopSharingButton.IsVisible);
+            Assert.False(window.ShareButton.IsEnabled);
+
+            await window.StopSharingAsync();
+
+            Assert.Contains((HttpMethod.Put, "/api/collections/k7mq3x9vbn2p/sharing"), this.thisRequests);
+            Assert.Contains("\"shared\":false", this.thisBodies.Last(), StringComparison.Ordinal);
+
+            LocalCollection stopped = this.thisStore.Find(collection.LocalId)!;
+
+            Assert.NotNull(stopped.SharingStoppedUtc);
+            Assert.Equal("k7mq3x9vbn2p", stopped.ServerId);
+            Assert.False(stopped.IsOnline);
+            Assert.Equal(CollectionWindow.SharingStopped, window.StatusText.Text);
+            Assert.StartsWith("Not shared at the moment", window.SharedStateText.Text, StringComparison.Ordinal);
+            Assert.False(window.StopSharingButton.IsVisible);
+            Assert.False(window.CopyForForumButton.IsEnabled);
+
+            // Nothing changed, and still "Share" brings it back - the collection sent again under its id.
+            Assert.True(window.ShareButton.IsEnabled);
+
+            await window.ShareAsync();
+
+            Assert.Equal((HttpMethod.Put, "/api/collections/k7mq3x9vbn2p"), this.thisRequests.Last());
+
+            LocalCollection back = this.thisStore.Find(collection.LocalId)!;
+
+            Assert.Null(back.SharingStoppedUtc);
+            Assert.Equal("https://classic-repair-toolbox.dk/collections/k7mq3x9vbn2p", back.PageUrl);
+            Assert.True(window.StopSharingButton.IsVisible);
+        });
+    }
+
+    // Its time up or taken down meanwhile: the page is forgotten, the collection kept here.
+    [Fact]
+    public async Task Stop_sharing_a_page_the_server_no_longer_has_forgets_the_page_and_keeps_the_collection()
+    {
+        LocalCollection collection = this.SharedCollection();
+
+        this.thisSession = Session();
+        this.thisAnswer = request => request.Method == HttpMethod.Get
+            ? Json(HttpStatusCode.OK, new CollectionCommentsAnswer([]))
+            : Json(HttpStatusCode.Gone, new CollectionRefusalAnswer(["That collection was deleted on 2026-November-1."]));
+
+        await UiTest.RunAsync(async () =>
+        {
+            CollectionWindow window = this.Window(collection);
+
+            await window.StopSharingAsync();
+
+            LocalCollection kept = this.thisStore.Find(collection.LocalId)!;
+
+            Assert.Null(kept.ServerId);
+            Assert.Null(kept.SharingStoppedUtc);
+            Assert.Single(kept.Captures);
+            Assert.Equal(CollectionWindow.PageGone, window.StatusText.Text);
+        });
+    }
+
+    // ---- "Attach to worklog" (owner decision, 2026-11-27: "A copy of its captures") -----------------------------------
+
+    [Fact]
+    public async Task Attach_to_worklog_hands_CRT_the_collection_as_kept_and_says_what_came_of_it()
+    {
+        LocalCollection collection = this.Collection();
+        LocalCollection? handed = null;
+
+        await UiTest.RunAsync(async () =>
+        {
+            CollectionWindow window = this.Window(
+                collection,
+                worklogIsOn: () => true,
+                attach: (attached, _) =>
+                {
+                    handed = attached;
+                    return Task.FromResult<string?>("1 capture attached to worklog #3 as photos.");
+                });
+
+            Assert.True(window.AttachToWorklogButton.IsVisible);
+
+            // What the boxes hold is kept first.
+            window.RowsForTests[0].Caption = "Stays low";
+
+            await window.AttachToWorklogAsync();
+
+            Assert.Equal("Stays low", handed?.Captures[0].Caption);
+            Assert.Equal("1 capture attached to worklog #3 as photos.", window.StatusText.Text);
+        });
+    }
+
+    // The worklog turned off, there is nothing to attach to - the button is not there, as the capture's own is not.
+    [Fact]
+    public void Attach_to_worklog_is_not_offered_with_the_worklog_turned_off()
+    {
+        LocalCollection collection = this.Collection();
+
+        UiTest.Run(() =>
+        {
+            Assert.False(this.Window(collection, worklogIsOn: () => false, attach: (_, _) => Task.FromResult<string?>(null)).AttachToWorklogButton.IsVisible);
+            Assert.False(this.Window(collection).AttachToWorklogButton.IsVisible);
         });
     }
 

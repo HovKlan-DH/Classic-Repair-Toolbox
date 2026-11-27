@@ -32,8 +32,13 @@ namespace CRT.Server.Handlers.Collections
         Task<CollectionRecord?> FindLiveByClientKeyAsync(long accountId, string clientKey, CancellationToken cancellationToken = default);
 
         // Replaces a collection's words, date and captures - only while it is not deleted; false when it is (deleted
-        // meanwhile). A date moved later than it was asks for the reminder again (reminded_utc cleared).
+        // meanwhile). A date moved later than it was asks for the reminder again (reminded_utc cleared). A collection whose
+        // sharing was stopped is shared again by it (unshared_utc cleared) - "Share" brings the page back under its link.
         Task<bool> ReplaceContentAsync(CollectionRecord collection, CancellationToken cancellationToken = default);
+
+        // Stops sharing a collection (`unsharedUtc` set - its page offline) or shares it again (null), its captures and comments
+        // kept either way (migration 0028). False when it is deleted.
+        Task<bool> SetUnsharedAsync(string id, DateTimeOffset? unsharedUtc, CancellationToken cancellationToken = default);
 
         // Deletes a collection: its captures' rows go, its words are emptied, and the row stays so the page can say when it
         // went. False when it was deleted already.
@@ -140,6 +145,7 @@ namespace CRT.Server.Handlers.Collections
 
     // ###########################################################################################
     // A collection as kept. The images are the contract's own entries with the picture's size (from its upload).
+    // `UnsharedUtc`: when its owner stopped sharing it - its page offline until "Share" brings it back (migration 0028).
     // ###########################################################################################
     public sealed record CollectionRecord(
         string Id,
@@ -160,9 +166,12 @@ namespace CRT.Server.Handlers.Collections
         int ImageCount,
         int CommentCount = 0,
         long LatestCommentId = 0,
-        string? ClientKey = null)
+        string? ClientKey = null,
+        DateTimeOffset? UnsharedUtc = null)
     {
         public bool IsDeleted => this.DeletedUtc is not null;
+
+        public bool IsSharingStopped => this.UnsharedUtc is not null;
     }
 
     public sealed record CollectionImageRecord(CollectionImageEntry Entry, int Width, int Height);

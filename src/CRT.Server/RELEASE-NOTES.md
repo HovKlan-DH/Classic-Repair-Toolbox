@@ -15,6 +15,16 @@ next push. The sections from 10.4.1 down to 1.0.0 were written from VERSION.md's
 - Plain ASCII punctuation.
 -->
 
+# 15.1.0, 2026-November-27
+--------------------------
+- A collection's owner can stop sharing it: its page goes offline, and sharing it again brings it back under the same link
+- While a collection is not shared, its link says so, and only its owner and the administrator see the page
+- A collection's page has a new look: a dark page, its captures as cards, and a viewer with previous, next and "Download"
+- The viewer opens a capture large, and the arrow keys and Esc work in it
+- "Download all" on a collection's page gets every capture in one ZIP file
+- A deleted collection's page explains what it was and why it went, and stays for good
+- A capture can no longer be marked "Looks wrong"
+
 # 15.0.0, 2026-November-27
 --------------------------
 - A display name can no longer be "You", nor hold the word "Administrator" or "Owner", which the pages write beside a name

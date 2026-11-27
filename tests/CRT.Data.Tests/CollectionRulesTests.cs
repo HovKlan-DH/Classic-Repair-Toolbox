@@ -12,7 +12,7 @@ namespace CRT.Data.Tests
         private static readonly string Sha = new('a', 64);
 
         internal static CollectionImageEntry Image(string sha, string label = "U7", string? pin = "12") =>
-            new(sha, label, pin, "/RAS", "Pulsing", "50us", "2V", "1V", null, null, LooksWrong: false, CapturedUtc: null);
+            new(sha, label, pin, "/RAS", "Pulsing", "50us", "2V", "1V", null, null, CapturedUtc: null);
 
         internal static CollectionContentRequest Content(params CollectionImageEntry[] images) =>
             new("Commodore 64", "250407", "PAL", "No picture", "It went black.", [], CollectionRules.DeleteAt(Now, "1y"), images);
@@ -186,7 +186,7 @@ namespace CRT.Data.Tests
         public void A_capture_s_anchor_never_takes_a_comment_s()
         {
             static CollectionImageEntry Capture(string label, string? pin) =>
-                new(new string('a', 64), label, pin, null, null, null, null, null, null, null, false, null);
+                new(new string('a', 64), label, pin, null, null, null, null, null, null, null, null);
 
             IReadOnlyList<string> anchors = CollectionRules.AnchorsOf(
                 [Capture("COMMENT", "12"), Capture("Comments", "3"), Capture("comment-on", null), Capture("locked", null), Capture("U7", "12")]);

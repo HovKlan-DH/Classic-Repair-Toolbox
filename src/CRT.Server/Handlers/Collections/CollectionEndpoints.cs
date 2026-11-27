@@ -13,6 +13,7 @@ namespace CRT.Server.Handlers.Collections
     //   POST   /api/collections                   CollectionContentRequest               201 CollectionAnswer
     //   PUT    /api/collections/{id}              CollectionContentRequest               200 CollectionAnswer
     //   DELETE /api/collections/{id}                                                     204
+    //   PUT    /api/collections/{id}/sharing      CollectionSharingRequest               200 CollectionAnswer (15.1.0)
     //   GET    /api/collections/mine                                                     200 MyCollectionsAnswer
     //
     // Every refusal is CollectionRefusalAnswer ({ errors: [...] }, and missingImages with 409). Each needs a signed-in account
@@ -48,6 +49,7 @@ namespace CRT.Server.Handlers.Collections
             collections.MapPost("", CollectionEndpoints.CreateAsync).WithBodyLimit(RequestBodyLimits.CollectionContentBytes);
             collections.MapPut("/{id}", CollectionEndpoints.UpdateAsync).WithBodyLimit(RequestBodyLimits.CollectionContentBytes);
             collections.MapDelete("/{id}", CollectionEndpoints.DeleteAsync);
+            collections.MapPut("/{id}/sharing", CollectionEndpoints.SetSharingAsync);
 
             // Its comments, for the owner's CRT (step 3) - CollectionCommentFlows. Small bodies, at the default limit.
             collections.MapGet("/{id}/comments", CollectionEndpoints.ListCommentsAsync);
@@ -230,6 +232,31 @@ namespace CRT.Server.Handlers.Collections
                 store,
                 DateTimeOffset.UtcNow,
                 cancellationToken));
+
+        // "Stop sharing" in CRT, or sharing again - a request with no body is no answer to either.
+        private static async Task<IResult> SetSharingAsync(
+            string id,
+            CollectionSharingRequest? request,
+            HttpContext context,
+            IAccountStore accounts,
+            ICollectionStore store,
+            ServerOptions options,
+            CancellationToken cancellationToken)
+        {
+            AccountRecord? account = await CollectionEndpoints.AccountOfAsync(context, accounts, options, cancellationToken);
+
+            if (account is not null && request is null)
+                return CollectionEndpoints.Result(CollectionOutcome.Refused(CollectionVerdict.BadRequest, "Say whether it is shared."));
+
+            return CollectionEndpoints.Result(await CollectionFlows.SetSharedAsync(
+                account,
+                id,
+                request?.Shared ?? false,
+                store,
+                AccountPages.BaseUrl(options.PublicApiBaseUrl),
+                DateTimeOffset.UtcNow,
+                cancellationToken));
+        }
 
         private static async Task<IResult> ListMineAsync(
             HttpContext context,

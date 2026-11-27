@@ -38,7 +38,18 @@ namespace Handlers.DataHandling
         public static string CommentsOf(string id) => $"{CollectionRoutes.Collections}/{id}/comments";
 
         public static string CommentOf(string id, long commentId) => $"{CollectionRoutes.CommentsOf(id)}/{commentId}";
+
+        // PUT - the owner stops sharing a collection, or shares it again (CollectionSharingRequest; server 15.1.0).
+        public static string SharingOf(string id) => $"{CollectionRoutes.Collections}/{id}/sharing";
     }
+
+    // ###########################################################################################
+    // "STOP SHARING" (owner decision, 2026-11-27: "Offline, same link back"): PUT /api/collections/<id>/sharing with Shared
+    // false takes the page offline - its link says it is not shared at the moment, its captures and comments are kept, its
+    // deletion date keeps counting - and Shared true brings it back under the same link, as "Share" (the whole collection
+    // sent again) does. Answered with the collection's CollectionAnswer; 410 once it is deleted.
+    // ###########################################################################################
+    public sealed record CollectionSharingRequest(bool Shared);
 
     // ###########################################################################################
     // COMMENTS ON A COLLECTION'S CAPTURES (step 3, 2026-11-26; CollectionComments says the rules) - written on the page by
@@ -109,7 +120,6 @@ namespace Handlers.DataHandling
         string? TriggerLevel,
         CollectionBaseline? Baseline,
         string? Caption,
-        bool LooksWrong,
         DateTimeOffset? CapturedUtc);
 
     // CRT's baseline for the pin: its picture by checksum and board file name (the published tree stores it under both -

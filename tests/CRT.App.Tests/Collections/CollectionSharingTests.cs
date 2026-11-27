@@ -11,7 +11,7 @@ public sealed class CollectionSharingTests
 {
     private static readonly DateTimeOffset Now = new(2026, 11, 26, 12, 0, 0, TimeSpan.Zero);
 
-    private static LocalCapture Capture(string label, string? pin, int minute = 0, bool looksWrong = false, string? baselineTdiv = null) =>
+    private static LocalCapture Capture(string label, string? pin, int minute = 0, string? baselineTdiv = null) =>
         new()
         {
             Sha256 = new string((char)('a' + (label.Length + (pin?.Length ?? 0) + minute) % 6), 64),
@@ -20,7 +20,6 @@ public sealed class CollectionSharingTests
             SignalName = "/RAS",
             TimePerDivision = "50us",
             BaselineTimePerDivision = baselineTdiv,
-            LooksWrong = looksWrong,
             CapturedUtc = Now.AddMinutes(minute)
         };
 
@@ -91,36 +90,60 @@ public sealed class CollectionSharingTests
         Assert.False(CollectionSharing.HasChangesNotShared(shared with { ServerId = null, Description = "x" }));
     }
 
+    // The link and a line saying what it is - each capture's own link went with the "Looks wrong" mark (owner request,
+    // 2026-11-27).
     [Fact]
-    public void Copy_for_forum_links_the_page_and_each_capture_that_looks_wrong()
+    public void Copy_for_forum_is_the_link_and_its_line()
     {
-        LocalCollection shared = Collection(Capture("U7", "12", looksWrong: true), Capture("U8", "1")) with
+        LocalCollection shared = Collection(Capture("U7", "12"), Capture("U8", "1")) with
         {
             PageUrl = "https://classic-repair-toolbox.dk/collections/k7mq3x9vbn2p"
         };
 
-        string bbcode = CollectionSharing.ForumText(shared, CollectionSharing.ForumFormat.BbCode);
-        string markdown = CollectionSharing.ForumText(shared, CollectionSharing.ForumFormat.Markdown);
-
-        Assert.StartsWith(
+        Assert.Equal(
             "[url=https://classic-repair-toolbox.dk/collections/k7mq3x9vbn2p]No picture[/url] - 2 oscilloscope captures of Commodore 64 250407 (PAL), shared with Classic Repair Toolbox",
-            bbcode,
-            StringComparison.Ordinal);
-        Assert.Contains("[list]\n[*] [url=https://classic-repair-toolbox.dk/collections/k7mq3x9vbn2p#U7-12]U7, pin 12 (/RAS)[/url]\n[/list]", bbcode, StringComparison.Ordinal);
-
-        Assert.StartsWith("[No picture](https://classic-repair-toolbox.dk/collections/k7mq3x9vbn2p) - 2 oscilloscope captures", markdown, StringComparison.Ordinal);
-        Assert.Contains("\n- [U7, pin 12 (/RAS)](https://classic-repair-toolbox.dk/collections/k7mq3x9vbn2p#U7-12)", markdown, StringComparison.Ordinal);
-        Assert.DoesNotContain("U8", markdown, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void Nothing_looking_wrong_is_the_link_and_its_line_alone()
-    {
-        LocalCollection shared = Collection(Capture("U7", "12")) with { PageUrl = "https://x/collections/a" };
+            CollectionSharing.ForumText(shared, CollectionSharing.ForumFormat.BbCode));
 
         Assert.Equal(
-            "[No picture](https://x/collections/a) - 1 oscilloscope capture of Commodore 64 250407 (PAL), shared with Classic Repair Toolbox",
+            "[No picture](https://classic-repair-toolbox.dk/collections/k7mq3x9vbn2p) - 2 oscilloscope captures of Commodore 64 250407 (PAL), shared with Classic Repair Toolbox",
             CollectionSharing.ForumText(shared, CollectionSharing.ForumFormat.Markdown));
+    }
+
+    // A capture copied into a worklog as a photo (owner decision, 2026-11-27: "A copy of its captures") says where it was taken,
+    // the settings and the baseline's beside them, what it should read and its note - the values bold, as a note with formatting.
+    [Fact]
+    public void A_capture_s_worklog_comment_says_its_place_settings_baseline_reading_and_note()
+    {
+        LocalCapture capture = Capture("U7", "12", baselineTdiv: "100us") with
+        {
+            VoltsPerDivision = "2V",
+            ExpectedReading = "Pulsing",
+            Caption = "Stays low\nafter reset"
+        };
+
+        string comment = CollectionSharing.WorklogCommentOf(capture);
+
+        Assert.Equal(
+            "**U7, pin 12** - /RAS\n" +
+            "This capture: T/DIV **50us** | V/DIV **2V** | Trigger level not read\n" +
+            "Baseline: T/DIV **100us** | V/DIV not read | Trigger level not read\n" +
+            "Expected reading: **Pulsing**\n" +
+            "Stays low\nafter reset",
+            comment);
+        Assert.Equal(
+            "U7, pin 12 - /RAS\nThis capture: T/DIV 50us | V/DIV 2V | Trigger level not read\nBaseline: T/DIV 100us | V/DIV not read | Trigger level not read\n" +
+            "Expected reading: Pulsing\nStays low\nafter reset",
+            RichNote.PlainOf(comment));
+    }
+
+    // A character the note format reads stays a character.
+    [Fact]
+    public void A_capture_s_worklog_comment_keeps_a_star_in_its_note_a_star()
+    {
+        string comment = CollectionSharing.WorklogCommentOf(Capture("U7", null) with { Caption = "*very* odd" });
+
+        Assert.EndsWith("*very* odd", RichNote.PlainOf(comment), StringComparison.Ordinal);
+        Assert.StartsWith("**U7** - /RAS\n", comment, StringComparison.Ordinal);
     }
 
     [Fact]

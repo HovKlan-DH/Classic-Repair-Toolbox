@@ -57,7 +57,7 @@ namespace CRT.Server.Tests
         private static string ShaOf(byte[] bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
 
         private static CollectionImageEntry Image(string sha, string label = "U7", string pin = "12") =>
-            new(sha, label, pin, "/RAS", "Pulsing", "50us", "2V", "1V", null, null, LooksWrong: false, CapturedUtc: Now);
+            new(sha, label, pin, "/RAS", "Pulsing", "50us", "2V", "1V", null, null, CapturedUtc: Now);
 
         private static CollectionContentRequest Content(params CollectionImageEntry[] images) =>
             new("Commodore 64", "250407", "PAL", "No picture", "It went black.", ["https://www.lemon64.com/forum/viewtopic.php?t=1"], CollectionRules.DeleteAt(Now, "1y"), images);
@@ -802,6 +802,224 @@ namespace CRT.Server.Tests
 
             Assert.Equal(CollectionVerdict.Removed, byAdministrator.Verdict);
             Assert.Equal(CollectionDeletedReasons.Administrator, this.thisStore.Collections[shared.Id].DeletedReason);
+        }
+
+        // ---- "Stop sharing" (owner decision, 2026-11-27: "Offline, same link back"; migration 0028) ---------------------------
+
+        private Task<CollectionOutcome> SetSharedAsync(AccountRecord? account, string id, bool shared, DateTimeOffset? when = null) =>
+            CollectionFlows.SetSharedAsync(account, id, shared, this.thisStore, Site, when ?? Now, CancellationToken.None);
+
+        // Stopped, its captures and comments stay on the server and its date keeps counting - nothing of it is deleted.
+        [Fact]
+        public async Task Stopping_sharing_takes_the_page_offline_and_keeps_all_of_it()
+        {
+            CollectionAnswer shared = await this.SharedAsync(Anna);
+            await this.thisStore.AddCommentAsync(shared.Id, this.thisStore.Collections[shared.Id].Images[0].Entry.Sha256, Bo.Id, "Check R7.", Now.AddHours(1));
+
+            CollectionOutcome stopped = await this.SetSharedAsync(Anna, shared.Id, false, Now.AddDays(2));
+
+            Assert.Equal(CollectionVerdict.Done, stopped.Verdict);
+            Assert.Equal(shared.Url, stopped.Answer!.Url);
+
+            CollectionRecord kept = this.thisStore.Collections[shared.Id];
+
+            Assert.Equal(Now.AddDays(2), kept.UnsharedUtc);
+            Assert.False(kept.IsDeleted);
+            Assert.Single(kept.Images);
+            Assert.Equal(shared.DeleteAtUtc, kept.DeleteAtUtc);
+            Assert.Single(await this.thisStore.ListCommentsAsync(shared.Id));
+        }
+
+        // To everybody else only that it is not shared at the moment - to its owner and the administrator the page still, said so.
+        [Fact]
+        public async Task A_collection_whose_sharing_stopped_is_withheld_from_all_but_its_owner_and_the_administrator()
+        {
+            CollectionAnswer shared = await this.SharedAsync(Anna);
+            await this.SetSharedAsync(Anna, shared.Id, false);
+
+            ShownCollection? toOthers = await this.ShownToAsync(shared.Id, Bo);
+            ShownCollection? signedOut = await this.ShownToAsync(shared.Id, null);
+            ShownCollection? toOwner = await this.ShownToAsync(shared.Id, Anna);
+            ShownCollection? toAdministrator = await this.ShownToAsync(shared.Id, TheAdministrator);
+
+            Assert.Equal((true, CollectionOffline.SharingStopped), (toOthers!.IsWithheld, toOthers.Offline));
+            Assert.True(signedOut!.IsWithheld);
+            Assert.Equal((false, CollectionOffline.SharingStopped), (toOwner!.IsWithheld, toOwner.Offline));
+            Assert.Equal((false, CollectionOffline.SharingStopped), (toAdministrator!.IsWithheld, toAdministrator.Offline));
+        }
+
+        // Its pictures go with the page: none for anybody else, and nobody comments on it meanwhile.
+        [Fact]
+        public async Task A_collection_whose_sharing_stopped_shows_nobody_else_its_pictures_and_takes_no_comment()
+        {
+            CollectionAnswer shared = await this.SharedAsync(Anna);
+            string sha = this.thisStore.Collections[shared.Id].Images[0].Entry.Sha256;
+            await this.SetSharedAsync(Anna, shared.Id, false);
+
+            Task<ShownCollection?> ImageTo(AccountRecord? viewer) =>
+                CollectionFlows.FindShownImageToAsync(shared.Id, sha, _ => Task.FromResult(viewer), this.thisStore, this.thisAccounts, Now, CancellationToken.None);
+
+            Assert.Null(await ImageTo(Bo));
+            Assert.Null(await ImageTo(null));
+            Assert.NotNull(await ImageTo(Anna));
+            Assert.Null(await CollectionFlows.FindShownAsync(shared.Id, this.thisStore, this.thisAccounts, Now, CancellationToken.None));
+        }
+
+        // "Share" - the whole collection sent again - brings it back under the SAME link; and so does sharing it again alone.
+        [Fact]
+        public async Task Sharing_again_brings_the_page_back_under_the_same_link()
+        {
+            CollectionAnswer shared = await this.SharedAsync(Anna);
+            CollectionImageEntry first = this.thisStore.Collections[shared.Id].Images[0].Entry;
+
+            await this.SetSharedAsync(Anna, shared.Id, false);
+
+            CollectionOutcome sentAgain = await CollectionFlows.UpdateAsync(
+                Anna, shared.Id, Content(first), this.thisStore, this.thisFiles, Site, Now.AddDays(1), CancellationToken.None);
+
+            Assert.Equal((CollectionVerdict.Done, shared.Url), (sentAgain.Verdict, sentAgain.Answer!.Url));
+            Assert.Null(this.thisStore.Collections[shared.Id].UnsharedUtc);
+
+            await this.SetSharedAsync(Anna, shared.Id, false);
+            Assert.Equal(CollectionVerdict.Done, (await this.SetSharedAsync(Anna, shared.Id, true)).Verdict);
+            Assert.Null(this.thisStore.Collections[shared.Id].UnsharedUtc);
+            Assert.False((await this.ShownToAsync(shared.Id, Bo))!.IsWithheld);
+        }
+
+        // The owner's alone, as sharing it is; a deleted one is gone, its page saying so.
+        [Fact]
+        public async Task Only_its_owner_stops_sharing_a_collection_and_a_deleted_one_is_gone()
+        {
+            CollectionAnswer shared = await this.SharedAsync(Anna);
+
+            Assert.Equal(CollectionVerdict.NotFound, (await this.SetSharedAsync(Bo, shared.Id, false)).Verdict);
+            Assert.Equal(CollectionVerdict.NotFound, (await this.SetSharedAsync(TheAdministrator, shared.Id, false)).Verdict);
+            Assert.Equal(CollectionVerdict.Unauthorized, (await this.SetSharedAsync(null, shared.Id, false)).Verdict);
+            Assert.Null(this.thisStore.Collections[shared.Id].UnsharedUtc);
+
+            await CollectionFlows.DeleteAsync(Anna, shared.Id, this.thisStore, Now, CancellationToken.None);
+
+            Assert.Equal(CollectionVerdict.Gone, (await this.SetSharedAsync(Anna, shared.Id, false)).Verdict);
+        }
+
+        // Stopped twice keeps the first stop's time - the page has been offline since then.
+        [Fact]
+        public async Task Stopping_sharing_again_keeps_when_it_first_stopped()
+        {
+            CollectionAnswer shared = await this.SharedAsync(Anna);
+
+            await this.SetSharedAsync(Anna, shared.Id, false, Now.AddDays(1));
+            await this.SetSharedAsync(Anna, shared.Id, false, Now.AddDays(5));
+
+            Assert.Equal(Now.AddDays(1), this.thisStore.Collections[shared.Id].UnsharedUtc);
+        }
+
+        // "You commented on" leaves out another's collection its owner stopped sharing, as its page does.
+        [Fact]
+        public async Task Your_collections_leaves_out_one_you_commented_on_whose_sharing_stopped()
+        {
+            CollectionAnswer shared = await this.SharedAsync(Anna);
+            await this.thisStore.AddCommentAsync(shared.Id, this.thisStore.Collections[shared.Id].Images[0].Entry.Sha256, Bo.Id, "Check R7.", Now.AddHours(1));
+            await this.SetSharedAsync(Anna, shared.Id, false);
+
+            CollectionListView toBo = await CollectionListFlows.ListForAsync(Bo, this.thisStore, this.thisAccounts, Now, CancellationToken.None);
+            CollectionListView toAnna = await CollectionListFlows.ListForAsync(Anna, this.thisStore, this.thisAccounts, Now, CancellationToken.None);
+
+            Assert.Empty(toBo.CommentedOn);
+            Assert.Single(toAnna.Own);
+        }
+
+        // ---- "Download all" ---------------------------------------------------------------------------------------------
+
+        // Every capture in the page's order, named as the viewer's "Download" names it.
+        [Fact]
+        public void Download_all_names_each_capture_by_its_place_and_anchor()
+        {
+            CollectionRecord collection = new(
+                "k7mq3x9vbn2p", Anna.Id, "Commodore 64", "250407", null, null, null, [], Now, Now, Now.AddYears(1), null, null, null,
+                [new(Image(new string('a', 64), "U7", "12"), 8, 8), new(Image(new string('b', 64), "U7", "12"), 8, 8), new(Image(new string('c', 64), "R5", "1"), 8, 8)],
+                3);
+
+            Assert.Equal(
+                ["001-U7-12.png", "002-U7-12-2.png", "003-R5-1.png"],
+                CollectionDownload.EntriesOf(collection).Select(entry => entry.Name));
+        }
+
+        // Kestrel refuses a synchronous write to a response - and ZipArchive makes one whatever is asked of it (this test caught
+        // .NET 10's async API writing each entry's data descriptor synchronously) - so the response is written only
+        // asynchronously, here into a stream that throws on any synchronous write; a picture gone meanwhile is left out.
+        [Fact]
+        public async Task Download_all_writes_its_zip_without_a_synchronous_write()
+        {
+            byte[] first = TestPng.Rgb(8, 8, 1);
+            byte[] second = TestPng.Rgb(8, 8, 2);
+            var pictures = new Dictionary<string, byte[]> { ["a"] = first, ["b"] = second };
+            using var target = new AsyncOnlyStream();
+
+            await CollectionDownload.WriteAsync(
+                target,
+                [new("001-U7-12.png", "a"), new("002-U8-1.png", "gone"), new("003-U8-2.png", "b")],
+                sha => pictures.TryGetValue(sha, out byte[]? bytes) ? new MemoryStream(bytes) : null,
+                CancellationToken.None);
+
+            using var zip = new System.IO.Compression.ZipArchive(new MemoryStream(target.Written.ToArray()));
+
+            Assert.Equal(["001-U7-12.png", "003-U8-2.png"], zip.Entries.Select(entry => entry.FullName));
+
+            using var read = new MemoryStream();
+            using (Stream entry = zip.Entries[1].Open())
+                entry.CopyTo(read);
+
+            Assert.Equal(second, read.ToArray());
+        }
+
+        // A response body as Kestrel's: write only forward, asynchronously.
+        private sealed class AsyncOnlyStream : Stream
+        {
+            public MemoryStream Written { get; } = new();
+
+            public override bool CanRead => false;
+
+            public override bool CanSeek => false;
+
+            public override bool CanWrite => true;
+
+            public override long Length => throw new NotSupportedException();
+
+            public override long Position
+            {
+                get => this.Written.Length;
+                set => throw new NotSupportedException();
+            }
+
+            public override void Flush() => throw new InvalidOperationException("Synchronous operations are disallowed.");
+
+            public override Task FlushAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+            public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+            public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+            public override void SetLength(long value) => throw new NotSupportedException();
+
+            public override void Write(byte[] buffer, int offset, int count) => throw new InvalidOperationException("Synchronous operations are disallowed.");
+
+            public override ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+            {
+                this.Written.Write(buffer.Span);
+                return ValueTask.CompletedTask;
+            }
+
+            public override Task WriteAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken) =>
+                this.WriteAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
+            protected override void Dispose(bool disposing)
+            {
+                if (disposing)
+                    this.Written.Dispose();
+
+                base.Dispose(disposing);
+            }
         }
     }
 }

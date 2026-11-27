@@ -23,7 +23,7 @@
 		<!-- The captured image, shown but NOT choosable. Unlike the editor's Add photo dialog there
 		     is no Browse and no drop target: the file is the capture that was just taken, and
 		     offering to swap it would make this a general attach dialog opened from the wrong place. -->
-		<TextBlock Text="Image" />
+		<TextBlock x:Name="ImageLabel" Text="Image" />
 
 		<Border Background="{DynamicResource Form_Bg}"
 				BorderBrush="{DynamicResource Form_Border}"
@@ -68,13 +68,16 @@
 		     an order the reader cannot see at the time, and is not on screen at the moment the list
 		     is open and the order actually matters. -->
 
-		<TextBlock Text="Comment" Margin="0,10,0,0" />
-		<local:RichNoteTextBox x:Name="CommentTextBox"
-				 AcceptsReturn="True"
-				 TextWrapping="Wrap"
-				 Height="70"
-				 VerticalContentAlignment="Top" />
-		<TextBlock Text="Ctrl+Enter to save" FontSize="10" Opacity="0.6" Margin="0,2,0,0" />
+		<!-- Not for a collection: each of its captures comes with its own comment (InitializeForCollection). -->
+		<StackPanel x:Name="CommentPanel" Spacing="4">
+			<TextBlock Text="Comment" Margin="0,10,0,0" />
+			<local:RichNoteTextBox x:Name="CommentTextBox"
+					 AcceptsReturn="True"
+					 TextWrapping="Wrap"
+					 Height="70"
+					 VerticalContentAlignment="Top" />
+			<TextBlock Text="Ctrl+Enter to save" FontSize="10" Opacity="0.6" Margin="0,2,0,0" />
+		</StackPanel>
 
 		<StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right" Margin="0,16,0,0">
 			<Button Content="Cancel" Click="OnCancelClick" />

@@ -54,6 +54,10 @@ namespace Handlers.Collections
 
         [JsonPropertyName("sharedByName")] public string? SharedByName { get; init; }
 
+        // When its owner pressed "Stop sharing" (owner decision, 2026-11-27: "Offline, same link back") - its page offline, kept
+        // on the server under its link, until "Share" brings it back. Null while it is shared, or never was.
+        [JsonPropertyName("sharingStoppedUtc")] public DateTimeOffset? SharingStoppedUtc { get; init; }
+
         // The newest comment its owner has read in CRT (step 3) - comments newer than it are marked new.
         [JsonPropertyName("seenCommentId")] public long SeenCommentId { get; init; }
 
@@ -61,7 +65,11 @@ namespace Handlers.Collections
 
         [JsonExtensionData] public Dictionary<string, JsonElement>? Unknown { get; init; }
 
+        // It has a page on the server - shown, or offline with its sharing stopped.
         [JsonIgnore] public bool IsShared => this.ServerId is not null;
+
+        // Its page is up for anybody with the link.
+        [JsonIgnore] public bool IsOnline => this.IsShared && this.SharingStoppedUtc is null;
     }
 
     // ###########################################################################################
@@ -97,8 +105,6 @@ namespace Handlers.Collections
         [JsonPropertyName("baselineTriggerLevel")] public string? BaselineTriggerLevel { get; init; }
 
         [JsonPropertyName("caption")] public string? Caption { get; init; }
-
-        [JsonPropertyName("looksWrong")] public bool LooksWrong { get; init; }
 
         [JsonPropertyName("capturedUtc")] public DateTimeOffset CapturedUtc { get; init; }
 
