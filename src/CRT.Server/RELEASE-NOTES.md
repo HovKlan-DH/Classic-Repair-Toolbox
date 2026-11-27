@@ -15,6 +15,10 @@ next push. The sections from 10.4.1 down to 1.0.0 were written from VERSION.md's
 - Plain ASCII punctuation.
 -->
 
+# 16.0.1, 2026-November-27
+--------------------------
+- A capture opened large is shown whole, no longer running under the viewer's footer on a wide window
+
 # 16.0.0, 2026-November-27
 --------------------------
 - A collection is kept at most a year ahead, and every "Share" starts its time again

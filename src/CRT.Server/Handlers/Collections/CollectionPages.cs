@@ -1043,8 +1043,9 @@ namespace CRT.Server.Handlers.Collections
             ".close{position:absolute;top:10px;right:10px;z-index:1;width:40px;height:40px;display:grid;place-items:center;border-radius:12px;" +
             "border:1px solid var(--border);background:rgba(255,255,255,.9);color:var(--text);font-size:22px;line-height:1;text-decoration:none}" +
             ".close:hover{border-color:var(--border2)}" +
-            ".vbody{display:grid;grid-template-columns:minmax(0,1fr) 380px;flex:1 1 auto;min-height:0}.vbody.wide{grid-template-columns:minmax(0,1fr)}" +
-            ".viewer{position:relative;display:grid;min-height:0;min-width:0}" +
+            ".vbody{display:grid;grid-template-columns:minmax(0,1fr) 380px;grid-template-rows:minmax(0,1fr);flex:1 1 auto;min-height:0}" +
+            ".vbody.wide{grid-template-columns:minmax(0,1fr)}" +
+            ".viewer{position:relative;display:grid;grid-template:minmax(0,1fr)/minmax(0,1fr);min-height:0;min-width:0}" +
             ".zone{position:absolute;z-index:1;display:flex;align-items:center;color:rgba(15,23,42,.7);text-decoration:none;transition:background 120ms ease}" +
             ".zone span{display:grid;place-items:center;width:44px;height:44px;padding-bottom:4px;border-radius:50%;font-size:34px;line-height:1;" +
             "color:var(--text);background:rgba(255,255,255,.82);border:1px solid var(--border2);box-shadow:0 4px 14px rgba(0,0,0,.35)}" +
@@ -1062,7 +1063,7 @@ namespace CRT.Server.Handlers.Collections
             ".pins{border-collapse:collapse;width:100%;font-size:12px;margin-top:6px}" +
             ".pins th,.pins td{text-align:left;padding:3px 6px;border-bottom:1px solid var(--border);vertical-align:top}" +
             ".pins th{color:var(--muted);font-weight:600}.pins tr.here td{background:var(--diff);font-weight:700}.pins .reading{white-space:pre-line}" +
-            ".stage{display:grid;place-items:center;padding:14px;min-height:0;overflow:hidden;" +
+            ".stage{display:grid;grid-template:minmax(0,1fr)/minmax(0,1fr);place-items:center;padding:14px;min-height:0;min-width:0;overflow:hidden;" +
             "background:radial-gradient(900px 600px at 30% 20%,rgba(14,165,233,.14),transparent 60%),linear-gradient(180deg,rgba(2,6,23,.06),rgba(2,6,23,.02))}" +
             ".stage img{width:100%;height:100%;object-fit:contain;border-radius:12px;background:#0b1220;border:1px solid rgba(15,23,42,.22);" +
             "box-shadow:inset 0 0 0 1px rgba(255,255,255,.25),0 18px 45px rgba(15,23,42,.24)}" +
@@ -1081,7 +1082,8 @@ namespace CRT.Server.Handlers.Collections
             ".brand,.meta,.header-actions{grid-column:1;justify-self:center;align-items:center;text-align:center}.meta{white-space:normal}" +
             ".container{padding:14px 10px 6px}html{scroll-padding-top:12px}.grid.grid-few{grid-template-columns:1fr}.panel{padding:14px}" +
             "footer{width:calc(100% - 20px)}.dialog{width:96vw;height:96vh;margin:2vh auto}.zone span{width:34px;height:34px;font-size:26px}" +
-            ".vbody{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,55%) minmax(0,45%)}.info{border-left:0;border-top:1px solid var(--border)}" +
+            ".vbody{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,55%) minmax(0,45%)}.vbody.wide{grid-template-rows:minmax(0,1fr)}" +
+            ".info{border-left:0;border-top:1px solid var(--border)}" +
             ".modal .footer{grid-template-columns:1fr;justify-items:center}.modal .title,.modal .actions{grid-column:1;justify-self:center}" +
             ".share-panel{right:auto;left:50%;transform:translateX(-50%);width:min(330px,90vw)}}";
 
