@@ -808,7 +808,9 @@ namespace CRT.Server.Tests
         // sharing off - and once set, a folder of their own, there and writable.
         // -----------------------------------------------------------------------------------
 
-        private static string CollectionsPath() => Path.Combine(Path.GetTempPath(), "crt-test", "collections");
+        // Beside the service's own folders, as INSTALLING.md's - never in the folder the data trees stand in, which the website
+        // serves ("crt-test" here, the trees' parent).
+        private static string CollectionsPath() => Path.Combine(Path.GetTempPath(), "crt-test-service", "collections");
 
         [Fact]
         public void No_collections_folder_is_sharing_off_and_starts()
@@ -836,6 +838,34 @@ namespace CRT.Server.Tests
 
             Assert.Contains(ServerOptionsValidatorTests.Validate(inBeta), failure => failure.Contains("CollectionsRoot", StringComparison.Ordinal) && failure.Contains("overlaps DataTreeRoot", StringComparison.Ordinal));
             Assert.Contains(ServerOptionsValidatorTests.Validate(inFeedback), failure => failure.Contains("overlaps FeedbackRoot", StringComparison.Ordinal));
+        }
+
+        // Inside the folder the website serves the data trees from, the pictures would be handed out straight from the disk -
+        // a collection taken down, or its owner locked, still downloadable by checksum (code review, 2026-11-27, Security).
+        [Fact]
+        public void A_collections_folder_the_website_serves_refuses_to_start()
+        {
+            ServerOptions options = ServerOptionsValidatorTests.ValidOptions(ServerOptionsValidatorTests.BetaPath(), ServerOptionsValidatorTests.ProductionPath());
+            options.ManifestPath = Path.Combine(Path.GetTempPath(), "crt-test", "app-data-BETA", "dataChecksums.json");
+            options.CollectionsRoot = Path.Combine(Path.GetTempPath(), "crt-test", "collection-pictures");
+
+            Assert.Contains(ServerOptionsValidatorTests.Validate(options), failure => failure.Contains("the folder the website serves", StringComparison.Ordinal));
+        }
+
+        // The served folder is found from the BETA manifest - a file in its tree's folder - not by counting up from DataTreeRoot,
+        // which may name the tree itself: counted so, the site's folder above "public_html" was taken for it, and the documented
+        // CollectionsRoot beside "public_html" stopped the service (code review, 2026-11-27).
+        [Fact]
+        public void A_collections_folder_beside_the_served_folder_starts_whatever_DataTreeRoot_names()
+        {
+            string site = Path.Combine(Path.GetTempPath(), "crt-test-site");
+            string served = Path.Combine(site, "public_html");
+
+            ServerOptions options = ServerOptionsValidatorTests.ValidOptions(Path.Combine(served, "app-data-v4-BETA"), Path.Combine(served, "app-data-v4"));
+            options.ManifestPath = Path.Combine(served, "app-data-v4-BETA", "dataChecksums.json");
+            options.CollectionsRoot = Path.Combine(site, "crt-server", "collections");
+
+            Assert.DoesNotContain(ServerOptionsValidatorTests.Validate(options), failure => failure.Contains("the folder the website serves", StringComparison.Ordinal));
         }
 
         [Fact]

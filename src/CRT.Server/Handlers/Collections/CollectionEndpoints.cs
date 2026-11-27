@@ -17,7 +17,7 @@ namespace CRT.Server.Handlers.Collections
     //
     // Every refusal is CollectionRefusalAnswer ({ errors: [...] }, and missingImages with 409). Each needs a signed-in account
     // (401 without), under a per-address request limit of their own (RateLimitPolicy) - sharing a chip's 40 pins is some 42
-    // requests. Not set up on this server (CollectionsRoot): 503, the same sentence for every route.
+    // requests. Not set up on this server (CollectionsRoot): 503, the same sentence for every route (the group's filter).
     // ###########################################################################################
     public static class CollectionEndpoints
     {
@@ -34,6 +34,14 @@ namespace CRT.Server.Handlers.Collections
             ArgumentNullException.ThrowIfNull(app);
 
             RouteGroupBuilder collections = app.MapGroup(CollectionRoutes.Collections).RequireRateLimiting(CollectionEndpoints.RateLimitPolicy);
+
+            // Not set up (CollectionsRoot): EVERY route answers 503 with the same sentence, asked once for the group (code
+            // review, 2026-11-27: only the upload, the share and its update asked - the comments, the delete and the list
+            // answered from the database as if sharing were on).
+            collections.AddEndpointFilter(async (invocation, next) =>
+                invocation.HttpContext.RequestServices.GetRequiredService<ServerOptions>().IsCollectionSharingConfigured
+                    ? await next(invocation)
+                    : CollectionEndpoints.Result(CollectionOutcome.Refused(CollectionVerdict.Off, CollectionFlows.NotSetUp)));
 
             collections.MapPut("/images/{sha256}", CollectionEndpoints.UploadImageAsync).WithBodyLimit(RequestBodyLimits.CollectionImageBytes);
             collections.MapGet("/mine", CollectionEndpoints.ListMineAsync);
@@ -57,7 +65,7 @@ namespace CRT.Server.Handlers.Collections
             ServerOptions options,
             CancellationToken cancellationToken) =>
             CollectionEndpoints.Result(await CollectionCommentFlows.ListForOwnerAsync(
-                await CollectionEndpoints.AccountOfAsync(context, accounts, options, cancellationToken), id, store, cancellationToken));
+                await CollectionEndpoints.AccountOfAsync(context, accounts, options, cancellationToken), id, store, DateTimeOffset.UtcNow, cancellationToken));
 
         private static async Task<IResult> AddCommentAsync(
             string id,
@@ -91,6 +99,7 @@ namespace CRT.Server.Handlers.Collections
             CancellationToken cancellationToken) =>
             CollectionEndpoints.Result(await CollectionCommentFlows.EditAsync(
                 await CollectionEndpoints.AccountOfAsync(context, accounts, options, cancellationToken),
+                id,
                 commentId,
                 request?.Body,
                 store,
@@ -107,7 +116,7 @@ namespace CRT.Server.Handlers.Collections
             ServerOptions options,
             CancellationToken cancellationToken) =>
             CollectionEndpoints.Result(await CollectionCommentFlows.DeleteAsync(
-                await CollectionEndpoints.AccountOfAsync(context, accounts, options, cancellationToken), commentId, store, DateTimeOffset.UtcNow, cancellationToken));
+                await CollectionEndpoints.AccountOfAsync(context, accounts, options, cancellationToken), id, commentId, store, DateTimeOffset.UtcNow, cancellationToken));
 
         private static async Task<IResult> HideCommentAsync(
             string id,
@@ -120,6 +129,7 @@ namespace CRT.Server.Handlers.Collections
             CancellationToken cancellationToken) =>
             CollectionEndpoints.Result(await CollectionCommentFlows.SetHiddenAsync(
                 await CollectionEndpoints.AccountOfAsync(context, accounts, options, cancellationToken),
+                id,
                 commentId,
                 request?.Hidden ?? true,
                 store,
@@ -142,8 +152,12 @@ namespace CRT.Server.Handlers.Collections
             ServerOptions options,
             CancellationToken cancellationToken)
         {
-            if (!options.IsCollectionSharingConfigured)
-                return CollectionEndpoints.Result(CollectionOutcome.Refused(CollectionVerdict.Off, CollectionFlows.NotSetUp));
+            // Signed in first, the body read only then (code review, 2026-11-27, Security: anybody made the service read and
+            // hold up to 2 MB a request before it answered 401). The flow refuses a missing account as it always did.
+            AccountRecord? account = await CollectionEndpoints.AccountOfAsync(context, accounts, options, cancellationToken);
+
+            if (account is null)
+                return CollectionEndpoints.Result(await CollectionFlows.UploadImageAsync(null, sha256, [], store, new CollectionFiles(options.CollectionsRoot!), CollectionEndpoints.StorageOf(options), DateTimeOffset.UtcNow, cancellationToken));
 
             byte[] bytes;
 
@@ -154,7 +168,7 @@ namespace CRT.Server.Handlers.Collections
             }
 
             return CollectionEndpoints.Result(await CollectionFlows.UploadImageAsync(
-                await CollectionEndpoints.AccountOfAsync(context, accounts, options, cancellationToken),
+                account,
                 sha256,
                 bytes,
                 store,
@@ -172,12 +186,10 @@ namespace CRT.Server.Handlers.Collections
             ServerOptions options,
             CancellationToken cancellationToken)
         {
-            if (!options.IsCollectionSharingConfigured)
-                return CollectionEndpoints.Result(CollectionOutcome.Refused(CollectionVerdict.Off, CollectionFlows.NotSetUp));
-
             return CollectionEndpoints.Result(await CollectionFlows.CreateAsync(
                 await CollectionEndpoints.AccountOfAsync(context, accounts, options, cancellationToken),
                 content,
+                context.Request.Headers[CollectionRoutes.ClientKeyHeader].ToString(),
                 store,
                 new CollectionFiles(options.CollectionsRoot!),
                 AccountPages.BaseUrl(options.PublicApiBaseUrl),
@@ -194,9 +206,6 @@ namespace CRT.Server.Handlers.Collections
             ServerOptions options,
             CancellationToken cancellationToken)
         {
-            if (!options.IsCollectionSharingConfigured)
-                return CollectionEndpoints.Result(CollectionOutcome.Refused(CollectionVerdict.Off, CollectionFlows.NotSetUp));
-
             return CollectionEndpoints.Result(await CollectionFlows.UpdateAsync(
                 await CollectionEndpoints.AccountOfAsync(context, accounts, options, cancellationToken),
                 id,
@@ -232,6 +241,7 @@ namespace CRT.Server.Handlers.Collections
                 await CollectionEndpoints.AccountOfAsync(context, accounts, options, cancellationToken),
                 store,
                 AccountPages.BaseUrl(options.PublicApiBaseUrl),
+                DateTimeOffset.UtcNow,
                 cancellationToken));
 
         // The account the request was sent with - the session slid, as every signed-in route slides it.

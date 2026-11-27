@@ -31,9 +31,11 @@ public sealed class ComponentInfoWindowCollectionsTests : IDisposable
         this.thisStore = new CollectionStore(this.thisWorkspace.Path_("collections"));
     }
 
+    // An EMPTY file, never a missing one: LoadFrom keeps the settings in memory when there is no file, and the oscilloscope
+    // tab and the collections picked would reach the next test (code review, 2026-11-27).
     public void Dispose()
     {
-        UserSettings.LoadFrom(this.thisWorkspace.Path_(Guid.NewGuid().ToString("N") + ".json"));
+        UserSettings.LoadFrom(this.thisWorkspace.WriteFile(Guid.NewGuid().ToString("N") + ".json", "{}"));
         this.thisWorkspace.Dispose();
     }
 
@@ -106,6 +108,71 @@ public sealed class ComponentInfoWindowCollectionsTests : IDisposable
         });
     }
 
+    // The choices are shown again at every push of the oscilloscope's state and as the comment check answers - never under an
+    // open list, whose item clicked would be another: they wait for it to close (code review, 2026-11-27).
+    [Fact]
+    public void The_choices_wait_while_the_list_is_open()
+    {
+        UiTest.Run(() =>
+        {
+            ComponentInfoWindow window = this.Popup();
+            var box = window.FindControl<ComboBox>("CollectionComboBox")!;
+
+            window.Show();
+
+            try
+            {
+                box.IsDropDownOpen = true;
+                Assert.True(box.IsDropDownOpen);
+
+                LocalCollection made = this.thisStore.Create("Commodore 64", "250407", null, "No picture", DateTimeOffset.UtcNow)!;
+                window.ShowCollectionChoices();
+
+                Assert.Equal([ComponentInfoWindow.NoCollectionChoice, ComponentInfoWindow.NewCollectionChoice], Choices(window));
+
+                box.IsDropDownOpen = false;
+
+                Assert.Equal([ComponentInfoWindow.NoCollectionChoice, $"{made.Title} (0 captures)", ComponentInfoWindow.NewCollectionChoice], Choices(window));
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    // A pick is made from the open list: the arrow keys on the closed drop-down step nothing - each pass over "New collection"
+    // made an empty collection, picked for the board (code review, 2026-11-27).
+    [Fact]
+    public void The_arrow_keys_on_the_closed_list_make_no_collection()
+    {
+        UiTest.Run(() =>
+        {
+            ComponentInfoWindow window = this.Popup();
+            var box = window.FindControl<ComboBox>("CollectionComboBox")!;
+
+            window.Show();
+
+            try
+            {
+                // With the oscilloscope's keyboard control off - on, the popup takes Up and Down for the trigger level first.
+                window.FindControl<CheckBox>("NumpadOscilloscopeSwitch")!.IsChecked = false;
+                Assert.True(box.Focus());
+
+                for (int i = 0; i < 3; i++)
+                    Avalonia.Headless.HeadlessWindowExtensions.KeyPress(window, Avalonia.Input.Key.Down, Avalonia.Input.RawInputModifiers.None, Avalonia.Input.PhysicalKey.ArrowDown, keySymbol: null);
+
+                Assert.False(box.IsDropDownOpen);
+                Assert.Empty(this.thisStore.OfBoard("Commodore 64", "250407"));
+                Assert.Equal(ComponentInfoWindow.NoCollectionChoice, box.SelectedItem?.ToString());
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
     [Fact]
     public async Task A_capture_goes_into_the_collection_picked_with_its_settings_and_comes_out_again()
     {
@@ -115,7 +182,7 @@ public sealed class ComponentInfoWindowCollectionsTests : IDisposable
         string saved = this.thisWorkspace.Path_("U8_12_RAS.png");
         string baseline = this.thisWorkspace.Path_("baseline.png");
 
-        File.WriteAllBytes(saved, [1, 2, 3]);
+        File.WriteAllBytes(saved, CRT.Data.Tests.TestPng.Rgb(16, 10));
         File.WriteAllBytes(baseline, [4, 5, 6]);
 
         var shown = new ComponentImageEntry { BoardLabel = "U8", Pin = "12", Name = "/RAS", File = "Scope baseline/U8_12_RAS.png", TimeDiv = "100us" };
@@ -124,6 +191,7 @@ public sealed class ComponentInfoWindowCollectionsTests : IDisposable
         {
             ComponentInfoWindow window = this.Popup();
 
+            window.CaptureOnScreenForTests(saved);
             await window.CollectCaptureAsync(shown, baseline, saved);
 
             LocalCapture kept = Assert.Single(this.thisStore.Find(collection.LocalId)!.Captures);
@@ -145,17 +213,151 @@ public sealed class ComponentInfoWindowCollectionsTests : IDisposable
         });
     }
 
+    // A new collection is of the region THIS popup shows - its own buttons switch it, and the context's is what Main showed as
+    // the popup opened (code review, 2026-11-27: an NTSC popup's collection read "(PAL)" on its page).
     [Fact]
-    public async Task With_no_collection_picked_a_capture_goes_nowhere_else()
+    public void A_new_collection_is_of_the_region_the_popup_shows()
     {
-        LocalCollection collection = this.thisStore.Create("Commodore 64", "250407", null, null, DateTimeOffset.UtcNow)!;
-        string saved = this.thisWorkspace.Path_("capture.png");
-        File.WriteAllBytes(saved, [1]);
+        UiTest.Run(() =>
+        {
+            ComponentInfoWindow window = this.Popup();
+            window.FindControl<Button>("NtscRegionButton")!.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+            var box = window.FindControl<ComboBox>("CollectionComboBox")!;
+            box.SelectedItem = box.Items.Cast<ComponentInfoWindow.CollectionChoice>().Single(choice => choice.IsNew);
+
+            Assert.Equal("NTSC", Assert.Single(this.thisStore.OfBoard("Commodore 64", "250407")).Region);
+        });
+    }
+
+    // The pick is the board's: every popup of it is told, so none shows a pick that is no longer where its captures go (code
+    // review, 2026-11-27).
+    [Fact]
+    public void A_pick_is_told_to_the_other_popups()
+    {
+        var told = new List<string?>();
+
+        UiTest.Run(() =>
+        {
+            var window = new ComponentInfoWindow();
+            window.SetComponent("U8", "U8", [new ComponentEntry { BoardLabel = "U8", Category = "IC" }], [], [], [], "PAL",
+                Path.GetTempPath(), [], string.Empty, string.Empty);
+            window.UseCollections(this.Context() with { CollectionChanged = told.Add });
+            window.UpdateOscilloscopeSessionTitleState(true, true);
+
+            var box = window.FindControl<ComboBox>("CollectionComboBox")!;
+            box.SelectedItem = box.Items.Cast<ComponentInfoWindow.CollectionChoice>().Single(choice => choice.IsNew);
+
+            // Told with no collection's content changed - an open collection window is left as it is (code review, 2026-11-27).
+            Assert.Equal([(string?)null], told);
+        });
+    }
+
+    // Two ground pins at the same settings give the very same screen - one capture. "Take out" is offered for neither the
+    // second, nor it would take the first out (code review, 2026-11-27).
+    [Fact]
+    public async Task The_same_screen_twice_is_said_to_be_in_already_and_offers_no_take_out()
+    {
+        LocalCollection collection = this.thisStore.Create("Commodore 64", "250407", null, "No picture", DateTimeOffset.UtcNow)!;
+        UserSettings.SetCollectionOfBoard(BoardKey, collection.LocalId);
+
+        string first = this.thisWorkspace.Path_("U8_7_GND.png");
+        string second = this.thisWorkspace.Path_("U8_14_GND.png");
+        byte[] screen = CRT.Data.Tests.TestPng.Rgb(16, 10, seed: 3);
+
+        File.WriteAllBytes(first, screen);
+        File.WriteAllBytes(second, screen);
 
         await UiTest.RunAsync(async () =>
         {
             ComponentInfoWindow window = this.Popup();
 
+            window.CaptureOnScreenForTests(first);
+            await window.CollectCaptureAsync(new ComponentImageEntry { BoardLabel = "U8", Pin = "7" }, null, first);
+            window.CaptureOnScreenForTests(second);
+            await window.CollectCaptureAsync(new ComponentImageEntry { BoardLabel = "U8", Pin = "14" }, null, second);
+
+            Assert.Equal("7", Assert.Single(this.thisStore.Find(collection.LocalId)!.Captures).Pin);
+            Assert.Equal("The very same screen is in [No picture] already", window.CollectedTextForTests);
+            Assert.False(window.FindControl<Button>("TakeOutOfCollectionButton")!.IsVisible);
+        });
+    }
+
+    // What the server would refuse is said at the capture (CollectionPng), and kept out.
+    [Fact]
+    public async Task A_screen_no_collection_takes_is_said_and_kept_out()
+    {
+        LocalCollection collection = this.thisStore.Create("Commodore 64", "250407", null, "No picture", DateTimeOffset.UtcNow)!;
+        UserSettings.SetCollectionOfBoard(BoardKey, collection.LocalId);
+
+        string saved = this.thisWorkspace.Path_("U8_12_RAS.png");
+        File.WriteAllBytes(saved, [1, 2, 3]);
+
+        await UiTest.RunAsync(async () =>
+        {
+            ComponentInfoWindow window = this.Popup();
+
+            window.CaptureOnScreenForTests(saved);
+            await window.CollectCaptureAsync(new ComponentImageEntry { BoardLabel = "U8", Pin = "12" }, null, saved);
+
+            Assert.Empty(this.thisStore.Find(collection.LocalId)!.Captures);
+            Assert.Equal($"Not added to [No picture]: {CollectionPng.NotAPicture}", window.CollectedTextForTests);
+        });
+    }
+
+    // Moved to another image while the oscilloscope's settings were read, the capture goes into the collection all the same -
+    // and the banner stays off the image now shown, whose "Take out" would take this capture out (code review, 2026-11-27).
+    [Fact]
+    public async Task A_capture_moved_on_from_puts_no_banner_under_the_image_shown()
+    {
+        LocalCollection collection = this.thisStore.Create("Commodore 64", "250407", null, "No picture", DateTimeOffset.UtcNow)!;
+        UserSettings.SetCollectionOfBoard(BoardKey, collection.LocalId);
+
+        string saved = this.thisWorkspace.Path_("U8_5_D0.png");
+        File.WriteAllBytes(saved, CRT.Data.Tests.TestPng.Rgb(16, 10, seed: 9));
+
+        await UiTest.RunAsync(async () =>
+        {
+            ComponentInfoWindow? window = null;
+            var told = new List<string?>();
+
+            window = new ComponentInfoWindow();
+            window.SetComponent("U8", "U8", [new ComponentEntry { BoardLabel = "U8", Category = "IC" }], [], [], [], "PAL",
+                Path.GetTempPath(), [], string.Empty, string.Empty);
+            window.UseCollections(this.Context() with
+            {
+                // The settings read while the next image is picked - its banner cleared, as a picked thumbnail clears it.
+                ReadScopeSettings = () =>
+                {
+                    window.ClearTemporaryCapturedOscilloscopeImageForTests();
+                    return Task.FromResult<ScopeSettingsReading?>(new ScopeSettingsReading(50e-6, 2, 1));
+                },
+                CollectionChanged = told.Add
+            });
+            window.UpdateOscilloscopeSessionTitleState(true, true);
+
+            window.CaptureOnScreenForTests(saved);
+            await window.CollectCaptureAsync(new ComponentImageEntry { BoardLabel = "U8", Pin = "5" }, null, saved);
+
+            Assert.Equal("5", Assert.Single(this.thisStore.Find(collection.LocalId)!.Captures).Pin);
+            Assert.Null(window.CollectedTextForTests);
+            Assert.False(window.FindControl<Button>("TakeOutOfCollectionButton")!.IsVisible);
+            Assert.Equal([collection.LocalId], told);
+        });
+    }
+
+    [Fact]
+    public async Task With_no_collection_picked_a_capture_goes_nowhere_else()
+    {
+        LocalCollection collection = this.thisStore.Create("Commodore 64", "250407", null, null, DateTimeOffset.UtcNow)!;
+        string saved = this.thisWorkspace.Path_("capture.png");
+        File.WriteAllBytes(saved, CRT.Data.Tests.TestPng.Rgb(8, 8));
+
+        await UiTest.RunAsync(async () =>
+        {
+            ComponentInfoWindow window = this.Popup();
+
+            window.CaptureOnScreenForTests(saved);
             await window.CollectCaptureAsync(new ComponentImageEntry { BoardLabel = "U8", Pin = "1" }, null, saved);
 
             Assert.Empty(this.thisStore.Find(collection.LocalId)!.Captures);

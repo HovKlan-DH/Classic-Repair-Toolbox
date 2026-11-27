@@ -67,8 +67,8 @@ namespace CRT.Server.Tests
         private Task<CollectionOutcome> UploadAsync(AccountRecord? account, byte[] bytes, CollectionStorage? storage = null, DateTimeOffset? when = null) =>
             CollectionFlows.UploadImageAsync(account, ShaOf(bytes), bytes, this.thisStore, this.thisFiles, storage ?? this.Storage(), when ?? Now, CancellationToken.None);
 
-        private Task<CollectionOutcome> CreateAsync(AccountRecord? account, CollectionContentRequest content, DateTimeOffset? when = null) =>
-            CollectionFlows.CreateAsync(account, content, this.thisStore, this.thisFiles, Site, when ?? Now, CancellationToken.None);
+        private Task<CollectionOutcome> CreateAsync(AccountRecord? account, CollectionContentRequest content, DateTimeOffset? when = null, string? clientKey = null) =>
+            CollectionFlows.CreateAsync(account, content, clientKey, this.thisStore, this.thisFiles, Site, when ?? Now, CancellationToken.None);
 
         // A collection of one capture, shared by `account` - uploaded, then sent.
         private async Task<CollectionAnswer> SharedAsync(AccountRecord account, int seed = 1, DateTimeOffset? when = null, string lifetime = "1y")
@@ -383,7 +383,7 @@ namespace CRT.Server.Tests
             await this.SharedAsync(Bo, seed: 3);
             await CollectionFlows.DeleteAsync(Anna, gone.Id, this.thisStore, Now, CancellationToken.None);
 
-            CollectionOutcome outcome = await CollectionFlows.ListMineAsync(Anna, this.thisStore, Site, CancellationToken.None);
+            CollectionOutcome outcome = await CollectionFlows.ListMineAsync(Anna, this.thisStore, Site, Now, CancellationToken.None);
 
             CollectionSummaryAnswer only = Assert.Single(outcome.Mine!.Collections);
 
@@ -416,6 +416,66 @@ namespace CRT.Server.Tests
             Assert.False(this.thisFiles.Has(sha));
         }
 
+        // The rows are gone once the sweep has them, so a file that cannot be deleted is named and the others still go (code
+        // review, 2026-11-27: the first refusal stopped the loop, and every file after it stayed for good). Only Windows refuses
+        // to delete a file held open, which is how this test makes one.
+        [Fact]
+        public async Task A_capture_that_cannot_be_deleted_is_named_and_the_rest_still_go()
+        {
+            Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows refuses to delete a file held open.");
+
+            byte[] held = TestPng.Rgb(8, 8, seed: 1);
+            byte[] free = TestPng.Rgb(8, 8, seed: 2);
+
+            await this.UploadAsync(Anna, held);
+            await this.UploadAsync(Anna, free);
+
+            CollectionSweepResult result;
+
+            using (new FileStream(this.thisFiles.PathOf(ShaOf(held)), FileMode.Open, FileAccess.Read, FileShare.Read))
+                result = await this.SweepAsync(Now.AddDays(2));
+
+            Assert.Equal([ShaOf(held)], result.FilesNotDeleted);
+            Assert.Equal(1, result.FilesDeleted);
+            Assert.False(this.thisFiles.Has(ShaOf(free)));
+        }
+
+        // The database failing one ask names that picture, and the sweep goes on with the rest - their rows are gone already, so
+        // a picture left now would be left for good (code review, 2026-11-27).
+        [Fact]
+        public async Task A_picture_the_database_cannot_be_asked_about_is_named_and_the_rest_still_go()
+        {
+            byte[] failing = TestPng.Rgb(8, 8, seed: 5);
+            byte[] fine = TestPng.Rgb(8, 8, seed: 6);
+
+            await this.UploadAsync(Anna, failing);
+            await this.UploadAsync(Anna, fine);
+            this.thisStore.IsUploadedFails.Add(ShaOf(failing));
+
+            CollectionSweepResult result = await this.SweepAsync(Now.AddDays(2));
+
+            Assert.Equal([ShaOf(failing)], result.FilesNotDeleted);
+            Assert.Equal(1, result.FilesDeleted);
+            Assert.False(this.thisFiles.Has(ShaOf(fine)));
+        }
+
+        // Another account sending the very same picture as the sweep lets go of it keeps the bytes - its upload wrote none, as
+        // they were here (code review, 2026-11-27).
+        [Fact]
+        public async Task A_picture_sent_again_by_another_account_as_it_is_swept_stays()
+        {
+            byte[] png = TestPng.Rgb(8, 8, seed: 4);
+
+            await this.UploadAsync(Anna, png);
+            this.thisStore.AfterDeleteUnusedUploads = () =>
+                this.thisStore.Uploads.Add(new CollectionUploadRecord(Bo.Id, ShaOf(png), png.Length, 8, 8, Now.AddDays(2)));
+
+            CollectionSweepResult result = await this.SweepAsync(Now.AddDays(2));
+
+            Assert.Equal(0, result.FilesDeleted);
+            Assert.True(this.thisFiles.Has(ShaOf(png)));
+        }
+
         // A capture uploaded for a collection about to be sent is not taken from under it.
         [Fact]
         public async Task A_capture_uploaded_today_and_shown_nowhere_yet_stays_a_day()
@@ -429,6 +489,23 @@ namespace CRT.Server.Tests
 
             await this.SweepAsync(Now.AddHours(25));
             Assert.False(this.thisFiles.Has(ShaOf(png)));
+        }
+
+        // A picture sent again - its old upload shown by no collection, its day long past - is kept a day from that send, so the
+        // collection it was sent for finds it (code review, 2026-11-27: the next sweep took the old row and the bytes, and the
+        // share was answered "missing" again).
+        [Fact]
+        public async Task A_capture_sent_again_stays_a_day_from_its_last_send()
+        {
+            byte[] png = TestPng.Rgb(8, 8);
+
+            await this.UploadAsync(Anna, png);
+            await this.UploadAsync(Anna, png, when: Now.AddDays(10));
+
+            await this.SweepAsync(Now.AddDays(10).AddHours(23));
+
+            Assert.True(this.thisFiles.Has(ShaOf(png)));
+            Assert.Equal(Now.AddDays(10), Assert.Single(this.thisStore.Uploads).UploadedUtc);
         }
 
         // Two accounts sent the same picture: one collection gone takes only its own account's upload, never the bytes the
@@ -494,6 +571,43 @@ namespace CRT.Server.Tests
             Assert.Null(this.thisStore.Collections[shared.Id].RemindedUtc);
         }
 
+        // A collection shared again with "1 month" left is told nothing, however long ago it was made - the month counts from the
+        // share that set it (code review, 2026-11-27: measured from its making, the reminder came the day after).
+        [Fact]
+        public async Task A_collection_shared_again_with_a_month_left_is_not_reminded()
+        {
+            CollectionAnswer shared = await this.SharedAsync(Anna, lifetime: "1y");
+            DateTimeOffset later = shared.DeleteAtUtc.AddDays(-40);
+            CollectionImageEntry image = this.thisStore.Collections[shared.Id].Images[0].Entry;
+
+            await CollectionFlows.UpdateAsync(
+                Anna, shared.Id, Content(image) with { DeleteAtUtc = CollectionRules.DeleteAt(later, "1m") },
+                this.thisStore, this.thisFiles, Site, later, CancellationToken.None);
+
+            await this.SweepAsync(later.AddDays(1));
+
+            Assert.Empty(this.thisMailer.Sent);
+        }
+
+        // Whether a reminder is due is decided as the date is set: a share keeping its date - a caption changed 45 days before
+        // it - still gets the reminder (code review, 2026-11-27: measured from the last share, it never came).
+        [Fact]
+        public async Task A_share_keeping_its_date_keeps_the_reminder_coming()
+        {
+            CollectionAnswer shared = await this.SharedAsync(Anna, lifetime: "1y");
+            DateTimeOffset edited = shared.DeleteAtUtc.AddDays(-45);
+            CollectionImageEntry image = this.thisStore.Collections[shared.Id].Images[0].Entry;
+
+            await CollectionFlows.UpdateAsync(
+                Anna, shared.Id, Content(image) with { DeleteAtUtc = shared.DeleteAtUtc, Title = "Changed" },
+                this.thisStore, this.thisFiles, Site, edited, CancellationToken.None);
+
+            CollectionSweepResult result = await this.SweepAsync(shared.DeleteAtUtc.AddDays(-29));
+
+            Assert.Equal(1, result.Reminded);
+            Assert.Single(this.thisMailer.Sent);
+        }
+
         [Fact]
         public async Task An_owner_whose_account_is_locked_or_gone_is_mailed_nothing()
         {
@@ -504,6 +618,190 @@ namespace CRT.Server.Tests
 
             Assert.Empty(this.thisMailer.Sent);
             Assert.NotNull(this.thisStore.Collections[shared.Id].RemindedUtc);
+        }
+
+        // The deletion date as the database keeps it, whole milliseconds - else the same date shared again read as later than
+        // the stored one, and the month's reminder was mailed again (code review, 2026-11-27).
+        [Fact]
+        public async Task The_deletion_date_is_kept_to_the_millisecond_so_the_same_date_again_is_no_later()
+        {
+            CollectionAnswer shared = await this.SharedAsync(Anna, lifetime: "1y");
+            CollectionImageEntry image = this.thisStore.Collections[shared.Id].Images[0].Entry;
+            DateTimeOffset deleteAt = this.thisStore.Collections[shared.Id].DeleteAtUtc.AddTicks(1234);
+
+            await CollectionFlows.UpdateAsync(Anna, shared.Id, Content(image) with { DeleteAtUtc = deleteAt }, this.thisStore, this.thisFiles, Site, Now, CancellationToken.None);
+
+            Assert.Equal(0, this.thisStore.Collections[shared.Id].DeleteAtUtc.UtcTicks % TimeSpan.TicksPerMillisecond);
+            Assert.Equal(CollectionFlows.WholeMilliseconds(deleteAt), this.thisStore.Collections[shared.Id].DeleteAtUtc);
+        }
+
+        // A first share the server kept whose answer was lost is sent again under the same key: the page it made is changed,
+        // never a second one made that only the administrator could take down (code review, 2026-11-27).
+        [Fact]
+        public async Task A_first_share_sent_again_under_its_key_changes_the_page_it_made()
+        {
+            const string key = "0123456789abcdef0123456789abcdef";
+            byte[] png = TestPng.Rgb(32, 20, seed: 3);
+            await this.UploadAsync(Anna, png);
+
+            CollectionOutcome first = await this.CreateAsync(Anna, Content(Image(ShaOf(png))), clientKey: key);
+            CollectionOutcome again = await this.CreateAsync(Anna, Content(Image(ShaOf(png))) with { Title = "Typed since" }, clientKey: key);
+
+            Assert.Equal(first.Answer!.Id, again.Answer!.Id);
+            Assert.Equal("Typed since", Assert.Single(this.thisStore.Collections.Values).Title);
+
+            // Another account's key, a key of another shape, or none: each first share is a page of its own.
+            await this.UploadAsync(Bo, png);
+            CollectionOutcome bos = await this.CreateAsync(Bo, Content(Image(ShaOf(png))), clientKey: key);
+            CollectionOutcome noKey = await this.CreateAsync(Anna, Content(Image(ShaOf(png))), clientKey: "../../x");
+
+            Assert.NotEqual(first.Answer.Id, bos.Answer!.Id);
+            Assert.NotEqual(first.Answer.Id, noKey.Answer!.Id);
+        }
+
+        // A first share retried while the first is still being written waits for it, then finds its page under the key - looked
+        // up before the lock, it found none and made a second page (code review, 2026-11-27).
+        [Fact]
+        public async Task A_first_share_retried_while_the_first_is_written_makes_no_second_page()
+        {
+            const string key = "0123456789abcdef0123456789abcdef";
+            byte[] png = TestPng.Rgb(32, 20, seed: 5);
+            await this.UploadAsync(Anna, png);
+
+            Task<CollectionOutcome>? retried = null;
+            this.thisStore.WhileCountingCreated = () => retried = this.CreateAsync(Anna, Content(Image(ShaOf(png))), clientKey: key);
+
+            CollectionOutcome first = await this.CreateAsync(Anna, Content(Image(ShaOf(png))), clientKey: key);
+            CollectionOutcome again = await retried!;
+
+            Assert.Equal(first.Answer!.Id, again.Answer!.Id);
+            Assert.Single(this.thisStore.Collections.Values);
+        }
+
+        // A page taken down is no page to change: shared again under its key, a new one is made.
+        [Fact]
+        public async Task A_key_whose_page_was_taken_down_makes_a_new_page()
+        {
+            const string key = "0123456789abcdef0123456789abcdef";
+            byte[] png = TestPng.Rgb(32, 20, seed: 4);
+            await this.UploadAsync(Anna, png);
+
+            CollectionOutcome first = await this.CreateAsync(Anna, Content(Image(ShaOf(png))), clientKey: key);
+            await CollectionFlows.DeleteAsync(Anna, first.Answer!.Id, this.thisStore, Now, CancellationToken.None);
+
+            CollectionOutcome again = await this.CreateAsync(Anna, Content(Image(ShaOf(png))), clientKey: key);
+
+            Assert.Equal(CollectionVerdict.Created, again.Verdict);
+            Assert.NotEqual(first.Answer.Id, again.Answer!.Id);
+        }
+
+        // Its time up, a collection is gone for CRT too - its list, and "Share", which then makes a new page rather than bring
+        // the old one back - as its page says (code review, 2026-11-27).
+        [Fact]
+        public async Task A_collection_whose_time_is_up_is_gone_for_CRT_s_list_and_share_too()
+        {
+            CollectionAnswer shared = await this.SharedAsync(Anna, lifetime: "1m");
+            DateTimeOffset after = shared.DeleteAtUtc.AddMinutes(1);
+            CollectionImageEntry image = this.thisStore.Collections[shared.Id].Images[0].Entry;
+
+            Assert.Empty((await CollectionFlows.ListMineAsync(Anna, this.thisStore, Site, after, CancellationToken.None)).Mine!.Collections);
+
+            CollectionOutcome update = await CollectionFlows.UpdateAsync(
+                Anna, shared.Id, Content(image) with { DeleteAtUtc = CollectionRules.DeleteAt(after, "1y") }, this.thisStore, this.thisFiles, Site, after, CancellationToken.None);
+
+            Assert.Equal(CollectionVerdict.Gone, update.Verdict);
+        }
+
+        // ---- Shown to a reader (code review, 2026-11-27) --------------------------------------------
+
+        private static readonly AccountRecord TheAdministrator = Account(9, "admin@example.com", "Dennis@CRT", administrator: true);
+
+        private Task<ShownCollection?> ShownToAsync(string id, AccountRecord? viewer, Action? asked = null) =>
+            CollectionFlows.FindShownToAsync(
+                id,
+                _ =>
+                {
+                    asked?.Invoke();
+                    return Task.FromResult(viewer);
+                },
+                this.thisStore,
+                this.thisAccounts,
+                Now,
+                CancellationToken.None);
+
+        // Its time up, a collection is deleted from that moment - not only once the hourly sweep makes it so (code review,
+        // 2026-11-27: for up to an hour its page took comments under "Deleted on" a date passed).
+        [Fact]
+        public async Task A_collection_whose_time_is_up_is_shown_as_deleted_before_the_sweep()
+        {
+            CollectionAnswer shared = await this.SharedAsync(Anna, lifetime: "1m");
+            DateTimeOffset after = shared.DeleteAtUtc.AddMinutes(1);
+
+            Assert.Null(await CollectionFlows.FindShownAsync(shared.Id, this.thisStore, this.thisAccounts, after, CancellationToken.None));
+
+            CollectionRecord? asDeleted = await CollectionFlows.FindShownAsync(shared.Id, this.thisStore, this.thisAccounts, after, CancellationToken.None, evenIfDeleted: true);
+
+            Assert.Equal((true, CollectionDeletedReasons.Expired), (asDeleted?.IsDeleted, asDeleted?.DeletedReason));
+            Assert.NotNull(await CollectionFlows.FindShownAsync(shared.Id, this.thisStore, this.thisAccounts, shared.DeleteAtUtc.AddMinutes(-1), CancellationToken.None));
+        }
+
+        // The administrator's "Every collection" links a locked owner's collection - its page must open for the administrator,
+        // to delete it or hide its comments, and say it is offline; for anybody else it stays "not found".
+        [Fact]
+        public async Task A_locked_owner_s_collection_is_shown_to_the_administrator_alone_as_offline()
+        {
+            CollectionAnswer shared = await this.SharedAsync(Anna);
+            this.thisAccounts.Accounts[Anna.Id] = Anna with { IsLocked = true };
+
+            ShownCollection? toAdministrator = await this.ShownToAsync(shared.Id, TheAdministrator);
+
+            Assert.Equal((shared.Id, CollectionOffline.OwnerLocked), (toAdministrator?.Collection.Id, toAdministrator?.Offline));
+            Assert.Null(await this.ShownToAsync(shared.Id, Bo));
+            Assert.Null(await this.ShownToAsync(shared.Id, null));
+            Assert.Null(await CollectionFlows.FindShownAsync(shared.Id, this.thisStore, this.thisAccounts, Now, CancellationToken.None));
+        }
+
+        [Fact]
+        public async Task A_collection_whose_owner_has_no_account_is_shown_to_the_administrator_as_offline()
+        {
+            CollectionAnswer shared = await this.SharedAsync(Anna);
+            this.thisAccounts.Accounts.Remove(Anna.Id);
+
+            Assert.Equal(CollectionOffline.OwnerGone, (await this.ShownToAsync(shared.Id, TheAdministrator))?.Offline);
+            Assert.Null(await this.ShownToAsync(shared.Id, Bo));
+        }
+
+        // A picture's every request asks this - a collection shown to all reads no session.
+        [Fact]
+        public async Task A_collection_shown_to_all_asks_nothing_of_the_reader()
+        {
+            CollectionAnswer shared = await this.SharedAsync(Anna);
+            bool asked = false;
+
+            ShownCollection? shown = await this.ShownToAsync(shared.Id, Bo, () => asked = true);
+
+            Assert.Equal((shared.Id, false), (shown?.Collection.Id, shown?.IsOffline));
+            Assert.False(asked);
+        }
+
+        // The owner deletes their own in CRT, whose window keeps in step with the server - the website's delete is the
+        // administrator's alone.
+        [Fact]
+        public async Task The_website_s_delete_is_the_administrator_s_alone()
+        {
+            CollectionAnswer shared = await this.SharedAsync(Anna);
+
+            CollectionOutcome byOwner = await CollectionFlows.DeleteFromWebAsync(Anna, shared.Id, this.thisStore, Now, CancellationToken.None);
+            CollectionOutcome signedOut = await CollectionFlows.DeleteFromWebAsync(null, shared.Id, this.thisStore, Now, CancellationToken.None);
+
+            Assert.Equal((CollectionVerdict.Forbidden, CollectionFlows.OnlyTheAdministratorDeletesHere), (byOwner.Verdict, byOwner.Errors.Single()));
+            Assert.Equal(CollectionVerdict.Unauthorized, signedOut.Verdict);
+            Assert.False(this.thisStore.Collections[shared.Id].IsDeleted);
+
+            CollectionOutcome byAdministrator = await CollectionFlows.DeleteFromWebAsync(TheAdministrator, shared.Id, this.thisStore, Now, CancellationToken.None);
+
+            Assert.Equal(CollectionVerdict.Removed, byAdministrator.Verdict);
+            Assert.Equal(CollectionDeletedReasons.Administrator, this.thisStore.Collections[shared.Id].DeletedReason);
         }
     }
 }

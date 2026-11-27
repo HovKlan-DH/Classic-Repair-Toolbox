@@ -14,7 +14,7 @@ namespace ClassicRepairToolbox.Tests.Maintainer;
 public sealed class DataResetWordingTests
 {
     private static DataResetPlanAnswer Plan(bool enabled = true, string fingerprint = "f") =>
-        new(enabled, fingerprint, 14, 6, 1, 4, 2, 7, 310, 1200, 80, enabled ? null : "Switched off.", OscilloscopeModels: 3);
+        new(enabled, fingerprint, 14, 6, 1, 4, 2, 7, 310, 1200, 80, enabled ? null : "Switched off.", OscilloscopeModels: 3, Collections: 5, CollectionComments: 12);
 
     private static string Text(IReadOnlyList<ReviewNoteRun> line) => string.Concat(line.Select(run => run.Text));
 
@@ -56,6 +56,8 @@ public sealed class DataResetWordingTests
                 "[14] submissions - every one, whatever its state, with its uploaded files",
                 "[3] oscilloscope models sent in from CRT - waiting or decided",
                 "[6] accounts - every one but the administrators (1 administrator kept)",
+                "[5] oscilloscope collections taken down - those the accounts shared; their pages say they were removed",
+                "[12] comments on collections - on those collections, and every one those accounts wrote",
                 "[4] maintainers of a board",
                 "[2] invitations to maintain",
                 "[7] board records - made again as each board is next used; the boards themselves stay",
@@ -66,7 +68,7 @@ public sealed class DataResetWordingTests
             lines.Select(DataResetWordingTests.Text));
 
         Assert.All(lines, line => Assert.Equal(line.Single(run => run.IsCount).Text, line[1].Text));
-        Assert.Equal(["14", "3", "6", "4", "2", "7", "310", "1,200", "80"], lines.Select(line => line.Single(run => run.IsCount).Text));
+        Assert.Equal(["14", "3", "6", "5", "12", "4", "2", "7", "310", "1,200", "80"], lines.Select(line => line.Single(run => run.IsCount).Text));
     }
 
     [Fact]
@@ -77,16 +79,20 @@ public sealed class DataResetWordingTests
         Assert.Equal("[1] submission - every one, whatever its state, with its uploaded files", DataResetWordingTests.Text(lines[0]));
         Assert.Equal("[0] oscilloscope models sent in from CRT - waiting or decided", DataResetWordingTests.Text(lines[1]));
         Assert.Equal("[1] account - every one but the administrators (2 administrators kept)", DataResetWordingTests.Text(lines[2]));
-        Assert.Equal("[1] history entry - the reset itself becomes the first", DataResetWordingTests.Text(lines[6]));
+        Assert.Equal("[0] oscilloscope collections taken down - those the accounts shared; their pages say they were removed", DataResetWordingTests.Text(lines[3]));
+        Assert.Equal("[1] history entry - the reset itself becomes the first", DataResetWordingTests.Text(lines[8]));
+        Assert.Equal(
+            "[1] comment on a collection - on those collections, and every one those accounts wrote",
+            DataResetWordingTests.Text(DataResetWording.Lines(new DataResetPlanAnswer(true, "f", 1, 1, 2, 1, 1, 1, 1, 1, 1, CollectionComments: 1))[4]));
     }
 
     [Fact]
     public void What_the_reset_deleted_is_one_sentence()
     {
-        IReadOnlyList<ReviewNoteRun> done = DataResetWording.Done(new DataResetAnswer(14, 6, 4, 2, 7, 310, 1200, 80, 23, OscilloscopeModelsDeleted: 3));
+        IReadOnlyList<ReviewNoteRun> done = DataResetWording.Done(new DataResetAnswer(14, 6, 4, 2, 7, 310, 1200, 80, 23, OscilloscopeModelsDeleted: 3, CollectionsTakenDown: 5, CollectionCommentsDeleted: 12));
 
         Assert.Equal(
-            "The contribution data was reset: [14] submissions, [3] oscilloscope models, [6] accounts, [4] maintainers, [2] invitations, " +
+            "The contribution data was reset: [14] submissions, [3] oscilloscope models, [6] accounts, [5] collections taken down, [12] collection comments, [4] maintainers, [2] invitations, " +
             "[7] board records, [310] history entries, [1,200] board views and [80] API usage rows deleted, " +
             "and [23] stored files removed from the disk.",
             DataResetWordingTests.Text(done));

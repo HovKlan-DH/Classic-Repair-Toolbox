@@ -75,7 +75,11 @@ namespace CRT.Server.Handlers.Submissions
                 "SELECT 1 FROM maintainer_invitations FOR UPDATE;",
                 "SELECT 1 FROM production_approvals FOR UPDATE;",
                 "SELECT 1 FROM boards FOR UPDATE;",
-                "SELECT 1 FROM oscilloscope_submissions FOR UPDATE;"
+                "SELECT 1 FROM oscilloscope_submissions FOR UPDATE;",
+
+                // The collections and comments it takes with the accounts (code review, 2026-11-27: neither locked nor counted).
+                "SELECT 1 FROM collections WHERE deleted_utc IS NULL FOR UPDATE;",
+                "SELECT 1 FROM collection_comments FOR UPDATE;"
             ];
 
             foreach (string sql in locks)
@@ -178,6 +182,8 @@ namespace CRT.Server.Handlers.Submissions
             return new DataResetResult(before, submissionIds);
         }
 
+        // The comments counted are those a page could still show - not one its writer deleted already, though the reset takes
+        // those rows too (code review, 2026-11-27: the plan read more comments than anybody had seen).
         private static async Task<DataResetCounts> CountAsync(
             MySqlConnection connection,
             MySqlTransaction? transaction,
@@ -200,7 +206,15 @@ namespace CRT.Server.Handlers.Submissions
                     (SELECT COUNT(*) FROM crt_board_views),
                     (SELECT COUNT(*) FROM crt_api_calls),
                     (SELECT COUNT(*) FROM oscilloscope_submissions),
-                    (SELECT COALESCE(MAX(id), 0) FROM oscilloscope_submissions);
+                    (SELECT COALESCE(MAX(id), 0) FROM oscilloscope_submissions),
+                    (SELECT COUNT(*) FROM collections
+                        WHERE deleted_utc IS NULL AND account_id NOT IN (SELECT id FROM accounts WHERE is_administrator <> 0)),
+                    (SELECT COUNT(*) FROM collection_comments
+                        WHERE deleted_utc IS NULL
+                          AND (account_id NOT IN (SELECT id FROM accounts WHERE is_administrator <> 0)
+                               OR collection_id IN (SELECT id FROM collections
+                                                    WHERE deleted_utc IS NOT NULL
+                                                       OR account_id NOT IN (SELECT id FROM accounts WHERE is_administrator <> 0))));
                 """;
 
             await using MySqlDataReader reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -225,7 +239,9 @@ namespace CRT.Server.Handlers.Submissions
                 BoardViews: Count(10),
                 ApiUsageRows: Count(11),
                 OscilloscopeModels: Count(12),
-                LastOscilloscopeModelId: Id(13));
+                LastOscilloscopeModelId: Id(13),
+                Collections: Count(14),
+                CollectionComments: Count(15));
         }
 
         private async Task<MySqlConnection> OpenAsync(CancellationToken cancellationToken)

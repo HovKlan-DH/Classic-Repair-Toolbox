@@ -109,6 +109,34 @@ namespace CRT.Server.Tests
             Assert.Equal(CollectionVerdict.NotFound, (await this.AddAsync(Helper)).Verdict);
         }
 
+        // Locking a spammer takes the spam down with it (owner decision, 2026-11-27 - AccountLockFlows): a locked account's
+        // comments are the administrator's alone to see, on the page and in the owner's CRT, and unlocking puts them back.
+        [Fact]
+        public async Task A_locked_account_s_comments_are_shown_to_the_administrator_alone()
+        {
+            await this.AddAsync(Helper, "Buy cheap chips here");
+            this.thisAccounts.Accounts[Helper.Id] = Helper with { IsLocked = true };
+            this.thisStore.LockedAccounts.Add(Helper.Id);
+
+            CollectionRecord collection = this.thisStore.Collections[Id];
+            IReadOnlyList<CollectionCommentRecord> kept = await this.thisStore.ListCommentsAsync(Id);
+
+            Assert.Empty(CollectionCommentFlows.ShownTo(kept, collection, null));
+            Assert.Empty(CollectionCommentFlows.ShownTo(kept, collection, Owner));
+            Assert.True(Assert.Single(CollectionCommentFlows.ShownTo(kept, collection, Administrator)).AuthorIsLocked);
+
+            Assert.Empty((await CollectionCommentFlows.ListForOwnerAsync(Owner, Id, this.thisStore, Now, CancellationToken.None)).Comments!.Comments);
+            // And said so, as the page flags it - CRT's window marks it "only you see it" (code review, 2026-11-27).
+            Assert.True(Assert.Single((await CollectionCommentFlows.ListForOwnerAsync(Administrator, Id, this.thisStore, Now, CancellationToken.None)).Comments!.Comments).AuthorLocked);
+
+            // Nor counted as new in the owner's CRT.
+            CollectionRecord mine = Assert.Single(await this.thisStore.ListLiveForAccountAsync(Owner.Id));
+            Assert.Equal((0, 0L), (mine.CommentCount, mine.LatestCommentId));
+
+            this.thisStore.LockedAccounts.Remove(Helper.Id);
+            Assert.Single(CollectionCommentFlows.ShownTo(await this.thisStore.ListCommentsAsync(Id), collection, null));
+        }
+
         [Theory]
         [InlineData("   ", CollectionComments.Missing)]
         [InlineData(null, CollectionComments.Missing)]
@@ -143,10 +171,10 @@ namespace CRT.Server.Tests
         {
             long id = (await this.AddAsync(Helper)).CommentId!.Value;
 
-            Assert.Equal(CollectionVerdict.NotFound, (await CollectionCommentFlows.EditAsync(Owner, id, "Changed", this.thisStore, this.thisAccounts, Now, CancellationToken.None)).Verdict);
-            Assert.Equal(CollectionVerdict.NotFound, (await CollectionCommentFlows.EditAsync(Administrator, id, "Changed", this.thisStore, this.thisAccounts, Now, CancellationToken.None)).Verdict);
+            Assert.Equal(CollectionVerdict.NotFound, (await CollectionCommentFlows.EditAsync(Owner, Id, id, "Changed", this.thisStore, this.thisAccounts, Now, CancellationToken.None)).Verdict);
+            Assert.Equal(CollectionVerdict.NotFound, (await CollectionCommentFlows.EditAsync(Administrator, Id, id, "Changed", this.thisStore, this.thisAccounts, Now, CancellationToken.None)).Verdict);
 
-            Assert.True((await CollectionCommentFlows.EditAsync(Helper, id, " Check R7 and R8. ", this.thisStore, this.thisAccounts, Now.AddMinutes(5), CancellationToken.None)).IsDone);
+            Assert.True((await CollectionCommentFlows.EditAsync(Helper, Id, id, " Check R7 and R8. ", this.thisStore, this.thisAccounts, Now.AddMinutes(5), CancellationToken.None)).IsDone);
 
             CollectionCommentRecord kept = (await this.thisStore.FindCommentAsync(id))!;
 
@@ -160,14 +188,14 @@ namespace CRT.Server.Tests
             long first = (await this.AddAsync(Helper)).CommentId!.Value;
             long second = (await this.AddAsync(Helper)).CommentId!.Value;
 
-            Assert.Equal(CollectionVerdict.NotFound, (await CollectionCommentFlows.DeleteAsync(Owner, first, this.thisStore, Now, CancellationToken.None)).Verdict);
+            Assert.Equal(CollectionVerdict.NotFound, (await CollectionCommentFlows.DeleteAsync(Owner, Id, first, this.thisStore, Now, CancellationToken.None)).Verdict);
 
-            Assert.True((await CollectionCommentFlows.DeleteAsync(Helper, first, this.thisStore, Now, CancellationToken.None)).IsDone);
-            Assert.True((await CollectionCommentFlows.DeleteAsync(Administrator, second, this.thisStore, Now, CancellationToken.None)).IsDone);
+            Assert.True((await CollectionCommentFlows.DeleteAsync(Helper, Id, first, this.thisStore, Now, CancellationToken.None)).IsDone);
+            Assert.True((await CollectionCommentFlows.DeleteAsync(Administrator, Id, second, this.thisStore, Now, CancellationToken.None)).IsDone);
             Assert.Empty(await this.thisStore.ListCommentsAsync(Id));
 
             // Gone: there is nothing of it to delete again.
-            Assert.Equal(CollectionVerdict.NotFound, (await CollectionCommentFlows.DeleteAsync(Helper, first, this.thisStore, Now, CancellationToken.None)).Verdict);
+            Assert.Equal(CollectionVerdict.NotFound, (await CollectionCommentFlows.DeleteAsync(Helper, Id, first, this.thisStore, Now, CancellationToken.None)).Verdict);
         }
 
         [Fact]
@@ -175,8 +203,8 @@ namespace CRT.Server.Tests
         {
             long id = (await this.AddAsync(Helper)).CommentId!.Value;
 
-            Assert.Equal(CollectionVerdict.NotFound, (await CollectionCommentFlows.SetHiddenAsync(Helper, id, true, this.thisStore, Now, CancellationToken.None)).Verdict);
-            Assert.True((await CollectionCommentFlows.SetHiddenAsync(Owner, id, true, this.thisStore, Now, CancellationToken.None)).IsDone);
+            Assert.Equal(CollectionVerdict.NotFound, (await CollectionCommentFlows.SetHiddenAsync(Helper, Id, id, true, this.thisStore, Now, CancellationToken.None)).Verdict);
+            Assert.True((await CollectionCommentFlows.SetHiddenAsync(Owner, Id, id, true, this.thisStore, Now, CancellationToken.None)).IsDone);
 
             IReadOnlyList<CollectionCommentRecord> all = await this.thisStore.ListCommentsAsync(Id);
             CollectionRecord collection = this.thisStore.Collections[Id];
@@ -186,7 +214,7 @@ namespace CRT.Server.Tests
             Assert.Single(CollectionCommentFlows.ShownTo(all, collection, Owner));
             Assert.Single(CollectionCommentFlows.ShownTo(all, collection, Administrator));
 
-            Assert.True((await CollectionCommentFlows.SetHiddenAsync(Owner, id, false, this.thisStore, Now, CancellationToken.None)).IsDone);
+            Assert.True((await CollectionCommentFlows.SetHiddenAsync(Owner, Id, id, false, this.thisStore, Now, CancellationToken.None)).IsDone);
             Assert.Single(CollectionCommentFlows.ShownTo(await this.thisStore.ListCommentsAsync(Id), collection, null));
         }
 
@@ -195,16 +223,114 @@ namespace CRT.Server.Tests
         {
             long helpers = (await this.AddAsync(Helper)).CommentId!.Value;
             await this.AddAsync(Owner, "Thanks");
-            await CollectionCommentFlows.SetHiddenAsync(Owner, helpers, true, this.thisStore, Now, CancellationToken.None);
+            await CollectionCommentFlows.SetHiddenAsync(Owner, Id, helpers, true, this.thisStore, Now, CancellationToken.None);
 
-            CommentOutcome outcome = await CollectionCommentFlows.ListForOwnerAsync(Owner, Id, this.thisStore, CancellationToken.None);
+            CommentOutcome outcome = await CollectionCommentFlows.ListForOwnerAsync(Owner, Id, this.thisStore, Now, CancellationToken.None);
 
             Assert.Equal(
                 [("Bo", false, false, true), ("Anna", true, true, false)],
                 outcome.Comments!.Comments.Select(comment => (comment.AuthorName, comment.ByOwner, comment.Mine, comment.Hidden)));
 
             // Not the owner's: not found.
-            Assert.Equal(CollectionVerdict.NotFound, (await CollectionCommentFlows.ListForOwnerAsync(Helper, Id, this.thisStore, CancellationToken.None)).Verdict);
+            Assert.Equal(CollectionVerdict.NotFound, (await CollectionCommentFlows.ListForOwnerAsync(Helper, Id, this.thisStore, Now, CancellationToken.None)).Verdict);
+        }
+
+        // A route names its collection: a comment of another one is "not found" there, whatever the caller may do to it in its own
+        // (code review, 2026-11-27: "/collections/<A>/comments/<c>" acted on a comment of collection B).
+        [Fact]
+        public async Task A_comment_is_acted_on_only_under_its_own_collection()
+        {
+            const string other = "otherset2222";
+
+            this.thisStore.Collections[other] = this.thisStore.Collections[Id] with { Id = other };
+            long id = (await this.AddAsync(Helper)).CommentId!.Value;
+
+            Assert.Equal(CollectionVerdict.NotFound, (await CollectionCommentFlows.SetHiddenAsync(Owner, other, id, true, this.thisStore, Now, CancellationToken.None)).Verdict);
+            Assert.Equal(CollectionVerdict.NotFound, (await CollectionCommentFlows.EditAsync(Helper, other, id, "Changed", this.thisStore, this.thisAccounts, Now, CancellationToken.None)).Verdict);
+            Assert.Equal(CollectionVerdict.NotFound, (await CollectionCommentFlows.DeleteAsync(Helper, other, id, this.thisStore, Now, CancellationToken.None)).Verdict);
+            Assert.Equal(CollectionVerdict.NotFound, (await CollectionCommentFlows.DeleteAsync(Helper, "../../x", id, this.thisStore, Now, CancellationToken.None)).Verdict);
+
+            CollectionCommentRecord kept = (await this.thisStore.FindCommentAsync(id))!;
+
+            Assert.False(kept.IsHidden);
+            Assert.Null(kept.EditedUtc);
+        }
+
+        // A hidden comment is gone for its writer - not to be rewritten into something harmless, shown again, and changed back
+        // (code review, 2026-11-27).
+        [Fact]
+        public async Task A_hidden_comment_is_not_edited_by_its_writer()
+        {
+            long id = (await this.AddAsync(Helper, "Spam")).CommentId!.Value;
+            await CollectionCommentFlows.SetHiddenAsync(Owner, Id, id, true, this.thisStore, Now, CancellationToken.None);
+
+            CommentOutcome edit = await CollectionCommentFlows.EditAsync(Helper, Id, id, "Harmless", this.thisStore, this.thisAccounts, Now, CancellationToken.None);
+
+            Assert.Equal(CollectionVerdict.NotFound, edit.Verdict);
+            Assert.Equal("Spam", (await this.thisStore.FindCommentAsync(id))!.Body);
+        }
+
+        // Its time up, a collection's comments are gone with it - no hiding or deleting them before the sweep (code review,
+        // 2026-11-27).
+        [Fact]
+        public async Task A_collection_whose_time_is_up_takes_no_hide_or_delete()
+        {
+            long id = (await this.AddAsync(Helper)).CommentId!.Value;
+            DateTimeOffset after = this.thisStore.Collections[Id].DeleteAtUtc.AddMinutes(1);
+
+            Assert.Equal(CollectionVerdict.NotFound, (await CollectionCommentFlows.SetHiddenAsync(Owner, Id, id, true, this.thisStore, after, CancellationToken.None)).Verdict);
+            Assert.Equal(CollectionVerdict.NotFound, (await CollectionCommentFlows.DeleteAsync(Helper, Id, id, this.thisStore, after, CancellationToken.None)).Verdict);
+            Assert.Equal(CollectionVerdict.Gone, (await CollectionCommentFlows.ListForOwnerAsync(Owner, Id, this.thisStore, after, CancellationToken.None)).Verdict);
+        }
+
+        // The owner's own comment - an answer written on the website - is nothing new to them: CRT's "new comments" counts others'
+        // alone (code review, 2026-11-27).
+        [Fact]
+        public async Task The_owner_s_own_comment_is_no_new_comment_to_them()
+        {
+            long helpers = (await this.AddAsync(Helper)).CommentId!.Value;
+            await this.AddAsync(Owner, "Thanks - it was R7.");
+
+            CollectionSummaryAnswer summary = Assert.Single((await CollectionFlows.ListMineAsync(Owner, this.thisStore, Site, Now, CancellationToken.None)).Mine!.Collections);
+
+            Assert.Equal((2, helpers), (summary.CommentCount, summary.LatestCommentId));
+        }
+
+        // A comment on a capture the owner took out and shared again without is on no page and in no CRT window: it counts for
+        // nothing - no "1 comment", no "new comments", not "You commented on" - and comes back with the capture (code review,
+        // 2026-11-27: nobody could see, hide or delete what was counted).
+        [Fact]
+        public async Task A_comment_on_a_capture_taken_out_counts_for_nothing()
+        {
+            await this.AddAsync(Helper);
+            IReadOnlyList<CollectionImageRecord> images = this.thisStore.Collections[Id].Images;
+            this.thisStore.Collections[Id] = this.thisStore.Collections[Id] with { Images = [] };
+
+            CollectionSummaryAnswer summary = Assert.Single((await CollectionFlows.ListMineAsync(Owner, this.thisStore, Site, Now, CancellationToken.None)).Mine!.Collections);
+
+            Assert.Equal((0, 0L), (summary.CommentCount, summary.LatestCommentId));
+            Assert.Empty(await this.thisStore.ListLiveCommentedOnAsync(Helper.Id));
+            Assert.Empty(await this.thisStore.ListNewestCommentsAsync(10));
+
+            this.thisStore.Collections[Id] = this.thisStore.Collections[Id] with { Images = images };
+
+            Assert.Equal(1, Assert.Single((await CollectionFlows.ListMineAsync(Owner, this.thisStore, Site, Now, CancellationToken.None)).Mine!.Collections).CommentCount);
+        }
+
+        // The owner's CRT asking for a collection the administrator took down on the website hears it went, and when (code
+        // review, 2026-11-27: "There is no collection of yours with that id" - and CRT went on showing it shared).
+        [Fact]
+        public async Task The_owner_asking_for_the_comments_of_a_collection_taken_down_hears_it_went()
+        {
+            await CollectionFlows.DeleteAsync(Administrator, Id, this.thisStore, Now, CancellationToken.None);
+
+            CommentOutcome outcome = await CollectionCommentFlows.ListForOwnerAsync(Owner, Id, this.thisStore, Now, CancellationToken.None);
+
+            Assert.Equal(CollectionVerdict.Gone, outcome.Verdict);
+            Assert.Equal(CollectionFlows.DeletedLine(this.thisStore.Collections[Id]), Assert.Single(outcome.Errors));
+
+            // Somebody else is told nothing of it.
+            Assert.Equal(CollectionVerdict.NotFound, (await CollectionCommentFlows.ListForOwnerAsync(Helper, Id, this.thisStore, Now, CancellationToken.None)).Verdict);
         }
 
         [Fact]
@@ -224,9 +350,9 @@ namespace CRT.Server.Tests
             await this.AddAsync(Helper);
             long newest = (await this.AddAsync(Helper)).CommentId!.Value;
             long hidden = (await this.AddAsync(Helper)).CommentId!.Value;
-            await CollectionCommentFlows.SetHiddenAsync(Owner, hidden, true, this.thisStore, Now, CancellationToken.None);
+            await CollectionCommentFlows.SetHiddenAsync(Owner, Id, hidden, true, this.thisStore, Now, CancellationToken.None);
 
-            CollectionSummaryAnswer summary = Assert.Single((await CollectionFlows.ListMineAsync(Owner, this.thisStore, Site, CancellationToken.None)).Mine!.Collections);
+            CollectionSummaryAnswer summary = Assert.Single((await CollectionFlows.ListMineAsync(Owner, this.thisStore, Site, Now, CancellationToken.None)).Mine!.Collections);
 
             Assert.Equal((2, newest), (summary.CommentCount, summary.LatestCommentId));
         }
@@ -236,6 +362,17 @@ namespace CRT.Server.Tests
         {
             Assert.Equal("No picture  Bcc: x@y", EmailTemplates.OneLine("No picture\r\nBcc: x@y"));
             Assert.Equal(80, EmailTemplates.OneLine(new string('x', 200)).Length);
+
+            // Never half of an emoji (code review, 2026-11-27).
+            string cut = EmailTemplates.OneLine(new string('x', 76) + "😀" + new string('y', 20));
+            Assert.Equal(new string('x', 76) + "...", cut);
+        }
+
+        [Fact]
+        public void A_subject_cut_after_a_whole_emoji_keeps_it()
+        {
+            string cut = EmailTemplates.OneLine(new string('x', 75) + "😀" + new string('y', 20));
+            Assert.Equal(new string('x', 75) + "😀...", cut);
         }
     }
 }

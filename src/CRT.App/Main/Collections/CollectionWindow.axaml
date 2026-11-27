@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:CRT"
+        xmlns:collections="clr-namespace:Handlers.Collections"
         x:Class="CRT.CollectionWindow"
         x:DataType="local:CollectionWindow"
         Title="Oscilloscope collection"
@@ -93,9 +94,46 @@
 													<TextBlock Text="{Binding CommentsHeading}" FontWeight="SemiBold" />
 													<ItemsControl ItemsSource="{Binding Comments}">
 														<ItemsControl.ItemTemplate>
-															<DataTemplate x:DataType="local:CollectionCommentRow">
+															<DataTemplate x:DataType="collections:CollectionCommentRow">
 																<StackPanel Spacing="2" Margin="0,0,0,8">
-																	<TextBlock Text="{Binding Heading}" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap" />
+																	<!-- The name as typed, and "You", "Administrator" and "NEW" as pills of their own beside it - typed words
+																	     never pass for them (CollectionCommentRow). -->
+																	<WrapPanel Orientation="Horizontal">
+																		<TextBlock Text="{Binding Author}"
+																				   IsVisible="{Binding !IsMine}"
+																				   FontSize="12"
+																				   FontWeight="SemiBold"
+																				   VerticalAlignment="Center"
+																				   Margin="0,0,6,0" />
+																		<Border IsVisible="{Binding IsMine}"
+																				BorderBrush="{DynamicResource Fg}"
+																				BorderThickness="1"
+																				CornerRadius="8"
+																				Padding="6,0"
+																				Margin="0,0,6,0"
+																				VerticalAlignment="Center">
+																			<TextBlock Text="{Binding Author}" FontSize="11" FontWeight="SemiBold" />
+																		</Border>
+																		<Border IsVisible="{Binding HasBadge}"
+																				BorderBrush="{DynamicResource Fg}"
+																				BorderThickness="1"
+																				CornerRadius="8"
+																				Padding="6,0"
+																				Margin="0,0,6,0"
+																				VerticalAlignment="Center">
+																			<TextBlock Text="{Binding Badge}" FontSize="11" FontWeight="SemiBold" />
+																		</Border>
+																		<Border IsVisible="{Binding IsNew}"
+																				BorderBrush="{DynamicResource Fg}"
+																				BorderThickness="1"
+																				CornerRadius="8"
+																				Padding="6,0"
+																				Margin="0,0,6,0"
+																				VerticalAlignment="Center">
+																			<TextBlock Text="NEW" FontSize="11" FontWeight="SemiBold" />
+																		</Border>
+																		<TextBlock Text="{Binding Details}" FontSize="12" TextWrapping="Wrap" VerticalAlignment="Center" />
+																	</WrapPanel>
 																	<TextBlock Text="{Binding Body}" TextWrapping="Wrap" />
 																	<StackPanel Orientation="Horizontal" Spacing="6">
 																		<Button Content="Hide"
@@ -124,7 +162,7 @@
 													</ItemsControl>
 													<Grid ColumnDefinitions="*,6,Auto">
 														<TextBox Text="{Binding Answer}"
-																 PlaceholderText="Answer on this capture"
+																 PlaceholderText="Answer on this capture - shown on the page with your display name and &quot;Owner&quot;"
 																 AcceptsReturn="True"
 																 TextWrapping="Wrap" />
 														<Button Grid.Column="2"
@@ -187,5 +225,9 @@
 				</Grid>
 			</Border>
 		</Grid>
+
+		<!-- Sharing (each step said on it), telling the server of a comment and taking the page down are waits the owner
+		     watches (BusyOverlay). The -16 margin covers the root grid's own. -->
+		<local:BusyOverlay Grid.RowSpan="4" Margin="-16" />
 	</Grid>
 </Window>

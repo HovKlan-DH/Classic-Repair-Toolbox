@@ -134,12 +134,23 @@ namespace CRT
 
         // Where oscilloscope collections are kept on this computer until shared, and after (2026-11-26; CollectionStore) - one
         // folder each, its captures in it by checksum. In the user's own app data folder, as everything CRT keeps of theirs.
-        // A test never touches it: it hands CollectionStore a folder of its own.
+        // PER SERVICE (code review, 2026-11-27): "Collections" for a release, "Collections-test" for a pre-release, whose server
+        // ids are the test instance's (ContributionServer.FileNameFor; CollectionStore.TakesOverEarlierFolder says how the 4.1.0
+        // pre-releases' folder moves). A test never touches it: it hands CollectionStore a folder of its own.
         // Used by: Main.Collections.cs
+        public const string CollectionsFolderName = "Collections";
+
         public static string CollectionsFolder => Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             AppFolderName,
-            "Collections");
+            Handlers.Online.ContributionServer.FileNameFor(CollectionsFolderName));
+
+        // The folder the 4.1.0 pre-releases kept their collections in - a release's own since - or null when this CRT takes over
+        // nothing (CollectionStore.TakesOverEarlierFolder).
+        public static string? CollectionsFolderToTakeOver =>
+            Handlers.Collections.CollectionStore.TakesOverEarlierFolder(UsesTestServer, AppDisplayVersionString)
+                ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), AppFolderName, CollectionsFolderName)
+                : null;
 
         // Where the Maintainer tab saves a file from the server to open it - in the user's OWN app
         // data folder, for the same reason (code review, 2026-11-02: under the shared /tmp another

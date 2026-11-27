@@ -94,6 +94,31 @@ namespace Handlers.DataHandling
                 return $"A display name can have at most {DisplayNames.MaximumLength} characters - this one has {kept.Length}.";
             }
 
+            return DisplayNames.WordProblem(kept);
+        }
+
+        // ###########################################################################################
+        // *** THE WORDS WRITTEN BESIDE A NAME ARE NOBODY'S NAME (code review, 2026-11-27, Security). *** With spaces and "()"
+        // allowed, "Dennis (Administrator)" read in CRT's collection window exactly as an administrator's comment, and "You" as
+        // the owner's own - the window writes a name and its badge as one line. So no name is "You", and none holds the word
+        // "Administrator" or "Owner" (whole words, capitals aside - "Ownership" is a word of its own).
+        // ###########################################################################################
+        public const string You = "You";
+
+        private static string? WordProblem(string name)
+        {
+            if (string.Equals(name, DisplayNames.You, StringComparison.OrdinalIgnoreCase))
+                return $"\"{DisplayNames.You}\" is what CRT calls the person reading - choose another display name.";
+
+            foreach (string word in name.Split([' ', '_', '+', '-', '/', '@', '.', '[', ']', '(', ')'], StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (string.Equals(word, CollectionComments.AdministratorBadge, StringComparison.OrdinalIgnoreCase) ||
+                    string.Equals(word, CollectionComments.OwnerBadge, StringComparison.OrdinalIgnoreCase))
+                {
+                    return $"A display name cannot hold the word \"{word}\" - the pages write it beside the name of whoever it is.";
+                }
+            }
+
             return null;
         }
 

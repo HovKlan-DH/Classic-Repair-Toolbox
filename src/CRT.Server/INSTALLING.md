@@ -1015,13 +1015,14 @@ pushes the end further out. On Windows CRT keeps it encrypted to the Windows use
 it keeps nothing, and asks at every launch. **From server 14.1.0 the website has a sign-in too**
 (`/account/sign-in`, for writing comments on a collection's page): the same kind of session, the same
 `RefreshTokenDays`, kept in the browser as a cookie only the service reads (`crt_session`, the test instance's
-`crt_session_crt_test`, each sent only to its own instance's addresses). It is a row of `sessions` like CRT's, so
+`crt_session_crt_test`, each sent only to its own instance's collection pages and sign-out - from 15.0.0 never to the
+rest of the site). It is a row of `sessions` like CRT's, so
 the commands below sign it out too.
 
 | To | Do |
 | --- | --- |
 | Sign one computer out | **Account > My account > Sign out** in CRT |
-| Shut an account out at once | `UPDATE crt_review.accounts SET is_locked = 1 WHERE email_normalised = '...';` - refused on its very next request |
+| Shut an account out at once | From 15.0.0, signed in on the website as the administrator: **"Lock account"** beside the account on "Your collections" (`/collections/`), and "Unlock" under its "Locked accounts" - its sessions end (on an unlock too, so it signs in again), its collections go offline and its comments are hidden from everybody but you; an administrator's account is never locked or unlocked there. By hand (its sessions kept, refused only while it is locked): `UPDATE crt_review.accounts SET is_locked = 1 WHERE email_normalised = '...';` - refused on its very next request |
 | Sign an account out everywhere, without locking it | `UPDATE crt_review.sessions SET revoked_utc = UTC_TIMESTAMP() WHERE account_id = ...;` |
 
 Who is signed in, and when each session was last used:
@@ -1085,6 +1086,8 @@ website answering, so the `ProxyPass` lines are not in effect.
 when they went), mails each owner 30 days before (only for a collection kept longer than two months), and deletes a
 picture once no collection shows it, a day after its upload. An account keeps at most 100 collections, shares 20 new
 ones and 1,000 captures a day; all pictures together take at most `CollectionsMaxStoredBytes` (20 GiB by default).
+A first share carries the collection's key from CRT (15.0.0, migration 0027 - run by the service as it starts, nothing to
+do by hand), so one whose answer was lost and is sent again changes the page it made instead of making a second.
 
 **Comments** (also 14.1.0, migration 0026 - run by the service as it starts, nothing to do by hand): anybody signed in
 with a confirmed address writes them under each capture on the page (the page's own "Sign in" link), and the owner in
@@ -1099,8 +1102,14 @@ are forwarded already.
 mysql -u root -e "SELECT c.id, a.display_name, c.hardware_name, c.board_name, c.title, c.created_utc, c.delete_at_utc, (SELECT COUNT(*) FROM crt_review.collection_images i WHERE i.collection_id = c.id) AS captures FROM crt_review.collections c JOIN crt_review.accounts a ON a.id = c.account_id WHERE c.deleted_utc IS NULL ORDER BY c.created_utc DESC LIMIT 20;"
 ```
 
-**To take one down** - until CRT has a screen for it (the server already lets an administrator's account delete any
-collection, its page then saying it was removed) - in SQL; the hourly sweep then deletes its pictures:
+**"Your collections"** (15.0.0): `https://classic-repair-toolbox.dk/collections/` (the test instance's
+`.../crt-test/collections/`), signed in on the website, lists the collections you shared and those you commented on - and,
+for an administrator's account, every collection with whose it is (name and address, a locked owner's marked "offline")
+and the 50 newest comments, each a link to it on its page, where it is hidden or deleted - and "Lock account" beside
+each owner and writer, and "Locked accounts" to unlock one ("Accounts and sessions", above).
+
+**To take one down**, signed in on the website as the administrator: its page offers "Delete this collection" and asks
+first; its page then says it was removed, and the hourly sweep deletes its pictures. Without the website, in SQL:
 
 ```bash
 mysql -u root -e "UPDATE crt_review.collections SET deleted_utc = UTC_TIMESTAMP(3), deleted_reason = 'administrator', title = NULL, description = NULL, forum_links_json = NULL WHERE id = '<id>'; DELETE FROM crt_review.collection_images WHERE collection_id = '<id>'; DELETE FROM crt_review.collection_comments WHERE collection_id = '<id>';"

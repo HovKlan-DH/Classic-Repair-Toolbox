@@ -64,6 +64,12 @@ command-line (global) property - see the comment on SelfContained below.
     <ProjectReference Include="..\..\src\CRT.Data\CRT.Data.csproj" />
   </ItemGroup>
 
+  <!-- The PNG files the collection tests are made of - a helper both App test projects use, so it lives in
+       CRT.App.Tests/Shared (CLAUDE.md), compiled in here and into CRT.Server.Tests too. -->
+  <ItemGroup>
+    <Compile Include="..\CRT.App.Tests\Shared\TestPng.cs" Link="Shared\TestPng.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <None Update="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>

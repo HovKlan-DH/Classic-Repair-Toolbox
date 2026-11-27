@@ -145,4 +145,20 @@ public sealed class CollectionSharingTests
         Assert.Equal("Untitled collection (1 capture)", CollectionSharing.LineOf(Collection(Capture("U7", "1")) with { Title = " " }));
         Assert.Equal("U7 captures, 2026-November-26", CollectionSharing.DefaultTitle("U7", Now));
     }
+
+    // The server answers "not found" for another account's collection - so with another account signed in, nothing is shared,
+    // deleted or answered: "not found" would delete it here and leave its page up (code review, 2026-11-27).
+    [Fact]
+    public void A_collection_shared_by_another_account_is_left_to_it()
+    {
+        LocalCollection shared = Collection(Capture("U7", "1")) with { ServerId = "k7mq3x9vbn2p", SharedByAccountId = 4, SharedByName = "Anna" };
+
+        Assert.Null(CollectionSharing.OtherAccountLine(shared, signedInAccountId: 4));
+        Assert.Contains("[Anna]", CollectionSharing.OtherAccountLine(shared, signedInAccountId: 5), StringComparison.Ordinal);
+
+        // Nothing says otherwise: shared before CRT kept the account, a session that does not know its own, or not shared.
+        Assert.Null(CollectionSharing.OtherAccountLine(shared with { SharedByAccountId = null }, signedInAccountId: 5));
+        Assert.Null(CollectionSharing.OtherAccountLine(shared, signedInAccountId: 0));
+        Assert.Null(CollectionSharing.OtherAccountLine(shared with { ServerId = null }, signedInAccountId: 5));
+    }
 }

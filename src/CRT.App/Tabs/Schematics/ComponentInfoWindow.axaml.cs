@@ -1725,6 +1725,8 @@ private void OnIcTestPanelCloseRequested() => this.IcTestPanel.IsVisible = false
                 this.ShowFetchScopeImageOverlay,
                 DispatcherPriority.Background);
 
+            string? shownCapture = null;
+
             try
             {
                 string? savedFilePath = await mainOwner.TabOscilloscopeControl.CaptureAndSaveOscilloscopeImageAsync(
@@ -1741,8 +1743,7 @@ private void OnIcTestPanelCloseRequested() => this.IcTestPanel.IsVisible = false
                     () => this.ShowTemporaryCapturedOscilloscopeImage(savedFilePath),
                     DispatcherPriority.Background);
 
-                // Into the collection picked too, if any (ComponentInfoWindow.Collections.cs).
-                await this.CollectCaptureAsync(selectedEntry, selectedItem!.FullPath, savedFilePath);
+                shownCapture = savedFilePath;
             }
             finally
             {
@@ -1750,6 +1751,12 @@ private void OnIcTestPanelCloseRequested() => this.IcTestPanel.IsVisible = false
                     this.HideFetchScopeImageOverlay,
                     DispatcherPriority.Background);
             }
+
+            // Into the collection picked too, if any (ComponentInfoWindow.Collections.cs) - once the cover is off, the capture
+            // shown already: reading the oscilloscope's settings back kept the popup covered for seconds at each capture (code
+            // review, 2026-11-27). Its banner goes under its own capture alone, whatever is shown by then.
+            if (shownCapture is not null)
+                await this.CollectCaptureAsync(selectedEntry, selectedItem!.FullPath, shownCapture);
         }
 
         // ###########################################################################################

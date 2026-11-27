@@ -70,9 +70,9 @@ CRT.Data.Tests.csproj, which solved this first.
     <ProjectReference Include="..\..\src\CRT.Data\CRT.Data.csproj" />
   </ItemGroup>
 
-  <!-- The PNG files the collection tests are made of, shared with CRT.Data.Tests (TestPng's header). -->
+  <!-- The PNG files the collection tests are made of, from CRT.App.Tests/Shared (TestPng's header). -->
   <ItemGroup>
-    <Compile Include="..\CRT.Data.Tests\TestPng.cs" Link="Shared\TestPng.cs" />
+    <Compile Include="..\CRT.App.Tests\Shared\TestPng.cs" Link="Shared\TestPng.cs" />
   </ItemGroup>
 
   <ItemGroup>

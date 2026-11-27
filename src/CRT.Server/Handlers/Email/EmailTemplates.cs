@@ -748,7 +748,13 @@ namespace CRT.Server.Handlers.Email
         {
             string line = string.Concat(text.Select(c => char.IsControl(c) ? ' ' : c)).Trim();
 
-            return line.Length <= 80 ? line : line[..77] + "...";
+            if (line.Length <= 80)
+                return line;
+
+            // Never half of a character written as two (an emoji's surrogate pair) - code review, 2026-11-27.
+            int cut = char.IsHighSurrogate(line[76]) ? 76 : 77;
+
+            return line[..cut] + "...";
         }
 
         public static EmailMessage OscilloscopeModelRejected(

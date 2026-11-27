@@ -19,48 +19,129 @@ namespace CRT.Server.Tests.Fakes
         // The writers' names and whether each is an administrator - a test fills it as it makes accounts.
         public Dictionary<long, (string Name, bool IsAdministrator)> Accounts { get; } = [];
 
+        // The accounts locked, as the database's join to accounts reads them at every ask - a test locking an account in its
+        // FakeAccountStore puts it here too.
+        public HashSet<long> LockedAccounts { get; } = [];
+
         private long thisNextCommentId = 1;
 
         public Task<CollectionRecord?> FindAsync(string id, CancellationToken cancellationToken = default) =>
             Task.FromResult(this.Collections.TryGetValue(id, out CollectionRecord? collection) ? collection : null);
 
+        public Task<CollectionRecord?> FindWithImageAsync(string id, string sha256, CancellationToken cancellationToken = default)
+        {
+            if (!this.Collections.TryGetValue(id, out CollectionRecord? collection))
+                return Task.FromResult<CollectionRecord?>(null);
+
+            List<CollectionImageRecord> images = collection.Images.Where(image => image.Entry.Sha256 == sha256).ToList();
+
+            return Task.FromResult<CollectionRecord?>(collection with { Images = images, ImageCount = images.Count });
+        }
+
         public Task<IReadOnlyList<CollectionRecord>> ListLiveForAccountAsync(long accountId, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<CollectionRecord>>(this.Collections.Values
                 .Where(collection => collection.AccountId == accountId && !collection.IsDeleted)
                 .OrderByDescending(collection => collection.CreatedUtc)
-                .Select(collection =>
-                {
-                    List<CollectionCommentRecord> shown = this.Comments
-                        .Where(kept => kept.DeletedUtc is null && !kept.Comment.IsHidden && kept.Comment.CollectionId == collection.Id)
-                        .Select(kept => kept.Comment)
-                        .ToList();
-
-                    return collection with
-                    {
-                        Images = [],
-                        ImageCount = collection.Images.Count,
-                        CommentCount = shown.Count,
-                        LatestCommentId = shown.Count == 0 ? 0 : shown.Max(comment => comment.Id)
-                    };
-                })
+                .Select(this.Counted)
                 .ToList());
 
-        public Task<int> CountCreatedSinceAsync(long accountId, DateTimeOffset sinceUtc, CancellationToken cancellationToken = default) =>
-            Task.FromResult(this.Collections.Values.Count(collection => collection.AccountId == accountId && collection.CreatedUtc > sinceUtc));
+        public Task<IReadOnlyList<CollectionRecord>> ListLiveCommentedOnAsync(long accountId, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<CollectionRecord>>(this.Collections.Values
+                .Where(collection => collection.AccountId != accountId && !collection.IsDeleted)
+                .Select(collection => (Collection: collection, Latest: this.Comments
+                    .Where(kept => kept.DeletedUtc is null && kept.Comment.AccountId == accountId && kept.Comment.CollectionId == collection.Id &&
+                                   this.IsOnACaptureShown(kept.Comment))
+                    .Select(kept => kept.Comment.Id)
+                    .DefaultIfEmpty(0)
+                    .Max()))
+                .Where(pair => pair.Latest > 0)
+                .OrderByDescending(pair => pair.Latest)
+                .Select(pair => this.Counted(pair.Collection))
+                .ToList());
+
+        public Task<IReadOnlyList<CollectionRecord>> ListAllLiveAsync(int count, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<CollectionRecord>>(this.Collections.Values
+                .Where(collection => !collection.IsDeleted)
+                .OrderByDescending(collection => collection.CreatedUtc)
+                .Take(count)
+                .Select(this.Counted)
+                .ToList());
+
+        public Task<IReadOnlyList<CollectionCommentRecord>> ListNewestCommentsAsync(int count, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<CollectionCommentRecord>>(this.Comments
+                .Where(kept => kept.DeletedUtc is null &&
+                               this.Collections.TryGetValue(kept.Comment.CollectionId, out CollectionRecord? collection) &&
+                               !collection.IsDeleted && this.IsOnACaptureShown(kept.Comment))
+                .Select(kept => this.AsRead(kept.Comment))
+                .OrderByDescending(comment => comment.Id)
+                .Take(count)
+                .ToList());
+
+        // As the database's OnACaptureShown: a comment counts only on a capture its collection shows now.
+        private bool IsOnACaptureShown(CollectionCommentRecord comment) =>
+            this.Collections.TryGetValue(comment.CollectionId, out CollectionRecord? collection) &&
+            collection.Images.Any(image => image.Entry.Sha256 == comment.ImageSha256);
+
+        // A comment as the join reads it now - its writer locked or not.
+        private CollectionCommentRecord AsRead(CollectionCommentRecord comment) =>
+            comment with { AuthorIsLocked = this.LockedAccounts.Contains(comment.AccountId) };
+
+        // A collection as a list holds it: no captures, those counted, and the comments its page shows counted - none hidden,
+        // none of a locked account.
+        private CollectionRecord Counted(CollectionRecord collection)
+        {
+            List<CollectionCommentRecord> shown = this.Comments
+                .Where(kept => kept.DeletedUtc is null && !kept.Comment.IsHidden && kept.Comment.CollectionId == collection.Id &&
+                               !this.LockedAccounts.Contains(kept.Comment.AccountId) && this.IsOnACaptureShown(kept.Comment))
+                .Select(kept => kept.Comment)
+                .ToList();
+
+            // The newest of others than the owner, as the database's.
+            List<CollectionCommentRecord> others = shown.Where(comment => comment.AccountId != collection.AccountId).ToList();
+
+            return collection with
+            {
+                Images = [],
+                ImageCount = collection.Images.Count,
+                CommentCount = shown.Count,
+                LatestCommentId = others.Count == 0 ? 0 : others.Max(comment => comment.Id)
+            };
+        }
+
+        // Run as a share counts the day's collections - another request coming at that very moment.
+        public Action? WhileCountingCreated { get; set; }
+
+        public Task<int> CountCreatedSinceAsync(long accountId, DateTimeOffset sinceUtc, CancellationToken cancellationToken = default)
+        {
+            Action? meanwhile = this.WhileCountingCreated;
+
+            this.WhileCountingCreated = null;
+            meanwhile?.Invoke();
+
+            return Task.FromResult(this.Collections.Values.Count(collection => collection.AccountId == accountId && collection.CreatedUtc > sinceUtc));
+        }
 
         public Task<bool> AddAsync(CollectionRecord collection, CancellationToken cancellationToken = default) =>
             Task.FromResult(this.Collections.TryAdd(collection.Id, collection));
+
+        public Task<CollectionRecord?> FindLiveByClientKeyAsync(long accountId, string clientKey, CancellationToken cancellationToken = default) =>
+            Task.FromResult(this.Collections.Values
+                .Where(collection => collection.AccountId == accountId && collection.ClientKey == clientKey && !collection.IsDeleted)
+                .OrderByDescending(collection => collection.CreatedUtc)
+                .FirstOrDefault());
 
         public Task<bool> ReplaceContentAsync(CollectionRecord collection, CancellationToken cancellationToken = default)
         {
             if (!this.Collections.TryGetValue(collection.Id, out CollectionRecord? existing) || existing.IsDeleted)
                 return Task.FromResult(false);
 
+            // As the database's UPDATE: the key CRT first shared it under stays.
             this.Collections[collection.Id] = collection with
             {
+                ClientKey = existing.ClientKey,
                 AccountId = existing.AccountId,
                 CreatedUtc = existing.CreatedUtc,
-                RemindedUtc = collection.DeleteAtUtc > existing.DeleteAtUtc ? null : existing.RemindedUtc
+                RemindedUtc = collection.DeleteAtUtc != existing.DeleteAtUtc ? collection.RemindedUtc : existing.RemindedUtc
             };
 
             return Task.FromResult(true);
@@ -91,13 +172,13 @@ namespace CRT.Server.Tests.Fakes
         public Task<IReadOnlyList<CollectionCommentRecord>> ListCommentsAsync(string collectionId, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyList<CollectionCommentRecord>>(this.Comments
                 .Where(kept => kept.DeletedUtc is null && kept.Comment.CollectionId == collectionId)
-                .Select(kept => kept.Comment)
+                .Select(kept => this.AsRead(kept.Comment))
                 .OrderBy(comment => comment.CreatedUtc)
                 .ThenBy(comment => comment.Id)
                 .ToList());
 
         public Task<CollectionCommentRecord?> FindCommentAsync(long commentId, CancellationToken cancellationToken = default) =>
-            Task.FromResult(this.Comments.Where(kept => kept.DeletedUtc is null && kept.Comment.Id == commentId).Select(kept => kept.Comment).FirstOrDefault());
+            Task.FromResult(this.Comments.Where(kept => kept.DeletedUtc is null && kept.Comment.Id == commentId).Select(kept => this.AsRead(kept.Comment)).FirstOrDefault());
 
         public Task<long> AddCommentAsync(string collectionId, string imageSha256, long accountId, string body, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
         {
@@ -158,13 +239,16 @@ namespace CRT.Server.Tests.Fakes
                 .Where(upload => upload.AccountId == accountId && sha256s.Contains(upload.Sha256))
                 .ToDictionary(upload => upload.Sha256, StringComparer.Ordinal));
 
-        public Task<bool> AddUploadAsync(CollectionUploadRecord upload, CancellationToken cancellationToken = default)
+        public Task AddUploadAsync(CollectionUploadRecord upload, CancellationToken cancellationToken = default)
         {
-            if (this.Uploads.Any(earlier => earlier.AccountId == upload.AccountId && earlier.Sha256 == upload.Sha256))
-                return Task.FromResult(false);
+            int earlier = this.Uploads.FindIndex(row => row.AccountId == upload.AccountId && row.Sha256 == upload.Sha256);
 
-            this.Uploads.Add(upload);
-            return Task.FromResult(true);
+            if (earlier < 0)
+                this.Uploads.Add(upload);
+            else if (upload.UploadedUtc > this.Uploads[earlier].UploadedUtc)
+                this.Uploads[earlier] = this.Uploads[earlier] with { UploadedUtc = upload.UploadedUtc };
+
+            return Task.CompletedTask;
         }
 
         public Task<int> CountUploadsSinceAsync(long accountId, DateTimeOffset sinceUtc, CancellationToken cancellationToken = default) =>
@@ -185,11 +269,27 @@ namespace CRT.Server.Tests.Fakes
             foreach (CollectionUploadRecord upload in unused)
                 this.Uploads.Remove(upload);
 
-            return Task.FromResult<IReadOnlyList<string>>(unused
+            IReadOnlyList<string> gone = unused
                 .Select(upload => upload.Sha256)
                 .Distinct(StringComparer.Ordinal)
                 .Where(sha => !this.Uploads.Any(upload => upload.Sha256 == sha))
-                .ToList());
+                .ToList();
+
+            this.AfterDeleteUnusedUploads?.Invoke();
+
+            return Task.FromResult(gone);
         }
+
+        // Run once the unused uploads are gone, before the sweep deletes their bytes - a test sends the same picture again there,
+        // as another account may at that very moment.
+        public Action? AfterDeleteUnusedUploads { get; set; }
+
+        public Task<bool> IsUploadedAsync(string sha256, CancellationToken cancellationToken = default) =>
+            this.IsUploadedFails.Contains(sha256)
+                ? throw new InvalidOperationException("The database could not be asked.")
+                : Task.FromResult(this.Uploads.Any(upload => upload.Sha256 == sha256));
+
+        // The pictures the database fails to be asked about - a connection dropped mid-sweep.
+        public HashSet<string> IsUploadedFails { get; } = [];
     }
 }

@@ -11,8 +11,14 @@ namespace CRT.Server.Handlers.Collections
         // A collection with its captures - deleted or not - or null when there is none of that id.
         Task<CollectionRecord?> FindAsync(string id, CancellationToken cancellationToken = default);
 
+        // The same, its Images only the rows of the capture `sha256` names (none when it shows no such capture) - what a
+        // picture's every request asks (code review, 2026-11-27: each read every capture of the collection, 300 rows a picture
+        // on a page of 300).
+        Task<CollectionRecord?> FindWithImageAsync(string id, string sha256, CancellationToken cancellationToken = default);
+
         // The account's collections not deleted, newest first - without their captures (ImageCount says how many), with how
-        // many comments their pages show and the newest one's id (CommentCount, LatestCommentId).
+        // many comments their pages show and the newest one's id (CommentCount, LatestCommentId) - none hidden, none of a
+        // locked account.
         Task<IReadOnlyList<CollectionRecord>> ListLiveForAccountAsync(long accountId, CancellationToken cancellationToken = default);
 
         // How many collections the account made since `sinceUtc`, deleted ones too - the day's limit.
@@ -20,6 +26,10 @@ namespace CRT.Server.Handlers.Collections
 
         // Stores a new collection and its captures. False when the id is taken (CollectionFlows draws another).
         Task<bool> AddAsync(CollectionRecord collection, CancellationToken cancellationToken = default);
+
+        // The account's collection still shown that CRT first shared under `clientKey` (migration 0027) - a first share sent
+        // again, its answer lost the first time. Null when there is none.
+        Task<CollectionRecord?> FindLiveByClientKeyAsync(long accountId, string clientKey, CancellationToken cancellationToken = default);
 
         // Replaces a collection's words, date and captures - only while it is not deleted; false when it is (deleted
         // meanwhile). A date moved later than it was asks for the reminder again (reminded_utc cleared).
@@ -44,8 +54,9 @@ namespace CRT.Server.Handlers.Collections
         // The account's uploads among `sha256s`, by checksum.
         Task<IReadOnlyDictionary<string, CollectionUploadRecord>> FindUploadsAsync(long accountId, IReadOnlyCollection<string> sha256s, CancellationToken cancellationToken = default);
 
-        // Records an upload - none when the account sent the same picture before (its first time is kept). True when recorded.
-        Task<bool> AddUploadAsync(CollectionUploadRecord upload, CancellationToken cancellationToken = default);
+        // Records an upload - or, for a picture the account sent before, moves that upload's time to this one's (never back),
+        // so the sweep's day counts from the last send.
+        Task AddUploadAsync(CollectionUploadRecord upload, CancellationToken cancellationToken = default);
 
         // How many pictures the account uploaded since `sinceUtc` - the day's limit.
         Task<int> CountUploadsSinceAsync(long accountId, DateTimeOffset sinceUtc, CancellationToken cancellationToken = default);
@@ -56,6 +67,10 @@ namespace CRT.Server.Handlers.Collections
         // Deletes every upload made before `uploadedBeforeUtc` that no collection of its account shows any more (deleted ones
         // show none), and answers the checksums no upload is left of - the pictures whose bytes can go.
         Task<IReadOnlyList<string>> DeleteUnusedUploadsAsync(DateTimeOffset uploadedBeforeUtc, CancellationToken cancellationToken = default);
+
+        // Whether any account has an upload of the picture now - asked again right before its bytes are deleted, as another
+        // account may have sent the same picture since DeleteUnusedUploadsAsync answered.
+        Task<bool> IsUploadedAsync(string sha256, CancellationToken cancellationToken = default);
 
         // ---------------------------------------------------------------------------------------
         // Comments (step 3, migration 0026). A collection deleted takes its comments (MarkDeletedAsync).
@@ -77,10 +92,26 @@ namespace CRT.Server.Handlers.Collections
 
         // How many comments the account wrote since `sinceUtc` - the day's limit.
         Task<int> CountCommentsSinceAsync(long accountId, DateTimeOffset sinceUtc, CancellationToken cancellationToken = default);
+
+        // ---------------------------------------------------------------------------------------
+        // The lists of the website's "Your collections" page (step 4). Each without captures, counted as ListLiveForAccountAsync
+        // counts them.
+        // ---------------------------------------------------------------------------------------
+
+        // The collections not deleted the account has a comment on (not deleted) and does not own - the one it commented on last
+        // first.
+        Task<IReadOnlyList<CollectionRecord>> ListLiveCommentedOnAsync(long accountId, CancellationToken cancellationToken = default);
+
+        // Every collection not deleted, newest first, at most `count` - the administrator's.
+        Task<IReadOnlyList<CollectionRecord>> ListAllLiveAsync(int count, CancellationToken cancellationToken = default);
+
+        // The newest comments not deleted on collections not deleted, newest first, at most `count` - hidden ones too.
+        Task<IReadOnlyList<CollectionCommentRecord>> ListNewestCommentsAsync(int count, CancellationToken cancellationToken = default);
     }
 
     // ###########################################################################################
-    // A comment as kept, with its writer's name and whether the writer is an administrator (joined from accounts).
+    // A comment as kept, with its writer's name, whether the writer is an administrator, and whether the writer's account is
+    // locked - its comments then shown to the administrator alone (joined from accounts; AccountLockFlows).
     // ###########################################################################################
     public sealed record CollectionCommentRecord(
         long Id,
@@ -92,7 +123,8 @@ namespace CRT.Server.Handlers.Collections
         string Body,
         DateTimeOffset CreatedUtc,
         DateTimeOffset? EditedUtc,
-        DateTimeOffset? HiddenUtc)
+        DateTimeOffset? HiddenUtc,
+        bool AuthorIsLocked = false)
     {
         public bool IsHidden => this.HiddenUtc is not null;
     }
@@ -127,7 +159,8 @@ namespace CRT.Server.Handlers.Collections
         IReadOnlyList<CollectionImageRecord> Images,
         int ImageCount,
         int CommentCount = 0,
-        long LatestCommentId = 0)
+        long LatestCommentId = 0,
+        string? ClientKey = null)
     {
         public bool IsDeleted => this.DeletedUtc is not null;
     }

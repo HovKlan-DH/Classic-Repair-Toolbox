@@ -26,10 +26,12 @@ namespace Handlers.DataHandling
 
         public const string Missing = "Write the comment first.";
 
-        // What is wrong with a comment's text - null when nothing is.
+        // What is wrong with a comment's text - null when nothing is. Measured AS KEPT (Tidied): a browser posts each line end as
+        // "\r\n" but its maxlength counts it as one, so a comment the page let through was refused as too long (code review,
+        // 2026-11-27).
         public static string? Problem(string? body)
         {
-            string text = body?.Trim() ?? string.Empty;
+            string text = body is null ? string.Empty : CollectionComments.Tidied(body);
 
             if (text.Length == 0)
                 return CollectionComments.Missing;

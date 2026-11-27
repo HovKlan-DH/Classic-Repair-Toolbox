@@ -27,6 +27,14 @@ namespace CRT
         // The collections on this computer - a test's folder when it set one.
         internal CollectionStore Collections => this.thisCollections ??= new CollectionStore(AppConfig.CollectionsFolder);
 
+        // A 4.1.0 pre-release takes the folder it kept its collections in until it had one of its own
+        // (AppConfig.CollectionsFolderToTakeOver). Run by StartAsync alone - a test never moves the user's folder.
+        private static void TakeOverEarlierCollections()
+        {
+            if (AppConfig.CollectionsFolderToTakeOver is { } earlier)
+                CollectionStore.TakeOverEarlierFolder(earlier, AppConfig.CollectionsFolder);
+        }
+
         internal void UseCollectionsForTests(CollectionStore store) => this.thisCollections = store;
 
         // For a test: the server a collection's window shares with.
@@ -53,7 +61,19 @@ namespace CRT
                 regions.Count > 0 ? this._localRegion : null,
                 this.ReadScopeSettingsForCollectionAsync,
                 this.OpenCollectionWindow,
-                serverId => this.thisLatestCommentIds.GetValueOrDefault(serverId));
+                serverId => this.thisLatestCommentIds.GetValueOrDefault(serverId),
+                this.CollectionChangedInPopup,
+                localId => this.thisCollectionWindows.TryGetValue(localId, out CollectionWindow? open) && open.IsVisible && open.IsBusy);
+        }
+
+        // A capture added or taken out in a popup, or another collection picked there: every popup's drop-down, and the
+        // collection's window if one is open.
+        private void CollectionChangedInPopup(string? localId)
+        {
+            this.ShowCollectionChoicesInPopups();
+
+            if (localId is not null && this.thisCollectionWindows.TryGetValue(localId, out CollectionWindow? open) && open.IsVisible)
+                open.ShowAgain();
         }
 
         // ###########################################################################################
@@ -95,8 +115,11 @@ namespace CRT
                 _ => { });
         }
 
+        // ONE client for the run (code review, 2026-11-27: one made at every ask left an HttpClient and its connections behind).
+        private CollectionClient? thisCollectionClient;
+
         private CollectionClient CollectionClientInUse() =>
-            this.CollectionClientOverrideForTests ?? new CollectionClient(AppConfig.ContributionServerRootUrl);
+            this.CollectionClientOverrideForTests ?? (this.thisCollectionClient ??= new CollectionClient(AppConfig.ContributionServerRootUrl));
 
         private async Task<ScopeSettingsReading?> ReadScopeSettingsForCollectionAsync() =>
             await ((IBaselineScope)this.TabOscilloscopeControl).ReadSettingsAsync(CancellationToken.None);
@@ -113,7 +136,14 @@ namespace CRT
             }
 
             var window = new CollectionWindow();
-            window.Initialize(this.CollectionWindowHost(), localId);
+
+            // Gone meanwhile - deleted from its window, say: no window, and every popup shows the collections as they are.
+            if (!window.Initialize(this.CollectionWindowHost(), localId))
+            {
+                this.ShowCollectionChoicesInPopups();
+                return;
+            }
+
             window.Closed += (_, _) =>
             {
                 if (this.thisCollectionWindows.TryGetValue(localId, out CollectionWindow? kept) && ReferenceEquals(kept, window))

@@ -56,7 +56,9 @@ namespace CRT.Server.Handlers.Submissions
                 counts.ProductionApprovals,
                 counts.Boards,
                 counts.OscilloscopeModels,
-                counts.LastOscilloscopeModelId);
+                counts.LastOscilloscopeModelId,
+                counts.Collections,
+                counts.CollectionComments);
 
             return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(text)));
         }
@@ -78,7 +80,9 @@ namespace CRT.Server.Handlers.Submissions
                 counts.BoardViews,
                 counts.ApiUsageRows,
                 isEnabled ? null : DataResetRules.NotEnabledMessage,
-                counts.OscilloscopeModels);
+                counts.OscilloscopeModels,
+                counts.Collections,
+                counts.CollectionComments);
         }
 
         public static DataResetAnswer ToAnswer(DataResetCounts deleted, int storedFilesRemoved)
@@ -95,7 +99,9 @@ namespace CRT.Server.Handlers.Submissions
                 deleted.BoardViews,
                 deleted.ApiUsageRows,
                 storedFilesRemoved,
-                deleted.OscilloscopeModels);
+                deleted.OscilloscopeModels,
+                deleted.Collections,
+                deleted.CollectionComments);
         }
 
         // The detail of the reset's own history row - what went, in one line.
@@ -110,6 +116,7 @@ namespace CRT.Server.Handlers.Submissions
                 $"{deleted.Invitations} invitation(s), {deleted.ProductionApprovals} production approval(s), " +
                 $"{deleted.Boards} board record(s), {deleted.HistoryEntries} history row(s), " +
                 $"{deleted.BoardViews} board view(s) and {deleted.ApiUsageRows} API usage row(s) deleted; " +
+                $"{deleted.Collections} collection(s) taken down and {deleted.CollectionComments} collection comment(s) deleted; " +
                 $"{deleted.Administrators} administrator(s) kept");
         }
     }

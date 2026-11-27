@@ -42,6 +42,11 @@ namespace CRT.Server.Tests
             // one arriving after the counts were shown must not go unseen.
             { "an oscilloscope model more", DataResetRulesTests.Counts with { OscilloscopeModels = 1 } },
             { "one oscilloscope model swapped for another", DataResetRulesTests.Counts with { LastOscilloscopeModelId = 3 } },
+
+            // Collections and their comments go with the accounts (code review, 2026-11-27): one shared, or a comment written,
+            // after the counts were shown must not go unseen.
+            { "a collection more", DataResetRulesTests.Counts with { Collections = 1 } },
+            { "a comment more", DataResetRulesTests.Counts with { CollectionComments = 1 } },
         };
 
         [Theory]
@@ -85,6 +90,14 @@ namespace CRT.Server.Tests
             Assert.Equal(3, DataResetRules.ToPlan(DataResetRulesTests.Counts with { OscilloscopeModels = 3 }, isEnabled: true).OscilloscopeModels);
             Assert.Equal(3, DataResetRules.ToAnswer(DataResetRulesTests.Counts with { OscilloscopeModels = 3 }, 0).OscilloscopeModelsDeleted);
             Assert.Contains("3 oscilloscope model(s)", DataResetRules.Detail(DataResetRulesTests.Counts with { OscilloscopeModels = 3 }));
+
+            DataResetCounts withCollections = DataResetRulesTests.Counts with { Collections = 2, CollectionComments = 9 };
+            var plan = DataResetRules.ToPlan(withCollections, isEnabled: true);
+            var answer = DataResetRules.ToAnswer(withCollections, 0);
+
+            Assert.Equal((2, 9), (plan.Collections, plan.CollectionComments));
+            Assert.Equal((2, 9), (answer.CollectionsTakenDown, answer.CollectionCommentsDeleted));
+            Assert.Contains("2 collection(s) taken down and 9 collection comment(s) deleted", DataResetRules.Detail(withCollections));
 
             Assert.False(off.IsEnabled);
             Assert.Equal(DataResetRules.NotEnabledMessage, off.NotEnabledBecause);

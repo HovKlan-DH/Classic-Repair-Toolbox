@@ -48,6 +48,15 @@ namespace CRT.Server.Handlers.Collections
                                 result.Reminded,
                                 result.FilesDeleted);
                         }
+
+                        // Nothing names these any more - said, so they can be deleted by hand.
+                        if (result.FilesNotDeleted is { Count: > 0 } left)
+                        {
+                            logger.LogWarning(
+                                "Collections: {Count} capture(s) nobody shows could not be deleted from the collections folder: {Files}",
+                                left.Count,
+                                string.Join(", ", left.Select(sha256 => $"{sha256[..2]}/{sha256}.png")));
+                        }
                     }
                     catch (Exception ex) when (ex is not OperationCanceledException)
                     {

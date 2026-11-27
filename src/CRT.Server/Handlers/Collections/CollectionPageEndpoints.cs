@@ -9,10 +9,18 @@ namespace CRT.Server.Handlers.Collections
     // A SHARED COLLECTION'S PAGE ON HTTP (2026-11-26) - a rim over the flows and CollectionPages; Apache forwards
     // "/collections/" to the service, as it forwards "/account/" (INSTALLING.md).
     //
+    //   GET  /collections/                                 "Your collections" (step 4) - CollectionListFlows; signed out, the
+    //                                                      way in. ?lock=<account> the administrator's question before
+    //                                                      locking an account.
+    //   POST /collections/accounts/{a}/lock|unlock         the administrator locks or unlocks an account (AccountLockFlows)
     //   GET  /collections/{id}                             the page - 404 for no such collection (or one whose owner's account
-    //                                                      is locked), 410 for one deleted, saying when. ?edit=<c> and
-    //                                                      ?delete=<c> show a comment being edited or asked about.
-    //   GET  /collections/{id}/{sha256}.png                a capture - only one the collection shows, while it is shown
+    //                                                      is locked or gone - but to the administrator, who is told it is
+    //                                                      offline), 410 for one deleted, saying when. ?edit=<c> and
+    //                                                      ?delete=<c> show a comment being edited or asked about, ?remove=1
+    //                                                      the administrator's question before deleting the collection.
+    //   GET  /collections/{id}/{sha256}.png                a capture - only one the collection shows, while it is shown (to
+    //                                                      this reader)
+    //   POST /collections/{id}/delete                      the administrator deletes the collection (step 4)
     //   POST /collections/{id}/comments                    a comment (step 3) - CollectionCommentFlows.AddAsync
     //   POST /collections/{id}/comments/{c}/edit|delete|hide|show
     //
@@ -26,13 +34,29 @@ namespace CRT.Server.Handlers.Collections
     {
         public const string RobotsTag = "noindex, nofollow, noarchive";
 
+        // ###########################################################################################
+        // THE PAGES' LIMIT PER ADDRESS (code review, 2026-11-27): every picture of a page is a request that reads its collection,
+        // and anybody with a link could ask for them without end. Far above a person reading - a 300-capture page is some 300
+        // requests, so this is dozens of such pages an hour - and a wall to a script.
+        // ###########################################################################################
+        public const string RateLimitPolicy = "collection-pages";
+
+        public const int PermitsPerAddressPerHour = 20_000;
+
+        public static void AddCollectionPageRateLimit(this IServiceCollection services) =>
+            services.AddPerAddressRateLimit(CollectionPageEndpoints.RateLimitPolicy, CollectionPageEndpoints.PermitsPerAddressPerHour);
+
         public static void MapCollectionPageEndpoints(this WebApplication app)
         {
             ArgumentNullException.ThrowIfNull(app);
 
-            RouteGroupBuilder pages = app.MapGroup(CollectionRoutes.PagePath);
+            RouteGroupBuilder pages = app.MapGroup(CollectionRoutes.PagePath).RequireRateLimiting(CollectionPageEndpoints.RateLimitPolicy);
 
+            pages.MapGet("/", CollectionPageEndpoints.ListAsync);
+            pages.MapPost("/accounts/{accountId:long}/lock", CollectionPageEndpoints.LockAccountAsync).WithBodyLimit(RequestBodyLimits.FormBytes);
+            pages.MapPost("/accounts/{accountId:long}/unlock", CollectionPageEndpoints.UnlockAccountAsync).WithBodyLimit(RequestBodyLimits.FormBytes);
             pages.MapGet("/{id}", CollectionPageEndpoints.PageAsync);
+            pages.MapPost("/{id}/delete", CollectionPageEndpoints.DeleteCollectionAsync).WithBodyLimit(RequestBodyLimits.FormBytes);
             pages.MapGet("/{id}/{file}", CollectionPageEndpoints.ImageAsync);
             pages.MapPost("/{id}/comments", CollectionPageEndpoints.AddCommentAsync).WithBodyLimit(RequestBodyLimits.CommentFormBytes);
             pages.MapPost("/{id}/comments/{commentId:long}/edit", CollectionPageEndpoints.EditCommentAsync).WithBodyLimit(RequestBodyLimits.CommentFormBytes);
@@ -45,6 +69,7 @@ namespace CRT.Server.Handlers.Collections
             string id,
             long? edit,
             long? delete,
+            string? remove,
             HttpContext context,
             ICollectionStore store,
             IAccountStore accounts,
@@ -52,7 +77,147 @@ namespace CRT.Server.Handlers.Collections
             CancellationToken cancellationToken) =>
             await CollectionPageEndpoints.RenderAsync(
                 id, context, store, accounts, options, cancellationToken,
-                view => view with { EditingId = edit, DeletingId = delete });
+                view => view with { EditingId = edit, DeletingId = delete, RemovingCollection = remove == "1" });
+
+        // ###########################################################################################
+        // GET /collections/ - "Your collections" (step 4): the reader's lists (CollectionListFlows), or, signed out, the way in.
+        // ?lock=<account> asks the administrator before locking that account (AccountLockFlows).
+        // ###########################################################################################
+        private static Task<IResult> ListAsync(
+            long? @lock,
+            HttpContext context,
+            ICollectionStore store,
+            IAccountStore accounts,
+            ServerOptions options,
+            CancellationToken cancellationToken) =>
+            CollectionPageEndpoints.RenderListAsync(context, store, accounts, options, cancellationToken, @lock);
+
+        // The list as this reader sees it - `locking` the account asked about, `problem` what a lock or unlock refused said.
+        private static async Task<IResult> RenderListAsync(
+            HttpContext context,
+            ICollectionStore store,
+            IAccountStore accounts,
+            ServerOptions options,
+            CancellationToken cancellationToken,
+            long? locking = null,
+            string? problem = null,
+            int status = StatusCodes.Status200OK)
+        {
+            string siteBaseUrl = AccountPages.BaseUrl(options.PublicApiBaseUrl);
+            CollectionBaselines baselines = CollectionBaselines.For(options);
+
+            if (!options.IsCollectionSharingConfigured)
+                return CollectionPageEndpoints.Page(context, CollectionPages.NotSetUp(siteBaseUrl), baselines, signedIn: false, StatusCodes.Status503ServiceUnavailable);
+
+            (AccountRecord? reader, string? token) = await CollectionPageEndpoints.ReaderAsync(context, accounts, options, cancellationToken);
+
+            if (reader is null || token is null)
+                return CollectionPageEndpoints.Page(context, CollectionPages.ListSignedOut(siteBaseUrl), baselines, signedIn: false);
+
+            CollectionListView list = await CollectionListFlows.ListForAsync(reader, store, accounts, DateTimeOffset.UtcNow, cancellationToken);
+            var viewer = new CollectionViewer(reader.Id, reader.DisplayName, reader.IsAdministrator);
+
+            // Only an account the administrator may lock is asked about (AccountLockFlows decides).
+            LockedAccount? asked = await AccountLockFlows.ToAskAboutLockingAsync(reader, locking, accounts, cancellationToken) is { } account
+                ? new LockedAccount(account.Id, account.DisplayName, account.Email)
+                : null;
+
+            return CollectionPageEndpoints.Page(
+                context,
+                CollectionPages.List(siteBaseUrl, viewer, WebSessions.Csrf(token), list, asked, problem),
+                baselines,
+                signedIn: true,
+                status);
+        }
+
+        // ###########################################################################################
+        // POST /collections/accounts/{id}/lock and .../unlock - the administrator locks or unlocks an account (owner decision,
+        // 2026-11-27; AccountLockFlows decides). Every form's three steps first (SignedInFormAsync). Done: back to the list,
+        // at "Locked accounts"; refused: the list again, saying why.
+        // ###########################################################################################
+        private static Task<IResult> LockAccountAsync(
+            long accountId,
+            HttpContext context,
+            ICollectionStore store,
+            IAccountStore accounts,
+            ServerOptions options,
+            ILoggerFactory loggers,
+            CancellationToken cancellationToken) =>
+            CollectionPageEndpoints.SetLockedAsync(
+                accountId, locked: true, context, store, accounts, options, loggers.CreateLogger(typeof(AccountLockFlows).FullName!), cancellationToken);
+
+        private static Task<IResult> UnlockAccountAsync(
+            long accountId,
+            HttpContext context,
+            ICollectionStore store,
+            IAccountStore accounts,
+            ServerOptions options,
+            ILoggerFactory loggers,
+            CancellationToken cancellationToken) =>
+            CollectionPageEndpoints.SetLockedAsync(
+                accountId, locked: false, context, store, accounts, options, loggers.CreateLogger(typeof(AccountLockFlows).FullName!), cancellationToken);
+
+        private static async Task<IResult> SetLockedAsync(
+            long accountId,
+            bool locked,
+            HttpContext context,
+            ICollectionStore store,
+            IAccountStore accounts,
+            ServerOptions options,
+            ILogger logger,
+            CancellationToken cancellationToken)
+        {
+            string siteBaseUrl = AccountPages.BaseUrl(options.PublicApiBaseUrl);
+            SignedInForm signedIn = await CollectionPageEndpoints.SignedInFormAsync(context, accounts, options, CollectionPages.ListPath(siteBaseUrl), cancellationToken);
+
+            if (signedIn.Instead is { } instead)
+                return instead;
+
+            AccountLockOutcome outcome = await AccountLockFlows.SetLockedAsync(signedIn.Account, accountId, locked, accounts, DateTimeOffset.UtcNow, cancellationToken, logger);
+
+            if (outcome.IsDone)
+                return AccountPageEndpoints.SeeOther(context, $"{CollectionPages.ListPath(siteBaseUrl)}#locked");
+
+            int status = outcome.Verdict switch
+            {
+                AccountLockVerdict.NotFound => StatusCodes.Status404NotFound,
+                AccountLockVerdict.Refused => StatusCodes.Status409Conflict,
+                _ => StatusCodes.Status403Forbidden
+            };
+
+            return await CollectionPageEndpoints.RenderListAsync(context, store, accounts, options, cancellationToken, problem: outcome.Error, status: status);
+        }
+
+        // ###########################################################################################
+        // POST /collections/{id}/delete - the administrator takes a collection down (step 4; CollectionPages.RemoveCollection),
+        // by CollectionFlows.DeleteFromWebAsync - the administrator's alone, then the route CRT's own delete takes. Refused from
+        // another website, then the session and the form's token, as every form here is; anybody else signed in is refused (403)
+        // with the page as it was. Done: on to "Your collections".
+        // ###########################################################################################
+        private static async Task<IResult> DeleteCollectionAsync(
+            string id,
+            HttpContext context,
+            ICollectionStore store,
+            IAccountStore accounts,
+            ServerOptions options,
+            CancellationToken cancellationToken)
+        {
+            string siteBaseUrl = AccountPages.BaseUrl(options.PublicApiBaseUrl);
+            SignedInForm signedIn = await CollectionPageEndpoints.SignedInFormAsync(context, accounts, options, CollectionPages.PagePath(siteBaseUrl, id), cancellationToken);
+
+            if (signedIn.Instead is { } instead)
+                return instead;
+
+            CollectionOutcome outcome = await CollectionFlows.DeleteFromWebAsync(signedIn.Account, id, store, DateTimeOffset.UtcNow, cancellationToken);
+
+            return outcome.Verdict == CollectionVerdict.Removed
+                ? AccountPageEndpoints.SeeOther(context, CollectionPages.ListPath(siteBaseUrl))
+                : await CollectionPageEndpoints.RenderAsync(id, context, store, accounts, options, cancellationToken, status: CollectionEndpoints.StatusOf(outcome.Verdict));
+        }
+
+        // The sign-in page, coming back to `path` (WebSessions.ReturnPath decides it may).
+        private static string SignInBackTo(string siteBaseUrl, string path) =>
+            AccountPages.Link(siteBaseUrl, "sign-in") + "?return=" + Uri.EscapeDataString(path);
 
         // ###########################################################################################
         // The page as this reader sees it - `adjust` adds what they are doing (an edit, a delete asked, a refusal).
@@ -73,21 +238,31 @@ namespace CRT.Server.Handlers.Collections
             if (!options.IsCollectionSharingConfigured)
                 return CollectionPageEndpoints.Page(context, CollectionPages.NotSetUp(siteBaseUrl), baselines, signedIn: false, StatusCodes.Status503ServiceUnavailable);
 
-            CollectionRecord? collection = await CollectionFlows.FindShownAsync(id, store, accounts, cancellationToken, evenIfDeleted: true);
+            // The reader is read at most once - for the page below, or first when the collection is offline for everybody else.
+            (AccountRecord? Account, string? Token)? reader = null;
 
-            if (collection is null)
+            async Task<(AccountRecord? Account, string? Token)> ReadReaderAsync(CancellationToken token) =>
+                reader ??= await CollectionPageEndpoints.ReaderAsync(context, accounts, options, token);
+
+            ShownCollection? shown = await CollectionFlows.FindShownToAsync(
+                id, async token => (await ReadReaderAsync(token)).Account, store, accounts, DateTimeOffset.UtcNow, cancellationToken, evenIfDeleted: true);
+
+            if (shown is null)
                 return CollectionPageEndpoints.Page(context, CollectionPages.NotFound(siteBaseUrl), baselines, signedIn: false, StatusCodes.Status404NotFound);
+
+            CollectionRecord collection = shown.Collection;
 
             if (collection.IsDeleted)
                 return CollectionPageEndpoints.Page(context, CollectionPages.Deleted(siteBaseUrl, collection), baselines, signedIn: false, StatusCodes.Status410Gone);
 
-            (AccountRecord? viewer, string? token) = await CollectionPageEndpoints.ReaderAsync(context, accounts, options, cancellationToken);
+            (AccountRecord? viewer, string? csrfToken) = await ReadReaderAsync(cancellationToken);
 
             var view = new CollectionPageView
             {
                 Viewer = viewer is null ? null : new CollectionViewer(viewer.Id, viewer.DisplayName, viewer.IsAdministrator),
-                Csrf = token is null ? null : WebSessions.Csrf(token),
-                Comments = CollectionCommentFlows.ShownTo(await store.ListCommentsAsync(collection.Id, cancellationToken), collection, viewer)
+                Csrf = csrfToken is null ? null : WebSessions.Csrf(csrfToken),
+                Comments = CollectionCommentFlows.ShownTo(await store.ListCommentsAsync(collection.Id, cancellationToken), collection, viewer),
+                Offline = shown.Offline
             };
 
             if (adjust is not null)
@@ -112,9 +287,17 @@ namespace CRT.Server.Handlers.Collections
             if (!options.IsCollectionSharingConfigured || !DataTreeLayout.IsSha256(sha256))
                 return Results.NotFound();
 
-            CollectionRecord? collection = await CollectionFlows.FindShownAsync(id, store, accounts, cancellationToken);
+            // The administrator sees an offline collection's pictures as its page (FindShownToAsync) - the session read only then.
+            ShownCollection? shown = await CollectionFlows.FindShownImageToAsync(
+                id,
+                sha256,
+                async token => (await CollectionPageEndpoints.ReaderAsync(context, accounts, options, token)).Account,
+                store,
+                accounts,
+                DateTimeOffset.UtcNow,
+                cancellationToken);
 
-            if (collection is null || !collection.Images.Any(image => image.Entry.Sha256 == sha256))
+            if (shown is null)
                 return Results.NotFound();
 
             Stream? bytes = new CollectionFiles(options.CollectionsRoot!).OpenRead(sha256);
@@ -123,9 +306,13 @@ namespace CRT.Server.Handlers.Collections
                 return Results.NotFound();
 
             context.Response.Headers.XContentTypeOptions = "nosniff";
-            context.Response.Headers.CacheControl = "public, max-age=3600";
 
-            return Results.Stream(bytes, CollectionPng.ContentType);
+            // One shown to the administrator alone is kept by nobody between them and the service. One shown to all may be
+            // kept, but is ASKED FOR AGAIN at every view (code review, 2026-11-27: for an hour a picture of a collection taken
+            // down was still served from caches) - its checksum the ETag, so a picture unchanged costs a 304, never its bytes.
+            context.Response.Headers.CacheControl = shown.IsOffline ? "private, no-store" : "public, no-cache";
+
+            return Results.Stream(bytes, CollectionPng.ContentType, entityTag: new Microsoft.Net.Http.Headers.EntityTagHeaderValue($"\"{sha256}\""));
         }
 
         // ---- The comment forms (step 3) ------------------------------------------------------------
@@ -161,7 +348,7 @@ namespace CRT.Server.Handlers.Collections
             {
                 string? body = AccountPageEndpoints.Field(form, "body");
 
-                CommentOutcome outcome = await CollectionCommentFlows.EditAsync(account, commentId, body, store, accounts, DateTimeOffset.UtcNow, cancellationToken);
+                CommentOutcome outcome = await CollectionCommentFlows.EditAsync(account, id, commentId, body, store, accounts, DateTimeOffset.UtcNow, cancellationToken);
 
                 return (outcome, view => view with
                 {
@@ -181,7 +368,7 @@ namespace CRT.Server.Handlers.Collections
             ServerOptions options,
             CancellationToken cancellationToken) =>
             CollectionPageEndpoints.FormAsync(id, context, store, accounts, options, cancellationToken, async (account, _) =>
-                (await CollectionCommentFlows.DeleteAsync(account, commentId, store, DateTimeOffset.UtcNow, cancellationToken), null));
+                (await CollectionCommentFlows.DeleteAsync(account, id, commentId, store, DateTimeOffset.UtcNow, cancellationToken), null));
 
         private static Task<IResult> HideCommentAsync(
             string id,
@@ -192,7 +379,7 @@ namespace CRT.Server.Handlers.Collections
             ServerOptions options,
             CancellationToken cancellationToken) =>
             CollectionPageEndpoints.FormAsync(id, context, store, accounts, options, cancellationToken, async (account, _) =>
-                (await CollectionCommentFlows.SetHiddenAsync(account, commentId, hidden: true, store, DateTimeOffset.UtcNow, cancellationToken), null));
+                (await CollectionCommentFlows.SetHiddenAsync(account, id, commentId, hidden: true, store, DateTimeOffset.UtcNow, cancellationToken), null));
 
         private static Task<IResult> ShowCommentAsync(
             string id,
@@ -203,7 +390,7 @@ namespace CRT.Server.Handlers.Collections
             ServerOptions options,
             CancellationToken cancellationToken) =>
             CollectionPageEndpoints.FormAsync(id, context, store, accounts, options, cancellationToken, async (account, _) =>
-                (await CollectionCommentFlows.SetHiddenAsync(account, commentId, hidden: false, store, DateTimeOffset.UtcNow, cancellationToken), null));
+                (await CollectionCommentFlows.SetHiddenAsync(account, id, commentId, hidden: false, store, DateTimeOffset.UtcNow, cancellationToken), null));
 
         // ###########################################################################################
         // EVERY COMMENT FORM, ONE WAY: refused from another website, then the reader's session and the form's token - both must
@@ -219,45 +406,88 @@ namespace CRT.Server.Handlers.Collections
             CancellationToken cancellationToken,
             Func<AccountRecord, IFormCollection?, Task<(CommentOutcome Outcome, Func<CollectionPageView, CollectionPageView>? RefusedView)>> act)
         {
-            if (AccountPageEndpoints.RefuseFromAnotherSite(context, options) is IResult refused)
-                return refused;
-
             string siteBaseUrl = AccountPages.BaseUrl(options.PublicApiBaseUrl);
-            IFormCollection? form = await AccountPageEndpoints.FormOf(context, cancellationToken);
-            (AccountRecord? account, string? token) = await CollectionPageEndpoints.ReaderAsync(context, accounts, options, cancellationToken);
+            SignedInForm signedIn = await CollectionPageEndpoints.SignedInFormAsync(context, accounts, options, CollectionPages.PagePath(siteBaseUrl, id), cancellationToken);
 
-            if (account is null || token is null || !WebSessions.CsrfMatches(token, AccountPageEndpoints.Field(form, "csrf")))
-            {
-                string signIn = AccountPages.Link(siteBaseUrl, "sign-in") + "?return=" + Uri.EscapeDataString(CollectionPages.PagePath(siteBaseUrl, id));
-                return AccountPageEndpoints.SeeOther(context, signIn);
-            }
+            if (signedIn.Instead is { } instead)
+                return instead;
 
-            (CommentOutcome outcome, Func<CollectionPageView, CollectionPageView>? refusedView) = await act(account, form);
+            (CommentOutcome outcome, Func<CollectionPageView, CollectionPageView>? refusedView) = await act(signedIn.Account!, signedIn.Form);
 
             if (outcome.IsDone)
                 return AccountPageEndpoints.SeeOther(context, $"{CollectionPages.PagePath(siteBaseUrl, id)}#comment-{outcome.CommentId}");
 
+            // The refusal's words where its form can show them (a comment typed, an edit), else at the top of the page - a hide,
+            // a delete, or a comment gone meanwhile, whose form is no longer drawn.
+            bool saidAtTheTop = refusedView is null || outcome.Verdict == CollectionVerdict.NotFound;
+
             return await CollectionPageEndpoints.RenderAsync(
                 id, context, store, accounts, options, cancellationToken,
-                refusedView ?? (view => view),
+                view => (refusedView ?? (shown => shown))(view) with { PageErrors = saidAtTheTop ? outcome.Errors : [] },
                 CollectionEndpoints.StatusOf(outcome.Verdict));
         }
 
-        // The reader signed in on the website, by the cookie - the session slid as every signed-in request slides it.
+        // ###########################################################################################
+        // EVERY FORM HERE, THE SAME THREE STEPS: refused from another website before anything is read (AccountPages
+        // .IsFromAnotherSite), then the reader's session and the form's token - both there and agreeing (WebSessions.Csrf) - or
+        // nothing is done and the reader goes to sign in, coming back to `returnPath`. `Instead` is the answer when a step
+        // refused; else the account and the form.
+        // ###########################################################################################
+        private static async Task<SignedInForm> SignedInFormAsync(
+            HttpContext context,
+            IAccountStore accounts,
+            ServerOptions options,
+            string returnPath,
+            CancellationToken cancellationToken)
+        {
+            if (AccountPageEndpoints.RefuseFromAnotherSite(context, options) is IResult refused)
+                return new SignedInForm(null, null, refused);
+
+            string siteBaseUrl = AccountPages.BaseUrl(options.PublicApiBaseUrl);
+
+            // Sharing not set up, no form acts - as the pages and every /api/collections route answer 503 then (code review,
+            // 2026-11-27: a page left open still added a comment, mailed its owner, and landed on "not available").
+            if (!options.IsCollectionSharingConfigured)
+            {
+                return new SignedInForm(null, null, CollectionPageEndpoints.Page(
+                    context, CollectionPages.NotSetUp(siteBaseUrl), CollectionBaselines.For(options), signedIn: false, StatusCodes.Status503ServiceUnavailable));
+            }
+
+            IFormCollection? form = await AccountPageEndpoints.FormOf(context, cancellationToken);
+            (AccountRecord? account, string? token) = await CollectionPageEndpoints.ReaderAsync(context, accounts, options, cancellationToken);
+
+            return account is null || token is null || !WebSessions.CsrfMatches(token, AccountPageEndpoints.Field(form, "csrf"))
+                ? new SignedInForm(null, form, AccountPageEndpoints.SeeOther(context, CollectionPageEndpoints.SignInBackTo(siteBaseUrl, returnPath)))
+                : new SignedInForm(account, form, null);
+        }
+
+        private sealed record SignedInForm(AccountRecord? Account, IFormCollection? Form, IResult? Instead);
+
+        // The reader signed in on the website, by the cookie - the session slid as every signed-in request slides it, and the
+        // cookie written again to last as long (code review, 2026-11-27: set at sign-in alone, the browser dropped it after 30
+        // days however often it was used).
         private static async Task<(AccountRecord? Account, string? Token)> ReaderAsync(
             HttpContext context,
             IAccountStore accounts,
             ServerOptions options,
             CancellationToken cancellationToken)
         {
-            string? token = WebSessions.TokenOf(context.Request, AccountPages.BaseUrl(options.PublicApiBaseUrl));
+            string siteBaseUrl = AccountPages.BaseUrl(options.PublicApiBaseUrl);
+            string? token = WebSessions.TokenOf(context.Request, siteBaseUrl);
 
             if (token is null)
                 return (null, null);
 
-            AccountRecord? account = await AccountFlows.AuthenticateAsync(token, accounts, DateTimeOffset.UtcNow, cancellationToken, options);
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            AccountRecord? account = await AccountFlows.AuthenticateAsync(token, accounts, now, cancellationToken, options);
 
-            return account is null ? (null, null) : (account, token);
+            if (account is null)
+                return (null, null);
+
+            if (!context.Response.HasStarted)
+                WebSessions.Keep(context.Response, siteBaseUrl, token, now.AddDays(options.RefreshTokenDays));
+
+            return (account, token);
         }
 
         // A page signed in is the reader's own: never kept by anybody between them and the service.
@@ -270,7 +500,9 @@ namespace CRT.Server.Handlers.Collections
             headers.XFrameOptions = "DENY";
             headers["Referrer-Policy"] = AccountPages.ReferrerPolicy;
             headers["X-Robots-Tag"] = CollectionPageEndpoints.RobotsTag;
-            headers.CacheControl = signedIn ? "private, no-store" : "no-cache";
+            // A page that writes the session's cookie is the reader's own however it came out - a 404 for a signed-in reader too
+            // (code review, 2026-11-27, Security: "no-cache" let a shared cache keep the token).
+            headers.CacheControl = signedIn || headers.SetCookie.Count > 0 ? "private, no-store" : "no-cache";
 
             return Results.Content(html, "text/html; charset=utf-8", System.Text.Encoding.UTF8, status);
         }

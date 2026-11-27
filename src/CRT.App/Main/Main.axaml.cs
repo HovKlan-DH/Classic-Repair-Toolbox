@@ -510,6 +510,10 @@ namespace CRT
                 this.ShowSettingsUnreadableNoticeIfNeeded();
                 this.ShowReceiptsUnreadableNoticeIfNeeded();
 
+                // A 4.1.0 pre-release's collections into its own folder, before any popup reads them - here, never in a test,
+                // which does not run this and would move the user's folder (Main.Collections.cs).
+                Main.TakeOverEarlierCollections();
+
                 // What went wrong from here on - and before, at launch - and a crash last time (Main.Problems.cs).
                 // STARTED here and AWAITED only once the first board load has begun (2026-11-09): it reads the
                 // crash file off the UI thread, and awaited first it handed the window back to App before the

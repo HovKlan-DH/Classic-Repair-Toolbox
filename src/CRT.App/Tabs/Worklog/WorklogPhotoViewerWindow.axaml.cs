@@ -159,12 +159,15 @@ namespace CRT
             }
         }
 
-        // Never throws - a photo that cannot be decoded is said on the window.
+        // Never throws - a photo that cannot be decoded is said on the window. Opened so it can still be deleted while it is read
+        // (FileShare.Delete; code review, 2026-11-27): the baseline capture window shows a capture not yet accepted here, and one
+        // let go of meanwhile - captured again, discarded - is deleted then, which File.OpenRead had Windows refuse, the screen
+        // left in the user's folder for good. BaselineCaptureTarget.OpenCapture opens a capture the same way.
         private static Bitmap? Decode(string imagePath)
         {
             try
             {
-                using var stream = File.OpenRead(imagePath);
+                using var stream = new FileStream(imagePath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
                 return new Bitmap(stream);
             }
             catch (Exception ex)

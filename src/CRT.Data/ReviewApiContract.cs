@@ -983,8 +983,13 @@ namespace Handlers.DataHandling
         int BoardViews,
         int ApiUsageRows,
         string? NotEnabledBecause = null,
-        int OscilloscopeModels = 0);
+        int OscilloscopeModels = 0,
+        int Collections = 0,
+        int CollectionComments = 0);
 
+    // The plan's `Collections` and `CollectionComments`, the answer's `CollectionsTakenDown` and `CollectionCommentsDeleted`: the
+    // oscilloscope collections of the accounts that go (marked deleted, their pages saying so), and their comments with every
+    // comment those accounts wrote (code review, 2026-11-27: the reset did that, and neither counted nor showed it).
     public sealed record DataResetAnswer(
         int SubmissionsDeleted,
         int AccountsDeleted,
@@ -995,7 +1000,9 @@ namespace Handlers.DataHandling
         int BoardViewsDeleted,
         int ApiUsageRowsDeleted,
         int StoredFilesRemoved,
-        int OscilloscopeModelsDeleted = 0);
+        int OscilloscopeModelsDeleted = 0,
+        int CollectionsTakenDown = 0,
+        int CollectionCommentsDeleted = 0);
 
     // ###########################################################################################
     // WHICH CRT VERSIONS CALL WHICH ROUTE (owner request, 2026-10-04: "how about tracking the API

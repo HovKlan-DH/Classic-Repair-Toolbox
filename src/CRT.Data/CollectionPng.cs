@@ -14,11 +14,13 @@ namespace Handlers.DataHandling
     //   - the PNG signature first, then chunks of only the kinds a picture needs (IHDR, PLTE, IDAT, IEND) and the few small
     //     ones that say how to show it - never a text chunk or one of a kind nobody knows;
     //   - every chunk's checksum right, each within its kind's size;
-    //   - the picture's data unpacking to EXACTLY its rows, each with a known filter - nothing more inside the data;
+    //   - the picture's data unpacking to EXACTLY its rows, each with a known filter - nothing more unpacked (bytes after the
+    //     zlib stream's own end are not read, so not proven absent - nothing the pixels could not carry anyway);
     //   - IEND last, and nothing after it.
     //
-    // Interlaced pictures are refused: CRT never writes one, and each pass would need its own sums. CRT checks its file by this
-    // very rule before sending it (CollectionImages in CRT), and the server again as it takes it, so the two cannot disagree.
+    // Interlaced pictures are refused: CRT never writes one, and each pass would need its own sums. CRT checks a capture by this
+    // very rule as it goes into a collection (CollectionStore.AddCapture in CRT - said at the capture, not at "Share"), and
+    // the server again as it takes it, so the two cannot disagree.
     // ###########################################################################################
     public static class CollectionPng
     {
@@ -202,7 +204,9 @@ namespace Handlers.DataHandling
                         return false;
                 }
 
-                // Nothing more inside the data.
+                // Nothing more unpacked than the rows. (Bytes AFTER the zlib stream's own end inside the data are not read - the
+                // reader stops there and cannot say how much it used - so they are not proven absent: no more than the pixels
+                // themselves could carry anyway. Code review, 2026-11-27.)
                 return unpacked.Read(new byte[1], 0, 1) == 0;
             }
             catch (InvalidDataException)

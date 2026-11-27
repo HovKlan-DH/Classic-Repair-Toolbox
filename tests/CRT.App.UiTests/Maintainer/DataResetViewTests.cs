@@ -89,7 +89,10 @@ public sealed class DataResetViewTests
 
             await server.View.LoadAsync();
 
-            Assert.Equal(9, server.View.CountLinesForTests().Count);
+            // One line per kind of thing (DataResetWording.Lines) - the collections and their comments among them since
+            // 2026-11-27 (code review: the reset took them unshown).
+            Assert.Equal(DataResetWording.Lines(new DataResetPlanAnswer(true, "f", 0, 0, 0, 0, 0, 0, 0, 0, 0)).Count, server.View.CountLinesForTests().Count);
+            Assert.Equal(11, server.View.CountLinesForTests().Count);
             Assert.StartsWith("[14] submissions", server.View.CountLinesForTests()[0], StringComparison.Ordinal);
             Assert.Null(server.View.SwitchedOffForTests);
             Assert.Equal(DataResetWording.ResetButton, server.View.ResetButtonForTests.Content);
@@ -118,7 +121,7 @@ public sealed class DataResetViewTests
 
             await server.View.LoadAsync();
 
-            Assert.Equal(9, server.View.CountLinesForTests().Count);
+            Assert.Equal(11, server.View.CountLinesForTests().Count);
             Assert.Equal("Resetting is switched off on this server.", server.View.SwitchedOffForTests);
             Assert.False(server.View.ConfirmBoxForTests.IsEnabled);
 

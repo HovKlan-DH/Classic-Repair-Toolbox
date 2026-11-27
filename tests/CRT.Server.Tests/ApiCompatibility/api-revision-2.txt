@@ -402,6 +402,7 @@ answer CollectionAnswer | .id string
 answer CollectionAnswer | .imageCount number
 answer CollectionAnswer | .url string
 answer CollectionCommentAnswer | (root) object
+answer CollectionCommentAnswer | .authorLocked boolean
 answer CollectionCommentAnswer | .authorName string
 answer CollectionCommentAnswer | .body string
 answer CollectionCommentAnswer | .byAdministrator boolean
@@ -414,6 +415,7 @@ answer CollectionCommentAnswer | .imageSha256 string
 answer CollectionCommentAnswer | .mine boolean
 answer CollectionCommentsAnswer | (root) object
 answer CollectionCommentsAnswer | .comments array of object
+answer CollectionCommentsAnswer | .comments[].authorLocked boolean
 answer CollectionCommentsAnswer | .comments[].authorName string
 answer CollectionCommentsAnswer | .comments[].body string
 answer CollectionCommentsAnswer | .comments[].byAdministrator boolean
@@ -449,6 +451,8 @@ answer DataResetAnswer | .accountsDeleted number
 answer DataResetAnswer | .apiUsageRowsDeleted number
 answer DataResetAnswer | .boardViewsDeleted number
 answer DataResetAnswer | .boardsDeleted number
+answer DataResetAnswer | .collectionCommentsDeleted number
+answer DataResetAnswer | .collectionsTakenDown number
 answer DataResetAnswer | .historyEntriesDeleted number
 answer DataResetAnswer | .invitationsDeleted number
 answer DataResetAnswer | .maintainersDeleted number
@@ -461,6 +465,8 @@ answer DataResetPlanAnswer | .administrators number
 answer DataResetPlanAnswer | .apiUsageRows number
 answer DataResetPlanAnswer | .boardViews number
 answer DataResetPlanAnswer | .boards number
+answer DataResetPlanAnswer | .collectionComments number
+answer DataResetPlanAnswer | .collections number
 answer DataResetPlanAnswer | .fingerprint string
 answer DataResetPlanAnswer | .historyEntries number
 answer DataResetPlanAnswer | .invitations number

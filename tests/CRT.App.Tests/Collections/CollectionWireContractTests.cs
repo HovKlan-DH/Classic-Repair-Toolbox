@@ -1,0 +1,82 @@
+using System.Text.Json;
+using Handlers.DataHandling;
+
+namespace ClassicRepairToolbox.Tests.Collections;
+
+// ###########################################################################################
+// BOTH ENDS OF THE COLLECTION ROUTES, IN ONE TEST (code review, 2026-11-27: CollectionContract's header promised this test,
+// and none was there). As ReviewWireContractTests for the review API: a REQUEST written as CollectionClient writes it
+// (ReviewApiContract.WireSettings) and read with the SERVER's settings (JsonSerializerDefaults.Web plus ApplyWireSettings,
+// what Program.cs configures) into the record the server binds; an ANSWER written with the server's settings and read as
+// CollectionClient reads it. A field renamed on one side only fails here.
+// ###########################################################################################
+public sealed class CollectionWireContractTests
+{
+    private static readonly JsonSerializerOptions Server = CollectionWireContractTests.ServerSettings();
+
+    private static readonly DateTimeOffset When = new(2026, 11, 27, 12, 0, 0, TimeSpan.Zero);
+
+    private static readonly string Sha = new('a', 64);
+
+    private static JsonSerializerOptions ServerSettings()
+    {
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        ReviewApiContract.ApplyWireSettings(options);
+        return options;
+    }
+
+    // What the server binds from what CRT sends.
+    private static T Received<T>(T request) =>
+        JsonSerializer.Deserialize<T>(JsonSerializer.Serialize(request, ReviewApiContract.WireSettings), CollectionWireContractTests.Server)!;
+
+    // What CRT reads of what the server answers.
+    private static T Read<T>(T answer) =>
+        JsonSerializer.Deserialize<T>(JsonSerializer.Serialize(answer, CollectionWireContractTests.Server), ReviewApiContract.WireSettings)!;
+
+    [Fact]
+    public void A_collection_arrives_whole_its_captures_and_their_baselines_with_it()
+    {
+        var sent = new CollectionContentRequest(
+            "Commodore 64", "250407", "PAL", "No picture", "It went black.", ["https://www.lemon64.com/forum/viewtopic.php?t=1"], When.AddYears(1),
+            [new CollectionImageEntry(Sha, "U7", "12", "/RAS", "Pulsing", "50us", "2V", "1V", new CollectionBaseline(Sha, "Scope baseline/U7_12_RAS.png", "100us", "2V", "1.5V"), "Stays low", true, When)]);
+
+        CollectionContentRequest received = CollectionWireContractTests.Received(sent);
+
+        Assert.Equal((sent.HardwareName, sent.BoardName, sent.Region, sent.Title, sent.Description, sent.DeleteAtUtc), (received.HardwareName, received.BoardName, received.Region, received.Title, received.Description, received.DeleteAtUtc));
+        Assert.Equal(sent.ForumLinks, received.ForumLinks);
+        Assert.Equal(sent.Images[0] with { Baseline = null }, received.Images[0] with { Baseline = null });
+        Assert.Equal(sent.Images[0].Baseline, received.Images[0].Baseline);
+    }
+
+    [Fact]
+    public void A_comment_an_edit_and_a_hide_arrive_as_sent()
+    {
+        Assert.Equal(new CollectionCommentRequest(Sha, "Check R7."), CollectionWireContractTests.Received(new CollectionCommentRequest(Sha, "Check R7.")));
+        Assert.Equal(new CollectionCommentEditRequest("Check R8."), CollectionWireContractTests.Received(new CollectionCommentEditRequest("Check R8.")));
+        Assert.Equal(new CollectionCommentHideRequest(true), CollectionWireContractTests.Received(new CollectionCommentHideRequest(true)));
+    }
+
+    [Fact]
+    public void A_share_s_answers_are_read_as_the_server_writes_them()
+    {
+        Assert.Equal(new CollectionAnswer("k7mq3x9vbn2p", "https://x/collections/k7mq3x9vbn2p", When, When.AddYears(1), 3), CollectionWireContractTests.Read(new CollectionAnswer("k7mq3x9vbn2p", "https://x/collections/k7mq3x9vbn2p", When, When.AddYears(1), 3)));
+        Assert.Equal(new CollectionImageUploadAnswer(Sha, 800, 480), CollectionWireContractTests.Read(new CollectionImageUploadAnswer(Sha, 800, 480)));
+
+        CollectionRefusalAnswer refusal = CollectionWireContractTests.Read(new CollectionRefusalAnswer(["The server does not hold 1 of the captures yet."], [Sha]));
+
+        Assert.Equal(["The server does not hold 1 of the captures yet."], refusal.Errors);
+        Assert.Equal([Sha], refusal.MissingImages);
+    }
+
+    [Fact]
+    public void The_account_s_collections_and_a_collection_s_comments_are_read_as_written()
+    {
+        var summary = new CollectionSummaryAnswer("k7mq3x9vbn2p", "https://x/collections/k7mq3x9vbn2p", "No picture", "Commodore 64", "250407", "PAL", 3, When, When, When.AddYears(1), 2, 17);
+
+        Assert.Equal(summary, Assert.Single(CollectionWireContractTests.Read(new MyCollectionsAnswer([summary])).Collections));
+
+        var comment = new CollectionCommentAnswer(5, Sha, "Bo", ByOwner: false, ByAdministrator: true, Mine: false, "Check R7.", When, When.AddHours(1), Hidden: true, AuthorLocked: true);
+
+        Assert.Equal(comment, Assert.Single(CollectionWireContractTests.Read(new CollectionCommentsAnswer([comment])).Comments));
+    }
+}

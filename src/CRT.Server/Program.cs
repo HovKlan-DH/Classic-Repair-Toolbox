@@ -323,6 +323,7 @@ namespace CRT.Server
             // those whose time is up; it does nothing while CollectionsRoot is not set.
             services.AddSingleton<ICollectionStore, MySqlCollectionStore>();
             services.AddCollectionRateLimit();
+            services.AddCollectionPageRateLimit();
             services.AddHostedService<CollectionSweeper>();
 
             // Every contributor route's per-address limit (code review, 2026-10-13) - see

@@ -25,7 +25,10 @@ namespace CRT
         string? Region,
         Func<Task<ScopeSettingsReading?>> ReadScopeSettings,
         Action<string> OpenCollection,
-        Func<string, long>? LatestCommentIdOf = null);
+        Func<string, long>? LatestCommentIdOf = null,
+        // A collection's captures changed in this popup (its local id) - or, null, only the board's pick: every popup shows it.
+        Action<string?>? CollectionChanged = null,
+        Func<string, bool>? IsBeingShared = null);
 
     // ###########################################################################################
     // "COLLECT CAPTURES INTO" (owner request, 2026-11-25: "the UI for this should ... be visible from the component info window,
@@ -47,6 +50,9 @@ namespace CRT
         // True while the drop-down is filled from code - no pick of anybody's.
         private bool thisShowingCollectionChoices;
 
+        // The choices asked for again while the list was open - shown once it closes.
+        private bool thisCollectionChoicesWaiting;
+
         // The capture the banner says went into a collection - what "Take out of the collection" takes out.
         private (string LocalId, string Sha256)? thisCollected;
 
@@ -62,7 +68,38 @@ namespace CRT
         internal void UseCollections(CollectionContext? context)
         {
             this.thisCollections = context;
+
+            if (!this.thisCollectionPickerWired)
+            {
+                this.thisCollectionPickerWired = true;
+
+                // *** A PICK IS MADE FROM THE OPEN LIST (code review, 2026-11-27), as the worklog bar's device picker's. *** Closed
+                // and focused, the arrow keys and the wheel stepped the selection - and every pass over "New collection" made an
+                // empty one, picked for the board. Alt+Down, Enter and F4 still open the list.
+                this.CollectionComboBox.AddHandler(KeyDownEvent, this.OnCollectionPickerKeyDown, RoutingStrategies.Tunnel);
+                this.CollectionComboBox.AddHandler(PointerWheelChangedEvent, this.OnCollectionPickerWheel, RoutingStrategies.Tunnel);
+            }
+
             this.ShowCollectionChoices();
+        }
+
+        private bool thisCollectionPickerWired;
+
+        private void OnCollectionPickerKeyDown(object? sender, Avalonia.Input.KeyEventArgs e)
+        {
+            if (!this.CollectionComboBox.IsDropDownOpen &&
+                !e.KeyModifiers.HasFlag(Avalonia.Input.KeyModifiers.Alt) &&
+                e.Key is Avalonia.Input.Key.Up or Avalonia.Input.Key.Down or Avalonia.Input.Key.Home or Avalonia.Input.Key.End
+                    or Avalonia.Input.Key.PageUp or Avalonia.Input.Key.PageDown)
+            {
+                e.Handled = true;
+            }
+        }
+
+        private void OnCollectionPickerWheel(object? sender, Avalonia.Input.PointerWheelEventArgs e)
+        {
+            if (!this.CollectionComboBox.IsDropDownOpen)
+                e.Handled = true;
         }
 
         private bool OffersCollections =>
@@ -100,19 +137,44 @@ namespace CRT
                 CollectionSharing.LineOf(collection, collection.ServerId is { } serverId ? context.LatestCommentIdOf?.Invoke(serverId) ?? 0 : 0))));
             choices.Add(new CollectionChoice(null, true, ComponentInfoWindow.NewCollectionChoice));
 
+            CollectionChoice pick = choices.FirstOrDefault(choice => !choice.IsNew && choice.LocalId == picked) ?? choices[0];
+
+            this.ShowCollectionButton.IsEnabled = picked is not null;
+
+            // *** NEVER UNDER AN OPEN LIST, AND NOTHING DONE FOR CHOICES AS SHOWN (code review, 2026-11-27). *** This runs at every
+            // push of the oscilloscope's state and as the comment check answers: the list open, it was replaced under the pointer
+            // and the item clicked was another. It waits for the list to close (OnCollectionDropDownClosed).
+            if (this.CollectionComboBox.IsDropDownOpen)
+            {
+                this.thisCollectionChoicesWaiting = true;
+                return;
+            }
+
+            this.thisCollectionChoicesWaiting = false;
+
+            if (this.CollectionComboBox.ItemsSource is IReadOnlyList<CollectionChoice> shown && shown.SequenceEqual(choices) &&
+                Equals(this.CollectionComboBox.SelectedItem, pick))
+            {
+                return;
+            }
+
             this.thisShowingCollectionChoices = true;
 
             try
             {
                 this.CollectionComboBox.ItemsSource = choices;
-                this.CollectionComboBox.SelectedItem = choices.FirstOrDefault(choice => !choice.IsNew && choice.LocalId == picked) ?? choices[0];
+                this.CollectionComboBox.SelectedItem = pick;
             }
             finally
             {
                 this.thisShowingCollectionChoices = false;
             }
+        }
 
-            this.ShowCollectionButton.IsEnabled = picked is not null;
+        private void OnCollectionDropDownClosed(object? sender, EventArgs e)
+        {
+            if (this.thisCollectionChoicesWaiting)
+                this.ShowCollectionChoices();
         }
 
         private void OnCollectionPicked(object? sender, Avalonia.Controls.SelectionChangedEventArgs e)
@@ -127,17 +189,36 @@ namespace CRT
 
             if (choice.IsNew)
             {
+                // The region THIS popup shows - its own buttons switch it, the context's is what Main showed as it opened (code
+                // review, 2026-11-27: an NTSC popup's new collection read "(PAL)" on its page). None on a board without regions.
                 localId = context.Store.Create(
                     context.HardwareName,
                     context.BoardName,
-                    context.Region,
+                    context.Region is null ? null : this._localRegion,
                     CollectionSharing.DefaultTitle(this._boardLabel, DateTimeOffset.Now),
                     DateTimeOffset.UtcNow)?.LocalId;
+
+                // Not kept: the pick stays as it was, and it is said (code review, 2026-11-27: the pick went to "None" unsaid).
+                if (localId is null)
+                {
+                    this.ShowCollectionChoices();
+                    this.CollectedText.IsVisible = true;
+                    this.CollectedText.Text = ComponentInfoWindow.NewCollectionNotKept;
+                    return;
+                }
             }
 
             UserSettings.SetCollectionOfBoard(context.BoardKey, localId);
             this.ShowCollectionChoices();
+
+            // The pick is the board's, so every popup of it shows it - another one's captures go there now too (code review,
+            // 2026-11-27: the others kept showing the pick before). No collection's content changed, so null: an open collection
+            // window is left as it is, a note being typed in it too.
+            context.CollectionChanged?.Invoke(null);
         }
+
+        internal const string NewCollectionNotKept =
+            "Could not make the new collection on this computer - see \"Errors and warnings\" on the \"Configuration\" tab.";
 
         private void OnShowCollectionClick(object? sender, RoutedEventArgs e)
         {
@@ -173,24 +254,69 @@ namespace CRT
                     baselinePath is { } path && File.Exists(path) ? DataTreeLayout.Sha256Of(path) : null));
 
                 LocalCapture capture = CollectionCaptures.CaptureOf(shown, reading, baselineSha, DateTimeOffset.UtcNow);
-                LocalCollection? changed = await Task.Run(() => context.Store.AddCapture(collection.LocalId, png, capture));
+                CaptureAdded added = await Task.Run(() => context.Store.AddCapture(collection.LocalId, png, capture));
 
-                this.CollectedText.IsVisible = true;
-
-                if (changed is null)
+                // *** THE BANNER IS THE CAPTURE ON SCREEN'S (code review, 2026-11-27). *** Moved to another image while the settings
+                // were read, it showed "Added to" and "Take out" under that image - and took this capture out. The capture is
+                // in the collection all the same; only its window says so then.
+                if (!string.Equals(this.thisCapturedScopeImagePath, savedFilePath, StringComparison.Ordinal))
                 {
-                    this.CollectedText.Text = $"Could not add it to [{CollectionSharing.NameOf(collection)}]";
+                    if (added.Kind == CaptureAddedKind.Added)
+                    {
+                        this.ShowCollectionChoices();
+                        context.CollectionChanged?.Invoke(collection.LocalId);
+                    }
+
                     return;
                 }
 
-                this.thisCollected = (collection.LocalId, Convert.ToHexStringLower(SHA256.HashData(png)));
-                this.CollectedText.Text = $"Added to [{CollectionSharing.NameOf(changed)}]";
-                this.TakeOutOfCollectionButton.IsVisible = true;
-                this.ShowCollectionChoices();
+                this.CollectedText.IsVisible = true;
+
+                // "Take out" only for a capture THIS click added (code review, 2026-11-27: the same screen twice - two ground
+                // pins - took the earlier capture out).
+                this.thisCollected = null;
+                this.TakeOutOfCollectionButton.IsVisible = false;
+
+                switch (added.Kind)
+                {
+                    case CaptureAddedKind.Added:
+                        this.thisCollected = (collection.LocalId, Convert.ToHexStringLower(SHA256.HashData(png)));
+                        this.CollectedText.Text = $"Added to [{CollectionSharing.NameOf(added.Collection!)}]";
+                        this.TakeOutOfCollectionButton.IsVisible = true;
+                        this.ShowCollectionChoices();
+
+                        // Its window, if open, lists it - and a shared one offers "Share" (code review, 2026-11-27).
+                        context.CollectionChanged?.Invoke(collection.LocalId);
+                        break;
+
+                    case CaptureAddedKind.AlreadyIn:
+                        this.CollectedText.Text = $"The very same screen is in [{CollectionSharing.NameOf(collection)}] already";
+                        break;
+
+                    case CaptureAddedKind.Refused:
+                        this.CollectedText.Text = $"Not added to [{CollectionSharing.NameOf(collection)}]: {added.Problem}";
+                        break;
+
+                    default:
+                        this.CollectedText.Text = $"Could not add it to [{CollectionSharing.NameOf(collection)}]";
+                        break;
+                }
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                Logger.Warning($"Could not add a capture to the oscilloscope collection [{CollectionSharing.NameOf(collection)}]: {ex.Message}");
+                // Said where it happened - a screen held by a virus scanner as it was read is missing from the collection - under its
+                // own capture alone, as above; moved on from it, the "Something went wrong" card says it instead.
+                bool shownHere = string.Equals(this.thisCapturedScopeImagePath, savedFilePath, StringComparison.Ordinal);
+
+                if (shownHere)
+                {
+                    this.CollectedText.IsVisible = true;
+                    this.CollectedText.Text = $"Could not add it to [{CollectionSharing.NameOf(collection)}]";
+                    this.thisCollected = null;
+                    this.TakeOutOfCollectionButton.IsVisible = false;
+                }
+
+                Logger.Critical($"Could not add a capture to the oscilloscope collection [{CollectionSharing.NameOf(collection)}]: {ex.Message}", alreadyShown: shownHere);
             }
         }
 
@@ -199,12 +325,22 @@ namespace CRT
             if (this.thisCollections is not { } context || this.thisCollected is not { } collected)
                 return;
 
+            // Its window may be sharing it - the share reads the capture's file as it goes (code review, 2026-11-27).
+            if (context.IsBeingShared?.Invoke(collected.LocalId) == true)
+            {
+                this.CollectedText.Text = CollectionWindow.WaitForTheShare;
+                return;
+            }
+
             LocalCollection? changed = context.Store.RemoveCapture(collected.LocalId, collected.Sha256);
 
             this.thisCollected = null;
             this.TakeOutOfCollectionButton.IsVisible = false;
             this.CollectedText.Text = changed is null ? "Could not take it out of the collection" : $"Taken out of [{CollectionSharing.NameOf(changed)}]";
             this.ShowCollectionChoices();
+
+            if (changed is not null)
+                context.CollectionChanged?.Invoke(collected.LocalId);
         }
 
         // The banner gone with its capture: what it said of the collection goes too.
@@ -216,5 +352,9 @@ namespace CRT
         }
 
         internal string? CollectedTextForTests => this.CollectedText.IsVisible ? this.CollectedText.Text : null;
+
+        // The capture on screen, as showing it makes it (ShowTemporaryCapturedOscilloscopeImage) - without decoding a picture,
+        // so a test can hand CollectCaptureAsync a file that is none.
+        internal void CaptureOnScreenForTests(string? savedFilePath) => this.thisCapturedScopeImagePath = savedFilePath;
     }
 }

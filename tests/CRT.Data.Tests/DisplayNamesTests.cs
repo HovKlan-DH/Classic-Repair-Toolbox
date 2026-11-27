@@ -75,6 +75,25 @@ public sealed class DisplayNamesTests
             DisplayNames.Problem(new string('x', 31)));
     }
 
+    // The words the pages and CRT write beside a name are nobody's name - "Dennis (Administrator)" read exactly as an
+    // administrator's comment in CRT's collection window, "You" as the owner's own (code review, 2026-11-27, Security).
+    [Theory]
+    [InlineData("Dennis (Administrator)", "Administrator")]
+    [InlineData("administrator", "administrator")]
+    [InlineData("The_Owner", "Owner")]
+    [InlineData("OWNER-2", "OWNER")]
+    public void A_name_holding_a_badge_s_word_is_refused(string name, string word) =>
+        Assert.Equal($"A display name cannot hold the word \"{word}\" - the pages write it beside the name of whoever it is.", DisplayNames.Problem(name));
+
+    [Fact]
+    public void A_name_that_is_you_is_refused_and_a_word_that_only_holds_one_is_kept()
+    {
+        Assert.StartsWith("\"You\" is what CRT calls", DisplayNames.Problem("you"), StringComparison.Ordinal);
+        Assert.Null(DisplayNames.Problem("Ownership"));
+        Assert.Null(DisplayNames.Problem("Young Adminis"));
+        Assert.Null(DisplayNames.Problem("You and me"));
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData("")]

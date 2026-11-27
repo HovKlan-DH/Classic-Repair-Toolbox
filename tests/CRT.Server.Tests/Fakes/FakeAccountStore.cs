@@ -294,6 +294,9 @@ namespace CRT.Server.Tests.Fakes
 
         public Task RevokeAllSessionsAsync(long accountId, string reason, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
         {
+            // As the real store's command does with a request gone.
+            cancellationToken.ThrowIfCancellationRequested();
+
             foreach (long id in this.Sessions.Keys.ToList())
             {
                 SessionRecord session = this.Sessions[id];
@@ -461,6 +464,23 @@ namespace CRT.Server.Tests.Fakes
             return Task.FromResult(admins);
         }
 
+        public Task SetLockedAsync(long accountId, bool locked, CancellationToken cancellationToken = default)
+        {
+            this.Accounts[accountId] = this.Accounts[accountId] with { IsLocked = locked };
+            this.AfterSetLocked?.Invoke();
+            return Task.CompletedTask;
+        }
+
+        // Run once a lock is written - a test cancels its request there, as a browser closed at that moment would.
+        public Action? AfterSetLocked { get; set; }
+
+        public Task<IReadOnlyList<AccountRecord>> ListLockedAccountsAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<AccountRecord>>(this.Accounts.Values
+                .Where(account => account.IsLocked)
+                .OrderBy(account => account.DisplayName, StringComparer.Ordinal)
+                .ThenBy(account => account.Id)
+                .ToList());
+
         // ---------------------------------------------------------------------------------------
         // Maintainer invitations (2026-09-27). TokenHash is kept beside each record, as the tokens'
         // hashes are, so a test can prove the plaintext code was never stored.
@@ -567,6 +587,8 @@ namespace CRT.Server.Tests.Fakes
         {
             if (this.FailAuditWrites)
                 throw new InvalidOperationException("The audit table is not reachable.");
+
+            cancellationToken.ThrowIfCancellationRequested();
 
             this.Audit.Add(entry);
             return Task.CompletedTask;

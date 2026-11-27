@@ -77,16 +77,43 @@ An account is not needed for anything above. You can make one with the account i
 - Your email address
   - To sign in with, and for the mails about your account. It is never shown to other people, only to the administrator - and to the maintainers of a board you send something to, as above.
 - Your display name
-  - Shown to the maintainers and the administrator beside what you send.
+  - Shown to the maintainers and the administrator beside what you send, and to everybody beside a comment you write on a shared oscilloscope collection (below).
 - Your password - only as a scrambled check value, never the password itself
 - Each sign-in: when it was made, the IP address it came from and the name your CRT gives itself (ex. `CRT 4.1.0`)
   - So the sign-ins of one account can be told apart. A sign-in ends when you sign out, or by itself when it has not been used for 30 days.
-- A record of what happened to the account - made, confirmed, signed in and out, a password that did not match, a changed address, name or password - with the IP address of each sign-in and of each password that did not match
+- A record of what happened to the account - made, confirmed, signed in and out, a password that did not match, a changed address, name or password, locked or unlocked by the administrator - with the IP address of each sign-in and of each password that did not match
   - Kept as the server's history, which only the administrator can read, to find out what happened if an account is ever misused.
 
 While you are signed in, CRT uses your account's email address in the "Feedback" tab, the submit dialog and when you send an oscilloscope model.
 
 To limit how often it can happen, the server also notes the IP address of each request that sends a mail (making an account, asking for a code or a new link) and of each failed sign-in. Those notes are deleted after a day.
+
+If an account is misused - spam in the comments, say - the administrator can lock it. It can then no longer sign in, its shared collections go offline and its comments are no longer shown to anybody but the administrator. Unlocking it brings them back.
+
+## When you share an oscilloscope collection
+
+Captures you collect in the component info window, under "Collect captures into", stay on your computer. Nothing is sent until you press **Share** in the collection's window - and sharing needs an account with a confirmed email address. Sharing sends:
+
+- Each capture: the picture of your oscilloscope's screen, the component and pin it is of, the signal name and the reading it should give, the settings your oscilloscope was read back at, when it was taken, your note on it and whether you marked it as looking wrong
+- For each capture CRT has a baseline of: which baseline it is and its settings - the baseline's picture itself is not sent, the page links CRT's published one
+- The board, and the collection's title, description and links to forum threads, if you gave them
+- When it is to be deleted: in 1 month, 6 months, 1 year or 5 years, as you chose
+
+The collection then gets a page of its own at `https://classic-repair-toolbox.dk/collections/` followed by a 12-character code, which anybody with the link can open. **The page does not name you**: not your name, not your email address - it shows the board, the captures, your words, the date it was shared and the date it will be deleted. Only when you comment on it yourself - on the page, or with **Answer** in CRT - is that comment shown with your display name and "Owner" beside it. Search engines are asked not to keep it.
+
+The server keeps your captures' pictures, and which account sent each, so a collection only ever shows pictures its own account sent. It deletes the collection when its time is up - mailing you 30 days before, when you chose to keep it longer than two months - or when you press **Delete collection** in CRT; a picture no collection shows any more is deleted a day later. The administrator can see every collection and whose it is, and can delete one that should not be there. A deleted collection's page only says when and why it went.
+
+While you are signed in and have shared a collection, CRT asks the server at most every five minutes whether it has new comments, so the component info window can say so.
+
+## When you comment on a collection
+
+Anybody with an account with a confirmed email address can comment on each capture of a shared collection, on its page - or, for the collection's owner, in CRT. A comment is shown to everybody who opens the page, with your display name beside it and when you wrote it. Your email address is never shown.
+
+The collection's owner gets a mail for each comment, with your display name and your text - not your email address. You can change or delete your own comments; the collection's owner and the administrator can hide a comment, and the administrator can delete one. A collection deleted takes its comments with it.
+
+## Signing in on the website
+
+To comment on the website you sign in there with your account. You are then kept signed in by a cookie in your browser, which holds nothing but the sign-in, is sent only to the collection pages, the sign-in and the sign-out of `classic-repair-toolbox.dk` and cannot be read by scripts, and ends when you sign out - or by itself when it has not been used for 30 days. The account and collection pages set no other cookie and run no scripts.
 
 ## When you discard a draft you have submitted
 
@@ -115,7 +142,7 @@ With "Check for new or updated data at application launch" checked in the "Confi
 
 ## Which CRT versions use which part of the server
 
-Every time CRT talks to the server - the check-in, sending board views or feedback, submitting a contribution - it says which CRT version it is. The server counts, per day, how many times each CRT version used each part of the server. Nothing else is kept: no IP address, no account and no user or installation ID.
+Every time CRT talks to the server - the check-in, sending board views or feedback, submitting a contribution, sharing a collection - it says which CRT version it is. The server counts, per day, how many times each CRT version used each part of the server. Nothing else is kept: no IP address, no account and no user or installation ID.
 
 While you have drafts, or the "Maintainer" tab is turned on, CRT also asks the server once when it starts (or when either first comes into use) whether this CRT is still new enough for it, so those tabs can say so if CRT has to be updated. That request carries the CRT version and nothing else.
 

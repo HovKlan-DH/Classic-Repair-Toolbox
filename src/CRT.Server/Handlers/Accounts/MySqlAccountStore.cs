@@ -717,6 +717,29 @@ namespace CRT.Server.Handlers.Accounts
             return await MySqlAccountStore.ReadAccountsAsync(command, cancellationToken);
         }
 
+        public Task SetLockedAsync(long accountId, bool locked, CancellationToken cancellationToken = default)
+        {
+            return this.ExecuteAsync(
+                "UPDATE accounts SET is_locked = @locked WHERE id = @id;",
+                command =>
+                {
+                    command.Parameters.AddWithValue("@locked", locked);
+                    command.Parameters.AddWithValue("@id", accountId);
+                },
+                cancellationToken);
+        }
+
+        public async Task<IReadOnlyList<AccountRecord>> ListLockedAccountsAsync(CancellationToken cancellationToken = default)
+        {
+            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
+            await using MySqlCommand command = connection.CreateCommand();
+
+            command.CommandText =
+                $"SELECT {MySqlAccountStore.AccountColumns} FROM accounts WHERE is_locked = 1 ORDER BY display_name, id;";
+
+            return await MySqlAccountStore.ReadAccountsAsync(command, cancellationToken);
+        }
+
         public async Task<IReadOnlyList<AccountRecord>> GetAdministratorsAsync(CancellationToken cancellationToken = default)
         {
             await using MySqlConnection connection = await this.OpenAsync(cancellationToken);

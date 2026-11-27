@@ -6,8 +6,9 @@ namespace CRT.Data.Tests
 {
     // ###########################################################################################
     // PNG files made by hand for the collection tests (CollectionPng) - a good one, and each kind of wrong one, chunk by chunk
-    // with right checksums unless a test breaks one on purpose. Compiled into CRT.Server.Tests too (its csproj), so the server's
-    // flows are tested on the very same files.
+    // with right checksums unless a test breaks one on purpose. Here in CRT.App.Tests/Shared, as both App test projects use it
+    // (CLAUDE.md), and compiled into CRT.Data.Tests and CRT.Server.Tests too (their csproj), so CRT's store, the rule and the
+    // server's flows are tested on the very same files.
     // ###########################################################################################
     public static class TestPng
     {

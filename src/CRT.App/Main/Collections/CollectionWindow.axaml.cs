@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
@@ -27,13 +29,29 @@ namespace CRT
 
     // ###########################################################################################
     // ONE CAPTURE AS THE WINDOW LISTS IT - a view of the collection's capture; the note and the mark are what the window
-    // writes back (CollectionWindow.EditedCollection).
+    // writes back (CollectionWindow.EditedCollection). Its thumbnail and comments CHANGE IN PLACE as they arrive (code review,
+    // 2026-11-27: each thumbnail decoded built the whole list again, and comments read again took the focus from a note being
+    // typed).
     // ###########################################################################################
-    public sealed class CollectionCaptureRow
+    public sealed class CollectionCaptureRow : INotifyPropertyChanged
     {
+        private Bitmap? thisThumbnail;
+
+        private bool thisShowsComments;
+
+        private string thisCommentsHeading = string.Empty;
+
+        private IReadOnlyList<CollectionCommentRow> thisComments = [];
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+
         public string Sha256 { get; init; } = string.Empty;
 
-        public Bitmap? Thumbnail { get; set; }
+        public Bitmap? Thumbnail
+        {
+            get => this.thisThumbnail;
+            set => this.Set(ref this.thisThumbnail, value);
+        }
 
         public string Heading { get; init; } = string.Empty;
 
@@ -48,58 +66,44 @@ namespace CRT
         public string? Caption { get; set; }
 
         // Its comments on the page (step 3) - shown once they are read; the answer being typed.
-        public bool ShowsComments { get; init; }
-
-        public string CommentsHeading { get; init; } = string.Empty;
-
-        public IReadOnlyList<CollectionCommentRow> Comments { get; init; } = [];
-
-        public string? Answer { get; set; }
-    }
-
-    // ###########################################################################################
-    // ONE COMMENT AS THE WINDOW LISTS IT (step 3): who and when - "You" for the owner's own - its text, and what the owner may do
-    // with it: hide another's, show a hidden one again, delete their own. Editing is the page's.
-    // ###########################################################################################
-    public sealed class CollectionCommentRow
-    {
-        public long Id { get; init; }
-
-        public string Heading { get; init; } = string.Empty;
-
-        public string Body { get; init; } = string.Empty;
-
-        public bool CanHide { get; init; }
-
-        public bool CanShow { get; init; }
-
-        public bool CanDelete { get; init; }
-
-        // Newer than the owner had read as the window opened - and not their own.
-        public bool IsNew { get; init; }
-
-        internal static CollectionCommentRow Of(CollectionCommentAnswer comment, long seenBefore)
+        public bool ShowsComments
         {
-            bool isNew = comment.Id > seenBefore && !comment.Mine;
+            get => this.thisShowsComments;
+            set => this.Set(ref this.thisShowsComments, value);
+        }
 
-            return new()
-            {
-                Id = comment.Id,
-                Heading =
-                    (comment.Mine ? "You" : comment.AuthorName) +
-                    (comment.ByAdministrator && !comment.Mine ? $" ({CollectionComments.AdministratorBadge})" : string.Empty) +
-                    $" - {CollectionComments.WhenText(comment.CreatedUtc)}" +
-                    (comment.EditedUtc is null ? string.Empty : " - edited") +
-                    (comment.Hidden ? " - hidden from the page" : string.Empty) +
-                    (isNew ? " - NEW" : string.Empty),
-                Body = comment.Body,
-                CanHide = !comment.Mine && !comment.Hidden,
-                CanShow = comment.Hidden,
-                CanDelete = comment.Mine,
-                IsNew = isNew
-            };
+        public string CommentsHeading
+        {
+            get => this.thisCommentsHeading;
+            set => this.Set(ref this.thisCommentsHeading, value);
+        }
+
+        public IReadOnlyList<CollectionCommentRow> Comments
+        {
+            get => this.thisComments;
+            set => this.Set(ref this.thisComments, value);
+        }
+
+        // The answer being typed - emptied once it is sent, so a second press sends nothing again (code review, 2026-11-27).
+        public string? Answer
+        {
+            get => this.thisAnswer;
+            set => this.Set(ref this.thisAnswer, value);
+        }
+
+        private string? thisAnswer;
+
+        private void Set<T>(ref T field, T value, [CallerMemberName] string? name = null)
+        {
+            if (EqualityComparer<T>.Default.Equals(field, value))
+                return;
+
+            field = value;
+            this.PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
         }
     }
+
+    // (One comment as the window lists it, CollectionCommentRow, is in Handlers/Collections since 2026-11-27 - pure.)
 
     // ###########################################################################################
     // AN OSCILLOSCOPE COLLECTION'S WINDOW (2026-11-26; "Show collection" in the component info window). Here it is named and
@@ -126,26 +130,53 @@ namespace CRT
 
         private bool thisBusy;
 
-        private List<CollectionCaptureRow> thisRows = [];
+        // The list's rows - ONE collection, changed in place (Show), so a capture added or taken out elsewhere leaves every other
+        // row, and the box being typed in, as it is.
+        private readonly System.Collections.ObjectModel.ObservableCollection<CollectionCaptureRow> thisRows = [];
 
         public CollectionWindow()
         {
             this.InitializeComponent();
+
+            // No taller than the screen it opens on - its buttons stay in reach on a laptop's 768 (code review, 2026-11-27); the
+            // captures scroll. Never re-centred as it is resized: it is a window people size themselves.
+            this.Opened += (_, _) =>
+            {
+                if (this.Screens.ScreenFromWindow(this) is { } screen)
+                    this.MaxHeight = Handlers.Geometry.DialogPlacement.MaxHeight(screen.WorkingArea.Height, screen.Scaling);
+            };
         }
 
-        internal void Initialize(CollectionWindowHost host, string localId)
+        // False when there is no such collection (any more) - the window is then not to be shown: Show(null) closes it, and
+        // Avalonia refuses to show a window closed (code review, 2026-11-27: "Show collection" threw on one deleted elsewhere).
+        internal bool Initialize(CollectionWindowHost host, string localId)
         {
             this.thisHost = host;
             this.thisLocalId = localId;
 
+            if (host.Store.Find(localId) is not { } collection)
+                return false;
+
             this.LifetimeComboBox.ItemsSource = CollectionRules.Lifetimes.Select(lifetime => lifetime.Words).ToList();
-            this.Show(host.Store.Find(localId));
+            this.Show(collection);
 
             // Its comments, when it is shared and CRT is signed in - read as it opens, never asking to sign in for them.
             _ = HandlerGuard.RunAsync(this.LoadCommentsAsync, this.Say);
+            return true;
         }
 
         internal string LocalId => this.thisLocalId;
+
+        // ###########################################################################################
+        // The collection changed somewhere else - a capture added or taken out in a component info window (code review,
+        // 2026-11-27: the window kept its old rows, and a shared one's "Share" stayed greyed out). What the boxes hold is kept
+        // first, then everything shown again from the collection as kept.
+        // ###########################################################################################
+        internal void ShowAgain()
+        {
+            this.SaveEdits();
+            this.Show(this.Collection);
+        }
 
         private LocalCollection? Collection => this.thisHost?.Store.Find(this.thisLocalId);
 
@@ -177,8 +208,21 @@ namespace CRT
                     ? "No captures yet - pick this collection under \"Collect captures into\" in a component's info window, and capture."
                     : $"{captures.Count} capture{(captures.Count == 1 ? string.Empty : "s")}";
 
-                this.thisRows = captures.Select(this.RowOf).ToList();
-                this.CapturesList.ItemsSource = this.thisRows;
+                // *** THE ROWS ARE CHANGED IN PLACE (code review, 2026-11-27). *** A capture added or taken out in a component
+                // info window adds or takes out its row alone - made again, every row lost its container, and a caption or answer
+                // being typed lost the caret and the keyboard at each capture. A capture is one row by its checksum (one screen is
+                // one capture), its words fixed but for what this window edits, which a kept row holds.
+                InPlaceList.Sync(
+                    this.thisRows,
+                    captures,
+                    (row, capture) => string.Equals(row.Sha256, capture.Sha256, StringComparison.Ordinal),
+                    this.RowOf,
+                    itemKey: row => row.Sha256,
+                    wantedKey: capture => capture.Sha256);
+
+                if (!ReferenceEquals(this.CapturesList.ItemsSource, this.thisRows))
+                    this.CapturesList.ItemsSource = this.thisRows;
+
                 this.LoadThumbnails(collection.LocalId);
             }
             finally
@@ -191,29 +235,38 @@ namespace CRT
 
         private CollectionCaptureRow RowOf(LocalCapture capture)
         {
+            var row = new CollectionCaptureRow
+            {
+                Sha256 = capture.Sha256,
+                Heading = CollectionRules.WhereOf(CollectionSharing.EntryOf(capture)) + (capture.SignalName is { } signal ? $" - {signal}" : string.Empty),
+                Settings = CollectionSharing.SettingsLine("This capture", capture.TimePerDivision, capture.VoltsPerDivision, capture.TriggerLevel) +
+                           (capture.ExpectedReading is { } reading ? $" | Expected reading: {reading}" : string.Empty),
+                BaselineSettings = CollectionSharing.SettingsLine("Baseline", capture.BaselineTimePerDivision, capture.BaselineVoltsPerDivision, capture.BaselineTriggerLevel),
+                HasBaseline = capture.BaselineTimePerDivision is not null || capture.BaselineVoltsPerDivision is not null || capture.BaselineTriggerLevel is not null,
+                LooksWrong = capture.LooksWrong,
+                Caption = capture.Caption,
+                Thumbnail = this.thisThumbnails.GetValueOrDefault(capture.Sha256)
+            };
+
+            this.ShowCommentsOn(row);
+            return row;
+        }
+
+        // A capture's comments, as read last - set on its row in place.
+        private void ShowCommentsOn(CollectionCaptureRow row)
+        {
             List<CollectionCommentRow> comments = (this.thisComments ?? [])
-                .Where(comment => comment.ImageSha256 == capture.Sha256)
+                .Where(comment => comment.ImageSha256 == row.Sha256)
                 .Select(comment => CollectionCommentRow.Of(comment, this.thisSeenBefore))
                 .ToList();
 
             int fresh = comments.Count(comment => comment.IsNew);
 
-            return new CollectionCaptureRow
-            {
-                Sha256 = capture.Sha256,
-                Heading = CollectionRules.WhereOf(CollectionSharing.EntryOf(capture)) + (capture.SignalName is { } signal ? $" - {signal}" : string.Empty),
-                Settings = CollectionWindow.SettingsLine("This capture", capture.TimePerDivision, capture.VoltsPerDivision, capture.TriggerLevel) +
-                           (capture.ExpectedReading is { } reading ? $" | Expected reading: {reading}" : string.Empty),
-                BaselineSettings = CollectionWindow.SettingsLine("Baseline", capture.BaselineTimePerDivision, capture.BaselineVoltsPerDivision, capture.BaselineTriggerLevel),
-                HasBaseline = capture.BaselineTimePerDivision is not null || capture.BaselineVoltsPerDivision is not null || capture.BaselineTriggerLevel is not null,
-                LooksWrong = capture.LooksWrong,
-                Caption = capture.Caption,
-                ShowsComments = this.thisComments is not null,
-                CommentsHeading = comments.Count == 0
-                    ? "No comments yet"
-                    : $"{comments.Count} comment{(comments.Count == 1 ? string.Empty : "s")}" + (fresh > 0 ? $" - {fresh} new" : string.Empty),
-                Comments = comments
-            };
+            row.ShowsComments = this.thisComments is not null;
+            row.CommentsHeading = comments.Count == 0
+                ? "No comments yet"
+                : $"{comments.Count} comment{(comments.Count == 1 ? string.Empty : "s")}" + (fresh > 0 ? $" - {fresh} new" : string.Empty);
+            row.Comments = comments;
         }
 
         // ###########################################################################################
@@ -233,7 +286,20 @@ namespace CRT
                 return;
             }
 
+            // Another account's: said, so no comment section missing reads as "no comments" (code review, 2026-11-27).
+            if (CollectionSharing.OtherAccountLine(collection, session.AccountId) is { } otherAccount)
+            {
+                this.Say(otherAccount);
+                return;
+            }
+
             CollectionClient.CommentsResult result = await host.Client.ListCommentsAsync(serverId, session.BearerToken);
+
+            if (result.Kind == CollectionClient.Outcome.GoneFromServer)
+            {
+                this.ForgetPage();
+                return;
+            }
 
             if (result.Kind != CollectionClient.Outcome.Done)
             {
@@ -246,26 +312,52 @@ namespace CRT
 
             this.thisComments = result.Comments;
 
+            // The collection AS KEPT NOW - an edit kept while the comments were on their way stays (code review, 2026-11-27) -
+            // and the rows changed in place, so a box being typed in keeps its text and the keyboard.
             long newest = result.Comments.Count == 0 ? 0 : result.Comments.Max(comment => comment.Id);
 
-            if (newest > collection.SeenCommentId)
-            {
-                collection = collection with { SeenCommentId = newest };
-                host.Store.Save(collection);
-                host.Changed();
-            }
+            bool seen = false;
 
-            this.Show(collection);
+            host.Store.Update(
+                this.thisLocalId,
+                current =>
+                {
+                    seen = newest > current.SeenCommentId;
+                    return seen ? current with { SeenCommentId = newest } : current;
+                },
+                out bool seenKept);
+
+            if (seen && seenKept)
+                host.Changed();
+
+            foreach (CollectionCaptureRow row in this.thisRows)
+                this.ShowCommentsOn(row);
         }
 
         private async void OnAnswerClick(object? sender, RoutedEventArgs e) =>
             await HandlerGuard.RunAsync(() => this.AnswerAsync(sender), this.Say);
 
-        // The answer typed under a capture, sent as a comment of the owner's.
-        private Task AnswerAsync(object? sender) =>
-            sender is Button { Tag: string sha256 } && this.thisRows.FirstOrDefault(row => row.Sha256 == sha256) is { } row
-                ? this.CommentActionAsync((client, serverId, token) => client.AddCommentAsync(serverId, sha256, row.Answer ?? string.Empty, token))
-                : Task.CompletedTask;
+        // The answer typed under a capture, sent as a comment of the owner's - and its box emptied once it is.
+        internal async Task AnswerAsync(object? sender)
+        {
+            if (sender is not Button { Tag: string sha256 } || this.thisRows.FirstOrDefault(row => row.Sha256 == sha256) is not { } row)
+                return;
+
+            string answer = row.Answer ?? string.Empty;
+            bool done = await this.CommentActionAsync((client, serverId, token) => client.AddCommentAsync(serverId, sha256, answer, token));
+
+            // Sent - or, its answer not come in time, among the comments read back: the box emptied ON THE ROW SHOWN NOW, which a
+            // capture added meanwhile made again (code review, 2026-11-27: the old row was emptied, the text stayed to be sent
+            // twice).
+            bool posted = done || (this.thisComments ?? []).Any(comment =>
+                comment.Mine && comment.ImageSha256 == sha256 && comment.Body == CollectionComments.Tidied(answer));
+
+            if (posted && this.thisRows.FirstOrDefault(shown => shown.Sha256 == sha256) is { } shownRow &&
+                string.Equals(shownRow.Answer, answer, StringComparison.Ordinal))
+            {
+                shownRow.Answer = null;
+            }
+        }
 
         private async void OnHideCommentClick(object? sender, RoutedEventArgs e) =>
             await HandlerGuard.RunAsync(() => this.CommentActionAsync(sender, (client, serverId, id, token) => client.SetCommentHiddenAsync(serverId, id, true, token)), this.Say);
@@ -281,11 +373,17 @@ namespace CRT
                 ? this.CommentActionAsync((client, serverId, token) => act(client, serverId, id, token))
                 : Task.CompletedTask;
 
-        // One thing done to the comments, then them read again - what went wrong said.
-        internal async Task CommentActionAsync(Func<CollectionClient, string, string, Task<CollectionClient.Result>> act)
+        // ###########################################################################################
+        // One thing done to the comments, then them read again - what went wrong said. ONE AT A TIME, UNDER THE WINDOW'S
+        // BusyOverlay (code review, 2026-11-27: "Answer" clicked twice posted the answer twice), and by the account that shared
+        // the collection alone (CollectionSharing.OtherAccountLine). A server that has not answered in the wait's time is waited
+        // for still, the window busy, and the comments read again once it has - never "it failed".
+        // ###########################################################################################
+        // True when the server said it was done.
+        internal async Task<bool> CommentActionAsync(Func<CollectionClient, string, string, Task<CollectionClient.Result>> act)
         {
-            if (this.thisHost is not { } host || this.Collection?.ServerId is not { } serverId)
-                return;
+            if (this.thisBusy || this.thisHost is not { } host || this.Collection?.ServerId is not { } serverId)
+                return false;
 
             if (host.SignedIn() is null)
             {
@@ -293,32 +391,72 @@ namespace CRT
                 await host.SignIn();
             }
 
-            if (host.SignedIn() is not { } session)
-                return;
+            // Asked again once signed in: the account window leaves this one clickable, and a second press made meanwhile
+            // would go on too (code review, 2026-11-27).
+            if (this.thisBusy || host.SignedIn() is not { } session || this.Collection is not { } collection)
+                return false;
 
-            CollectionClient.Result result = await act(host.Client, serverId, session.BearerToken);
-
-            if (result.Kind != CollectionClient.Outcome.Done)
+            if (CollectionSharing.OtherAccountLine(collection, session.AccountId) is { } otherAccount)
             {
-                this.Say(result.Message);
-                return;
+                this.Say(otherAccount);
+                return false;
             }
 
-            this.Say(string.Empty);
+            bool done = false;
+
+            this.SetBusy(true);
+
+            try
+            {
+                WaitResult<CollectionClient.Result> waited =
+                    await BusyOverlay.RunAsync(this, "Telling the server", _ => act(host.Client, serverId, session.BearerToken));
+
+                // *** NOT ANSWERED IN THE WAIT'S TIME, THE WINDOW STAYS BUSY UNTIL THE REQUEST REALLY ENDS (code review, 2026-11-27),
+                // as "Share" does. *** Let go at the overlay's limit, "Answer" could be pressed again while the first was still on
+                // its way - the answer posted twice, its writer mailed twice.
+                if (waited.IsTimedOut)
+                    this.Say(CollectionWindow.NoAnswerYet);
+
+                CollectionClient.Result result = waited.IsTimedOut ? await waited.Work : waited.Value!;
+
+                if (result.Kind == CollectionClient.Outcome.GoneFromServer)
+                {
+                    this.ForgetPage();
+                    return false;
+                }
+
+                if (result.Kind != CollectionClient.Outcome.Done)
+                {
+                    this.Say(result.Message);
+                    return false;
+                }
+
+                done = true;
+                this.Say(string.Empty);
+            }
+            finally
+            {
+                this.SetBusy(false);
+            }
+
             await this.LoadCommentsAsync();
+            return done;
         }
 
-        internal static string SettingsLine(string whose, string? timePerDivision, string? voltsPerDivision, string? triggerLevel) =>
-            $"{whose}: T/DIV {timePerDivision ?? "not read"} | V/DIV {voltsPerDivision ?? "not read"} | Trigger level {triggerLevel ?? "not read"}";
+        internal const string NoAnswerYet = "The server has not answered for a while - still waiting for it to finish.";
 
-        // The thumbnails, decoded small off the UI thread - never disposed by hand (a picture still drawn takes the render thread
-        // down; CLAUDE.md).
+        // The thumbnails, decoded small off the UI thread ONCE each while the window is open (thisThumbnails), each set on its
+        // row as it comes - never disposed by hand (a picture still drawn takes the render thread down; CLAUDE.md).
+        private readonly Dictionary<string, Bitmap> thisThumbnails = new(StringComparer.Ordinal);
+
         private void LoadThumbnails(string localId)
         {
             if (this.thisHost is not { } host)
                 return;
 
-            foreach (CollectionCaptureRow row in this.thisRows)
+            // A capture of no checksum (a file edited by hand, or written by a later CRT) has no picture to show - and CapturePath
+            // would throw on it (code review, 2026-11-27).
+            foreach (CollectionCaptureRow row in this.thisRows.Where(row => row.Thumbnail is null && DataTreeLayout.IsSha256(row.Sha256)))
             {
                 string path = host.Store.CapturePath(localId, row.Sha256);
 
@@ -326,7 +464,9 @@ namespace CRT
                 {
                     try
                     {
-                        using FileStream stream = File.OpenRead(path);
+                        // Opened so it can be deleted while read - a capture taken out as its thumbnail decodes (code review,
+                        // 2026-11-27; BaselineCaptureTarget.OpenCapture says why).
+                        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
                         return Bitmap.DecodeToWidth(stream, 400);
                     }
                     catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or InvalidOperationException)
@@ -336,14 +476,14 @@ namespace CRT
                 }).ContinueWith(
                     decoded =>
                     {
-                        if (decoded.Result is { } bitmap && this.thisRows.Contains(row))
-                        {
-                            row.Thumbnail = bitmap;
+                        if (decoded.Result is not { } bitmap)
+                            return;
 
-                            // Rows are plain objects - the list shown again takes the picture.
-                            this.CapturesList.ItemsSource = null;
-                            this.CapturesList.ItemsSource = this.thisRows;
-                        }
+                        this.thisThumbnails[row.Sha256] = bitmap;
+
+                        // The row shown now for that capture - the list may have been made again meanwhile.
+                        if (this.thisRows.FirstOrDefault(shown => shown.Sha256 == row.Sha256) is { } shownRow)
+                            shownRow.Thumbnail = bitmap;
                     },
                     TaskScheduler.FromCurrentSynchronizationContext());
             }
@@ -368,8 +508,11 @@ namespace CRT
 
             this.ShareButton.IsEnabled = !this.thisBusy && collection.Captures.Count > 0 && (!collection.IsShared || changed);
             this.OpenPageButton.IsEnabled = !this.thisBusy && collection.PageUrl is not null;
-            this.CopyForForumButton.IsEnabled = !this.thisBusy && collection.PageUrl is not null;
-            this.CopyForRedditButton.IsEnabled = !this.thisBusy && collection.PageUrl is not null;
+
+            // What is copied names the captures by their places on the page - changed since, it would name ones the page does not
+            // have yet, or no more (code review, 2026-11-27): "Share" first.
+            this.CopyForForumButton.IsEnabled = !this.thisBusy && collection.PageUrl is not null && !changed;
+            this.CopyForRedditButton.IsEnabled = !this.thisBusy && collection.PageUrl is not null && !changed;
             this.DeleteButton.IsEnabled = !this.thisBusy;
         }
 
@@ -379,11 +522,11 @@ namespace CRT
         // THE COLLECTION AS THE WINDOW HOLDS IT - its boxes, the "Delete in" picked and each capture's note and mark - over the
         // collection as kept.
         // ###########################################################################################
-        internal LocalCollection? EditedCollection()
-        {
-            if (this.Collection is not { } collection)
-                return null;
+        internal LocalCollection? EditedCollection() => this.Collection is { } collection ? this.EditedFrom(collection) : null;
 
+        // The window's edits over `collection` - the one kept now, inside the store's Update.
+        private LocalCollection EditedFrom(LocalCollection collection)
+        {
             Dictionary<string, CollectionCaptureRow> rows = this.thisRows.ToDictionary(row => row.Sha256, StringComparer.Ordinal);
 
             string lifetime = CollectionRules.Lifetimes
@@ -405,21 +548,37 @@ namespace CRT
             };
         }
 
-        // Kept on this computer - true when it was (or nothing changed).
+        internal const string NotKept = "Could not keep the change on this computer - see \"Errors and warnings\" on the \"Configuration\" tab.";
+
+        // Kept on this computer - true when it was (or nothing changed). Made on the collection as kept now (CollectionStore
+        // .Update), so a capture a component info window added meanwhile stays.
         internal bool SaveEdits()
         {
-            if (this.thisShowing || this.thisHost is not { } host || this.EditedCollection() is not { } edited)
+            if (this.thisShowing || this.thisHost is not { } host)
                 return true;
 
-            // The records hold lists, compared by reference - the same content is the same JSON.
-            if (System.Text.Json.JsonSerializer.Serialize(edited) == System.Text.Json.JsonSerializer.Serialize(this.Collection))
-                return true;
+            LocalCollection? before = null;
 
-            if (!host.Store.Save(edited))
+            LocalCollection? edited = host.Store.Update(
+                this.thisLocalId,
+                collection =>
+                {
+                    before = collection;
+                    LocalCollection changed = this.EditedFrom(collection);
+
+                    // The records hold lists, compared by reference - the same content is the same JSON.
+                    return System.Text.Json.JsonSerializer.Serialize(changed) == System.Text.Json.JsonSerializer.Serialize(collection) ? collection : changed;
+                },
+                out bool kept);
+
+            if (!kept)
             {
-                this.Say("Could not keep the change on this computer - see \"Errors and warnings\" on the \"Configuration\" tab.");
+                this.Say(CollectionWindow.NotKept);
                 return false;
             }
+
+            if (edited is null || ReferenceEquals(edited, before))
+                return true;
 
             this.Title = $"Oscilloscope collection: {CollectionSharing.NameOf(edited)}";
             this.ShowSharedState(edited);
@@ -430,30 +589,65 @@ namespace CRT
 
         private void OnEditLeft(object? sender, RoutedEventArgs e) => this.SaveEdits();
 
-        private void OnCaptureMarkChanged(object? sender, RoutedEventArgs e) => this.SaveEdits();
+        // *** THE MARK IS TAKEN FROM THE BOX ITSELF (code review, 2026-11-27). *** Avalonia raises IsCheckedChanged before its
+        // binding writes the row, so SaveEdits read the mark as it was, kept nothing, and "Share" stayed greyed out.
+        private void OnCaptureMarkChanged(object? sender, RoutedEventArgs e)
+        {
+            if (sender is CheckBox { DataContext: CollectionCaptureRow row } box)
+                row.LooksWrong = box.IsChecked == true;
+
+            this.SaveEdits();
+        }
 
         // ###########################################################################################
         // "Delete in": for a collection shared, a new choice counts from today - and "Share" sends it.
         // ###########################################################################################
         private void OnLifetimePicked(object? sender, SelectionChangedEventArgs e)
         {
-            if (this.thisShowing || this.thisHost is not { } host || this.EditedCollection() is not { } edited)
+            if (this.thisShowing || this.thisHost is not { } host)
                 return;
 
-            if (edited.IsShared)
-                edited = edited with { DeleteAtUtc = CollectionRules.DeleteAt(DateTimeOffset.UtcNow, edited.Lifetime) };
+            LocalCollection? edited = host.Store.Update(
+                this.thisLocalId,
+                collection =>
+                {
+                    LocalCollection changed = this.EditedFrom(collection);
 
-            if (host.Store.Save(edited))
+                    return changed.IsShared
+                        ? changed with { DeleteAtUtc = CollectionRules.DeleteAt(DateTimeOffset.UtcNow, changed.Lifetime) }
+                        : changed;
+                },
+                out bool kept);
+
+            if (kept && edited is not null)
             {
                 this.ShowSharedState(edited);
                 host.Changed();
             }
         }
 
+        // While sharing, nothing is taken out: the share reads each capture the server asks for as it goes, and one taken out
+        // meanwhile - its file deleted - stopped it halfway (code review, 2026-11-27). The popups ask IsBusy for the same.
+        internal bool IsBusy => this.thisBusy;
+
+        internal const string WaitForTheShare = "Wait for the server to answer - a capture is taken out once it has.";
+
         private void OnTakeOutClick(object? sender, RoutedEventArgs e)
         {
-            if (this.thisHost is not { } host || sender is not Button { Tag: string sha256 })
+            if (sender is Button { Tag: string sha256 })
+                this.TakeOut(sha256);
+        }
+
+        internal void TakeOut(string sha256)
+        {
+            if (this.thisHost is not { } host)
                 return;
+
+            if (this.thisBusy)
+            {
+                this.Say(CollectionWindow.WaitForTheShare);
+                return;
+            }
 
             this.SaveEdits();
 
@@ -472,7 +666,7 @@ namespace CRT
 
         internal async Task ShareAsync()
         {
-            if (this.thisHost is not { } host || !this.SaveEdits() || this.Collection is not { } collection)
+            if (this.thisHost is not { } host || !this.SaveEdits() || this.Collection is null)
                 return;
 
             if (host.SignedIn() is null)
@@ -481,23 +675,63 @@ namespace CRT
                 await host.SignIn();
             }
 
-            if (host.SignedIn() is not { } session)
+            // The collection as kept once signed in - an edit kept while signing in goes with it.
+            if (host.SignedIn() is not { } session || this.thisBusy || this.Collection is not { } collection)
                 return;
+
+            // ###########################################################################################
+            // ANOTHER ACCOUNT'S: asked first - pressed again, it is shared AS A NEW PAGE with the account signed in, its captures
+            // kept and the old page left to its date (code review, 2026-11-27: with that account gone - the test instance's data
+            // reset deletes them - it could never be shared again, only deleted whole).
+            // ###########################################################################################
+            if (CollectionSharing.OtherAccountLine(collection, session.AccountId) is { } otherAccount)
+            {
+                if (!this.thisShareAsNewAsked)
+                {
+                    this.thisShareAsNewAsked = true;
+                    this.Say(CollectionWindow.ShareAsNewLine(otherAccount));
+                    return;
+                }
+
+                this.thisShareAsNewAsked = false;
+
+                if (this.Unshare() is not { } unshared)
+                    return;
+
+                collection = unshared;
+            }
 
             this.SetBusy(true);
 
             try
             {
-                var progress = new Progress<string>(this.Say);
+                // ###########################################################################################
+                // UNDER THE WINDOW'S BusyOverlay, each step said on it (code review, 2026-11-27: every wait the user watches is
+                // under it). A share that goes quiet past the wait's limit may still be done: the overlay lifts, and the
+                // share's own end - its HttpClient's time at most - is waited for and kept, never "it failed".
+                // ###########################################################################################
+                // A first share whose answer is lost is sent again under the collection's own key - the server then changes the
+                // page it made, never makes another (CollectionClient, CollectionRoutes.ClientKeyHeader).
+                DateTimeOffset sentAt = DateTimeOffset.UtcNow;
 
-                CollectionClient.Result result = await host.Client.ShareAsync(
-                    collection,
-                    session.BearerToken,
-                    sha256 => host.Store.ReadCapture(collection.LocalId, sha256),
-                    DateTimeOffset.UtcNow,
-                    progress);
+                WaitResult<CollectionClient.Result> waited = await BusyOverlay.RunAsync(this, "Sharing the collection", context =>
+                    host.Client.ShareAsync(
+                        collection,
+                        session.BearerToken,
+                        sha256 => host.Store.ReadCapture(collection.LocalId, sha256),
+                        sentAt,
+                        new Progress<string>(step =>
+                        {
+                            context.Report(step);
+                            this.Say(step);
+                        })));
 
-                this.AfterShare(collection, result);
+                if (waited.IsTimedOut)
+                    this.Say("The server has not answered for a while - still waiting for the share to finish.");
+
+                CollectionClient.Result result = waited.IsTimedOut ? await waited.Work : waited.Value!;
+
+                this.AfterShare(session, result);
             }
             finally
             {
@@ -505,7 +739,12 @@ namespace CRT
             }
         }
 
-        private void AfterShare(LocalCollection collection, CollectionClient.Result result)
+        // ###########################################################################################
+        // What the share came to, kept ON THE COLLECTION AS IT IS NOW (code review, 2026-11-27): a note or a title kept while it
+        // was on its way stays - only the server's part is written, and the boxes are left as they are. What was sent is the
+        // checksum kept (SharedContentHash), so such an edit reads as "changed since".
+        // ###########################################################################################
+        private void AfterShare(ReviewSession session, CollectionClient.Result result)
         {
             if (this.thisHost is not { } host)
                 return;
@@ -513,26 +752,28 @@ namespace CRT
             switch (result.Kind)
             {
                 case CollectionClient.Outcome.Shared when result.Answer is { } answer:
-                    LocalCollection shared = collection with
-                    {
-                        ServerId = answer.Id,
-                        PageUrl = answer.Url,
-                        DeleteAtUtc = result.SentDeleteAtUtc ?? answer.DeleteAtUtc,
-                        SharedUtc = DateTimeOffset.UtcNow,
-                        SharedContentHash = result.SharedContentHash
-                    };
+                    LocalCollection? shared = host.Store.Update(
+                        this.thisLocalId,
+                        current => current with
+                        {
+                            ServerId = answer.Id,
+                            PageUrl = answer.Url,
+                            DeleteAtUtc = result.SentDeleteAtUtc ?? answer.DeleteAtUtc,
+                            SharedUtc = DateTimeOffset.UtcNow,
+                            SharedContentHash = result.SharedContentHash,
+                            SharedByAccountId = session.AccountId == 0 ? current.SharedByAccountId : session.AccountId,
+                            SharedByName = session.AccountId == 0 ? current.SharedByName : session.DisplayName
+                        },
+                        out _);
 
-                    host.Store.Save(shared);
-                    this.Show(shared);
+                    if (shared is not null)
+                        this.ShowSharedState(shared);
+
                     this.Say($"Shared - anybody with the link sees it: {answer.Url}. \"Copy for forum\" puts the link on the clipboard, with a line about it.");
                     break;
 
                 case CollectionClient.Outcome.GoneFromServer:
-                    LocalCollection unshared = collection with { ServerId = null, PageUrl = null, DeleteAtUtc = null, SharedUtc = null, SharedContentHash = null };
-
-                    host.Store.Save(unshared);
-                    this.Show(unshared);
-                    this.Say("Its page is no longer on the server - its time was up, or it was taken down. \"Share\" makes a new page.");
+                    this.ForgetPage();
                     break;
 
                 default:
@@ -543,9 +784,67 @@ namespace CRT
             host.Changed();
         }
 
+        // ###########################################################################################
+        // ITS PAGE IS NO LONGER ON THE SERVER - its time up, or taken down by the administrator on the website (code review,
+        // 2026-11-27: the comments' "not found" was only said, and the window went on showing a page that was gone, "Share"
+        // greyed out). Found by a share, the comments read or an action on one: the page forgotten on the collection as kept
+        // now, its comments with it, and "Share" makes a new page.
+        // ###########################################################################################
+        internal const string PageGone =
+            "Its page is no longer on the server - its time was up, or it was taken down. \"Share\" makes a new page.";
+
+        private void ForgetPage()
+        {
+            if (this.Unshare() is not null)
+                this.Say(CollectionWindow.PageGone);
+        }
+
+        // The page forgotten on the collection as kept now - its comments with it - the captures and words kept. The collection
+        // as it now is, or null when there is none.
+        private LocalCollection? Unshare()
+        {
+            if (this.thisHost is not { } host ||
+                host.Store.Update(
+                    this.thisLocalId,
+                    current => current with
+                    {
+                        ServerId = null,
+                        PageUrl = null,
+                        DeleteAtUtc = null,
+                        SharedUtc = null,
+                        SharedContentHash = null,
+                        SharedByAccountId = null,
+                        SharedByName = null
+                    },
+                    out _) is not { } unshared)
+            {
+                return null;
+            }
+
+            this.ShowSharedState(unshared);
+
+            this.thisComments = null;
+
+            foreach (CollectionCaptureRow row in this.thisRows)
+                this.ShowCommentsOn(row);
+
+            host.Changed();
+            return unshared;
+        }
+
+        // Asked once a share meets a collection of another account - the next "Share" shares it as a new page.
+        private bool thisShareAsNewAsked;
+
+        internal static string ShareAsNewLine(string otherAccount) =>
+            $"{otherAccount} Or press \"Share\" again to share it as a new page with the account you are signed in to - " +
+            "its captures are kept, and the old page stays up until its date.";
+
+        // Busy, "Delete in" waits too: the date a share sends is written back over the collection once it is in (code review,
+        // 2026-11-27: one picked meanwhile was written over, the page then deleted at the old date).
         private void SetBusy(bool busy)
         {
             this.thisBusy = busy;
+            this.LifetimeComboBox.IsEnabled = !busy;
 
             if (this.Collection is { } collection)
                 this.ShowSharedState(collection);
@@ -583,13 +882,18 @@ namespace CRT
             if (this.Collection is not { } collection)
                 return;
 
+            this.thisLocalDeleteAsked = false;
             this.DeleteQuestionText.Text = collection.IsShared
                 ? $"Delete [{CollectionSharing.NameOf(collection)}] from this computer, and its page from the server?"
                 : $"Delete [{CollectionSharing.NameOf(collection)}] from this computer?";
             this.ShowDeleteQuestion(true);
         }
 
-        private void OnKeepClick(object? sender, RoutedEventArgs e) => this.ShowDeleteQuestion(false);
+        private void OnKeepClick(object? sender, RoutedEventArgs e)
+        {
+            this.thisLocalDeleteAsked = false;
+            this.ShowDeleteQuestion(false);
+        }
 
         private void ShowDeleteQuestion(bool asking)
         {
@@ -605,7 +909,7 @@ namespace CRT
         {
             this.ShowDeleteQuestion(false);
 
-            if (this.thisHost is not { } host || this.Collection is not { } collection)
+            if (this.thisBusy || this.thisHost is not { } host || this.Collection is not { } collection)
                 return;
 
             if (collection.ServerId is { } serverId)
@@ -616,26 +920,29 @@ namespace CRT
                     await host.SignIn();
                 }
 
-                if (host.SignedIn() is not { } session)
+                // Asked again once signed in, as a comment's action is.
+                if (this.thisBusy || host.SignedIn() is not { } session)
                     return;
 
-                this.SetBusy(true);
-
-                CollectionClient.Result result;
-
-                try
+                // ###########################################################################################
+                // ANOTHER ACCOUNT'S: its "not found" says nothing of the page, so the server is not asked - and the collection may
+                // be deleted FROM THIS COMPUTER ONLY, asked first, its page left up to its date (code review, 2026-11-27: with
+                // the account gone - the test instance's data reset deletes them - it could never be deleted at all).
+                // ###########################################################################################
+                if (CollectionSharing.OtherAccountLine(collection, session.AccountId) is { } otherAccount)
                 {
-                    result = await host.Client.DeleteAsync(serverId, session.BearerToken);
+                    if (!this.thisLocalDeleteAsked)
+                    {
+                        this.thisLocalDeleteAsked = true;
+                        this.DeleteQuestionText.Text = CollectionWindow.LocalDeleteQuestion(otherAccount, collection);
+                        this.ShowDeleteQuestion(true);
+                        return;
+                    }
                 }
-                finally
+                else
                 {
-                    this.SetBusy(false);
-                }
-
-                if (result.Kind != CollectionClient.Outcome.Deleted)
-                {
-                    this.Say(result.Message);
-                    return;
+                    if (!await this.DeletePageAsync(host, session, serverId))
+                        return;
                 }
             }
 
@@ -649,10 +956,73 @@ namespace CRT
             this.Close();
         }
 
+        // Asked once a delete meets a collection of another account - the next "Delete collection" deletes it here only.
+        private bool thisLocalDeleteAsked;
+
+        internal static string LocalDeleteQuestion(string otherAccount, LocalCollection collection) =>
+            $"{otherAccount} Or delete it from this computer only - its page then stays up until " +
+            $"{CollectionRules.DateText(collection.DeleteAtUtc ?? collection.CreatedUtc)}, and only that account can take it down.";
+
+        // The page taken off the server - true when it is gone (or was), so the collection goes from this computer too.
+        private async Task<bool> DeletePageAsync(CollectionWindowHost host, ReviewSession session, string serverId)
+        {
+            this.SetBusy(true);
+
+            CollectionClient.Result? result;
+
+            try
+            {
+                WaitResult<CollectionClient.Result> waited =
+                    await BusyOverlay.RunAsync(this, "Taking its page off the server", _ => host.Client.DeleteAsync(serverId, session.BearerToken));
+
+                // Not answered in time - it may be gone or not: ASKED AGAIN, as a timeout is never "it failed" (code review,
+                // 2026-11-27). Deleting what is deleted already is done, so the second ask says where it stands.
+                if (waited.IsTimedOut)
+                {
+                    this.Say("The server has not answered yet - asking it again whether the page is gone.");
+                    waited = await BusyOverlay.RunAsync(this, "Asking the server whether the page is gone", _ => host.Client.DeleteAsync(serverId, session.BearerToken));
+                }
+
+                result = waited.IsTimedOut ? null : waited.Value;
+            }
+            finally
+            {
+                this.SetBusy(false);
+            }
+
+            if (result is null)
+            {
+                this.Say("The server still has not answered - the collection is kept here. Press \"Delete collection\" again in a moment.");
+                return false;
+            }
+
+            if (result.Kind != CollectionClient.Outcome.Deleted)
+            {
+                this.Say(result.Message);
+                return false;
+            }
+
+            return true;
+        }
+
         private void OnCloseClick(object? sender, RoutedEventArgs e) => this.Close();
+
+        // ###########################################################################################
+        // *** NOT CLOSED BY HAND WHILE IT WAITS (code review, 2026-11-27). *** The overlay covers no title bar: closed during a
+        // share, nothing guarded the collection any more - a window opened again shared it a second time, and a popup's "Take
+        // out" deleted a capture the share had still to send. CRT itself quitting closes it whatever.
+        // ###########################################################################################
+        internal const string WaitBeforeClosing = "Wait for the server to answer, then close the window.";
 
         protected override void OnClosing(WindowClosingEventArgs e)
         {
+            if (this.thisBusy && e.CloseReason == WindowCloseReason.WindowClosing && !e.IsProgrammatic)
+            {
+                e.Cancel = true;
+                this.Say(CollectionWindow.WaitBeforeClosing);
+                return;
+            }
+
             this.SaveEdits();
             base.OnClosing(e);
         }

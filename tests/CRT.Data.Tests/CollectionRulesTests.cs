@@ -72,6 +72,11 @@ namespace CRT.Data.Tests
         public void One_with_no_capture_is_refused() =>
             Assert.Contains("A collection holds at least one capture.", CollectionRules.ProblemsOf(Content(), Now));
 
+        // "images": [null] in a body is said - the server answered 500 for it (code review, 2026-11-27).
+        [Fact]
+        public void An_empty_capture_is_refused_saying_so() =>
+            Assert.Contains("A capture is empty.", CollectionRules.ProblemsOf(Content(Image(Sha), null!), Now));
+
         [Fact]
         public void One_with_more_captures_than_a_collection_holds_is_refused()
         {
@@ -173,6 +178,20 @@ namespace CRT.Data.Tests
         {
             Assert.Equal("https://classic-repair-toolbox.dk/collections/abc", CollectionRules.PageUrl("https://classic-repair-toolbox.dk", "abc"));
             Assert.Equal("https://classic-repair-toolbox.dk/crt-test/collections/abc", CollectionRules.PageUrl("https://classic-repair-toolbox.dk/crt-test/", "abc"));
+        }
+
+        // A capture's anchor never takes one of the page's own - a comment's "comment-12", its list's "comments-...", its box's
+        // "comment-on-..." - so a mail's link to comment #12 never jumps to a component labelled "COMMENT" (code review, 2026-11-27).
+        [Fact]
+        public void A_capture_s_anchor_never_takes_a_comment_s()
+        {
+            static CollectionImageEntry Capture(string label, string? pin) =>
+                new(new string('a', 64), label, pin, null, null, null, null, null, null, null, false, null);
+
+            IReadOnlyList<string> anchors = CollectionRules.AnchorsOf(
+                [Capture("COMMENT", "12"), Capture("Comments", "3"), Capture("comment-on", null), Capture("locked", null), Capture("U7", "12")]);
+
+            Assert.Equal(["capture-COMMENT-12", "capture-Comments-3", "capture-comment-on", "capture-locked", "U7-12"], anchors);
         }
     }
 }

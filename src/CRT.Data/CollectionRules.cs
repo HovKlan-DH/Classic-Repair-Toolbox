@@ -42,6 +42,14 @@ namespace Handlers.DataHandling
         public static bool IsId(string? id) =>
             id is { Length: CollectionRules.IdLength } && id.All(c => CollectionRules.IdCharacters.Contains(c, StringComparison.Ordinal));
 
+        // ###########################################################################################
+        // The key a collection is kept under on CRT's computer - its local id, a GUID without dashes, lower case (CRT's
+        // CollectionStore names its folder by it). Sent with a first share (CollectionRoutes.ClientKeyHeader), so the same first
+        // share sent again, its answer lost, changes the page it made instead of making a second (code review, 2026-11-27).
+        // ###########################################################################################
+        public static bool IsClientKey(string? key) =>
+            key is { Length: 32 } && key.All(c => c is (>= '0' and <= '9') or (>= 'a' and <= 'f'));
+
         // ---------------------------------------------------------------------------------------
         // "DELETE IN" (owner decision, 2026-11-25: "no need to show the "2 years""). A choice counts from the day it is made; a
         // collection's date can be moved later, never more than MaximumYearsAhead ahead.
@@ -162,8 +170,15 @@ namespace Handlers.DataHandling
 
             var seen = new HashSet<string>(StringComparer.Ordinal);
 
-            foreach (CollectionImageEntry image in images)
+            foreach (CollectionImageEntry? image in images)
             {
+                // "images": [null] in the body - said, never a crash the server answers 500 for (code review, 2026-11-27).
+                if (image is null)
+                {
+                    problems.Add("A capture is empty.");
+                    continue;
+                }
+
                 string where = CollectionRules.WhereOf(image);
 
                 if (!DataTreeLayout.IsSha256(image.Sha256))
@@ -221,8 +236,14 @@ namespace Handlers.DataHandling
                 string raw = string.IsNullOrWhiteSpace(image.Pin) ? image.ComponentLabel : $"{image.ComponentLabel}-{image.Pin}";
                 string anchor = string.Concat((raw ?? string.Empty).Select(c => char.IsAsciiLetterOrDigit(c) ? c : '-')).Trim('-');
 
-                if (anchor.Length == 0 || !char.IsAsciiLetter(anchor[0]))
+                // The page's own ids are "top", "locked" and those of the comments - "comment-<id>", "comments-<anchor>" and
+                // "comment-on-<anchor>": a capture's never starts so (code review, 2026-11-27: a component labelled "COMMENT",
+                // pin 12, took comment #12's place, and a mail's link to that comment jumped to the capture).
+                if (anchor.Length == 0 || !char.IsAsciiLetter(anchor[0]) ||
+                    anchor.StartsWith("comment", StringComparison.OrdinalIgnoreCase) || string.Equals(anchor, "locked", StringComparison.OrdinalIgnoreCase))
+                {
                     anchor = "capture-" + anchor;
+                }
 
                 string unique = anchor;
 

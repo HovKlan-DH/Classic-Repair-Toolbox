@@ -6,7 +6,7 @@ namespace Handlers.DataHandling
     // ###########################################################################################
     // THE COLLECTION ROUTES' BODIES (2026-11-26; CollectionRules says what a collection is). One record per request and answer,
     // built by CRT and bound by the server - or written by the server and read by CRT - in ReviewApiContract's WireSettings, so
-    // a renamed field fails the build or CollectionWireContractTests, never a person's share.
+    // a renamed field fails the build or CollectionWireContractTests (CRT.App.Tests), never a person's share.
     //
     // HOW CRT SHARES A COLLECTION, every request signed in (Authorization: Bearer):
     //
@@ -26,6 +26,10 @@ namespace Handlers.DataHandling
         public const string Images = "/api/collections/images";
 
         public const string Mine = "/api/collections/mine";
+
+        // The header a first share (POST) carries the collection's local id in - CollectionRules.IsClientKey. The same first
+        // share sent again under it, its answer lost the first time, changes the page it made (code review, 2026-11-27).
+        public const string ClientKeyHeader = "Idempotency-Key";
 
         // The public pages, under the site (Apache forwards "/collections/" to the service, as it does "/api/").
         public const string PagePath = "/collections";
@@ -53,6 +57,8 @@ namespace Handlers.DataHandling
     public sealed record CollectionCommentHideRequest(bool Hidden);
 
     // One comment as the owner's CRT reads it. `ByOwner`: written by the collection's owner; `Mine`: by the account asking.
+    // `AuthorLocked`: its writer's account is locked, so nobody but the administrator sees it - only ever true for the
+    // administrator, the one owner who is answered such a comment (code review, 2026-11-27).
     public sealed record CollectionCommentAnswer(
         long Id,
         string ImageSha256,
@@ -63,7 +69,8 @@ namespace Handlers.DataHandling
         string Body,
         DateTimeOffset CreatedUtc,
         DateTimeOffset? EditedUtc,
-        bool Hidden);
+        bool Hidden,
+        bool AuthorLocked = false);
 
     public sealed record CollectionCommentsAnswer(IReadOnlyList<CollectionCommentAnswer> Comments);
 

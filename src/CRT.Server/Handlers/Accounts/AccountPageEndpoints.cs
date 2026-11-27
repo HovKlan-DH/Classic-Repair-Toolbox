@@ -16,13 +16,16 @@ namespace CRT.Server.Handlers.Accounts
     //   GET  /account/forgot-password  ask for a code and set a password with it
     //   POST /account/forgot-password  AccountFlows.RequestPasswordResetAsync
     //   POST /account/reset-password   AccountFlows.CompletePasswordResetAsync
+    //   GET  /account/sign-in          the website's sign-in (step 3)   POST: AccountFlows.LoginAsync, the cookie kept
+    //   POST /account/sign-out         the session ended, the cookie forgotten - only with the session's form token
     //
-    // *** NO ANTI-FORGERY TOKEN - BUT A FORM ANOTHER WEBSITE POSTS IS REFUSED *** (AccountPages.IsFromAnotherSite, before
-    // anything is read). Nothing here acts on a signed-in person - there is no sign-in on these pages - so no token is needed
-    // to stop a forged form riding on one. What a forged form WOULD ride on is the visitor's own IP address: making an
-    // account and asking for a code mail somebody, and the mail budget is counted per IP address, so a hidden form on a busy
-    // page would spend every visitor's (code review, 2026-11-25, Security). Read by hand from the request (ReadFormAsync),
-    // never through [FromForm], which would ask for the framework's anti-forgery middleware.
+    // *** A FORM ANOTHER WEBSITE POSTS IS REFUSED *** (AccountPages.IsFromAnotherSite, before anything is read) - every form
+    // here and on the collections' pages. A forged form would ride on the visitor's own IP address: making an account and
+    // asking for a code mail somebody, and the mail budget is counted per IP address, so a hidden form on a busy page would
+    // spend every visitor's (code review, 2026-11-25, Security). WHAT ACTS ON A SIGNED-IN PERSON NEEDS THE SESSION'S TOKEN TOO
+    // (WebSessions.Csrf): the sign-out here, and every form of the collections' pages - signing in needs none, as it acts on no
+    // session. Read by hand from the request (ReadFormAsync), never through [FromForm], which would ask for the framework's
+    // anti-forgery middleware.
     //
     // A form's body is small, and limited where it is mapped (RequestBodyLimits.FormBytes). The pages are classified as the
     // web's, never refused as an outdated CRT (ClientVersionPolicy, ClientArea.Web) - a browser sends no CRT version.
@@ -91,6 +94,10 @@ namespace CRT.Server.Handlers.Accounts
                     outcome.IsRateLimited ? StatusCodes.Status429TooManyRequests : StatusCodes.Status401Unauthorized);
             }
 
+            // A form from another site never gets this far (RefuseFromAnotherSite).
+            await WebSessions.EndEarlierAsync(
+                WebSessions.TokenOf(context.Request, baseUrl), outcome.Session.RefreshToken, store, DateTimeOffset.UtcNow, cancellationToken);
+
             WebSessions.Keep(context.Response, baseUrl, outcome.Session.RefreshToken, outcome.Session.ExpiresUtc);
 
             return returnTo is not null
@@ -115,11 +122,15 @@ namespace CRT.Server.Handlers.Accounts
             IFormCollection? form = await AccountPageEndpoints.FormOf(context, cancellationToken);
             string? token = WebSessions.TokenOf(context.Request, baseUrl);
 
+            // The session is ended on the server only with its form's token - no other site ends it. But THIS BROWSER forgets
+            // its cookie whatever the token says (code review, 2026-11-27, Security: an old page's form, its token of an
+            // earlier session, said "signed out" and left the browser signed in - on a shared computer, for the next person).
+            // A form from another site never gets this far (RefuseFromAnotherSite).
             if (token is not null && WebSessions.CsrfMatches(token, AccountPageEndpoints.Field(form, "csrf")))
-            {
                 await AccountFlows.LogoutAsync(token, store, DateTimeOffset.UtcNow, cancellationToken);
+
+            if (token is not null)
                 WebSessions.Forget(context.Response, baseUrl);
-            }
 
             string? returnTo = WebSessions.ReturnPath(AccountPageEndpoints.Field(form, "return"), baseUrl);
 

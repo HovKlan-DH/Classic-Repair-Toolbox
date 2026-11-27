@@ -71,6 +71,10 @@ public sealed class BusyOverlayHostsTests : IDisposable
             // (2026-11-20), in a window of its own over CRT's.
             Assert.NotNull(BusyOverlay.For(new BaselineCaptureWindow()));
 
+            // An oscilloscope collection's window tells the server of a comment and takes the page down (code review,
+            // 2026-11-27: "Answer" clicked twice posted the answer twice).
+            Assert.NotNull(BusyOverlay.For(new CollectionWindow()));
+
             // (The Maintainer tab's "Your account" window was here from 2026-10-03, with an overlay
             // of its own. Since 2026-10-04 it is "My account", a panel of the tab, whose waits run
             // under Main's like the rest of the tab - MyAccount_waits_under_the_tabs_window_overlay.)

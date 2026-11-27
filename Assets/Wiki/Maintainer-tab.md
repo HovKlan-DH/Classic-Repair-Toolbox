@@ -22,7 +22,7 @@ Anybody can have a Classic Repair Toolbox account - one account, the same in CRT
 
 An account is a maintainer's once the administrator has made it the maintainer of a board. The administrator does that for an account you already have, or invites you by email - and if you created a new board yourself, the invitation comes by itself once that board is accepted. To accept an invitation, open the account icon, choose **I have an invitation**, paste the code from the email, pick your display name and a password, and choose **Create my account**. Your account is made for the address the invitation was sent to, and you are taken back to signing in with that address and your password already filled in.
 
-Your **display name** is what others see. Nobody else can have the same name, and it may hold only the letters A-Z, the digits 0-9, single spaces and _ + - / @ . [ ] ( ), at most 30 characters. A name you chose before those rules stays until you change it.
+Your **display name** is what others see. Nobody else can have the same name, and it may hold only the letters A-Z, the digits 0-9, single spaces and _ + - / @ . [ ] ( ), at most 30 characters. It cannot be "You", nor hold the word "Administrator" or "Owner" - those are written beside a name to say who it is. A name you chose before those rules stays until you change it.
 
 ## Signing in
 
@@ -188,7 +188,8 @@ For now, only the administrator publishes to the stable source: for everybody el
 - **Reset contribution data** - for going live: deletes everything sent and done through the
   contribution service while it was being tested. That is every submission and its uploaded files,
   every oscilloscope model sent in,
-  every account except the administrators' - so every maintainer and invitation too - the history,
+  every account except the administrators' - so every maintainer and invitation too, every oscilloscope collection those
+  accounts shared (its page then says it was removed) and every comment on them or written by them - the history,
   the board views and the API usage counts. The BETA and the stable data are not touched. It first
   shows how much of each would go; type `RESET` and press the red button to do it. It cannot be
   undone, and it works only while the server has been set to allow it - until then the tool says how

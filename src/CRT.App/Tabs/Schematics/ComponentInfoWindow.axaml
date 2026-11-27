@@ -895,7 +895,8 @@
 							  FontSize="11"
 							  MinWidth="100"
 							  HorizontalAlignment="Stretch"
-							  SelectionChanged="OnCollectionPicked" />
+							  SelectionChanged="OnCollectionPicked"
+							  DropDownClosed="OnCollectionDropDownClosed" />
 					<Button x:Name="ShowCollectionButton"
 							Grid.Column="4"
 							Content="Show collection"

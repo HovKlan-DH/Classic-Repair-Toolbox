@@ -252,6 +252,22 @@ public sealed class CollectionClientTests
         Assert.Null(await refusing.Client().ListMineAsync("old-token"));
     }
 
+    // On the comment routes a 404 is the COMMENT - deleted meanwhile by its writer or the administrator - never the page: only
+    // 410 says the page went (code review, 2026-11-27: "Hide" on a comment gone made CRT forget a live page).
+    [Theory]
+    [InlineData(HttpStatusCode.NotFound, CollectionClient.Outcome.Refused)]
+    [InlineData(HttpStatusCode.Gone, CollectionClient.Outcome.GoneFromServer)]
+    public async Task On_the_comment_routes_only_410_says_the_page_is_gone(HttpStatusCode status, CollectionClient.Outcome expected)
+    {
+        var server = new Server { Answer = (_, _) => Answer(status, new CollectionRefusalAnswer(["There is no comment of yours with that id."])) };
+        CollectionClient client = server.Client();
+
+        Assert.Equal(expected, (await client.SetCommentHiddenAsync("k7mq3x9vbn2p", 6, true, "token-1")).Kind);
+        Assert.Equal(expected, (await client.DeleteCommentAsync("k7mq3x9vbn2p", 6, "token-1")).Kind);
+        Assert.Equal(expected, (await client.AddCommentAsync("k7mq3x9vbn2p", ShaA, "Check R7.", "token-1")).Kind);
+        Assert.Equal(expected, (await client.ListCommentsAsync("k7mq3x9vbn2p", "token-1")).Kind);
+    }
+
     [Theory]
     [InlineData(HttpStatusCode.NoContent, CollectionClient.Outcome.Deleted)]
     [InlineData(HttpStatusCode.NotFound, CollectionClient.Outcome.Deleted)]

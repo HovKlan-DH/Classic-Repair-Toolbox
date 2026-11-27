@@ -97,6 +97,10 @@ namespace CRT
             BoardKeyMove.Run(from, to);
             this.CarryListsToRenamedBoard(from, to);
 
+            // Its oscilloscope collections name the board too - left, they were no longer the board's (code review, 2026-11-27:
+            // the pick moved with the settings, and the popup found none of them under the new name).
+            this.Collections.RenameBoard(entry.HardwareName, entry.BoardName, renamed.HardwareName, renamed.BoardName);
+
             DataManager.RefreshDraftOnlyBoards();
 
             this.RefreshHardwareAndBoardSelectionsAfterMainExcelSync();

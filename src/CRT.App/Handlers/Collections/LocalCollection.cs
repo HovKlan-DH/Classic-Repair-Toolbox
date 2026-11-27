@@ -48,6 +48,12 @@ namespace Handlers.Collections
 
         [JsonPropertyName("sharedContentHash")] public string? SharedContentHash { get; init; }
 
+        // The account it was shared with, and its name then (code review, 2026-11-27) - only that account shares, deletes or
+        // answers it again (CollectionSharing.OtherAccountLine). Null for one shared before CRT kept it.
+        [JsonPropertyName("sharedByAccountId")] public long? SharedByAccountId { get; init; }
+
+        [JsonPropertyName("sharedByName")] public string? SharedByName { get; init; }
+
         // The newest comment its owner has read in CRT (step 3) - comments newer than it are marked new.
         [JsonPropertyName("seenCommentId")] public long SeenCommentId { get; init; }
 

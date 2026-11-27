@@ -610,6 +610,33 @@ namespace CRT.Server.Configuration
                 }
             }
 
+            // ###########################################################################################
+            // *** NEVER INSIDE THE FOLDER THE WEBSITE SERVES (code review, 2026-11-27, Security). *** The service alone says
+            // whether a picture is still shown - taken down, its owner locked, its time up; one Apache served straight from the
+            // disk would stay downloadable by its checksum for good. That folder is the one the data trees stand in: the
+            // stable tree's parent, and that of the BETA tree its manifest stands in (INSTALLING.md's "public_html") - a FILE in
+            // the tree's own folder, so two levels up whatever DataTreeRoot names (code review, 2026-11-27: counted from
+            // DataTreeRoot, a setting naming the tree itself rather than its "Data" reached the site's folder above, and the
+            // documented CollectionsRoot stopped the service).
+            // ###########################################################################################
+            var served = new (string Name, string? Folder)[]
+            {
+                ("ProductionTreeRoot", ServerOptionsValidator.ParentOf(options.ProductionTreeRoot, levels: 1)),
+                ("ManifestPath", ServerOptionsValidator.ParentOf(options.ManifestPath, levels: 2))
+            };
+
+            foreach ((string name, string? folder) in served)
+            {
+                if (folder is not null && ServerOptionsValidator.TryNormalisePath(folder, out string servedFolder) &&
+                    ServerOptionsValidator.PathContains(servedFolder, collections))
+                {
+                    failures.Add(
+                        $"{prefix}:CollectionsRoot [{collections}] is inside [{servedFolder}], the folder the website serves the " +
+                        $"data trees from ({name}) - the website would hand out a picture of a collection taken down. Keep it " +
+                        "beside the service's own folders, as INSTALLING.md shows.");
+                }
+            }
+
             if (!directoryExists(collections))
             {
                 failures.Add($"{prefix}:CollectionsRoot does not exist or is not a directory: [{collections}]");
@@ -724,6 +751,23 @@ namespace CRT.Server.Configuration
 
         internal static bool PathsAreEqual(string left, string right) =>
             string.Equals(left, right, StringComparison.Ordinal);
+
+        // The folder `levels` up from a path's own, or null when the path is not set or has no such parent.
+        internal static string? ParentOf(string? path, int levels)
+        {
+            if (!ServerOptionsValidator.TryNormalisePath(path, out string folder))
+                return null;
+
+            for (int level = 0; level < levels; level++)
+            {
+                if (Path.GetDirectoryName(folder) is not { Length: > 0 } parent || parent == folder)
+                    return null;
+
+                folder = parent;
+            }
+
+            return folder;
+        }
 
         // ###########################################################################################
         // True when "candidate" sits inside "container". The separator is appended before comparing

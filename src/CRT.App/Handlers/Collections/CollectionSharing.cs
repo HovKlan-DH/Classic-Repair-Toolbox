@@ -33,6 +33,29 @@ namespace Handlers.Collections
                 .ThenBy(capture => capture.CapturedUtc)
                 .ToList();
 
+        // ###########################################################################################
+        // *** A SHARED COLLECTION IS ITS ACCOUNT'S (code review, 2026-11-27): the server answers "not found" for a collection that
+        // is not the caller's, so with another account signed in "Delete collection" read that as gone and deleted it here, its
+        // page left up, and "Share" forgot its page and made another. *** The sentence that stops such a share, delete or
+        // answer, or null when the account signed in is the one that shared it - or nothing says which did (shared before CRT
+        // kept it, or a session that does not know its account).
+        // ###########################################################################################
+        public static string? OtherAccountLine(LocalCollection collection, long signedInAccountId)
+        {
+            ArgumentNullException.ThrowIfNull(collection);
+
+            if (!collection.IsShared || collection.SharedByAccountId is not { } sharer || signedInAccountId == 0 || sharer == signedInAccountId)
+                return null;
+
+            string whose = string.IsNullOrWhiteSpace(collection.SharedByName) ? "another account" : $"the account [{collection.SharedByName}]";
+
+            return $"This collection was shared with {whose} - sign in to it (the account icon in the top right corner) to share, delete or answer it.";
+        }
+
+        // A capture's settings as the collection window lists them - "This capture: T/DIV 50us | V/DIV 2V | Trigger level 1V".
+        public static string SettingsLine(string whose, string? timePerDivision, string? voltsPerDivision, string? triggerLevel) =>
+            $"{whose}: T/DIV {timePerDivision ?? "not read"} | V/DIV {voltsPerDivision ?? "not read"} | Trigger level {triggerLevel ?? "not read"}";
+
         // When the server is to delete it: the date kept, else the "Delete in" chosen counted from `now`.
         public static DateTimeOffset DeleteAtFor(LocalCollection collection, DateTimeOffset now) =>
             collection.DeleteAtUtc ?? CollectionRules.DeleteAt(now, collection.Lifetime);

@@ -290,7 +290,8 @@ namespace CRT
 
             try
             {
-                using FileStream stream = File.OpenRead(path);
+                // A capture waiting is read so that it can still be deleted meanwhile (BaselineCaptureTarget.OpenCapture says why).
+                using FileStream stream = BaselineCaptureTarget.OpenCapture(path);
 
                 // An oscilloscope's screen is small; a photo given as a baseline is read no wider than the window can show it.
                 return stream.Length > 4_000_000 ? Bitmap.DecodeToWidth(stream, 1600, BitmapInterpolationMode.MediumQuality) : new Bitmap(stream);

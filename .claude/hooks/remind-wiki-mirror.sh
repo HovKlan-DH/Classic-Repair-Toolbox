@@ -81,6 +81,7 @@ src/CRT.App/CRT\.App\.csproj|Classic-Repair-Toolbox\.slnx=Compiling-yourself-fro
 src/CRT.App/Handlers/Online/BoardView|src/CRT.App/Main/Main\.BoardViews|src/CRT.Data/BoardViewContract|src/CRT.Data/CheckInContract|src/CRT.Server/Handlers/Usage/ApiUsage=Information-collected
 src/CRT.App/Tabs/Maintainer/|src/CRT.App/Main/Main\.Maintainer|src/CRT.App/Handlers/Maintainer/|src/CRT.App/Main/Account/|src/CRT.App/Main/Main\.Account|src/CRT.Data/DisplayNames|src/CRT.Data/AccountWording=Maintainer-tab
 src/CRT.App/Tabs/Feedback/|src/CRT.App/Handlers/Data/FeedbackWording|src/CRT.Data/FeedbackComposition|src/CRT.Data/FeedbackContract|src/CRT.Server/Handlers/Feedback/=Information-collected
+src/CRT.App/Handlers/Collections/|src/CRT.App/Main/Collections/|src/CRT.App/Main/Main\.Collections|src/CRT.Data/Collection|src/CRT.Server/Handlers/Collections/|src/CRT.Server/Handlers/Accounts/WebSessions|src/CRT.Server/Handlers/Accounts/AccountLockFlows=Information-collected
 src/CRT.App/Main/Main\.UpdateRequired|src/CRT.App/Controls/UpdateRequiredOverlay|src/CRT.App/Handlers/Online/AppUpdateRequire=Maintainer-tab
 "
 

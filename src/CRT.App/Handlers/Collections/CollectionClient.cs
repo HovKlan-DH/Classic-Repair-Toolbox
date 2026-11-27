@@ -93,7 +93,7 @@ namespace Handlers.Collections
                 {
                     progress?.Report(attempt == 0 ? "Sending the collection" : "Sending the collection again");
 
-                    using HttpResponseMessage response = await this.SendContentAsync(collection.ServerId, request, bearerToken, cancellationToken);
+                    using HttpResponseMessage response = await this.SendContentAsync(collection.ServerId, collection.LocalId, request, bearerToken, cancellationToken);
                     string body = await response.Content.ReadAsStringAsync(cancellationToken);
 
                     if (response.IsSuccessStatusCode)
@@ -166,7 +166,7 @@ namespace Handlers.Collections
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    Result refused = CollectionClient.ResultOfRefusal(response.StatusCode, body, wasShared: true);
+                    Result refused = CollectionClient.ResultOfRefusal(response.StatusCode, body, wasShared: true, notFoundIsGone: false);
                     return new CommentsResult(refused.Kind, refused.Errors, []);
                 }
 
@@ -218,7 +218,7 @@ namespace Handlers.Collections
 
                 return response.IsSuccessStatusCode
                     ? new Result(Outcome.Done, [])
-                    : CollectionClient.ResultOfRefusal(response.StatusCode, await response.Content.ReadAsStringAsync(cancellationToken), wasShared: true);
+                    : CollectionClient.ResultOfRefusal(response.StatusCode, await response.Content.ReadAsStringAsync(cancellationToken), wasShared: true, notFoundIsGone: false);
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
             {
@@ -238,7 +238,9 @@ namespace Handlers.Collections
             return this.thisHttp.SendAsync(message, cancellationToken);
         }
 
-        private Task<HttpResponseMessage> SendContentAsync(string? serverId, CollectionContentRequest request, string bearerToken, CancellationToken cancellationToken)
+        // A first share (POST) carries the collection's local id as its key: sent again with its answer lost, the server changes
+        // the page it made instead of making a second (CollectionRoutes.ClientKeyHeader; code review, 2026-11-27).
+        private Task<HttpResponseMessage> SendContentAsync(string? serverId, string localId, CollectionContentRequest request, string bearerToken, CancellationToken cancellationToken)
         {
             var message = new HttpRequestMessage(
                 serverId is null ? HttpMethod.Post : HttpMethod.Put,
@@ -248,6 +250,9 @@ namespace Handlers.Collections
             };
 
             message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+
+            if (serverId is null && CollectionRules.IsClientKey(localId))
+                message.Headers.Add(CollectionRoutes.ClientKeyHeader, localId);
 
             return this.thisHttp.SendAsync(message, cancellationToken);
         }
@@ -288,8 +293,13 @@ namespace Handlers.Collections
 
         // ###########################################################################################
         // A refusal in words: the server's own sentences when it wrote any, an "update CRT" answer told to the rest of CRT.
+        //
+        // *** ON THE COMMENT ROUTES ONLY 410 SAYS THE PAGE IS GONE (`notFoundIsGone: false`; code review, 2026-11-27). *** A
+        // comment's 404 is that COMMENT - deleted by its writer or the administrator meanwhile - and read as the page gone,
+        // "Hide" on it made CRT forget a live page, whose next "Share" made a second one. The server answers 410 for its
+        // owner's collection taken down (CollectionCommentFlows.ListForOwnerAsync).
         // ###########################################################################################
-        private static Result ResultOfRefusal(HttpStatusCode status, string body, bool wasShared)
+        private static Result ResultOfRefusal(HttpStatusCode status, string body, bool wasShared, bool notFoundIsGone = true)
         {
             if (status == HttpStatusCode.Unauthorized)
                 return new Result(Outcome.SignInNeeded, [CollectionClient.SignInFirst]);
@@ -302,7 +312,7 @@ namespace Handlers.Collections
                 : [SubmissionClient.RefusalMessage(body, $"The server refused it ({(int)status}).")];
 
             // A collection shared before that the server no longer has: deleted there - its time up, or taken down.
-            if (wasShared && status is HttpStatusCode.Gone or HttpStatusCode.NotFound)
+            if (wasShared && (status == HttpStatusCode.Gone || (notFoundIsGone && status == HttpStatusCode.NotFound)))
                 return new Result(Outcome.GoneFromServer, errors);
 
             return new Result((int)status >= 500 ? Outcome.Failed : Outcome.Refused, errors);

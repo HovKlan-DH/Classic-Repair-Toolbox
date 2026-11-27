@@ -145,6 +145,12 @@ namespace CRT.Server.Handlers.Accounts
         // shared files.
         Task<IReadOnlyList<AccountRecord>> GetAdministratorsAsync(CancellationToken cancellationToken = default);
 
+        // Locks or unlocks an account (AccountLockFlows - the administrator's, from the website).
+        Task SetLockedAsync(long accountId, bool locked, CancellationToken cancellationToken = default);
+
+        // The accounts locked, by name - for the administrator to unlock one.
+        Task<IReadOnlyList<AccountRecord>> ListLockedAccountsAsync(CancellationToken cancellationToken = default);
+
         // -----------------------------------------------------------------------------------
         // Rate limiting and audit.
         // -----------------------------------------------------------------------------------

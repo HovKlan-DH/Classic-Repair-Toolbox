@@ -153,7 +153,7 @@ namespace CRT
         {
             try
             {
-                using FileStream stream = File.OpenRead(path);
+                using FileStream stream = BaselineCaptureTarget.OpenCapture(path);
                 return new Bitmap(stream);
             }
             catch (Exception ex)
@@ -162,6 +162,15 @@ namespace CRT
                 return null;
             }
         }
+
+        // ###########################################################################################
+        // *** A CAPTURE IS OPENED SO THAT IT CAN BE DELETED WHILE IT IS READ (FileShare.Delete). *** Its picture is read off the UI
+        // thread, and the capture let go of meanwhile - "Capture again" (Hold), another component shown, the window closed - deletes
+        // it then: opened with File.OpenRead, Windows refused that delete, which was only logged, and the screen stayed in the user's
+        // folder for good (2026-11-26: ComponentPaneBaselineRunTests failed on it at random, under load).
+        // ###########################################################################################
+        internal static FileStream OpenCapture(string path) =>
+            new(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete);
 
         // ###########################################################################################
         // The baseline as the capture waiting would make it - `row` as the pane holds it, or a new one of the pin in `machineState`, in

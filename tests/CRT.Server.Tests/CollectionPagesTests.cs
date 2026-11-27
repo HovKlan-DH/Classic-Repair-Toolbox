@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using CRT.Server.Handlers.Accounts;
 using CRT.Server.Handlers.Collections;
 using Handlers.DataHandling;
 
@@ -67,6 +68,17 @@ namespace CRT.Server.Tests
         [Fact]
         public void A_collection_with_no_title_is_named_by_its_board() =>
             Assert.Contains("<h1>Oscilloscope captures of Commodore 64 250407</h1>", Page(Collection(Capture(ShaA, "U7", "12")) with { Title = null }), StringComparison.Ordinal);
+
+        // A hide, a delete or an edit refused where no form of it is drawn says why at the top of the page (code review,
+        // 2026-11-27: the page came back with an error status and no words).
+        [Fact]
+        public void A_refusal_with_no_form_to_say_it_in_is_said_at_the_top()
+        {
+            string html = Page(Collection(Capture(ShaA, "U7", "12")), view: new CollectionPageView { PageErrors = ["There is no comment of yours with that id <now>."] });
+
+            Assert.Contains("<div class=\"errors\" role=\"alert\"><p>There is no comment of yours with that id &lt;now&gt;.</p></div>", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("role=\"alert\"", Page(Collection(Capture(ShaA, "U7", "12"))), StringComparison.Ordinal);
+        }
 
         // *** NOTHING ANYBODY TYPED IS EVER READ AS MARKUP. ***
         [Fact]
@@ -274,12 +286,13 @@ namespace CRT.Server.Tests
         {
             string html = Page(Collection(Capture(ShaA, "U7", "12")), view: SignedIn(42, Comment(5, 7, "Bo", "Spam", hidden: true)));
 
-            Assert.Contains("Hidden - only you see it", html, StringComparison.Ordinal);
+            Assert.Contains(CollectionPages.HiddenFlag, html, StringComparison.Ordinal);
             Assert.Contains($"action=\"{Site}/collections/k7mq3x9vbn2p/comments/5/show\"", html, StringComparison.Ordinal);
             Assert.Contains(">Show again</button>", html, StringComparison.Ordinal);
 
-            // Hidden comments are not counted in the list of captures.
-            Assert.DoesNotContain("(1 comment)", html, StringComparison.Ordinal);
+            // The list of captures counts what the capture's section shows this reader - the owner sees the hidden one, so it
+            // counts (code review, 2026-11-27: the two counts differed).
+            Assert.Contains("(1 comment)", html, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -314,6 +327,306 @@ namespace CRT.Server.Tests
         [Fact]
         public void The_policy_lets_the_page_s_forms_post_to_this_site_alone() =>
             Assert.Contains("form-action 'self'", CollectionPages.ContentSecurityPolicy([]), StringComparison.Ordinal);
+
+        // ---- "Your collections" and the administrator's delete (step 4) ---------------------
+
+        private static readonly CollectionViewer Bo = new(7, "Bo", false);
+
+        private static readonly CollectionViewer Administrator = new(9, "Dennis@CRT", true);
+
+        private const string Token = "0123456789abcdef0123456789abcdef";
+
+        private static CollectionRecord Listed(string id, string title, int captures, int comments) =>
+            Collection() with { Id = id, Title = title, ImageCount = captures, CommentCount = comments };
+
+        [Fact]
+        public void Signed_in_a_page_leads_to_your_collections()
+        {
+            string html = Page(Collection(Capture(ShaA, "U7", "12")), view: SignedIn(7));
+
+            Assert.Contains($"<a href=\"{Site}/collections/\">Your collections</a>", html, StringComparison.Ordinal);
+        }
+
+        // The owner deletes their own in CRT, which keeps its window in step - the web offers it to the administrator alone.
+        [Fact]
+        public void Only_the_administrator_is_offered_to_delete_the_collection_and_is_asked_first()
+        {
+            CollectionRecord collection = Collection(Capture(ShaA, "U7", "12"));
+            var asAdministrator = new CollectionPageView { Viewer = Administrator, Csrf = Token };
+
+            Assert.DoesNotContain("?remove=1", Page(collection, view: SignedIn(42)), StringComparison.Ordinal);
+            Assert.DoesNotContain("?remove=1", Page(collection, view: SignedIn(7)), StringComparison.Ordinal);
+
+            string offered = Page(collection, view: asAdministrator);
+
+            Assert.Contains($"href=\"{Site}/collections/k7mq3x9vbn2p?remove=1\">Delete this collection</a>", offered, StringComparison.Ordinal);
+            Assert.DoesNotContain("/delete\"", offered, StringComparison.Ordinal);
+
+            string asked = Page(collection, view: asAdministrator with { RemovingCollection = true });
+
+            Assert.Contains(CollectionPages.RemoveQuestion, asked, StringComparison.Ordinal);
+            Assert.Contains($"<form class=\"admin\" method=\"post\" action=\"{Site}/collections/k7mq3x9vbn2p/delete\">", asked, StringComparison.Ordinal);
+            Assert.Contains($"<input type=\"hidden\" name=\"csrf\" value=\"{Token}\">", asked, StringComparison.Ordinal);
+        }
+
+        // A collection asked to be deleted by somebody else is still only offered - the question is the administrator's.
+        [Fact]
+        public void Nobody_else_is_asked_to_delete_it_whatever_the_link_says() =>
+            Assert.DoesNotContain(CollectionPages.RemoveQuestion, Page(Collection(Capture(ShaA, "U7", "12")), view: SignedIn(7) with { RemovingCollection = true }), StringComparison.Ordinal);
+
+        [Fact]
+        public void Your_collections_lists_the_reader_s_own_and_those_they_commented_on()
+        {
+            string html = CollectionPages.List(Site, Bo, Token, new CollectionListView(
+                [Listed("annafirst222", "My PLA", 1, 0)],
+                [Listed("bertfirst222", "Bert's VIC", 3, 2)],
+                null,
+                null));
+
+            Assert.Contains("<h1>Your collections</h1>", html, StringComparison.Ordinal);
+            Assert.Contains("<h2>Shared by you (1)</h2>", html, StringComparison.Ordinal);
+            Assert.Contains($"<a href=\"{Site}/collections/annafirst222\">My PLA</a>", html, StringComparison.Ordinal);
+            Assert.Contains("Commodore 64 - 250407 (PAL) | 1 capture | 0 comments | Shared 2026-November-26 | Deleted on 2027-November-26", html, StringComparison.Ordinal);
+            Assert.Contains("<h2>You commented on (1)</h2>", html, StringComparison.Ordinal);
+            Assert.Contains("Bert&#39;s VIC", html, StringComparison.Ordinal);
+            Assert.Contains("3 captures | 2 comments", html, StringComparison.Ordinal);
+
+            // The administrator's parts, and anybody's address, are no part of it.
+            Assert.DoesNotContain("Every collection", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("Newest comments", html, StringComparison.Ordinal);
+            Assert.DoesNotContain(" | By ", html, StringComparison.Ordinal);
+
+            // Signed in, the way out comes back here; the list does not link to itself.
+            Assert.Contains("<input type=\"hidden\" name=\"return\" value=\"/collections/\">", html, StringComparison.Ordinal);
+            Assert.DoesNotContain(">Your collections</a>", html, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void An_empty_list_says_where_collections_are_made()
+        {
+            string html = CollectionPages.List(Site, Bo, Token, new CollectionListView([], [], null, null));
+
+            Assert.Contains("<h2>Shared by you (0)</h2>", html, StringComparison.Ordinal);
+            Assert.Contains("under &quot;Collect captures into&quot;", html, StringComparison.Ordinal);
+            Assert.Contains("<h2>You commented on (0)</h2>", html, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void The_administrator_sees_every_collection_with_whose_it_is_and_the_newest_comments()
+        {
+            CollectionRecord anna = Listed("annafirst222", "Anna's PLA", 1, 1);
+
+            string html = CollectionPages.List(Site, Administrator, Token, new CollectionListView(
+                [],
+                [],
+                [new CollectionListed(anna, "Anna", "anna@example.com", false), new CollectionListed(Listed("cyfirst22222", "Cy's", 1, 0), "Cy", "cy@example.com", true)],
+                [Comment(5, 7, "Bo", "Check R7.", hidden: true) with { CollectionId = "annafirst222" }]));
+
+            Assert.Contains("<h2>Every collection (2) <span class=\"badge\">Administrator</span></h2>", html, StringComparison.Ordinal);
+            Assert.Contains(" | By Anna (anna@example.com)", html, StringComparison.Ordinal);
+            Assert.Contains($"Cy&#39;s</a> <span class=\"flag\">{CollectionPages.OwnerLockedFlag}</span>", html, StringComparison.Ordinal);
+
+            Assert.Contains("<h2>Newest comments (1) <span class=\"badge\">Administrator</span></h2>", html, StringComparison.Ordinal);
+            Assert.Contains("<b>Bo</b>", html, StringComparison.Ordinal);
+            Assert.Contains("<span class=\"flag\">Hidden</span>", html, StringComparison.Ordinal);
+            Assert.Contains($"On <a href=\"{Site}/collections/annafirst222#comment-5\">Anna&#39;s PLA</a>", html, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void Every_word_typed_is_shown_as_text_in_the_list()
+        {
+            string html = CollectionPages.List(Site, Administrator with { DisplayName = "<i>Dennis</i>" }, Token, new CollectionListView(
+                [Listed("annafirst222", "<script>alert(1)</script>", 1, 0)],
+                [],
+                [new CollectionListed(Listed("annafirst222", "<script>alert(1)</script>", 1, 0), "<b>Anna</b>", "a@example.com", false)],
+                [Comment(5, 7, "<i>Cy</i>", "<img src=x onerror=alert(1)>") with { CollectionId = "annafirst222" }],
+                [new LockedAccount(8, "<u>Spam</u>", "<s>spam@example.com</s>")]),
+                locking: new LockedAccount(7, "<em>Bo</em>", "bo@example.com"),
+                problem: "<b>Refused</b>");
+
+            Assert.DoesNotContain("<script>alert", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("<i>Dennis</i>", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("<b>Anna</b>", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("<i>Cy</i>", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("<img src=x", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("<u>Spam</u>", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("<s>spam", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("<em>Bo</em>", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("<b>Refused</b>", html, StringComparison.Ordinal);
+        }
+
+        // ---- Locking an account from the list (AccountLockFlows; owner decision, 2026-11-27) ---------
+
+        private static CollectionListView AdministratorsList(bool ownerLocked = false, bool ownerIsAdministrator = false, bool writerLocked = false) =>
+            new(
+                [],
+                [],
+                [new CollectionListed(Listed("annafirst222", "Anna's PLA", 1, 1) with { AccountId = 42 }, "Anna", "anna@example.com", ownerLocked, ownerIsAdministrator)],
+                [Comment(5, 7, "Bo", "Buy cheap chips") with { CollectionId = "annafirst222", AuthorIsLocked = writerLocked }],
+                []);
+
+        [Fact]
+        public void The_administrator_is_offered_to_lock_an_owner_and_a_writer()
+        {
+            string html = CollectionPages.List(Site, Administrator, Token, AdministratorsList());
+
+            Assert.Contains($" | By Anna (anna@example.com) | <a href=\"{Site}/collections/?lock=42\">Lock account</a>", html, StringComparison.Ordinal);
+            Assert.Contains($" | <a href=\"{Site}/collections/?lock=7\">Lock account</a>", html, StringComparison.Ordinal);
+        }
+
+        // An administrator's account is never locked from here, and one locked already says so instead.
+        [Fact]
+        public void No_lock_is_offered_for_an_administrator_or_an_account_locked_already()
+        {
+            Assert.DoesNotContain("?lock=42", CollectionPages.List(Site, Administrator, Token, AdministratorsList(ownerIsAdministrator: true)), StringComparison.Ordinal);
+            Assert.DoesNotContain("?lock=42", CollectionPages.List(Site, Administrator, Token, AdministratorsList(ownerLocked: true)), StringComparison.Ordinal);
+
+            string writerLocked = CollectionPages.List(Site, Administrator, Token, AdministratorsList(writerLocked: true));
+
+            Assert.DoesNotContain("?lock=7", writerLocked, StringComparison.Ordinal);
+            Assert.Contains($"<span class=\"flag\">{CollectionPages.AccountLockedFlag}</span>", writerLocked, StringComparison.Ordinal);
+
+            CollectionListView administratorWrote = AdministratorsList() with
+            {
+                NewestComments = [Comment(6, 9, "Dennis@CRT", "Moved", administrator: true) with { CollectionId = "annafirst222" }]
+            };
+
+            Assert.DoesNotContain("?lock=9", CollectionPages.List(Site, Administrator, Token, administratorWrote), StringComparison.Ordinal);
+        }
+
+        // An owner whose account is gone was never locked - the flag says so, and no lock is offered (code review, 2026-11-27).
+        [Fact]
+        public void A_collection_whose_owner_has_no_account_is_flagged_as_such()
+        {
+            CollectionListView list = AdministratorsList() with
+            {
+                All = [new CollectionListed(Listed("annafirst222", "Anna's PLA", 1, 1) with { AccountId = 42 }, CollectionListFlows.NoOwner, null, OwnerLocked: false, OwnerGone: true)]
+            };
+
+            string html = CollectionPages.List(Site, Administrator, Token, list);
+
+            Assert.Contains($"Anna&#39;s PLA</a> <span class=\"flag\">{CollectionPages.OwnerGoneFlag}</span>", html, StringComparison.Ordinal);
+            Assert.DoesNotContain(CollectionPages.OwnerLockedFlag, html, StringComparison.Ordinal);
+            Assert.DoesNotContain("?lock=42", html, StringComparison.Ordinal);
+        }
+
+        // The administrator opens a collection offline for everybody else (CollectionFlows.FindShownToAsync): told so, its
+        // comments still hidden or deleted there - but no comment form or "Edit", which its offline state would refuse.
+        [Fact]
+        public void An_offline_collection_s_page_says_so_to_the_administrator_and_offers_no_comment_form()
+        {
+            CollectionPageView view = new()
+            {
+                Viewer = Administrator,
+                Csrf = Token,
+                Comments = [Comment(5, 9, "Dennis@CRT", "Mine", administrator: true), Comment(6, 7, "Bo", "Spam") with { AuthorIsLocked = true }],
+                Offline = CollectionOffline.OwnerLocked
+            };
+
+            string html = Page(Collection(Capture(ShaA, "U7", "12")), view: view);
+
+            Assert.Contains(System.Net.WebUtility.HtmlEncode(CollectionPages.OfflineOwnerLocked), html, StringComparison.Ordinal);
+            Assert.DoesNotContain("/comments\">", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("?edit=5", html, StringComparison.Ordinal);
+            Assert.Contains("?delete=6", html, StringComparison.Ordinal);
+            Assert.Contains("/comments/6/hide", html, StringComparison.Ordinal);
+            Assert.Contains("?remove=1", html, StringComparison.Ordinal);
+
+            string gone = Page(Collection(Capture(ShaA, "U7", "12")), view: view with { Offline = CollectionOffline.OwnerGone });
+
+            Assert.Contains(System.Net.WebUtility.HtmlEncode(CollectionPages.OfflineOwnerGone), gone, StringComparison.Ordinal);
+
+            // Shown to all, the page says nothing of it.
+            string online = Page(Collection(Capture(ShaA, "U7", "12")), view: view with { Offline = CollectionOffline.No });
+
+            Assert.DoesNotContain("Offline:", online, StringComparison.Ordinal);
+            Assert.Contains("/comments\">", online, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void Locking_is_asked_first_saying_what_it_does()
+        {
+            string html = CollectionPages.List(Site, Administrator, Token, AdministratorsList(), locking: new LockedAccount(7, "Bo", "bo@example.com"));
+
+            Assert.Contains($"<form class=\"admin\" method=\"post\" action=\"{Site}/collections/accounts/7/lock\">", html, StringComparison.Ordinal);
+            Assert.Contains("Lock the account of <b>Bo</b> (bo@example.com)?", html, StringComparison.Ordinal);
+            Assert.Contains("its comments are hidden from everybody but you", html, StringComparison.Ordinal);
+            Assert.Contains($"<input type=\"hidden\" name=\"csrf\" value=\"{Token}\">", html, StringComparison.Ordinal);
+            Assert.Contains(">Lock account</button>", html, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void The_accounts_locked_are_listed_each_with_its_unlock()
+        {
+            string html = CollectionPages.List(Site, Administrator, Token, AdministratorsList() with { Locked = [new LockedAccount(8, "Spammer", "spam@example.com")] });
+
+            Assert.Contains("<h2 id=\"locked\">Locked accounts (1) <span class=\"badge\">Administrator</span></h2>", html, StringComparison.Ordinal);
+            Assert.Contains("<b>Spammer</b> <span class=\"muted\">(spam@example.com)</span>", html, StringComparison.Ordinal);
+            Assert.Contains($"<form class=\"inline\" method=\"post\" action=\"{Site}/collections/accounts/8/unlock\">", html, StringComparison.Ordinal);
+            Assert.Contains(">Unlock</button>", html, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void A_refused_lock_is_said_at_the_top()
+        {
+            string html = CollectionPages.List(Site, Administrator, Token, AdministratorsList(), problem: AccountLockFlows.AdministratorsStay);
+
+            Assert.Contains($"<div class=\"errors\" role=\"alert\"><p>{System.Net.WebUtility.HtmlEncode(AccountLockFlows.AdministratorsStay)}</p></div>", html, StringComparison.Ordinal);
+        }
+
+        // What only the administrator may see stays theirs, whatever a list handed to the page holds.
+        [Fact]
+        public void Nobody_else_sees_owners_comments_locks_or_questions()
+        {
+            string html = CollectionPages.List(
+                Site,
+                Bo,
+                Token,
+                AdministratorsList() with { Locked = [new LockedAccount(8, "Spammer", "spam@example.com")] },
+                locking: new LockedAccount(7, "Bo", "bo@example.com"),
+                problem: "Refused");
+
+            Assert.DoesNotContain("Every collection", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("Newest comments", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("Locked accounts", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("Lock the account", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("anna@example.com", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("Refused", html, StringComparison.Ordinal);
+        }
+
+        // On a collection's page the administrator - the one who sees a locked account's comments - is told why nobody else does.
+        [Fact]
+        public void A_locked_account_s_comment_is_marked_for_the_administrator()
+        {
+            string html = Page(Collection(Capture(ShaA, "U7", "12")), view: new CollectionPageView
+            {
+                Viewer = Administrator,
+                Csrf = Token,
+                Comments = [Comment(5, 7, "Bo", "Buy cheap chips") with { AuthorIsLocked = true }]
+            });
+
+            Assert.Contains($"<span class=\"flag\">{CollectionPages.AccountLockedFlag} - only you see it</span>", html, StringComparison.Ordinal);
+        }
+
+        // A long comment is cut in the list - never through a character written as two (an emoji), which would show as junk.
+        [Fact]
+        public void A_long_comment_is_cut_in_the_list_and_never_half_a_character()
+        {
+            string body = new string('a', 299) + "\U0001F600" + new string('b', 50);
+
+            string html = CollectionPages.List(Site, Administrator, Token, new CollectionListView([], [], [], [Comment(5, 7, "Bo", body)]));
+
+            Assert.Contains(new string('a', 299) + "...", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("\uD83D", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("bbb", html, StringComparison.Ordinal);
+        }
+
+        [Fact]
+        public void Signed_out_the_list_says_how_to_sign_in_and_come_back_to_it()
+        {
+            Assert.Contains($"{Site}/account/sign-in?return=%2Fcollections%2F\">Sign in</a>", CollectionPages.ListSignedOut(Site), StringComparison.Ordinal);
+            Assert.Contains("sign-in?return=%2Fcrt-test%2Fcollections%2F", CollectionPages.ListSignedOut(Site + "/crt-test"), StringComparison.Ordinal);
+        }
 
         // ---- Where a baseline's picture is served ------------------------------------------
 

@@ -15,6 +15,57 @@ next push. The sections from 10.4.1 down to 1.0.0 were written from VERSION.md's
 - Plain ASCII punctuation.
 -->
 
+# 15.0.0, 2026-November-27
+--------------------------
+- A display name can no longer be "You", nor hold the word "Administrator" or "Owner", which the pages write beside a name
+- Signing out on the website always signs that browser out, also from a page opened before signing in again
+- A collection sent with an empty capture is refused, saying so
+- A comment mail's subject no longer ends in half a character when it is cut short
+- A hidden comment says that the collection's owner and the administrator see it
+- A collection whose time is up is gone from that moment, not only after the hourly sweep
+- A collection's pictures are checked with the server at every view, so one taken down is no longer served from caches
+- A hide, "Show again", delete or edit refused on the website now says why
+- A collection shared at the moment the hourly sweep runs no longer loses a picture
+- A first share sent again after its answer was lost changes the page it made, instead of making a second one
+- A collection whose time is up is gone for CRT and in every list at once, not only on its page
+- A hidden comment can no longer be edited by its writer
+- The comments of a collection whose time is up can no longer be hidden or deleted
+- A comment the owner writes on their own collection no longer counts as a new comment in CRT
+- A collection shared again with "1 month" picked gets no reminder mail the next day
+- The service refuses to start with its collections folder inside the folder the website serves
+- The administrator's newest comments leave out those of a collection whose time is up
+- A capture's comment count in a page's list of captures counts what its section shows the reader
+- A collection changed and shared again shortly before its date still gets its reminder mail
+- Each picture of a collection's page is looked up on its own, no longer by reading the whole collection
+- A picture sent again is kept a day from that send, so the share it was sent for still finds it
+- Signing in on the website where somebody was signed in already ends that earlier sign-in
+- With sharing collections not set up, every collection route says so, and no form on the website acts
+- The check that keeps the collections folder out of the website's folder no longer stops the service when the BETA data setting names the tree itself
+- A comment on a capture taken out of its collection is no longer counted or listed anywhere, and comes back with the capture
+- Shares and comments sent at the same moment can no longer pass the day's limits together, nor a retried first share make a second page
+- A capture whose component is named "comment" no longer takes a comment's place on its page
+- "Reset contribution data" counts only the comments nobody had deleted already
+- The website has a "Your collections" page: the collections you shared and those you commented on, with a link from every collection's page
+- The administrator sees every collection there, with whose it is, and the newest comments on them
+- The administrator can delete any collection from its page, asked first
+- The administrator can lock an account from "Your collections", asked first, and unlock it again under "Locked accounts"
+- Locking or unlocking an account signs it out everywhere, so it has to sign in again
+- A locked account's comments are hidden from everybody but the administrator, and come back when it is unlocked
+- The administrator can still open a collection that is offline - its owner locked or gone - marked so, to delete it or its comments
+- In CRT, a locked account's comment on the administrator's own collection says that only the administrator sees it
+- The website's sign-in is sent only to the collection pages and the sign-out, never to the rest of the site
+- Signed in on the website, you stay signed in for as long as you keep using it, not 30 days from the sign-in
+- Signing in from "Sign in to comment" goes back to the capture however long its place on the page is named
+- A comment with several lines is no longer refused as too long when the page's box took it
+- A collection's page and pictures are limited to 20,000 requests an hour from one address
+- A capture is only taken in by a CRT that is signed in, before anything of it is read
+- The hourly sweep goes on deleting the pictures nobody shows when one of them cannot be deleted, and names that one in the log
+- "Reset contribution data" counts and shows the collections it takes down and the comments it deletes
+- CRT asking for the comments of a collection that was taken down is told it went, and when, so CRT forgets its page
+- A comment is changed, hidden or deleted only under the collection it is on
+- A picture another account has just sent again is no longer deleted by the hourly sweep
+- A form refused for coming from another website no longer speaks of making an account
+
 # 14.1.0, 2026-November-26
 --------------------------
 - CRT can share oscilloscope captures as a collection - a page anybody with its link can see, at /collections/ and the collection's id

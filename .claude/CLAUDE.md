@@ -2949,9 +2949,8 @@ repair on one board; it holds worklogs.
 
 **Captures taken in the component info window, shared as a page for a forum's help** (owner requests, 2026-11-25: "a
 possibility for a user to capture one or more oscilloscope images and make that a "collection". Then that collection can
-be shared to the internet on various forums like Lemon64, Forum64 or Reddit"; the plan's step 2, 2026-11-26, and
-comments on each image step 3 the same day - the signed-in web list and the administrator's screen are step 4;
-decisions in the memory note).
+be shared to the internet on various forums like Lemon64, Forum64 or Reddit"; the plan's step 2, 2026-11-26, comments
+on each image step 3 and the website's "Your collections" step 4, the same day; decisions in the memory note).
 Every rule both ends keep is CRT.Data's (`CollectionRules` - id, "Delete in" 1 month / 6 months / 1 year (default) / 5
 years, never past 5 years ahead, limits, the page's anchors; `CollectionPng`; `CollectionContract`'s records), CRT
 asking before it sends and the server again (`CollectionFlows`, server 14.1.0).
@@ -2961,7 +2960,19 @@ asking before it sends and the server again (`CollectionFlows`, server 14.1.0).
   user's). The popup's "Collect captures into" row - shown once an oscilloscope session has been seen - picks one PER
   BOARD (`UserSettings.CollectionOfBoard`, "...ByBoard" so a renamed board takes it along), and every capture then goes
   into it too, with the settings READ BACK from the oscilloscope and the baseline shown (`CollectionCaptures`); the
-  banner offers "Take out of the collection". Main hands each popup a `CollectionContext` (`Main.Collections.cs`).
+  banner offers "Take out of the collection" - only for a capture that click ADDED (`CaptureAdded`: the very same screen is
+  one capture, and a screen `CollectionPng` refuses is said at the capture). Main hands each popup a `CollectionContext`
+  (`Main.Collections.cs`).
+- **THE COLLECTIONS ARE KEPT PER SERVICE AND ARE THEIR ACCOUNT'S** (code review, 2026-11-27: a server id is one database's,
+  and the server answers "not found" for another account's collection - read as gone, "Delete collection" deleted it here
+  and left its page up): "Collections" for a release, "Collections-test" for a pre-release (`ContributionServer.FileNameFor`;
+  a 4.1.0 pre-release moves the folder it used before at `StartAsync` - `CollectionStore.TakesOverEarlierFolder`, never
+  once 4.1.0 is released), and a collection remembers the account it was shared with (`SharedByAccountId`) - nothing is
+  shared, deleted or answered from it with another signed in (`CollectionSharing.OtherAccountLine`).
+- **The collection window changes its rows IN PLACE** (thumbnails and comments notify; code review, 2026-11-27: each
+  thumbnail rebuilt the whole list, and comments read again took the keyboard from a note), **writes what the server
+  answered onto the collection AS KEPT AFTER THE WAIT** (an edit made meanwhile stays), and runs a comment action or the
+  delete one at a time under its `BusyOverlay` ("Share" says its own progress).
 - **Share sends the WHOLE collection; the server answers 409 naming the captures it lacks, which CRT uploads, then sends
   it again** (`CollectionClient`). A collection shows only pictures ITS OWN ACCOUNT uploaded. **The collection keeps the
   deletion date it SENT, never the server's echo** (`Result.SentDeleteAtUtc`; 2026-11-26: the database keeps
@@ -2987,16 +2998,43 @@ asking before it sends and the server again (`CollectionFlows`, server 14.1.0).
   gone (`CollectionCommentFlows.ShownTo`). The popup's drop-down says which collection has comments not read, from `GET
   /api/collections/mine`'s `latestCommentId`, asked at most every five minutes (`Main.AskForNewCommentsSoon`). A
   collection deleted takes its comments. **What a page shows of a collection is ONE question, `CollectionFlows
-  .FindShownAsync`** (live, owner not locked) - the page, its pictures and every route that writes or changes a
-  comment ask it; only the owner's own list in CRT reads the collection as the owner's.
+  .FindShownAsync`** (live - not deleted, its time not up, `IsGone` - and its owner not locked) - writing and editing a
+  comment ask it, the page and a picture ask it with the reader (`FindShownToAsync`, `FindShownImageToAsync`, which reads
+  that capture's rows alone: an offline collection is the administrator's to see); **deleting or hiding a comment asks
+  only that the collection is not gone**, so its writer takes it back and the administrator moderates a collection
+  offline for everybody else (code review, 2026-11-27); only the owner's own list in CRT reads the collection as the
+  owner's.
 - **THE WEBSITE'S SIGN-IN IS CRT'S SESSION IN A COOKIE** (owner: "30 days, like CRT"; `WebSessions`,
-  `/account/sign-in` and `/account/sign-out`): HttpOnly, Secure, SameSite=Lax, NAMED AND SCOPED PER INSTANCE
-  (`crt_session` on "/", `crt_session_crt_test` on "/crt-test/" - the two share a host, and one cookie would carry a
-  live token to the test instance). **Every form that acts is refused from another website first**
+  `/account/sign-in` and `/account/sign-out`): HttpOnly, Secure, SameSite=Lax, NAMED PER INSTANCE and **SENT ONLY WHERE IT
+  IS READ** (`WebSessions.CookiePaths`: `crt_session` on "/collections/", "/account/sign-out" and "/account/sign-in",
+  `crt_session_crt_test` on the same under "/crt-test/" - code review, 2026-11-27, Security: on "/" the live token, with
+  every right of the account, went to every page of the site, the test instance's among them; the "/" cookie of 14.1.0 is
+  taken away FIRST as one is kept, as ASP.NET's delete drops the headers before it whose path it is a prefix of),
+  **written again at every page signed in** so the browser keeps it as the session slides, **and a sign-in over one ends
+  the session the browser held** (`WebSessions.EndEarlierAsync` - the sign-in is where the cookie goes for that alone). **Every form that acts is refused from another website first**
   (`AccountPages.IsFromAnotherSite`), **then needs the session AND its token** (`WebSessions.Csrf`: made from the session
   token, so nothing is stored - a hidden field on each form; the page has no script). **After signing in it goes back to
-  a collection's page of this site only** (`WebSessions.ReturnPath`: `/collections/<id>`, a `#` anchor - never a
-  path a link names, which would be an open redirect). A signed-in page is `Cache-Control: private, no-store`.
+  a collection's page of this site only** (`WebSessions.ReturnPath`: `/collections/<id>`, a `#` anchor, or the list
+  `/collections/` - never a path a link names, which would be an open redirect). A signed-in page is `Cache-Control:
+  private, no-store`.
+- **"YOUR COLLECTIONS" IS THE ONE LIST OF THEM, AND ONLY THE ADMINISTRATOR'S NAMES OWNERS** (step 4, 2026-11-26; owner
+  decisions, 2026-11-25: "A signed-in user's web list: their own collections and those they commented on", nobody but the
+  administrator a list of all; `CollectionListFlows`, `CollectionPages.List`, `GET /collections/`): a reader's own, and
+  others' they commented on (a locked owner's left out); the administrator also every collection with its owner's name and
+  address, and the newest comments, hidden ones too, each a link to it. **The web deletes a collection for the
+  administrator alone** (`POST /collections/{id}/delete`, asked first at `?remove=1`): the owner deletes their own in CRT,
+  whose window would not know of a delete made elsewhere until its next send (`CollectionClient`'s `GoneFromServer`).
+  There is no administrator's screen for collections in CRT - the web list is it. Commenters get no mail of replies
+  (owner decision, 2026-11-27: "no, not for now").
+- **THE ADMINISTRATOR LOCKS AN ACCOUNT FROM THAT LIST** (owner decision, 2026-11-27: "yes, via web page where I as admin can
+  do this" - SQL alone until then; `AccountLockFlows`, `POST /collections/accounts/{a}/lock|unlock`, asked first at
+  `?lock=<a>`): "Lock account" beside each owner and comment writer, "Unlock" under "Locked accounts". **Never an
+  administrator's account** - that stays SQL, so no click locks the only one out; locking ends every session the account has
+  and is audited. **A locked account's comments are the administrator's alone to see** (the writer joined into
+  `CollectionCommentRecord.AuthorIsLocked` - `CollectionCommentFlows.ShownTo`, the owner's list in CRT, the counts of
+  `/api/collections/mine`), as
+  its collections go offline: locking a spammer takes the spam down, unlocking puts it back. Every form of the pages takes
+  the same three steps first, ONE helper (`CollectionPageEndpoints.SignedInFormAsync`).
 
 #### Schematics (`Tabs/Schematics/`)
 
@@ -3134,15 +3172,18 @@ about its centre (`Main.DataSyncStatusIconSpinAngle`). **The "KiCad nets" panel 
 - **A DISPLAY NAME IS UNIQUE AND OF ONE RULE** (owner requests, 2026-11-25: "it needs to be unique for all users", "only
   normal A-Z + 0-9 and then some common special charatcers like: +-/@.[]() ... max length 30"; 2026-11-26: spaces and "_"
   "allow those two also" - a space never twice in a row): CRT.Data's `DisplayNames`,
-  2 to 30 characters, unique ignoring capitals - asked of a name being SET (registering, "My account", an invitation), on the
+  2 to 30 characters, unique ignoring capitals, never "You" nor holding the WORD "Administrator" or "Owner" (code review,
+  2026-11-27, Security: "Dennis (Administrator)" read in CRT's collection window as an administrator's comment; server
+  15.0.0) - asked of a name being SET (registering, "My account", an invitation), on the
   server (`AccountRules.ValidateDisplayName`, `IAccountStore.IsDisplayNameTakenAsync`) and as it is typed in CRT. A name set
   before is kept; no unique index holds it (old names may share one). Labelled **Display name**, "Name or handle" until then.
 - **THE ACCOUNT WEB PAGES** (server 13.0.0, `/account/` - Apache forwards it, INSTALLING.md): making an account, confirming
   its address (`/api/accounts/verify` answers the same page), "I forgot my password" with the code typed on the page. A rim
   over the very flows the JSON routes call (`AccountPageEndpoints`), the HTML pure and tested (`AccountPages`): every word
   typed encoded, no script, one style block allowed by its hash in the Content-Security-Policy - change `AccountPages.Css`
-  and the hash follows by itself. Never a page that acts on a signed-in person - there is no web sign-in yet, and no
-  anti-forgery token because of that; a page that needs one is the moment to add both. **A form posted from another
+  and the hash follows by itself. **A page that acts on a signed-in person takes the website's sign-in AND its token**
+  (`WebSessions` - since server 14.1.0, the collections' comments, delete and account locks; "THE WEBSITE'S SIGN-IN" under
+  the oscilloscope collections) - never one without both. **A form posted from another
   website is refused** (`AccountPages.IsFromAnotherSite` - `Sec-Fetch-Site`, else an older browser's `Origin`; code review,
   2026-11-25, Security: the mail budget is per IP address, so a hidden form elsewhere spent every visitor's), which is why
   the pages' `Referrer-Policy` is `strict-origin` - `no-referrer` makes a browser send `Origin: null` with their own forms.

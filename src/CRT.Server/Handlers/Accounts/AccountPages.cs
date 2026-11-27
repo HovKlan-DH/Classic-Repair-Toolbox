@@ -185,7 +185,9 @@ namespace CRT.Server.Handlers.Accounts
             AccountPages.Layout(
                 baseUrl,
                 "You are signed in",
-                $"<p>Signed in as <b>{Encode(displayName)}</b>. Open a shared collection's link to comment on its captures.</p>");
+                $"<p>Signed in as <b>{Encode(displayName)}</b>. Open a shared collection's link to comment on its captures, or see " +
+                $"<a href=\"{Encode(Collections.CollectionPages.ListUrl(baseUrl))}\">your collections</a> - " +
+                "those you shared and those you commented on.</p>");
 
         public static string PasswordSet(string baseUrl) =>
             AccountPages.Layout(
@@ -198,9 +200,12 @@ namespace CRT.Server.Handlers.Accounts
             AccountPages.Layout(
                 baseUrl,
                 "That form came from another website",
-                "<p>Nothing was done. To make an account or set a new password, " +
+                // Every form of the site is refused so - an account's, a comment's, a lock's (code review, 2026-11-27: this page
+                // spoke of making an account to all of them).
+                "<p>Nothing was done. Open the page here - " +
                 // With its slash: Apache forwards "/account/" (INSTALLING.md), never "/account".
-                $"<a href=\"{Encode(baseUrl + AccountPages.Path + "/")}\">open the account page here</a> and send the form from it.</p>");
+                $"<a href=\"{Encode(baseUrl + AccountPages.Path + "/")}\">the account page</a>, or the collection's own page - " +
+                "and send the form from it.</p>");
 
         // ###########################################################################################
         // *** A FORM ANOTHER WEBSITE POSTS HERE IS REFUSED *** (code review, 2026-11-25, Security). Making an account and asking
