@@ -1756,7 +1756,7 @@ private void OnIcTestPanelCloseRequested() => this.IcTestPanel.IsVisible = false
             // shown already: reading the oscilloscope's settings back kept the popup covered for seconds at each capture (code
             // review, 2026-11-27). Its banner goes under its own capture alone, whatever is shown by then.
             if (shownCapture is not null)
-                await this.CollectCaptureAsync(selectedEntry, selectedItem!.FullPath, shownCapture);
+                await this.CollectCaptureAsync(selectedEntry, shownCapture);
         }
 
         // ###########################################################################################

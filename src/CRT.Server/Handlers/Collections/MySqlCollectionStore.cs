@@ -13,12 +13,11 @@ namespace CRT.Server.Handlers.Collections
     {
         private const string CollectionColumns =
             "c.id, c.account_id, c.hardware_name, c.board_name, c.region, c.title, c.description, c.forum_links_json, " +
-            "c.created_utc, c.updated_utc, c.delete_at_utc, c.reminded_utc, c.deleted_utc, c.deleted_reason, c.unshared_utc";
+            "c.created_utc, c.updated_utc, c.delete_at_utc, c.reminded_utc, c.deleted_utc, c.deleted_reason, c.unshared_utc, c.components_json";
 
         private const string ImageColumns =
             "position, sha256, width, height, component_label, pin, signal_name, expected_reading, time_per_division, " +
-            "volts_per_division, trigger_level, baseline_sha256, baseline_file_name, baseline_time_per_division, " +
-            "baseline_volts_per_division, baseline_trigger_level, caption, captured_utc";
+            "volts_per_division, trigger_level, caption, captured_utc, pinout_sha256";
 
         private readonly string thisConnectionString;
 
@@ -59,9 +58,10 @@ namespace CRT.Server.Handlers.Collections
 
             await using (MySqlCommand select = connection.CreateCommand())
             {
+                // A picture is a capture or a capture's pinout drawing (migration 0029).
                 select.CommandText =
                     $"SELECT {ImageColumns} FROM collection_images WHERE collection_id = @id" +
-                    (sha256 is null ? string.Empty : " AND sha256 = @sha") + " ORDER BY position;";
+                    (sha256 is null ? string.Empty : " AND (sha256 = @sha OR pinout_sha256 = @sha)") + " ORDER BY position;";
                 select.Parameters.AddWithValue("@id", id);
 
                 if (sha256 is not null)
@@ -136,8 +136,8 @@ namespace CRT.Server.Handlers.Collections
             {
                 collections.Add(MySqlCollectionStore.ReadCollection(reader) with
                 {
-                    CommentCount = Convert.ToInt32(reader.GetValue(16)),
-                    LatestCommentId = Convert.ToInt64(reader.GetValue(17))
+                    CommentCount = Convert.ToInt32(reader.GetValue(17)),
+                    LatestCommentId = Convert.ToInt64(reader.GetValue(18))
                 });
             }
 
@@ -168,8 +168,8 @@ namespace CRT.Server.Handlers.Collections
                 insert.Transaction = transaction;
                 insert.CommandText =
                     "INSERT IGNORE INTO collections (id, account_id, client_key, hardware_name, board_name, region, title, description, " +
-                    "forum_links_json, created_utc, updated_utc, delete_at_utc, reminded_utc) VALUES " +
-                    "(@id, @account, @clientKey, @hardware, @board, @region, @title, @description, @links, @created, @updated, @deleteAt, @reminded);";
+                    "forum_links_json, components_json, created_utc, updated_utc, delete_at_utc, reminded_utc) VALUES " +
+                    "(@id, @account, @clientKey, @hardware, @board, @region, @title, @description, @links, @components, @created, @updated, @deleteAt, @reminded);";
                 MySqlCollectionStore.AddContent(insert, collection);
                 insert.Parameters.AddWithValue("@account", collection.AccountId);
                 insert.Parameters.AddWithValue("@clientKey", (object?)collection.ClientKey ?? DBNull.Value);
@@ -217,7 +217,7 @@ namespace CRT.Server.Handlers.Collections
                 update.Transaction = transaction;
                 update.CommandText =
                     "UPDATE collections SET hardware_name = @hardware, board_name = @board, region = @region, title = @title, " +
-                    "description = @description, forum_links_json = @links, updated_utc = @updated, " +
+                    "description = @description, forum_links_json = @links, components_json = @components, updated_utc = @updated, " +
                     // A new date takes what the flow decided of its reminder (CollectionFlows.ReminderSettledAt); the same date keeps
                     // what was decided - the sweep's mark too, set meanwhile. Before delete_at_utc's own assignment, which MariaDB
                     // makes in order.
@@ -272,7 +272,7 @@ namespace CRT.Server.Handlers.Collections
                 update.Transaction = transaction;
                 update.CommandText =
                     "UPDATE collections SET deleted_utc = @when, deleted_reason = @reason, title = NULL, description = NULL, " +
-                    "forum_links_json = NULL WHERE id = @id AND deleted_utc IS NULL;";
+                    "forum_links_json = NULL, components_json = NULL WHERE id = @id AND deleted_utc IS NULL;";
                 update.Parameters.AddWithValue("@id", id);
                 update.Parameters.AddWithValue("@when", whenUtc.UtcDateTime);
                 update.Parameters.AddWithValue("@reason", reason);
@@ -595,7 +595,8 @@ namespace CRT.Server.Handlers.Collections
                 select.CommandText =
                     "SELECT u.account_id, u.sha256 FROM collection_uploads u WHERE u.uploaded_utc < @before AND NOT EXISTS (" +
                     "SELECT 1 FROM collection_images i JOIN collections c ON c.id = i.collection_id " +
-                    "WHERE c.account_id = u.account_id AND c.deleted_utc IS NULL AND i.sha256 = u.sha256) FOR UPDATE;";
+                    // A capture's pinout drawing is shown too (migration 0029).
+                    "WHERE c.account_id = u.account_id AND c.deleted_utc IS NULL AND (i.sha256 = u.sha256 OR i.pinout_sha256 = u.sha256)) FOR UPDATE;";
                 select.Parameters.AddWithValue("@before", uploadedBeforeUtc.UtcDateTime);
 
                 await using MySqlDataReader reader = await select.ExecuteReaderAsync(cancellationToken);
@@ -645,6 +646,7 @@ namespace CRT.Server.Handlers.Collections
             command.Parameters.AddWithValue("@title", (object?)collection.Title ?? DBNull.Value);
             command.Parameters.AddWithValue("@description", (object?)collection.Description ?? DBNull.Value);
             command.Parameters.AddWithValue("@links", collection.ForumLinks.Count == 0 ? DBNull.Value : JsonSerializer.Serialize(collection.ForumLinks));
+            command.Parameters.AddWithValue("@components", collection.Components is not { Count: > 0 } components ? DBNull.Value : JsonSerializer.Serialize(components));
             command.Parameters.AddWithValue("@updated", collection.UpdatedUtc.UtcDateTime);
             command.Parameters.AddWithValue("@deleteAt", collection.DeleteAtUtc.UtcDateTime);
             command.Parameters.AddWithValue("@reminded", collection.RemindedUtc is { } reminded ? reminded.UtcDateTime : DBNull.Value);
@@ -662,8 +664,7 @@ namespace CRT.Server.Handlers.Collections
                 insert.Transaction = transaction;
                 insert.CommandText =
                     $"INSERT INTO collection_images (collection_id, {ImageColumns}) VALUES " +
-                    "(@id, @position, @sha, @width, @height, @label, @pin, @signal, @reading, @tdiv, @vdiv, @trigger, " +
-                    "@baselineSha, @baselineFile, @baselineTdiv, @baselineVdiv, @baselineTrigger, @caption, @captured);";
+                    "(@id, @position, @sha, @width, @height, @label, @pin, @signal, @reading, @tdiv, @vdiv, @trigger, @caption, @captured, @pinout);";
                 insert.Parameters.AddWithValue("@id", collection.Id);
                 insert.Parameters.AddWithValue("@position", position);
                 insert.Parameters.AddWithValue("@sha", entry.Sha256);
@@ -676,13 +677,9 @@ namespace CRT.Server.Handlers.Collections
                 insert.Parameters.AddWithValue("@tdiv", (object?)entry.TimePerDivision ?? DBNull.Value);
                 insert.Parameters.AddWithValue("@vdiv", (object?)entry.VoltsPerDivision ?? DBNull.Value);
                 insert.Parameters.AddWithValue("@trigger", (object?)entry.TriggerLevel ?? DBNull.Value);
-                insert.Parameters.AddWithValue("@baselineSha", (object?)entry.Baseline?.Sha256 ?? DBNull.Value);
-                insert.Parameters.AddWithValue("@baselineFile", (object?)entry.Baseline?.FileName ?? DBNull.Value);
-                insert.Parameters.AddWithValue("@baselineTdiv", (object?)entry.Baseline?.TimePerDivision ?? DBNull.Value);
-                insert.Parameters.AddWithValue("@baselineVdiv", (object?)entry.Baseline?.VoltsPerDivision ?? DBNull.Value);
-                insert.Parameters.AddWithValue("@baselineTrigger", (object?)entry.Baseline?.TriggerLevel ?? DBNull.Value);
                 insert.Parameters.AddWithValue("@caption", (object?)entry.Caption ?? DBNull.Value);
                 insert.Parameters.AddWithValue("@captured", (object?)entry.CapturedUtc?.UtcDateTime ?? DBNull.Value);
+                insert.Parameters.AddWithValue("@pinout", (object?)entry.PinoutSha256 ?? DBNull.Value);
 
                 await insert.ExecuteNonQueryAsync(cancellationToken);
             }
@@ -721,22 +718,16 @@ namespace CRT.Server.Handlers.Collections
                 reader.IsDBNull(12) ? null : MySqlCollectionStore.Utc(reader.GetDateTime(12)),
                 MySqlCollectionStore.Text(reader, 13),
                 [],
-                Convert.ToInt32(reader.GetValue(15)),
-                UnsharedUtc: reader.IsDBNull(14) ? null : MySqlCollectionStore.Utc(reader.GetDateTime(14)));
+                Convert.ToInt32(reader.GetValue(16)),
+                UnsharedUtc: reader.IsDBNull(14) ? null : MySqlCollectionStore.Utc(reader.GetDateTime(14)),
+                Components: MySqlCollectionStore.Text(reader, 15) is { } components
+                    ? JsonSerializer.Deserialize<List<CollectionComponent>>(components) ?? []
+                    : []);
         }
 
         // ImageColumns, in order.
         private static CollectionImageRecord ReadImage(MySqlDataReader reader)
         {
-            string? baselineSha = MySqlCollectionStore.Text(reader, 11);
-            string? baselineFile = MySqlCollectionStore.Text(reader, 12);
-            string? baselineTdiv = MySqlCollectionStore.Text(reader, 13);
-            string? baselineVdiv = MySqlCollectionStore.Text(reader, 14);
-            string? baselineTrigger = MySqlCollectionStore.Text(reader, 15);
-
-            bool hasBaseline = baselineSha is not null || baselineFile is not null || baselineTdiv is not null ||
-                               baselineVdiv is not null || baselineTrigger is not null;
-
             var entry = new CollectionImageEntry(
                 reader.GetString(1),
                 reader.GetString(4),
@@ -746,9 +737,9 @@ namespace CRT.Server.Handlers.Collections
                 MySqlCollectionStore.Text(reader, 8),
                 MySqlCollectionStore.Text(reader, 9),
                 MySqlCollectionStore.Text(reader, 10),
-                hasBaseline ? new CollectionBaseline(baselineSha, baselineFile, baselineTdiv, baselineVdiv, baselineTrigger) : null,
-                MySqlCollectionStore.Text(reader, 16),
-                reader.IsDBNull(17) ? null : MySqlCollectionStore.Utc(reader.GetDateTime(17)));
+                MySqlCollectionStore.Text(reader, 11),
+                reader.IsDBNull(12) ? null : MySqlCollectionStore.Utc(reader.GetDateTime(12)),
+                MySqlCollectionStore.Text(reader, 13));
 
             return new CollectionImageRecord(entry, reader.GetInt32(2), reader.GetInt32(3));
         }

@@ -12,7 +12,7 @@ namespace CRT.Data.Tests
         private static readonly string Sha = new('a', 64);
 
         internal static CollectionImageEntry Image(string sha, string label = "U7", string? pin = "12") =>
-            new(sha, label, pin, "/RAS", "Pulsing", "50us", "2V", "1V", null, null, CapturedUtc: null);
+            new(sha, label, pin, "/RAS", "Pulsing", "50us", "2V", "1V", null, CapturedUtc: null);
 
         internal static CollectionContentRequest Content(params CollectionImageEntry[] images) =>
             new("Commodore 64", "250407", "PAL", "No picture", "It went black.", [], CollectionRules.DeleteAt(Now, "1y"), images);
@@ -42,7 +42,7 @@ namespace CRT.Data.Tests
         [InlineData("1m", 2026, 12, 26)]
         [InlineData("6m", 2027, 5, 26)]
         [InlineData("1y", 2027, 11, 26)]
-        [InlineData("5y", 2031, 11, 26)]
+        [InlineData("5y", 2027, 11, 26)]
         [InlineData("2y", 2027, 11, 26)]
         [InlineData(null, 2027, 11, 26)]
         public void Each_lifetime_counts_from_the_day_it_is_chosen_and_anything_else_is_a_year(string? key, int year, int month, int day) =>
@@ -50,10 +50,13 @@ namespace CRT.Data.Tests
 
         // Owner decision, 2026-11-25: "no need to show the "2 years"".
         [Fact]
-        public void The_choices_are_a_month_six_months_a_year_and_five_years_a_year_the_default()
+        public void The_choices_are_a_month_six_months_and_a_year_the_default()
         {
-            Assert.Equal(["1 month", "6 months", "1 year", "5 years"], CollectionRules.Lifetimes.Select(lifetime => lifetime.Words));
+            Assert.Equal(["1 month", "6 months", "1 year"], CollectionRules.Lifetimes.Select(lifetime => lifetime.Words));
             Assert.Equal("1 year", CollectionRules.LifetimeOf(CollectionRules.DefaultLifetimeKey).Words);
+
+            // A "5 years" an earlier CRT kept reads as the default (owner decision, 2026-11-27: at most a year).
+            Assert.Equal("1 year", CollectionRules.LifetimeOf("5y").Words);
         }
 
         [Fact]
@@ -96,26 +99,52 @@ namespace CRT.Data.Tests
             Assert.Contains("U7, pin 12: the capture's checksum is not one.", CollectionRules.ProblemsOf(Content(Image("../../etc/passwd")), Now));
 
         [Fact]
-        public void A_baseline_not_named_by_a_checksum_is_refused()
+        public void A_pinout_drawing_not_named_by_a_checksum_is_refused()
         {
-            CollectionImageEntry image = Image(Sha) with { Baseline = new CollectionBaseline("nope", "Scope baseline/a.png", null, null, null) };
+            CollectionImageEntry image = Image(Sha) with { PinoutSha256 = "nope" };
 
-            Assert.Contains("U7, pin 12: the baseline's checksum is not one.", CollectionRules.ProblemsOf(Content(image), Now));
+            Assert.Contains("U7, pin 12: the pinout drawing's checksum is not one.", CollectionRules.ProblemsOf(Content(image), Now));
         }
 
+        // Owner decision, 2026-11-27: "The max years a collection can be shared is 1 year, and not 5 years".
         [Fact]
-        public void A_date_passed_and_one_past_five_years_are_refused()
+        public void A_date_passed_and_one_past_a_year_are_refused()
         {
             Assert.Contains(
                 "The date it is deleted on has passed - choose how long to keep it again.",
                 CollectionRules.ProblemsOf(Content(Image(Sha)) with { DeleteAtUtc = Now.AddMinutes(-1) }, Now));
 
             Assert.Contains(
-                "A collection is kept at most 5 years ahead.",
-                CollectionRules.ProblemsOf(Content(Image(Sha)) with { DeleteAtUtc = Now.AddYears(5).AddDays(2) }, Now));
+                "A collection is kept at most a year ahead - share it again to keep it longer.",
+                CollectionRules.ProblemsOf(Content(Image(Sha)) with { DeleteAtUtc = Now.AddYears(1).AddDays(2) }, Now));
 
-            // Five years to the day is the longest choice - with a day of room for a clock a little ahead.
-            Assert.Empty(CollectionRules.ProblemsOf(Content(Image(Sha)) with { DeleteAtUtc = CollectionRules.DeleteAt(Now.AddHours(20), "5y") }, Now));
+            // A year to the day is the longest choice - with a day of room for a clock a little ahead.
+            Assert.Empty(CollectionRules.ProblemsOf(Content(Image(Sha)) with { DeleteAtUtc = CollectionRules.DeleteAt(Now.AddHours(20), "1y") }, Now));
+        }
+
+        // What CRT's component info window said of a component is held to lengths the page can show, each component once.
+        [Fact]
+        public void A_component_s_facts_are_held_to_their_limits()
+        {
+            CollectionComponent component = new("U7", "U7 | VIC-II | 6569", "IC | DIP-40", "Video chip", "Makes the picture",
+                [new CollectionPin("12", "/RAS", "Output", "RAS", "Pulsing")]);
+
+            Assert.Empty(CollectionRules.ProblemsOf(Content(Image(Sha)) with { Components = [component] }, Now));
+
+            Assert.Contains(
+                "u7: its facts are in the collection twice.",
+                CollectionRules.ProblemsOf(Content(Image(Sha)) with { Components = [component, component with { Label = "u7" }] }, Now));
+
+            Assert.Contains(
+                $"U7: a component lists at most {CollectionRules.MaximumPinsPerComponent} pins.",
+                CollectionRules.ProblemsOf(Content(Image(Sha)) with
+                {
+                    Components = [component with { Pins = Enumerable.Range(1, CollectionRules.MaximumPinsPerComponent + 1).Select(pin => new CollectionPin($"{pin}", null, null, null, null)).ToList() }]
+                }, Now));
+
+            Assert.Contains(
+                "A component's facts name no component.",
+                CollectionRules.ProblemsOf(Content(Image(Sha)) with { Components = [component with { Label = " " }] }, Now));
         }
 
         [Theory]
@@ -186,7 +215,7 @@ namespace CRT.Data.Tests
         public void A_capture_s_anchor_never_takes_a_comment_s()
         {
             static CollectionImageEntry Capture(string label, string? pin) =>
-                new(new string('a', 64), label, pin, null, null, null, null, null, null, null, null);
+                new(new string('a', 64), label, pin, null, null, null, null, null, null, null);
 
             IReadOnlyList<string> anchors = CollectionRules.AnchorsOf(
                 [Capture("COMMENT", "12"), Capture("Comments", "3"), Capture("comment-on", null), Capture("locked", null), Capture("U7", "12")]);

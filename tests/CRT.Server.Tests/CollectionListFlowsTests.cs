@@ -47,7 +47,7 @@ namespace CRT.Server.Tests
         private void Collection(string id, AccountRecord owner, DateTimeOffset created) =>
             this.thisStore.Collections[id] = new CollectionRecord(
                 id, owner.Id, "Commodore 64", "250407", "PAL", $"{owner.DisplayName}'s", null, [], created, created, created.AddYears(1), null, null, null,
-                [new CollectionImageRecord(new CollectionImageEntry(Sha, "U7", "12", "/RAS", null, null, null, null, null, null, created), 800, 480)],
+                [new CollectionImageRecord(new CollectionImageEntry(Sha, "U7", "12", "/RAS", null, null, null, null, null, created), 800, 480)],
                 1);
 
         private Task<long> CommentAsync(AccountRecord writer, string collection) =>

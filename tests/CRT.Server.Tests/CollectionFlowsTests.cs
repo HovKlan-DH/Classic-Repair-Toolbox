@@ -57,7 +57,7 @@ namespace CRT.Server.Tests
         private static string ShaOf(byte[] bytes) => Convert.ToHexStringLower(SHA256.HashData(bytes));
 
         private static CollectionImageEntry Image(string sha, string label = "U7", string pin = "12") =>
-            new(sha, label, pin, "/RAS", "Pulsing", "50us", "2V", "1V", null, null, CapturedUtc: Now);
+            new(sha, label, pin, "/RAS", "Pulsing", "50us", "2V", "1V", null, CapturedUtc: Now);
 
         private static CollectionContentRequest Content(params CollectionImageEntry[] images) =>
             new("Commodore 64", "250407", "PAL", "No picture", "It went black.", ["https://www.lemon64.com/forum/viewtopic.php?t=1"], CollectionRules.DeleteAt(Now, "1y"), images);
@@ -927,6 +927,60 @@ namespace CRT.Server.Tests
 
             Assert.Empty(toBo.CommentedOn);
             Assert.Single(toAnna.Own);
+        }
+
+        // ---- A capture's component and pinout drawing (owner request, 2026-11-27; migration 0029) ------------------------------
+
+        // The drawing is a picture of the account's as a capture is: asked for when not uploaded, then kept with the capture, its
+        // component's facts with the collection - and served as one of the collection's pictures.
+        [Fact]
+        public async Task A_capture_s_pinout_drawing_is_a_picture_of_the_collection_and_its_component_is_kept()
+        {
+            byte[] capture = TestPng.Rgb(32, 20, 1);
+            byte[] pinout = TestPng.Rgb(40, 60, 2);
+            CollectionComponent component = new(" U7 ", "U7 | VIC-II", "IC | DIP-40", null, null, [new CollectionPin("12", "/RAS", "Output", null, " Pulsing ")]);
+            CollectionContentRequest content = Content(Image(ShaOf(capture)) with { PinoutSha256 = ShaOf(pinout) }) with { Components = [component] };
+
+            await this.UploadAsync(Anna, capture);
+
+            CollectionOutcome missing = await this.CreateAsync(Anna, content);
+
+            Assert.Equal(CollectionVerdict.MissingImages, missing.Verdict);
+            Assert.Equal([ShaOf(pinout)], missing.Missing);
+
+            await this.UploadAsync(Anna, pinout);
+
+            CollectionOutcome created = await this.CreateAsync(Anna, content);
+
+            Assert.Equal(CollectionVerdict.Created, created.Verdict);
+
+            CollectionRecord kept = this.thisStore.Collections[created.Answer!.Id];
+
+            Assert.Equal(ShaOf(pinout), kept.Images[0].Entry.PinoutSha256);
+            Assert.Equal(new CollectionComponent("U7", "U7 | VIC-II", "IC | DIP-40", null, null, null) with { Pins = null }, Assert.Single(kept.Components!) with { Pins = null });
+            Assert.Equal([new CollectionPin("12", "/RAS", "Output", null, "Pulsing")], kept.Components![0].Pins);
+
+            ShownCollection? served = await CollectionFlows.FindShownImageToAsync(
+                created.Answer.Id, ShaOf(pinout), _ => Task.FromResult<AccountRecord?>(null), this.thisStore, this.thisAccounts, Now, CancellationToken.None);
+
+            Assert.NotNull(served);
+        }
+
+        // The hourly sweep lets go of a picture no collection shows - a pinout drawing a collection shows stays.
+        [Fact]
+        public async Task The_sweep_keeps_a_pinout_drawing_a_collection_shows()
+        {
+            byte[] capture = TestPng.Rgb(32, 20, 3);
+            byte[] pinout = TestPng.Rgb(40, 60, 4);
+
+            await this.UploadAsync(Anna, capture);
+            await this.UploadAsync(Anna, pinout);
+            await this.CreateAsync(Anna, Content(Image(ShaOf(capture)) with { PinoutSha256 = ShaOf(pinout) }));
+
+            await CollectionFlows.SweepAsync(this.thisStore, this.thisFiles, this.thisAccounts, this.thisMailer, Site, Now.AddDays(3), CancellationToken.None);
+
+            Assert.True(File.Exists(this.thisFiles.PathOf(ShaOf(pinout))));
+            Assert.Contains(this.thisStore.Uploads, upload => upload.Sha256 == ShaOf(pinout));
         }
 
         // ---- "Download all" ---------------------------------------------------------------------------------------------

@@ -146,6 +146,7 @@ namespace CRT.Server.Handlers.Collections
     // ###########################################################################################
     // A collection as kept. The images are the contract's own entries with the picture's size (from its upload).
     // `UnsharedUtc`: when its owner stopped sharing it - its page offline until "Share" brings it back (migration 0028).
+    // `Components`: what CRT's component info window said of each component captured (migration 0029).
     // ###########################################################################################
     public sealed record CollectionRecord(
         string Id,
@@ -167,11 +168,16 @@ namespace CRT.Server.Handlers.Collections
         int CommentCount = 0,
         long LatestCommentId = 0,
         string? ClientKey = null,
-        DateTimeOffset? UnsharedUtc = null)
+        DateTimeOffset? UnsharedUtc = null,
+        IReadOnlyList<CollectionComponent>? Components = null)
     {
         public bool IsDeleted => this.DeletedUtc is not null;
 
         public bool IsSharingStopped => this.UnsharedUtc is not null;
+
+        // The facts of the component a capture is of, or null.
+        public CollectionComponent? ComponentOf(CollectionImageEntry image) =>
+            this.Components?.FirstOrDefault(component => string.Equals(component.Label, image.ComponentLabel, StringComparison.OrdinalIgnoreCase));
     }
 
     public sealed record CollectionImageRecord(CollectionImageEntry Entry, int Width, int Height);

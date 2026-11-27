@@ -160,8 +160,12 @@ public sealed class CollectionWindowTests : IDisposable
             Assert.Equal("https://classic-repair-toolbox.dk/collections/k7mq3x9vbn2p", kept.PageUrl);
             Assert.False(CollectionSharing.HasChangesNotShared(kept));
             Assert.Contains("https://classic-repair-toolbox.dk/collections/k7mq3x9vbn2p", window.StatusText.Text, StringComparison.Ordinal);
-            Assert.False(window.ShareButton.IsEnabled);
             Assert.True(window.CopyForForumButton.IsEnabled);
+
+            // Owner decision, 2026-11-27: every share counts its time again, so "Share" is offered with nothing changed too -
+            // and the window says what it does.
+            Assert.True(window.ShareButton.IsEnabled);
+            Assert.EndsWith("- \"Share\" again keeps it 1 year from that day.", window.DeleteDateText.Text, StringComparison.Ordinal);
 
             // Changed since: "Share" sends the change.
             window.DescriptionBox.Text = "It went black.";
@@ -886,7 +890,6 @@ public sealed class CollectionWindowTests : IDisposable
             CollectionWindow window = this.Window(collection);
 
             Assert.True(window.StopSharingButton.IsVisible);
-            Assert.False(window.ShareButton.IsEnabled);
 
             await window.StopSharingAsync();
 

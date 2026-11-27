@@ -2951,15 +2951,24 @@ repair on one board; it holds worklogs.
 possibility for a user to capture one or more oscilloscope images and make that a "collection". Then that collection can
 be shared to the internet on various forums like Lemon64, Forum64 or Reddit"; the plan's step 2, 2026-11-26, comments
 on each image step 3 and the website's "Your collections" step 4, the same day; decisions in the memory note).
-Every rule both ends keep is CRT.Data's (`CollectionRules` - id, "Delete in" 1 month / 6 months / 1 year (default) / 5
-years, never past 5 years ahead, limits, the page's anchors; `CollectionPng`; `CollectionContract`'s records), CRT
-asking before it sends and the server again (`CollectionFlows`, server 14.1.0).
+Every rule both ends keep is CRT.Data's (`CollectionRules` - id, "Delete in" 1 month / 6 months / 1 year (default),
+never past a year ahead, limits, the page's anchors; `CollectionPng`; `CollectionContract`'s records), CRT
+asking before it sends and the server again (`CollectionFlows`, server 14.1.0). **A collection is kept at most a YEAR,
+COUNTED FROM EVERY SHARE** (owner decision, 2026-11-27: "The max years a collection can be shared is 1 year, and not 5
+years - however, every time the user shares it again, it resets its time"; `CollectionSharing.DeleteAtFor`, server
+16.0.0): "Share" is always offered while it holds a capture, and sends the date anew; a "5y" an earlier CRT kept reads as
+the year.
 
 - **A collection is ONE BOARD'S and stays on this computer until "Share"** (`CollectionStore`: a folder per collection
   under `AppConfig.CollectionsFolder`, its captures by checksum - a test hands it a folder of its own, never the
   user's). The popup's "Collect captures into" row - shown once an oscilloscope session has been seen - picks one PER
   BOARD (`UserSettings.CollectionOfBoard`, "...ByBoard" so a renamed board takes it along), and every capture then goes
-  into it too, with the settings READ BACK from the oscilloscope and the baseline shown (`CollectionCaptures`); the
+  into it too, with the settings READ BACK from the oscilloscope and the baseline shown - and **the component AS THE POPUP
+  SHOWS IT** (`CollectionCaptures.ComponentOf`: its title, category line, description, purpose and pins with net and
+  reading) **and a picture of its pinout drawing** (`ComponentInfoWindow.PinoutPictureForCollection` - the popup's ON-SCREEN
+  drawing pictured, as a control drawn off screen finds no theme resources; its ground drawn under it on a second bitmap, as
+  `RenderTargetBitmap.Render` clears; kept by checksum beside the captures, `CollectionStore.AddCapture(..., pinout)`), both
+  taken before anything is awaited (`CollectionCaptures`); the
   banner offers "Take out of the collection" - only for a capture that click ADDED (`CaptureAdded`: the very same screen is
   one capture, and a screen `CollectionPng` refuses is said at the capture). Main hands each popup a `CollectionContext`
   (`Main.Collections.cs`).
@@ -2977,17 +2986,33 @@ asking before it sends and the server again (`CollectionFlows`, server 14.1.0).
   it again** (`CollectionClient`). A collection shows only pictures ITS OWN ACCOUNT uploaded. **The collection keeps the
   deletion date it SENT, never the server's echo** (`Result.SentDeleteAtUtc`; 2026-11-26: the database keeps
   milliseconds, so the echo read as "changed since it was shared" at once) - what was sent is a checksum of the request
-  (`CollectionSharing.ContentHash`), "Share" offered again only once it differs.
-- **The page names nobody** (owner decision) - the board, the id, the dates shared and deleted, each capture beside
-  CRT's baseline from the PUBLISHED data (by checksum, `CollectionBaselines`; only a file that is there is linked) -
-  built by the server, everything typed encoded, `noindex`. A locked owner's collections go offline.
+  (`CollectionSharing.ContentHash`), the window saying "changed since it was shared" only once it differs.
+- **The page names nobody** (owner decision) - the board, the id, the dates shared and deleted, each capture with its
+  settings and note - built by the server, everything typed encoded, `noindex`. A locked owner's collections go offline.
+  **CRT's own baseline is NOT shown** (owner request, 2026-11-27: "Do not include the baseline image, as that is not
+  relevant"; server 16.0.0, migration 0029 dropped its columns) - so the pages read nothing of the data trees. **In its
+  place the component, as the component info window shows it** (owner request, the same day: "show sometihng like the
+  component info window ... to get some context for this specific component and pin?", answered "Also the drawn pinout"):
+  the collection's `components` (CRT.Data's `CollectionComponent`, ONE per label - the latest capture's, `RequestOf`) and
+  each capture's `pinoutSha256` (uploaded and checked as a capture is, and kept while a collection shows it - the sweep and
+  `FindShownImageToAsync` ask both columns), drawn beside the capture large (`CollectionPages.InfoOf`: the pins table with
+  the pin captured marked, Net and Expected reading only when any pin has one).
 - **THE PAGES LOOK AS THE OWNER'S OSCILLOSCOPE NETWORK CAPTURE GALLERY DID** (owner request, 2026-11-27: "find heavy inspiration
   in my other project ... a nice dark view with nice UI functionalities" - the archived `Z:\mydir\http\!OLD\commodore-repair-toolbox.dk\public_html\onc`;
   `CollectionPages.Css`, server 15.1.0): a dark slate page under a frosted bar (CRT, the board and the red "Will be deleted"
-  badge, "Download N captures"), the captures as cards, each capture's and baseline's VIEWER made of CSS alone (`:target`,
-  ids "view.<anchor>" and "base.<anchor>" - a "." no anchor holds), and **ONE small fixed script for the viewer's keys** (arrows,
-  Esc), allowed by its hash (`CollectionPages.Script`/`ScriptHash` in the Content-Security-Policy) - nothing typed ever goes
-  into it, and nothing else may run. "Download all" (`/collections/<id>/download`, `CollectionDownload`) **goes through
+  badge, "Download N captures"), the captures as cards, each capture's VIEWER made of CSS alone (`:target`, ids
+  "view.<anchor>" - a "." no anchor holds), and **ONE small fixed script** - the viewer's keys (Left/Up back, Right/Down on,
+  Esc), its mouse wheel (on, back; not over the component's facts or the link panel, nor with Ctrl, which zooms) and the
+  link panel's copy buttons - allowed by its hash (`CollectionPages.Script`/`ScriptHash` in the Content-Security-Policy) -
+  nothing typed ever goes into it, and nothing else may run. **The viewer goes back and on by FOUR LARGE AREAS** (owner
+  request, 2026-11-27: "a big part of the right-side ... Same also for up/down", answered "Top and bottom areas too"): left
+  and top back, right and bottom on, the side ones showing a light round arrow (dark captures hid a dark one). **"Link"
+  under a capture opened large** (owner request, the same day: "copy a link to either Forum64, Lemon64 or Reddit. The link
+  should then navigate to this exact image, and show it large"): a `<details>` with the address of "#view.<anchor>" and
+  "Copy for Lemon64" (`[url=...]...[/url]`), "Copy for Forum64" (`[url='...']...[/url]`) and "Copy for Reddit"
+  (`[...](...)`, square brackets in the text made round), the text naming the capture and the board. **The brand in the
+  top left links to CRT's GitHub project** (`EmailTemplates.CrtProjectUrl`; owner request, the same day), never the
+  website. "Download all" (`/collections/<id>/download`, `CollectionDownload`) **goes through
   ASP.NET's `FileBufferingWriteStream`: .NET 10's ZipArchive writes each entry's data descriptor SYNCHRONOUSLY even through its
   async API** (measured by `CollectionFlowsTests`' async-only stream), and Kestrel refuses that.
 - **"STOP SHARING": THE PAGE OFFLINE, THE SAME LINK BACK** (owner decision, 2026-11-27: "Offline, same link back"; migration
@@ -3002,7 +3027,7 @@ asking before it sends and the server again (`CollectionFlows`, server 14.1.0).
 - **"Attach to worklog" COPIES the captures in** (owner decision, 2026-11-27: "A copy of its captures"; `CollectionWorklogAttach`,
   `Main.AttachCollectionToWorklogAsync`): each a photo of a worklog of the workbook worked in on the COLLECTION'S board, picked in
   the capture's own dialog (`WorklogAttachCaptureWindow.InitializeForCollection`, no comment box), its comment its place,
-  settings, baseline, reading and note (`CollectionSharing.WorklogCommentOf`), and the page's link under "Links of interest"
+  settings, reading and note (`CollectionSharing.WorklogCommentOf`), and the page's link under "Links of interest"
   while it is up; "Create new worklog" only while that board is the one shown. A thumbnail clicked opens the capture in the
   worklogs' zooming viewer. ("Looks wrong", a mark per capture, went the same day - owner request.)
 - **A capture is a plain PNG or nothing** (`CollectionPng`: only the chunks a picture needs, every checksum, exactly

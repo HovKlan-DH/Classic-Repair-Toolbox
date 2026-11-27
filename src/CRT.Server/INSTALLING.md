@@ -1096,6 +1096,13 @@ all"** on a page (`/collections/<id>/download`, under the `/collections/` lines 
 ZIP, built in the service's own `/tmp` past 4 MB (`PrivateTmp=true` in the unit). **A deleted collection's page stays for
 good**, saying what it was and why it went - the row is kept, its words, captures and comments are not.
 
+**What a capture shows** (16.0.0, migration 0029 - run by the service as it starts, nothing to do by hand): beside the
+picture large, the component as CRT's component info window shows it - its name, category, description, purpose, the
+picture of its pinout drawing and its pins, the pin captured marked; CRT's own baseline is no longer shown (0029 drops
+its columns), so the pages read nothing of the data trees. **A collection is kept at most a year ahead**, counted from
+the day it is shared - each "Share" starts the time again. Under each capture, "Link" copies its address for Lemon64,
+Forum64 or Reddit, opening that very capture large.
+
 **Comments** (also 14.1.0, migration 0026 - run by the service as it starts, nothing to do by hand): anybody signed in
 with a confirmed address writes them under each capture on the page (the page's own "Sign in" link), and the owner in
 CRT too. Plain text, at most 2,000 characters, 100 a day per account. The owner gets a mail per comment (not for their
@@ -1119,7 +1126,7 @@ each owner and writer, and "Locked accounts" to unlock one ("Accounts and sessio
 first; its page then says it was removed, and the hourly sweep deletes its pictures. Without the website, in SQL:
 
 ```bash
-mysql -u root -e "UPDATE crt_review.collections SET deleted_utc = UTC_TIMESTAMP(3), deleted_reason = 'administrator', title = NULL, description = NULL, forum_links_json = NULL WHERE id = '<id>'; DELETE FROM crt_review.collection_images WHERE collection_id = '<id>'; DELETE FROM crt_review.collection_comments WHERE collection_id = '<id>';"
+mysql -u root -e "UPDATE crt_review.collections SET deleted_utc = UTC_TIMESTAMP(3), deleted_reason = 'administrator', title = NULL, description = NULL, forum_links_json = NULL, components_json = NULL WHERE id = '<id>'; DELETE FROM crt_review.collection_images WHERE collection_id = '<id>'; DELETE FROM crt_review.collection_comments WHERE collection_id = '<id>';"
 ```
 
 **To see the newest comments**:

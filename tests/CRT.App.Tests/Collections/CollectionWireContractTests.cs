@@ -34,18 +34,23 @@ public sealed class CollectionWireContractTests
         JsonSerializer.Deserialize<T>(JsonSerializer.Serialize(answer, CollectionWireContractTests.Server), ReviewApiContract.WireSettings)!;
 
     [Fact]
-    public void A_collection_arrives_whole_its_captures_and_their_baselines_with_it()
+    public void A_collection_arrives_whole_its_captures_and_their_components_with_it()
     {
         var sent = new CollectionContentRequest(
             "Commodore 64", "250407", "PAL", "No picture", "It went black.", ["https://www.lemon64.com/forum/viewtopic.php?t=1"], When.AddYears(1),
-            [new CollectionImageEntry(Sha, "U7", "12", "/RAS", "Pulsing", "50us", "2V", "1V", new CollectionBaseline(Sha, "Scope baseline/U7_12_RAS.png", "100us", "2V", "1.5V"), "Stays low", When)]);
+            [new CollectionImageEntry(Sha, "U7", "12", "/RAS", "Pulsing", "50us", "2V", "1V", "Stays low", When, PinoutSha256: new string('b', 64))],
+            [new CollectionComponent("U7", "U7 | VIC-II | 6569", "IC | DIP-40", "Video chip", "Makes the picture", [new CollectionPin("12", "/RAS", "Output", "RAS", "Pulsing\nLow [64K]")])]);
 
         CollectionContentRequest received = CollectionWireContractTests.Received(sent);
 
         Assert.Equal((sent.HardwareName, sent.BoardName, sent.Region, sent.Title, sent.Description, sent.DeleteAtUtc), (received.HardwareName, received.BoardName, received.Region, received.Title, received.Description, received.DeleteAtUtc));
         Assert.Equal(sent.ForumLinks, received.ForumLinks);
-        Assert.Equal(sent.Images[0] with { Baseline = null }, received.Images[0] with { Baseline = null });
-        Assert.Equal(sent.Images[0].Baseline, received.Images[0].Baseline);
+        Assert.Equal(sent.Images[0], received.Images[0]);
+
+        CollectionComponent component = Assert.Single(received.Components!);
+
+        Assert.Equal(sent.Components![0] with { Pins = null }, component with { Pins = null });
+        Assert.Equal(sent.Components[0].Pins, component.Pins);
     }
 
     [Fact]

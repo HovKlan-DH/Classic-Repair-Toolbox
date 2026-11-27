@@ -525,7 +525,11 @@ namespace CRT.Server.Handlers.Collections
             ShownCollection? shown = await CollectionFlows.ShownToAsync(
                 await store.FindWithImageAsync(id!, sha256!, cancellationToken), viewer, accounts, now, cancellationToken, evenIfDeleted: false);
 
-            return shown is { IsWithheld: false } && shown.Collection.Images.Any(image => image.Entry.Sha256 == sha256) ? shown : null;
+            // A capture, or a capture's pinout drawing (server 16.0.0).
+            return shown is { IsWithheld: false } &&
+                   shown.Collection.Images.Any(image => image.Entry.Sha256 == sha256 || image.Entry.PinoutSha256 == sha256)
+                ? shown
+                : null;
         }
 
         private static async Task<ShownCollection?> ShownToAsync(
@@ -611,7 +615,7 @@ namespace CRT.Server.Handlers.Collections
         }
 
         // The captures as kept - each with its picture's size from its upload - or the refusal naming the pictures the server
-        // does not hold for this account (uploaded by it, the bytes still here).
+        // does not hold for this account (uploaded by it, the bytes still here): the captures, and their pinout drawings.
         private static async Task<(IReadOnlyList<CollectionImageRecord>? Images, CollectionOutcome? Missing)> ImagesOfAsync(
             long accountId,
             CollectionContentRequest content,
@@ -619,7 +623,10 @@ namespace CRT.Server.Handlers.Collections
             CollectionFiles files,
             CancellationToken cancellationToken)
         {
-            string[] wanted = content.Images.Select(image => image.Sha256).Distinct(StringComparer.Ordinal).ToArray();
+            string[] wanted = content.Images
+                .SelectMany(image => image.PinoutSha256 is { } pinout ? new[] { image.Sha256, pinout } : [image.Sha256])
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
 
             IReadOnlyDictionary<string, CollectionUploadRecord> uploads =
                 await store.FindUploadsAsync(accountId, wanted, cancellationToken);
@@ -663,7 +670,24 @@ namespace CRT.Server.Handlers.Collections
                 DeletedUtc: null,
                 DeletedReason: null,
                 images,
-                images.Count);
+                images.Count,
+                Components: (content.Components ?? []).Select(CollectionFlows.Tidied).ToList());
+
+        private static CollectionComponent Tidied(CollectionComponent component) =>
+            new(
+                component.Label.Trim(),
+                CollectionFlows.Blank(component.Title),
+                CollectionFlows.Blank(component.CategoryLine),
+                CollectionFlows.Blank(component.Description),
+                CollectionFlows.Blank(component.Purpose),
+                (component.Pins ?? [])
+                    .Select(pin => new CollectionPin(
+                        pin.Pin.Trim(),
+                        CollectionFlows.Blank(pin.Name),
+                        CollectionFlows.Blank(pin.Direction),
+                        CollectionFlows.Blank(pin.Net),
+                        CollectionFlows.Blank(pin.Reading)))
+                    .ToList());
 
         private static CollectionImageEntry Tidied(CollectionImageEntry image) =>
             image with
@@ -676,14 +700,7 @@ namespace CRT.Server.Handlers.Collections
                 VoltsPerDivision = CollectionFlows.Blank(image.VoltsPerDivision),
                 TriggerLevel = CollectionFlows.Blank(image.TriggerLevel),
                 Caption = CollectionFlows.Blank(image.Caption),
-                Baseline = image.Baseline is { } baseline
-                    ? new CollectionBaseline(
-                        CollectionFlows.Blank(baseline.Sha256),
-                        CollectionFlows.Blank(baseline.FileName),
-                        CollectionFlows.Blank(baseline.TimePerDivision),
-                        CollectionFlows.Blank(baseline.VoltsPerDivision),
-                        CollectionFlows.Blank(baseline.TriggerLevel))
-                    : null
+                PinoutSha256 = CollectionFlows.Blank(image.PinoutSha256)
             };
 
         private static string? Blank(string? text) => string.IsNullOrWhiteSpace(text) ? null : text.Trim();

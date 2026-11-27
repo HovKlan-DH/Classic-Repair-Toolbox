@@ -15,6 +15,16 @@ next push. The sections from 10.4.1 down to 1.0.0 were written from VERSION.md's
 - Plain ASCII punctuation.
 -->
 
+# 16.0.0, 2026-November-27
+--------------------------
+- A collection is kept at most a year ahead, and every "Share" starts its time again
+- A capture opened large shows its component as CRT's component info window does - the pinout drawing, its pins and the pin captured
+- CRT's own oscilloscope baseline is no longer shown beside a capture
+- In the viewer, a click on its left or top part goes back and on its right or bottom part goes on, as the mouse wheel and the Up and Down keys do
+- "Link" under a capture opened large copies its address for Lemon64, Forum64 or Reddit, and the link opens that very capture
+- "Classic Repair Toolbox" in a collection page's top left corner goes to the project on GitHub
+- The reminder mail says that sharing a collection again keeps it for the time chosen, at most a year
+
 # 15.1.0, 2026-November-27
 --------------------------
 - A collection's owner can stop sharing it: its page goes offline, and sharing it again brings it back under the same link

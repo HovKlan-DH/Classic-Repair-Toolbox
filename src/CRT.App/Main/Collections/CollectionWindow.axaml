@@ -89,10 +89,6 @@
 										<StackPanel Grid.Column="2" Spacing="4">
 											<TextBlock Text="{Binding Heading}" FontWeight="SemiBold" TextWrapping="Wrap" />
 											<TextBlock Text="{Binding Settings}" FontSize="12" TextWrapping="Wrap" />
-											<TextBlock Text="{Binding BaselineSettings}"
-													   FontSize="12"
-													   TextWrapping="Wrap"
-													   IsVisible="{Binding HasBaseline}" />
 											<!-- Several lines from the start, and growing with what is typed (owner request, 2026-11-27: "a textarea that
 											     auto-expands") - no height of its own, so the list scrolls instead. -->
 											<TextBox Text="{Binding Caption}"

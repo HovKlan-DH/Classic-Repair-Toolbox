@@ -33,7 +33,8 @@ namespace CRT.Server.Tests.Fakes
             if (!this.Collections.TryGetValue(id, out CollectionRecord? collection))
                 return Task.FromResult<CollectionRecord?>(null);
 
-            List<CollectionImageRecord> images = collection.Images.Where(image => image.Entry.Sha256 == sha256).ToList();
+            // As the database's: a capture, or a capture's pinout drawing (migration 0029).
+            List<CollectionImageRecord> images = collection.Images.Where(image => image.Entry.Sha256 == sha256 || image.Entry.PinoutSha256 == sha256).ToList();
 
             return Task.FromResult<CollectionRecord?>(collection with { Images = images, ImageCount = images.Count });
         }
@@ -172,6 +173,7 @@ namespace CRT.Server.Tests.Fakes
                 Title = null,
                 Description = null,
                 ForumLinks = [],
+                Components = null,
                 Images = [],
                 ImageCount = 0
             };
@@ -276,7 +278,7 @@ namespace CRT.Server.Tests.Fakes
                 .Where(upload => upload.UploadedUtc < uploadedBeforeUtc && !this.Collections.Values.Any(collection =>
                     collection.AccountId == upload.AccountId &&
                     !collection.IsDeleted &&
-                    collection.Images.Any(image => image.Entry.Sha256 == upload.Sha256)))
+                    collection.Images.Any(image => image.Entry.Sha256 == upload.Sha256 || image.Entry.PinoutSha256 == upload.Sha256)))
                 .ToList();
 
             foreach (CollectionUploadRecord upload in unused)

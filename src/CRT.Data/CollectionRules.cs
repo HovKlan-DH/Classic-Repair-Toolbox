@@ -17,7 +17,7 @@ namespace Handlers.DataHandling
     //     is shared (CRT's own store) - only an account may share one, and only from CRT.
     //   - Its page is https://classic-repair-toolbox.dk/collections/<id> - anybody with the link sees it, nobody gets a list of
     //     them, no search engine is asked to keep it, and it names nobody (owner decision, 2026-11-25).
-    //   - "Delete in" 1 month, 6 months, 1 year (the default) or 5 years - extended at any time, never past 5 years ahead.
+    //   - "Delete in" 1 month, 6 months or 1 year (the default), counted from every share - never past a year ahead.
     // ###########################################################################################
     public static class CollectionRules
     {
@@ -51,8 +51,10 @@ namespace Handlers.DataHandling
             key is { Length: 32 } && key.All(c => c is (>= '0' and <= '9') or (>= 'a' and <= 'f'));
 
         // ---------------------------------------------------------------------------------------
-        // "DELETE IN" (owner decision, 2026-11-25: "no need to show the "2 years""). A choice counts from the day it is made; a
-        // collection's date can be moved later, never more than MaximumYearsAhead ahead.
+        // "DELETE IN" (owner decisions, 2026-11-25: "no need to show the "2 years""; 2026-11-27: "The max years a collection can
+        // be shared is 1 year, and not 5 years - however, every time the user shares it again, it resets its time"). Counted
+        // from the day it is SHARED - every share, so sharing it again keeps it another month, six or a year - never more
+        // than MaximumYearsAhead ahead. A "5y" an earlier CRT kept reads as the default (LifetimeOf).
         // ---------------------------------------------------------------------------------------
         public sealed record Lifetime(string Key, string Words, int Months);
 
@@ -60,13 +62,12 @@ namespace Handlers.DataHandling
         [
             new("1m", "1 month", 1),
             new("6m", "6 months", 6),
-            new("1y", "1 year", 12),
-            new("5y", "5 years", 60)
+            new("1y", "1 year", 12)
         ];
 
         public const string DefaultLifetimeKey = "1y";
 
-        public const int MaximumYearsAhead = 5;
+        public const int MaximumYearsAhead = 1;
 
         public static Lifetime LifetimeOf(string? key) =>
             CollectionRules.Lifetimes.FirstOrDefault(lifetime => string.Equals(lifetime.Key, key, StringComparison.Ordinal)) ??
@@ -159,7 +160,7 @@ namespace Handlers.DataHandling
             if (content.DeleteAtUtc <= now)
                 problems.Add("The date it is deleted on has passed - choose how long to keep it again.");
             else if (content.DeleteAtUtc > CollectionRules.LatestDeleteAt(now))
-                problems.Add($"A collection is kept at most {CollectionRules.MaximumYearsAhead} years ahead.");
+                problems.Add("A collection is kept at most a year ahead - share it again to keep it longer.");
 
             IReadOnlyList<CollectionImageEntry> images = content.Images ?? [];
 
@@ -198,19 +199,72 @@ namespace Handlers.DataHandling
                 CollectionRules.AtMost(problems, image.TriggerLevel, CollectionRules.MaximumSettingLength, $"{where}: the trigger level");
                 CollectionRules.AtMost(problems, image.Caption, CollectionRules.MaximumCaptionLength, $"{where}: the note");
 
-                if (image.Baseline is { } baseline)
-                {
-                    if (baseline.Sha256 is not null && !DataTreeLayout.IsSha256(baseline.Sha256))
-                        problems.Add($"{where}: the baseline's checksum is not one.");
-
-                    CollectionRules.AtMost(problems, baseline.FileName, 260, $"{where}: the baseline's file name");
-                    CollectionRules.AtMost(problems, baseline.TimePerDivision, CollectionRules.MaximumSettingLength, $"{where}: the baseline's T/DIV");
-                    CollectionRules.AtMost(problems, baseline.VoltsPerDivision, CollectionRules.MaximumSettingLength, $"{where}: the baseline's V/DIV");
-                    CollectionRules.AtMost(problems, baseline.TriggerLevel, CollectionRules.MaximumSettingLength, $"{where}: the baseline's trigger level");
-                }
+                if (image.PinoutSha256 is not null && !DataTreeLayout.IsSha256(image.PinoutSha256))
+                    problems.Add($"{where}: the pinout drawing's checksum is not one.");
             }
 
+            CollectionRules.ComponentProblems(problems, content.Components ?? []);
+
             return problems;
+        }
+
+        // ---------------------------------------------------------------------------------------
+        // THE COMPONENTS' FACTS (server 16.0.0): one per component captured at most, each as CRT's component info window shows it.
+        // ---------------------------------------------------------------------------------------
+        public const int MaximumComponentTextLength = 300;
+
+        public const int MaximumPurposeLength = 4000;
+
+        public const int MaximumPinsPerComponent = 300;
+
+        public const int MaximumReadingLength = 1000;
+
+        private static void ComponentProblems(List<string> problems, IReadOnlyList<CollectionComponent?> components)
+        {
+            if (components.Count > CollectionRules.MaximumImages)
+                problems.Add($"A collection tells of at most {CollectionRules.MaximumImages} components.");
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (CollectionComponent? component in components)
+            {
+                if (component is null || string.IsNullOrWhiteSpace(component.Label))
+                {
+                    problems.Add("A component's facts name no component.");
+                    continue;
+                }
+
+                string label = component.Label.Trim();
+
+                if (!seen.Add(label))
+                    problems.Add($"{CollectionRules.Shortened(label)}: its facts are in the collection twice.");
+
+                CollectionRules.AtMost(problems, label, CollectionRules.MaximumNameLength, "A component's label");
+                CollectionRules.AtMost(problems, component.Title, CollectionRules.MaximumComponentTextLength, $"{label}: the title");
+                CollectionRules.AtMost(problems, component.CategoryLine, CollectionRules.MaximumComponentTextLength, $"{label}: the category");
+                CollectionRules.AtMost(problems, component.Description, CollectionRules.MaximumComponentTextLength, $"{label}: the description");
+                CollectionRules.AtMost(problems, component.Purpose, CollectionRules.MaximumPurposeLength, $"{label}: what it is there for");
+
+                IReadOnlyList<CollectionPin?> pins = component.Pins ?? [];
+
+                if (pins.Count > CollectionRules.MaximumPinsPerComponent)
+                    problems.Add($"{label}: a component lists at most {CollectionRules.MaximumPinsPerComponent} pins.");
+
+                foreach (CollectionPin? pin in pins)
+                {
+                    if (pin is null || string.IsNullOrWhiteSpace(pin.Pin))
+                    {
+                        problems.Add($"{label}: a pin is empty.");
+                        continue;
+                    }
+
+                    CollectionRules.AtMost(problems, pin.Pin, CollectionRules.MaximumSettingLength, $"{label}: a pin");
+                    CollectionRules.AtMost(problems, pin.Name, CollectionRules.MaximumNameLength, $"{label}, pin {pin.Pin}: the name");
+                    CollectionRules.AtMost(problems, pin.Direction, CollectionRules.MaximumSettingLength, $"{label}, pin {pin.Pin}: the direction");
+                    CollectionRules.AtMost(problems, pin.Net, CollectionRules.MaximumNameLength, $"{label}, pin {pin.Pin}: the net");
+                    CollectionRules.AtMost(problems, pin.Reading, CollectionRules.MaximumReadingLength, $"{label}, pin {pin.Pin}: the expected reading");
+                }
+            }
         }
 
         // "U7, pin 12" - a capture as a person names it.

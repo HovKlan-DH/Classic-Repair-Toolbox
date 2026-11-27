@@ -74,7 +74,10 @@ namespace Handlers.Collections
 
     // ###########################################################################################
     // One capture: its PNG by checksum (beside the collection's file), the pin it is of, the oscilloscope's settings read back
-    // as it was taken, and the board's baseline for that pin - as the page shows them.
+    // as it was taken, and what the component info window showed of its component then - the facts and pins (`Component`) and
+    // the drawn pinout with this pin marked, a PNG by checksum beside the captures (`PinoutSha256`; CollectionStore.AddCapture).
+    // A baseline an earlier CRT kept here is left in the file (JsonExtensionData) and never sent - owner decision,
+    // 2026-11-27: the baseline "is not relevant".
     // ###########################################################################################
     public sealed record LocalCapture
     {
@@ -94,15 +97,9 @@ namespace Handlers.Collections
 
         [JsonPropertyName("triggerLevel")] public string? TriggerLevel { get; init; }
 
-        [JsonPropertyName("baselineSha256")] public string? BaselineSha256 { get; init; }
+        [JsonPropertyName("component")] public CollectionComponent? Component { get; init; }
 
-        [JsonPropertyName("baselineFileName")] public string? BaselineFileName { get; init; }
-
-        [JsonPropertyName("baselineTimePerDivision")] public string? BaselineTimePerDivision { get; init; }
-
-        [JsonPropertyName("baselineVoltsPerDivision")] public string? BaselineVoltsPerDivision { get; init; }
-
-        [JsonPropertyName("baselineTriggerLevel")] public string? BaselineTriggerLevel { get; init; }
+        [JsonPropertyName("pinoutSha256")] public string? PinoutSha256 { get; init; }
 
         [JsonPropertyName("caption")] public string? Caption { get; init; }
 

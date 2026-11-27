@@ -270,4 +270,41 @@ public sealed class CollectionStoreTests : IDisposable
         Assert.Equal(written, File.GetLastWriteTimeUtc(file));
         Assert.Null(this.thisStore.Update(Guid.NewGuid().ToString("N"), collection => collection, out _));
     }
+
+    // A capture's pinout drawing (owner request, 2026-11-27) is kept beside it by its checksum - one drawing for two captures
+    // that show the same, which goes only with the last of them.
+    [Fact]
+    public void A_pinout_drawing_is_kept_beside_its_captures_and_goes_with_the_last()
+    {
+        LocalCollection made = this.thisStore.Create("Commodore 64", "250407", null, "U7", Now)!;
+        byte[] first = CRT.Data.Tests.TestPng.Rgb(16, 10, seed: 1);
+        byte[] second = CRT.Data.Tests.TestPng.Rgb(16, 10, seed: 2);
+        byte[] pinout = CRT.Data.Tests.TestPng.Rgb(30, 40, seed: 3);
+        string drawing = this.thisStore.CapturePath(made.LocalId, ShaOf(pinout));
+
+        this.thisStore.AddCapture(made.LocalId, first, Capture(), pinout);
+        LocalCollection both = this.thisStore.AddCapture(made.LocalId, second, Capture(), pinout).Collection!;
+
+        Assert.All(both.Captures, capture => Assert.Equal(ShaOf(pinout), capture.PinoutSha256));
+        Assert.True(File.Exists(drawing));
+
+        this.thisStore.RemoveCapture(made.LocalId, ShaOf(first));
+        Assert.True(File.Exists(drawing));
+
+        this.thisStore.RemoveCapture(made.LocalId, ShaOf(second));
+        Assert.False(File.Exists(drawing));
+    }
+
+    // A drawing the server would refuse is left out; the capture goes in all the same.
+    [Fact]
+    public void A_pinout_drawing_that_is_no_picture_is_left_out_and_the_capture_kept()
+    {
+        LocalCollection made = this.thisStore.Create("Commodore 64", "250407", null, "U7", Now)!;
+
+        CaptureAdded added = this.thisStore.AddCapture(made.LocalId, CRT.Data.Tests.TestPng.Rgb(16, 10), Capture(), [1, 2, 3]);
+
+        Assert.Equal(CaptureAddedKind.Added, added.Kind);
+        Assert.Null(Assert.Single(added.Collection!.Captures).PinoutSha256);
+        Assert.Single(Directory.GetFiles(Path.GetDirectoryName(this.thisStore.CapturePath(made.LocalId, ShaOf(CRT.Data.Tests.TestPng.Rgb(16, 10))))!, "*.png"));
+    }
 }

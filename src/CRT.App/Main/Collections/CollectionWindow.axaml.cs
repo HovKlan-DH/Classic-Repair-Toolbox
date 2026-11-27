@@ -62,10 +62,6 @@ namespace CRT
 
         public string Settings { get; init; } = string.Empty;
 
-        public string BaselineSettings { get; init; } = string.Empty;
-
-        public bool HasBaseline { get; init; }
-
         public string? Caption { get; set; }
 
         // Its comments on the page (step 3) - shown once they are read; the answer being typed.
@@ -118,8 +114,9 @@ namespace CRT
     //     icon), and asks to sign in when there is none.
     //   - "Stop sharing" takes the page offline - its link then says it is not shared at the moment, its captures and comments
     //     kept on the server (owner decision, 2026-11-27: "Offline, same link back").
-    //   - "Delete in" is how long the server keeps the page - counted from the day it is shared, or from the day a new choice
-    //     is made for one shared (and then shared again). At most 5 years ahead.
+    //   - "Delete in" is how long the server keeps the page - a month, six or a year, counted from EVERY share (owner decision,
+    //     2026-11-27: "every time the user shares it again, it resets its time"), so "Share" is offered for a shared collection
+    //     with nothing changed too: it keeps the page for another stretch.
     //   - "Open web page", and the link with a line about it for a forum ("Copy for forum", BBCode) or Reddit (Markdown).
     //   - "Attach to worklog" copies every capture into a worklog as photos (owner decision, 2026-11-27: "A copy of its
     //     captures"; CollectionWorklogAttach).
@@ -250,8 +247,6 @@ namespace CRT
                 Heading = CollectionRules.WhereOf(CollectionSharing.EntryOf(capture)) + (capture.SignalName is { } signal ? $" - {signal}" : string.Empty),
                 Settings = CollectionSharing.SettingsLine("This capture", capture.TimePerDivision, capture.VoltsPerDivision, capture.TriggerLevel) +
                            (capture.ExpectedReading is { } reading ? $" | Expected reading: {reading}" : string.Empty),
-                BaselineSettings = CollectionSharing.SettingsLine("Baseline", capture.BaselineTimePerDivision, capture.BaselineVoltsPerDivision, capture.BaselineTriggerLevel),
-                HasBaseline = capture.BaselineTimePerDivision is not null || capture.BaselineVoltsPerDivision is not null || capture.BaselineTriggerLevel is not null,
                 Caption = capture.Caption,
                 Thumbnail = this.thisThumbnails.GetValueOrDefault(capture.Sha256)
             };
@@ -507,12 +502,10 @@ namespace CRT
 
             this.SharedStateText.Text = CollectionWindow.SharedStateLine(collection, changed, sharedOn);
 
-            this.DeleteDateText.Text = collection.DeleteAtUtc is { } deleteAt
-                ? $"Its page is deleted on {CollectionRules.DateText(deleteAt)}."
-                : "Counted from the day it is shared.";
+            this.DeleteDateText.Text = CollectionWindow.DeleteDateLine(collection);
 
-            // Sharing stopped, "Share" brings the page back as it is - changed or not.
-            this.ShareButton.IsEnabled = !this.thisBusy && collection.Captures.Count > 0 && (!collection.IsOnline || changed);
+            // Shared, "Share" is offered changed or not: it keeps the page another stretch, counted from that day.
+            this.ShareButton.IsEnabled = !this.thisBusy && collection.Captures.Count > 0;
             this.StopSharingButton.IsVisible = collection.IsOnline;
             this.StopSharingButton.IsEnabled = !this.thisBusy;
             this.OpenPageButton.IsEnabled = !this.thisBusy && collection.PageUrl is not null;
@@ -525,6 +518,18 @@ namespace CRT
 
             this.AttachToWorklogButton.IsVisible = this.thisHost?.AttachToWorklog is not null && this.thisHost.WorklogIsOn?.Invoke() != false;
             this.AttachToWorklogButton.IsEnabled = !this.thisBusy && collection.Captures.Count > 0;
+        }
+
+        // When the page goes, and what "Share" does to it - counted from every share (owner decision, 2026-11-27).
+        internal static string DeleteDateLine(LocalCollection collection)
+        {
+            ArgumentNullException.ThrowIfNull(collection);
+
+            string lifetime = CollectionRules.LifetimeOf(collection.Lifetime).Words;
+
+            return collection.IsShared && collection.DeleteAtUtc is { } deleteAt
+                ? $"Its page is deleted on {CollectionRules.DateText(deleteAt)} - \"Share\" again keeps it {lifetime} from that day."
+                : $"Counted from the day it is shared - {lifetime}.";
         }
 
         // Where the collection stands, in a sentence - kept here only, shared, shared and changed since, or shared and stopped.
@@ -658,24 +663,14 @@ namespace CRT
         internal Action<WorklogPhotoViewerWindow>? ShowPictureOverrideForTests { get; set; }
 
         // ###########################################################################################
-        // "Delete in": for a collection shared, a new choice counts from today - and "Share" sends it.
+        // "Delete in": kept, and counted from the next share - which is when the server is told (CollectionSharing.DeleteAtFor).
         // ###########################################################################################
         private void OnLifetimePicked(object? sender, SelectionChangedEventArgs e)
         {
             if (this.thisShowing || this.thisHost is not { } host)
                 return;
 
-            LocalCollection? edited = host.Store.Update(
-                this.thisLocalId,
-                collection =>
-                {
-                    LocalCollection changed = this.EditedFrom(collection);
-
-                    return changed.IsShared
-                        ? changed with { DeleteAtUtc = CollectionRules.DeleteAt(DateTimeOffset.UtcNow, changed.Lifetime) }
-                        : changed;
-                },
-                out bool kept);
+            LocalCollection? edited = host.Store.Update(this.thisLocalId, this.EditedFrom, out bool kept);
 
             if (kept && edited is not null)
             {

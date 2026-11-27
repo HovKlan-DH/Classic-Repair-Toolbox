@@ -190,7 +190,10 @@ namespace Handlers.Collections
         // the popup offers no "Take out" for a capture it did not add (code review, 2026-11-27: it took the earlier one out) - or
         // refused by the rule the server shares by (CollectionPng: a screen too large is said now, not at "Share"), or not kept.
         // ###########################################################################################
-        public CaptureAdded AddCapture(string localId, byte[] png, LocalCapture capture)
+        // `pinout`: the component info window's drawing of the pinout, the capture's pin marked (owner request, 2026-11-27) - kept
+        // beside the captures by its checksum, as the page shows it; one the server would refuse (CollectionPng) is left out, the
+        // capture kept all the same.
+        public CaptureAdded AddCapture(string localId, byte[] png, LocalCapture capture, byte[]? pinout = null)
         {
             ArgumentNullException.ThrowIfNull(png);
             ArgumentNullException.ThrowIfNull(capture);
@@ -200,13 +203,16 @@ namespace Handlers.Collections
             string sha256 = Convert.ToHexStringLower(SHA256.HashData(png));
             CollectionPng.Result checkedPng = CollectionPng.Check(png);
 
+            (byte[] Bytes, string Sha256)? drawing =
+                pinout is { Length: > 0 } && CollectionPng.Check(pinout).IsCapture ? (pinout, Convert.ToHexStringLower(SHA256.HashData(pinout))) : null;
+
             lock (this.thisLock)
             {
-                return this.AddCaptureLocked(localId, png, sha256, checkedPng, capture);
+                return this.AddCaptureLocked(localId, png, sha256, checkedPng, capture, drawing);
             }
         }
 
-        private CaptureAdded AddCaptureLocked(string localId, byte[] png, string sha256, CollectionPng.Result checkedPng, LocalCapture capture)
+        private CaptureAdded AddCaptureLocked(string localId, byte[] png, string sha256, CollectionPng.Result checkedPng, LocalCapture capture, (byte[] Bytes, string Sha256)? drawing)
         {
             if (this.Find(localId) is not { } collection)
                 return new CaptureAdded(CaptureAddedKind.NotKept, null);
@@ -234,15 +240,37 @@ namespace Handlers.Collections
                 return new CaptureAdded(CaptureAddedKind.NotKept, collection);
             }
 
-            LocalCollection changed = collection with { Captures = [.. collection.Captures, capture with { Sha256 = sha256 }] };
+            // The pinout drawing beside it - one that cannot be written leaves the capture without it, nothing more.
+            string? pinoutPath = drawing is { } pinout ? this.CapturePath(localId, pinout.Sha256) : null;
+            bool pinoutWritten = false;
+
+            try
+            {
+                if (pinoutPath is not null && !File.Exists(pinoutPath))
+                {
+                    File.WriteAllBytes(pinoutPath, drawing!.Value.Bytes);
+                    pinoutWritten = true;
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Logger.Warning($"Could not keep a capture's pinout drawing in oscilloscope collection [{collection.Title ?? localId}]: {ex.Message}");
+                pinoutPath = null;
+            }
+
+            LocalCapture kept = capture with { Sha256 = sha256, PinoutSha256 = pinoutPath is null ? null : drawing!.Value.Sha256 };
+            LocalCollection changed = collection with { Captures = [.. collection.Captures, kept] };
 
             if (this.Save(changed))
                 return new CaptureAdded(CaptureAddedKind.Added, changed);
 
-            // Not listed: the picture just written goes too, never left in the folder named by no capture (code review,
+            // Not listed: the pictures just written go too, never left in the folder named by no capture (code review,
             // 2026-11-27).
             if (written)
                 CollectionStore.DeleteQuietly(path);
+
+            if (pinoutWritten)
+                CollectionStore.DeleteQuietly(pinoutPath!);
 
             return new CaptureAdded(CaptureAddedKind.NotKept, collection);
         }
@@ -278,13 +306,26 @@ namespace Handlers.Collections
             if (!this.Save(changed))
                 return null;
 
-            try
+            // Its pinout drawing too - unless another capture of the same pin shows the very same drawing.
+            string?[] files =
+            [
+                sha256,
+                collection.Captures.FirstOrDefault(kept => kept.Sha256 == sha256)?.PinoutSha256
+            ];
+
+            foreach (string file in files.OfType<string>().Where(DataTreeLayout.IsSha256).Distinct(StringComparer.Ordinal))
             {
-                File.Delete(this.CapturePath(localId, sha256));
-            }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-            {
-                Logger.Warning($"Could not delete a capture taken out of oscilloscope collection [{collection.Title ?? localId}]: {ex.Message}");
+                if (changed.Captures.Any(kept => kept.Sha256 == file || kept.PinoutSha256 == file))
+                    continue;
+
+                try
+                {
+                    File.Delete(this.CapturePath(localId, file));
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    Logger.Warning($"Could not delete a capture taken out of oscilloscope collection [{collection.Title ?? localId}]: {ex.Message}");
+                }
             }
 
             return changed;

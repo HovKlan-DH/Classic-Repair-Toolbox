@@ -108,15 +108,14 @@ namespace CRT.Server.Handlers.Collections
             int status = StatusCodes.Status200OK)
         {
             string siteBaseUrl = AccountPages.BaseUrl(options.PublicApiBaseUrl);
-            CollectionBaselines baselines = CollectionBaselines.For(options);
 
             if (!options.IsCollectionSharingConfigured)
-                return CollectionPageEndpoints.Page(context, CollectionPages.NotSetUp(siteBaseUrl), baselines, signedIn: false, StatusCodes.Status503ServiceUnavailable);
+                return CollectionPageEndpoints.Page(context, CollectionPages.NotSetUp(), signedIn: false, StatusCodes.Status503ServiceUnavailable);
 
             (AccountRecord? reader, string? token) = await CollectionPageEndpoints.ReaderAsync(context, accounts, options, cancellationToken);
 
             if (reader is null || token is null)
-                return CollectionPageEndpoints.Page(context, CollectionPages.ListSignedOut(siteBaseUrl), baselines, signedIn: false);
+                return CollectionPageEndpoints.Page(context, CollectionPages.ListSignedOut(siteBaseUrl), signedIn: false);
 
             CollectionListView list = await CollectionListFlows.ListForAsync(reader, store, accounts, DateTimeOffset.UtcNow, cancellationToken);
             var viewer = new CollectionViewer(reader.Id, reader.DisplayName, reader.IsAdministrator);
@@ -129,7 +128,6 @@ namespace CRT.Server.Handlers.Collections
             return CollectionPageEndpoints.Page(
                 context,
                 CollectionPages.List(siteBaseUrl, viewer, WebSessions.Csrf(token), list, asked, problem),
-                baselines,
                 signedIn: true,
                 status);
         }
@@ -237,10 +235,9 @@ namespace CRT.Server.Handlers.Collections
             int status = StatusCodes.Status200OK)
         {
             string siteBaseUrl = AccountPages.BaseUrl(options.PublicApiBaseUrl);
-            CollectionBaselines baselines = CollectionBaselines.For(options);
 
             if (!options.IsCollectionSharingConfigured)
-                return CollectionPageEndpoints.Page(context, CollectionPages.NotSetUp(siteBaseUrl), baselines, signedIn: false, StatusCodes.Status503ServiceUnavailable);
+                return CollectionPageEndpoints.Page(context, CollectionPages.NotSetUp(), signedIn: false, StatusCodes.Status503ServiceUnavailable);
 
             // The reader is read at most once - for the page below, or first when the collection is offline for everybody else.
             (AccountRecord? Account, string? Token)? reader = null;
@@ -252,19 +249,19 @@ namespace CRT.Server.Handlers.Collections
                 id, async token => (await ReadReaderAsync(token)).Account, store, accounts, DateTimeOffset.UtcNow, cancellationToken, evenIfDeleted: true);
 
             if (shown is null)
-                return CollectionPageEndpoints.Page(context, CollectionPages.NotFound(siteBaseUrl), baselines, signedIn: false, StatusCodes.Status404NotFound);
+                return CollectionPageEndpoints.Page(context, CollectionPages.NotFound(), signedIn: false, StatusCodes.Status404NotFound);
 
             CollectionRecord collection = shown.Collection;
 
             if (collection.IsDeleted)
-                return CollectionPageEndpoints.Page(context, CollectionPages.Deleted(siteBaseUrl, collection), baselines, signedIn: false, StatusCodes.Status410Gone);
+                return CollectionPageEndpoints.Page(context, CollectionPages.Deleted(collection), signedIn: false, StatusCodes.Status410Gone);
 
             // Its owner stopped sharing it, and this reader is neither its owner nor the administrator: only that it is not shared
             // at the moment - its link comes back once it is shared again (migration 0028). Never kept by a cache: it may be back
             // any moment.
             if (shown.IsWithheld)
             {
-                IResult withheld = CollectionPageEndpoints.Page(context, CollectionPages.SharingStopped(siteBaseUrl, collection), baselines, signedIn: false, StatusCodes.Status404NotFound);
+                IResult withheld = CollectionPageEndpoints.Page(context, CollectionPages.SharingStopped(collection), signedIn: false, StatusCodes.Status404NotFound);
                 context.Response.Headers.CacheControl = "no-store";
                 return withheld;
             }
@@ -282,7 +279,7 @@ namespace CRT.Server.Handlers.Collections
             if (adjust is not null)
                 view = adjust(view);
 
-            return CollectionPageEndpoints.Page(context, CollectionPages.Page(siteBaseUrl, collection, baselines.UrlOf, view), baselines, viewer is not null, status);
+            return CollectionPageEndpoints.Page(context, CollectionPages.Page(siteBaseUrl, collection, view), viewer is not null, status);
         }
 
         private static async Task<IResult> ImageAsync(
@@ -504,7 +501,7 @@ namespace CRT.Server.Handlers.Collections
             if (!options.IsCollectionSharingConfigured)
             {
                 return new SignedInForm(null, null, CollectionPageEndpoints.Page(
-                    context, CollectionPages.NotSetUp(siteBaseUrl), CollectionBaselines.For(options), signedIn: false, StatusCodes.Status503ServiceUnavailable));
+                    context, CollectionPages.NotSetUp(), signedIn: false, StatusCodes.Status503ServiceUnavailable));
             }
 
             IFormCollection? form = await AccountPageEndpoints.FormOf(context, cancellationToken);
@@ -545,11 +542,11 @@ namespace CRT.Server.Handlers.Collections
         }
 
         // A page signed in is the reader's own: never kept by anybody between them and the service.
-        private static IResult Page(HttpContext context, string html, CollectionBaselines baselines, bool signedIn, int status = StatusCodes.Status200OK)
+        private static IResult Page(HttpContext context, string html, bool signedIn, int status = StatusCodes.Status200OK)
         {
             IHeaderDictionary headers = context.Response.Headers;
 
-            headers.ContentSecurityPolicy = CollectionPages.ContentSecurityPolicy(baselines.Origin is { } origin ? [origin] : []);
+            headers.ContentSecurityPolicy = CollectionPages.ContentSecurityPolicy();
             headers.XContentTypeOptions = "nosniff";
             headers.XFrameOptions = "DENY";
             headers["Referrer-Policy"] = AccountPages.ReferrerPolicy;
@@ -559,33 +556,6 @@ namespace CRT.Server.Handlers.Collections
             headers.CacheControl = signedIn || headers.SetCookie.Count > 0 ? "private, no-store" : "no-cache";
 
             return Results.Content(html, "text/html; charset=utf-8", System.Text.Encoding.UTF8, status);
-        }
-    }
-
-    // ###########################################################################################
-    // WHERE A CAPTURE'S BASELINE PICTURE IS SERVED: the published data CRT reads - the stable tree when publishing to it is set
-    // up, else the BETA tree - under its stored name (DataTreeLayout.StoredFilePath, by checksum and the board's name's
-    // extension). Only a file that is there is linked, so the page never shows a broken picture.
-    // ###########################################################################################
-    public sealed class CollectionBaselines(string? treeRoot, string? publicBaseUrl)
-    {
-        public static CollectionBaselines For(ServerOptions options) =>
-            options.IsProductionPublishingConfigured
-                ? new CollectionBaselines(options.ProductionDataTreeRoot, options.ProductionPublicDataBaseUrl)
-                : new CollectionBaselines(options.DataTreeRoot, options.PublicDataBaseUrl);
-
-        // The origin the pictures come from, for the page's Content-Security-Policy.
-        public string? Origin =>
-            Uri.TryCreate(publicBaseUrl, UriKind.Absolute, out Uri? uri) ? uri.GetLeftPart(UriPartial.Authority) : null;
-
-        public string? UrlOf(CollectionBaseline baseline)
-        {
-            if (string.IsNullOrWhiteSpace(treeRoot) || string.IsNullOrWhiteSpace(publicBaseUrl) || !DataTreeLayout.IsSha256(baseline.Sha256))
-                return null;
-
-            string stored = DataTreeLayout.StoredFilePath(baseline.Sha256!, baseline.FileName ?? ".png");
-
-            return File.Exists(Path.Combine(treeRoot, stored)) ? $"{publicBaseUrl.TrimEnd('/')}/{stored}" : null;
         }
     }
 }

@@ -43,7 +43,7 @@ namespace CRT.Server.Tests
 
             this.thisStore.Collections[Id] = new CollectionRecord(
                 Id, Owner.Id, "Commodore 64", "250407", "PAL", "No picture", null, [], Now, Now, Now.AddYears(1), null, null, null,
-                [new CollectionImageRecord(new CollectionImageEntry(Sha, "U7", "12", "/RAS", null, null, null, null, null, null, Now), 800, 480)],
+                [new CollectionImageRecord(new CollectionImageEntry(Sha, "U7", "12", "/RAS", null, null, null, null, null, Now), 800, 480)],
                 1);
         }
 

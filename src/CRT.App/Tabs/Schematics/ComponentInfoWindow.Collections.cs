@@ -228,13 +228,18 @@ namespace CRT
 
         // ###########################################################################################
         // A capture just saved, into the collection picked too: its bytes copied in, its pin and the settings read back from the
-        // oscilloscope with it. Nothing when none is picked. `baselinePath`: the file of the image shown, whose checksum names
-        // the baseline in the published data.
+        // oscilloscope with it - and what this window shows of its component AS IT IS NOW (owner request, 2026-11-27: the page
+        // shows "something like the component info window" beside a capture seen large): its facts and pins, and a picture of
+        // the drawn pinout with the shown image's pin marked. Taken before anything is awaited, so moving on meanwhile changes
+        // nothing of it. Nothing when no collection is picked.
         // ###########################################################################################
-        internal async Task CollectCaptureAsync(ComponentImageEntry shown, string? baselinePath, string savedFilePath)
+        internal async Task CollectCaptureAsync(ComponentImageEntry shown, string savedFilePath)
         {
             if (!this.OffersCollections || this.thisCollections is not { } context || this.PickedCollection is not { } collection)
                 return;
+
+            CollectionComponent? component = this.ComponentShownForCollection();
+            byte[]? pinout = this.PinoutPictureForCollection();
 
             try
             {
@@ -249,12 +254,10 @@ namespace CRT
                     Logger.Warning($"Could not read the oscilloscope's settings for a capture into a collection: {ex.Message}");
                 }
 
-                (byte[] png, string? baselineSha) = await Task.Run(() => (
-                    File.ReadAllBytes(savedFilePath),
-                    baselinePath is { } path && File.Exists(path) ? DataTreeLayout.Sha256Of(path) : null));
+                byte[] png = await Task.Run(() => File.ReadAllBytes(savedFilePath));
 
-                LocalCapture capture = CollectionCaptures.CaptureOf(shown, reading, baselineSha, DateTimeOffset.UtcNow);
-                CaptureAdded added = await Task.Run(() => context.Store.AddCapture(collection.LocalId, png, capture));
+                LocalCapture capture = CollectionCaptures.CaptureOf(shown, reading, component, DateTimeOffset.UtcNow);
+                CaptureAdded added = await Task.Run(() => context.Store.AddCapture(collection.LocalId, png, capture, pinout));
 
                 // *** THE BANNER IS THE CAPTURE ON SCREEN'S (code review, 2026-11-27). *** Moved to another image while the settings
                 // were read, it showed "Added to" and "Take out" under that image - and took this capture out. The capture is
@@ -356,5 +359,75 @@ namespace CRT
         // The capture on screen, as showing it makes it (ShowTemporaryCapturedOscilloscopeImage) - without decoding a picture,
         // so a test can hand CollectCaptureAsync a file that is none.
         internal void CaptureOnScreenForTests(string? savedFilePath) => this.thisCapturedScopeImagePath = savedFilePath;
+
+        // ###########################################################################################
+        // THE COMPONENT AS THIS WINDOW SHOWS IT NOW (CollectionCaptures.ComponentOf): its title, category line, description and
+        // purpose as the info pane shows them, and its pins as the pin list does - of the region shown.
+        // ###########################################################################################
+        internal CollectionComponent? ComponentShownForCollection()
+        {
+            ComponentEntry? entry = ComponentImageQueries.PickComponentEntry(this._allComponentEntries, this._localRegion);
+
+            return CollectionCaptures.ComponentOf(
+                this._boardLabel,
+                ComponentPopupContent.TitleOf(this._boardLabel, entry),
+                ComponentPopupContent.CategoryLine(entry),
+                entry?.Description,
+                entry?.Purpose,
+                this._pinRows);
+        }
+
+        // ###########################################################################################
+        // THE DRAWN PINOUT AS THIS WINDOW SHOWS IT NOW - the case, a part drawn as it looks, or a resistor's or capacitor's bands -
+        // with the pin of the image shown marked (ShowViewedPin), as a PNG for the collection's page (owner request, 2026-11-27,
+        // asked: "Also the drawn pinout"). CRT's own drawing, pictured as it stands on screen in the theme shown: drawn off
+        // screen it would find none of the theme's colors (PinoutDrawing.Brush asks the tree it stands in). On the window's
+        // own ground - a picture is opaque on the page - at twice its size for a sharp page, less when that would pass what a
+        // collection takes (CollectionPng). Null when no drawing is shown, or it cannot be pictured.
+        // ###########################################################################################
+        internal byte[]? PinoutPictureForCollection()
+        {
+            if (this.PinoutPictureOverrideForTests is { } standIn)
+                return standIn();
+
+            Avalonia.Controls.Control? drawing = new Avalonia.Controls.Control[] { this.InfoPinoutDrawing, this.InfoPartDrawing, this.InfoResistorPicture }
+                .FirstOrDefault(control => control.IsEffectivelyVisible && control.Bounds.Width >= 1 && control.Bounds.Height >= 1);
+
+            if (drawing is null)
+                return null;
+
+            Avalonia.Size size = drawing.Bounds.Size;
+            double scale = Math.Min(2.0, Math.Min(CollectionPng.MaximumWidth / size.Width, CollectionPng.MaximumHeight / size.Height));
+            var pixels = new Avalonia.PixelSize(Math.Max(1, (int)Math.Floor(size.Width * scale)), Math.Max(1, (int)Math.Floor(size.Height * scale)));
+            var dpi = new Avalonia.Vector(96 * scale, 96 * scale);
+
+            try
+            {
+                using var drawn = new Avalonia.Media.Imaging.RenderTargetBitmap(pixels, dpi);
+                drawn.Render(drawing);
+
+                // Rendering clears its bitmap first, so the ground goes on a second one, under the drawing.
+                using var framed = new Avalonia.Media.Imaging.RenderTargetBitmap(pixels, dpi);
+
+                using (Avalonia.Media.DrawingContext context = framed.CreateDrawingContext())
+                {
+                    context.FillRectangle(this.Background ?? Avalonia.Media.Brushes.White, new Avalonia.Rect(size));
+                    context.DrawImage(drawn, new Avalonia.Rect(size));
+                }
+
+                using var stream = new MemoryStream();
+                framed.Save(stream, new Avalonia.Media.Imaging.PngBitmapEncoderOptions());
+
+                return stream.Length == 0 ? null : stream.ToArray();
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or NotSupportedException)
+            {
+                Logger.Warning($"Could not picture the pinout of [{this._boardLabel}] for a collection: {ex.Message}");
+                return null;
+            }
+        }
+
+        // Stands in for picturing the drawing in a test - the headless platform draws nothing. Null in the app.
+        internal Func<byte[]?>? PinoutPictureOverrideForTests { get; set; }
     }
 }

@@ -13,11 +13,11 @@ namespace CRT.Server.Handlers.Collections
     //   - IT NAMES NOBODY: the board, the owner's title and words, the collection's id, the date it was shared and the date it
     //     is deleted (owner decision: "For the name of the collection I do not think any user identification should be shown
     //     at all"; "The collection page should also show date of creation and date of deletion").
-    //   - IT SAYS WHERE IT COMES FROM: Classic Repair Toolbox, with a link to download it.
-    //   - EACH CAPTURE BESIDE CRT'S OWN BASELINE FOR THAT PIN, when the board has one - the baseline is in the published data,
-    //     linked from there, never uploaded - and their settings in a table, a value that differs from the baseline's in bold,
-    //     so a wrong oscilloscope setup shows before anybody has to ask.
-    //   - Every capture has its own anchor ("#U7-12"), so a forum reply can point at one pin.
+    //   - IT SAYS WHERE IT COMES FROM: Classic Repair Toolbox, with a link to its project page.
+    //   - EACH CAPTURE SEEN LARGE TELLS OF ITS COMPONENT as CRT's component info window did - its facts, its pins, and CRT's
+    //     drawing of its pinout with the pin marked (InfoOf).
+    //   - Every capture has its own anchor ("#U7-12") and its own address seen large ("#view.U7-12"), so a forum reply can
+    //     point at one pin.
     //
     // PURE: a collection in, a page out. Every word anybody typed is HTML-ENCODED here (Encode); the page's one style block and
     // its one small script - the viewer's keys, fixed text with nothing typed in it - are allowed by their hashes (StyleHash,
@@ -38,19 +38,17 @@ namespace CRT.Server.Handlers.Collections
             $"{CollectionRules.PageUrl(siteBaseUrl, id)}/{sha256}.png";
 
         // ###########################################################################################
-        // The page of a collection shown. `baselineUrl` gives the address of a capture's baseline picture in the published data,
-        // or null when it is not there.
-        // ###########################################################################################
-        // ###########################################################################################
+        // THE PAGE OF A COLLECTION SHOWN.
+        //
         // *** THE LOOK IS THE OWNER'S OSCILLOSCOPE NETWORK CAPTURE GALLERY'S (owner request, 2026-11-27: "find heavy inspiration in
         // my other project ... a nice dark view with nice UI functionalities"). *** A dark page under a frosted bar - CRT on the
         // left, the board and the red "Will be deleted" badge in the middle, "Download all" on the right - then the captures as a
-        // grid of cards, each opening the VIEWER: the capture large, previous and next, its place in the list, "Download".
-        // The viewer is the page's own CSS (:target), so it works with no script at all; the one small script (Script, allowed
-        // by its hash) only adds the keys - the arrows and Esc. Under the grid each capture's section: beside the baseline,
-        // their settings, the note and the comments.
+        // grid of cards, each opening the VIEWER (Viewers). The viewer is the page's own CSS (:target), so it works with no
+        // script at all; the one small script (Script, allowed by its hash) only adds the keys, the wheel and "Copy". Under the
+        // grid each capture's section: the picture, its settings, the note and the comments. (CRT's own baseline beside each
+        // went on 2026-11-27 - owner decision: "that is not relevant".)
         // ###########################################################################################
-        public static string Page(string siteBaseUrl, CollectionRecord collection, Func<CollectionBaseline, string?> baselineUrl, CollectionPageView? view = null)
+        public static string Page(string siteBaseUrl, CollectionRecord collection, CollectionPageView? view = null)
         {
             view ??= CollectionPageView.SignedOut;
 
@@ -107,11 +105,10 @@ namespace CRT.Server.Handlers.Collections
                     anchors[i],
                     previous: i > 0 ? anchors[i - 1] : null,
                     next: i < collection.Images.Count - 1 ? anchors[i + 1] : null,
-                    baselineUrl,
                     view));
             }
 
-            body.Append(CollectionPages.Viewers(siteBaseUrl, collection, anchors, baselineUrl));
+            body.Append(CollectionPages.Viewers(siteBaseUrl, collection, anchors));
 
             string middle =
                 $"<div class=\"meta-line1\">{Encode(CollectionPages.BoardLine(collection))}</div>" +
@@ -144,7 +141,7 @@ namespace CRT.Server.Handlers.Collections
                     .Append("<meta name=\"twitter:card\" content=\"summary_large_image\">");
             }
 
-            return CollectionPages.Layout(siteBaseUrl, name, body.ToString(), preview.ToString(), middle: middle, actions: actions, panelled: false);
+            return CollectionPages.Layout(name, body.ToString(), preview.ToString(), middle: middle, actions: actions, panelled: false);
         }
 
         // "Download all" - every capture in one ZIP (CollectionPageEndpoints.DownloadAsync).
@@ -201,22 +198,28 @@ namespace CRT.Server.Handlers.Collections
         }
 
         // ###########################################################################################
-        // THE VIEWER - one per capture, and one per baseline shown - opened by its id in the address (#view.U7-12), closed by any
-        // other ("#viewer.closed", no element's, so the page does not move). The ids hold a ".", which a capture's anchor never
-        // does (letters, digits and "-" - CollectionRules.AnchorsOf), so none can be taken for another. Previous and next go
-        // round, as the gallery's did.
+        // THE VIEWER - one per capture - opened by its id in the address (#view.U7-12), so a link to it opens the page with the
+        // capture large; closed by any other ("#viewer.closed", no element's, so the page does not move). The ids hold a ".",
+        // which a capture's anchor never does (letters, digits and "-" - CollectionRules.AnchorsOf), so none can be taken for
+        // another. Previous and next go round, as the gallery's did - by LARGE AREAS of the picture (owner requests, 2026-11-27:
+        // "click in a big part of the right-side for right-navigation and also big part of the left-side ... Same also for
+        // up/down"; asked, "Top and bottom areas too"): its left and its top go back, its right and its bottom on, the middle
+        // nothing - and by the arrow keys and the wheel (Script). Beside the picture what CRT's component info window said of its
+        // component (InfoOf), and under it "Link", which offers the viewer's own address ready for Lemon64, Forum64 or Reddit.
         // ###########################################################################################
         public const string ViewerClosed = "viewer.closed";
 
         public static string ViewerId(string anchor) => $"view.{anchor}";
 
-        public static string BaselineViewerId(string anchor) => $"base.{anchor}";
+        // A capture's own address - the page with it open in the viewer.
+        public static string ViewerUrl(string siteBaseUrl, string id, string anchor) =>
+            $"{CollectionRules.PageUrl(siteBaseUrl, id)}#{CollectionPages.ViewerId(anchor)}";
 
         // A capture saved from the viewer, or in "Download all"'s ZIP: its place on the page and its anchor - "001-U7-12.png".
         public static string CaptureFileName(int index, string anchor) =>
             $"{(index + 1).ToString("D3", System.Globalization.CultureInfo.InvariantCulture)}-{anchor}.png";
 
-        private static string Viewers(string siteBaseUrl, CollectionRecord collection, IReadOnlyList<string> anchors, Func<CollectionBaseline, string?> baselineUrl)
+        private static string Viewers(string siteBaseUrl, CollectionRecord collection, IReadOnlyList<string> anchors)
         {
             var html = new StringBuilder();
             int count = collection.Images.Count;
@@ -226,52 +229,134 @@ namespace CRT.Server.Handlers.Collections
                 CollectionImageEntry image = collection.Images[i].Entry;
                 string where = CollectionRules.WhereOf(image) + (image.SignalName is { } signal ? $" - {signal}" : string.Empty);
                 string picture = CollectionPages.ImageUrl(siteBaseUrl, collection.Id, image.Sha256);
+                string? previous = count > 1 ? CollectionPages.ViewerId(anchors[(i - 1 + count) % count]) : null;
+                string? next = count > 1 ? CollectionPages.ViewerId(anchors[(i + 1) % count]) : null;
+                string info = CollectionPages.InfoOf(siteBaseUrl, collection, image);
 
-                html.Append(CollectionPages.Viewer(
-                    CollectionPages.ViewerId(anchors[i]),
-                    picture,
-                    $"Oscilloscope capture of {CollectionRules.WhereOf(image)}",
-                    where,
-                    CollectionPages.SettingsText(image.TimePerDivision, image.VoltsPerDivision, image.TriggerLevel),
-                    previous: count > 1 ? CollectionPages.ViewerId(anchors[(i - 1 + count) % count]) : null,
-                    next: count > 1 ? CollectionPages.ViewerId(anchors[(i + 1) % count]) : null,
-                    counter: $"{i + 1} / {count}",
-                    downloadName: CollectionPages.CaptureFileName(i, anchors[i])));
+                html.Append($"<div class=\"modal\" id=\"{Encode(CollectionPages.ViewerId(anchors[i]))}\" role=\"dialog\" aria-modal=\"true\" aria-label=\"{Encode(where)}\">")
+                    .Append($"<a class=\"backdrop\" href=\"#{CollectionPages.ViewerClosed}\" aria-label=\"Close\"></a>")
+                    .Append("<div class=\"dialog\">")
+                    .Append($"<a class=\"close\" href=\"#{CollectionPages.ViewerClosed}\" title=\"Close (Esc)\">&#215;</a>")
+                    .Append(info.Length == 0 ? "<div class=\"vbody wide\">" : "<div class=\"vbody\">")
+                    .Append("<div class=\"viewer\">")
+                    .Append($"<div class=\"stage\"><img src=\"{Encode(picture)}\" loading=\"lazy\" alt=\"{Encode($"Oscilloscope capture of {CollectionRules.WhereOf(image)}")}\"></div>");
 
-                if (image.Baseline is { Sha256: not null } baseline && baselineUrl(baseline) is { } baselinePicture)
+                if (previous is not null && next is not null)
                 {
-                    html.Append(CollectionPages.Viewer(
-                        CollectionPages.BaselineViewerId(anchors[i]),
-                        baselinePicture,
-                        $"Classic Repair Toolbox's baseline of {CollectionRules.WhereOf(image)}",
-                        $"{where} - Classic Repair Toolbox's baseline",
-                        CollectionPages.SettingsText(baseline.TimePerDivision, baseline.VoltsPerDivision, baseline.TriggerLevel),
-                        previous: null,
-                        next: null,
-                        counter: string.Empty,
-                        downloadName: null));
+                    html.Append($"<a class=\"zone zone-left prev\" href=\"#{Encode(previous)}\" title=\"Previous (left arrow)\"><span>&#8249;</span></a>")
+                        .Append($"<a class=\"zone zone-right next\" href=\"#{Encode(next)}\" title=\"Next (right arrow)\"><span>&#8250;</span></a>")
+                        .Append($"<a class=\"zone zone-top prev\" href=\"#{Encode(previous)}\" title=\"Previous (up arrow)\" tabindex=\"-1\"></a>")
+                        .Append($"<a class=\"zone zone-bottom next\" href=\"#{Encode(next)}\" title=\"Next (down arrow)\" tabindex=\"-1\"></a>");
                 }
+
+                html.Append("</div>")
+                    .Append(info)
+                    .Append("</div><div class=\"footer\"><div class=\"title\">")
+                    .Append($"<div class=\"m-name\">{Encode(where)}</div>")
+                    .Append($"<div class=\"m-time\">{Encode(CollectionPages.SettingsText(image.TimePerDivision, image.VoltsPerDivision, image.TriggerLevel))}</div></div>")
+                    .Append("<div class=\"actions\">")
+                    .Append(CollectionPages.LinkPanel(siteBaseUrl, collection, image, anchors[i]))
+                    .Append($"<a class=\"btn\" href=\"{Encode(picture)}\" download=\"{Encode(CollectionPages.CaptureFileName(i, anchors[i]))}\">Download</a>")
+                    .Append($"<span class=\"counter\">{i + 1} / {count}</span>")
+                    .Append("</div></div></div></div>");
             }
 
             return html.ToString();
         }
 
-        private static string Viewer(string id, string picture, string alt, string title, string settings, string? previous, string? next, string counter, string? downloadName) =>
-            $"<div class=\"modal\" id=\"{Encode(id)}\" role=\"dialog\" aria-modal=\"true\" aria-label=\"{Encode(title)}\">" +
-            $"<a class=\"backdrop\" href=\"#{CollectionPages.ViewerClosed}\" aria-label=\"Close\"></a>" +
-            "<div class=\"dialog\">" +
-            $"<a class=\"iconbtn close\" href=\"#{CollectionPages.ViewerClosed}\" title=\"Close (Esc)\">&#215;</a>" +
-            "<div class=\"viewer\">" +
-            (previous is null ? "<span></span>" : $"<a class=\"nav prev\" href=\"#{Encode(previous)}\" title=\"Previous (left arrow)\">&#8249;</a>") +
-            $"<div class=\"stage\"><img src=\"{Encode(picture)}\" loading=\"lazy\" alt=\"{Encode(alt)}\"></div>" +
-            (next is null ? "<span></span>" : $"<a class=\"nav next\" href=\"#{Encode(next)}\" title=\"Next (right arrow)\">&#8250;</a>") +
-            "</div><div class=\"footer\"><div class=\"title\">" +
-            $"<div class=\"m-name\">{Encode(title)}</div>" +
-            $"<div class=\"m-time\">{Encode(settings)}</div></div>" +
-            "<div class=\"actions\">" +
-            (downloadName is null ? string.Empty : $"<a class=\"btn\" href=\"{Encode(picture)}\" download=\"{Encode(downloadName)}\">Download</a>") +
-            (counter.Length == 0 ? string.Empty : $"<span class=\"counter\">{Encode(counter)}</span>") +
-            "</div></div></div></div>";
+        // ###########################################################################################
+        // "LINK" (owner request, 2026-11-27: "Every image (when viewing it large) should have a link, and clicking that link will
+        // expand an option to copy a link to either Forum64, Lemon64 or Reddit. The link should then navigate to this exact image,
+        // and show it large"): a <details> - opened with no script - holding the viewer's address and a "Copy" for each forum's
+        // way of writing a link (Script copies the button's data-copy). The words are the capture's place and the board.
+        // ###########################################################################################
+        public static string CaptureLinkText(CollectionRecord collection, CollectionImageEntry image) =>
+            CollectionRules.WhereOf(image) + (image.SignalName is { } signal ? $" - {signal}" : string.Empty) +
+            $" ({collection.HardwareName} {collection.BoardName})";
+
+        // Lemon64's phpBB, Forum64's WoltLab and Reddit's Markdown each write a link their own way.
+        public static string ForLemon64(string url, string text) => $"[url={url}]{text}[/url]";
+
+        public static string ForForum64(string url, string text) => $"[url='{url}']{text}[/url]";
+
+        public static string ForReddit(string url, string text) =>
+            $"[{text.Replace("[", "(", StringComparison.Ordinal).Replace("]", ")", StringComparison.Ordinal)}]({url})";
+
+        private static string LinkPanel(string siteBaseUrl, CollectionRecord collection, CollectionImageEntry image, string anchor)
+        {
+            string url = CollectionPages.ViewerUrl(siteBaseUrl, collection.Id, anchor);
+            string text = CollectionPages.CaptureLinkText(collection, image);
+
+            return "<details class=\"share\"><summary class=\"btn\">Link</summary><div class=\"share-panel\">" +
+                   "<label>A link to this capture, shown large:</label>" +
+                   $"<input class=\"share-url\" type=\"text\" readonly value=\"{Encode(url)}\" aria-label=\"The capture's link\">" +
+                   $"<button type=\"button\" class=\"btn\" data-copy=\"{Encode(CollectionPages.ForLemon64(url, text))}\">Copy for Lemon64</button>" +
+                   $"<button type=\"button\" class=\"btn\" data-copy=\"{Encode(CollectionPages.ForForum64(url, text))}\">Copy for Forum64</button>" +
+                   $"<button type=\"button\" class=\"btn\" data-copy=\"{Encode(CollectionPages.ForReddit(url, text))}\">Copy for Reddit</button>" +
+                   "</div></details>";
+        }
+
+        // ###########################################################################################
+        // WHAT CRT'S COMPONENT INFO WINDOW SAID OF THE CAPTURE'S COMPONENT (owner request, 2026-11-27: "show something like the
+        // component info window from the CRT application ... to get some context for this specific component and pin"; asked,
+        // "Also the drawn pinout"): its title, category line, description and purpose, CRT's own drawing of its pinout with the
+        // capture's pin marked (a picture CRT uploaded - CollectionImageEntry.PinoutSha256), and its pins with this capture's
+        // highlighted. Every word as CRT sent it, encoded. Empty when CRT sent nothing of it.
+        // ###########################################################################################
+        private static string InfoOf(string siteBaseUrl, CollectionRecord collection, CollectionImageEntry image)
+        {
+            CollectionComponent? component = collection.ComponentOf(image);
+
+            if (component is null && image.PinoutSha256 is null)
+                return string.Empty;
+
+            var html = new StringBuilder("<aside class=\"info\">");
+
+            html.Append($"<h3>{Encode(component?.Title ?? image.ComponentLabel)}</h3>");
+
+            if (component?.CategoryLine is { } category)
+                html.Append($"<p class=\"muted\">{Encode(category)}</p>");
+
+            if (component?.Description is { } description)
+                html.Append($"<p>{Encode(description)}</p>");
+
+            if (component?.Purpose is { } purpose)
+                html.Append($"<p class=\"text\">{Encode(purpose)}</p>");
+
+            if (image.PinoutSha256 is { } pinout)
+            {
+                html.Append($"<img class=\"pinout\" src=\"{Encode(CollectionPages.ImageUrl(siteBaseUrl, collection.Id, pinout))}\" loading=\"lazy\" ")
+                    .Append($"alt=\"{Encode($"The pinout of {image.ComponentLabel}" + (image.Pin is { } marked ? $", pin {marked} marked" : string.Empty))}\">");
+            }
+
+            IReadOnlyList<CollectionPin> pins = component?.Pins ?? [];
+
+            if (pins.Count > 0)
+            {
+                bool nets = pins.Any(pin => pin.Net is not null);
+                bool readings = pins.Any(pin => pin.Reading is not null);
+
+                html.Append("<table class=\"pins\"><thead><tr><th>Pin</th><th>Name</th><th>Direction</th>")
+                    .Append(nets ? "<th>Net</th>" : string.Empty)
+                    .Append(readings ? "<th>Expected reading</th>" : string.Empty)
+                    .Append("</tr></thead><tbody>");
+
+                foreach (CollectionPin pin in pins)
+                {
+                    bool here = image.Pin is { } pinOfCapture && string.Equals(pin.Pin.Trim(), pinOfCapture.Trim(), StringComparison.OrdinalIgnoreCase);
+
+                    html.Append(here ? "<tr class=\"here\">" : "<tr>")
+                        .Append($"<td>{Encode(pin.Pin)}</td><td>{Encode(pin.Name)}</td><td>{Encode(pin.Direction)}</td>")
+                        .Append(nets ? $"<td>{Encode(pin.Net)}</td>" : string.Empty)
+                        .Append(readings ? $"<td class=\"reading\">{Encode(pin.Reading)}</td>" : string.Empty)
+                        .Append("</tr>");
+                }
+
+                html.Append("</tbody></table>");
+            }
+
+            return html.Append("</aside>").ToString();
+        }
 
         // "T/DIV 50us | V/DIV 2V | Trigger level 1V" - what was read back, the rest left out.
         private static string SettingsText(string? timePerDivision, string? voltsPerDivision, string? triggerLevel)
@@ -315,7 +400,8 @@ namespace CRT.Server.Handlers.Collections
             {
                 CollectionDeletedReasons.Expired =>
                     $"It was deleted on {when}, as the time it was shared for had passed. Whoever shares a collection chooses how long " +
-                    "it stays online - from one month to five years - and when that time is up, its captures and comments go.",
+                    "it stays online - a month, six months or a year from the last time it was shared - and when that time is up, " +
+                    "its captures and comments go.",
                 CollectionDeletedReasons.Owner =>
                     $"Its owner deleted it on {when}, and its captures and comments went with it.",
                 CollectionDeletedReasons.Administrator =>
@@ -324,9 +410,8 @@ namespace CRT.Server.Handlers.Collections
             };
         }
 
-        public static string Deleted(string siteBaseUrl, CollectionRecord collection) =>
+        public static string Deleted(CollectionRecord collection) =>
             CollectionPages.Layout(
-                siteBaseUrl,
                 CollectionPages.DeletedTitle,
                 $"<p class=\"lead\">{Encode(CollectionPages.DeletedWhatItWas)}</p>" +
                 $"<p>{Encode(CollectionPages.DeletedWhy(collection))}</p>" +
@@ -346,9 +431,8 @@ namespace CRT.Server.Handlers.Collections
             "Its owner has stopped sharing it for now, so its captures and comments are not shown. If they share it again, it comes " +
             "back under this same link - so try it again later.";
 
-        public static string SharingStopped(string siteBaseUrl, CollectionRecord collection) =>
+        public static string SharingStopped(CollectionRecord collection) =>
             CollectionPages.Layout(
-                siteBaseUrl,
                 CollectionPages.SharingStoppedTitle,
                 $"<p class=\"lead\">{Encode(CollectionPages.SharingStoppedText)}</p>" +
                 $"<p class=\"facts\">Collection <code>{Encode(collection.Id)}</code></p>" +
@@ -384,14 +468,13 @@ namespace CRT.Server.Handlers.Collections
             _ => CollectionPages.OfflineOwnerLocked
         };
 
-        public static string NotFound(string siteBaseUrl) =>
+        public static string NotFound() =>
             CollectionPages.Layout(
-                siteBaseUrl,
                 "There is no such collection",
                 "<p>Check that the whole link was copied - a collection's address ends in its 12-character id.</p>");
 
-        public static string NotSetUp(string siteBaseUrl) =>
-            CollectionPages.Layout(siteBaseUrl, "Collections are not available", $"<p>{Encode(CollectionFlows.NotSetUp)}</p>");
+        public static string NotSetUp() =>
+            CollectionPages.Layout("Collections are not available", $"<p>{Encode(CollectionFlows.NotSetUp)}</p>");
 
         // ###########################################################################################
         // "YOUR COLLECTIONS" (step 4, 2026-11-26; CollectionListFlows says what each list holds): the reader's own and those they
@@ -488,7 +571,7 @@ namespace CRT.Server.Handlers.Collections
                 }
             }
 
-            return CollectionPages.Layout(siteBaseUrl, CollectionPages.ListTitle, $"<div class=\"list\">{body}</div>", kind: CollectionPages.ListKind);
+            return CollectionPages.Layout(CollectionPages.ListTitle, $"<div class=\"list\">{body}</div>", kind: CollectionPages.ListKind);
         }
 
         // ###########################################################################################
@@ -530,7 +613,6 @@ namespace CRT.Server.Handlers.Collections
                             "?return=" + Uri.EscapeDataString(CollectionPages.ListPath(siteBaseUrl));
 
             return CollectionPages.Layout(
-                siteBaseUrl,
                 CollectionPages.ListTitle,
                 $"<p><a href=\"{Encode(signIn)}\">Sign in</a> to see the collections you shared and those you commented on.</p>",
                 kind: CollectionPages.ListKind);
@@ -658,7 +740,7 @@ namespace CRT.Server.Handlers.Collections
         }
 
         // ###########################################################################################
-        // One capture: the picture beside its baseline, their settings, what it should read, and the owner's note.
+        // One capture: the picture, its settings, what it should read, and the owner's note.
         // ###########################################################################################
         private static string CaptureSection(
             string siteBaseUrl,
@@ -667,13 +749,10 @@ namespace CRT.Server.Handlers.Collections
             string anchor,
             string? previous,
             string? next,
-            Func<CollectionBaseline, string?> baselineUrl,
             CollectionPageView view)
         {
             CollectionImageEntry image = capture.Entry;
-            CollectionBaseline? baseline = image.Baseline;
             string where = CollectionRules.WhereOf(image);
-            string? baselinePicture = baseline is { Sha256: not null } ? baselineUrl(baseline) : null;
             var html = new StringBuilder();
 
             html.Append($"<section class=\"panel capture\" id=\"{anchor}\">");
@@ -682,34 +761,19 @@ namespace CRT.Server.Handlers.Collections
             if (image.SignalName is { } signal)
                 html.Append($" <span class=\"signal\">{Encode(signal)}</span>");
 
-            // Each picture opens the viewer (Viewers), as the grid's cards do.
+            // The picture opens the viewer (Viewers), as the grid's cards do.
             html.Append("</h2><div class=\"pair\">");
             html.Append("<figure>")
                 .Append($"<a class=\"framed\" href=\"#{CollectionPages.ViewerId(anchor)}\">")
                 .Append($"<img src=\"{Encode(CollectionPages.ImageUrl(siteBaseUrl, collection.Id, image.Sha256))}\" width=\"{capture.Width}\" height=\"{capture.Height}\" loading=\"lazy\" alt=\"{Encode($"Oscilloscope capture of {where}")}\">")
-                .Append("</a><figcaption>This capture</figcaption></figure>");
-
-            if (baselinePicture is not null)
-            {
-                html.Append("<figure>")
-                    .Append($"<a class=\"framed\" href=\"#{CollectionPages.BaselineViewerId(anchor)}\">")
-                    .Append($"<img src=\"{Encode(baselinePicture)}\" loading=\"lazy\" alt=\"{Encode($"Classic Repair Toolbox's baseline of {where}")}\">")
-                    .Append("</a><figcaption>Classic Repair Toolbox's baseline</figcaption></figure>");
-            }
+                .Append("</a></figure>");
 
             html.Append("</div>");
 
-            bool withBaseline = baseline is not null;
-
-            html.Append("<table class=\"settings\"><thead><tr><th></th><th>This capture</th>");
-
-            if (withBaseline)
-                html.Append("<th>Baseline</th>");
-
-            html.Append("</tr></thead><tbody>");
-            html.Append(CollectionPages.SettingRow("T/DIV", image.TimePerDivision, baseline?.TimePerDivision, withBaseline));
-            html.Append(CollectionPages.SettingRow("V/DIV", image.VoltsPerDivision, baseline?.VoltsPerDivision, withBaseline));
-            html.Append(CollectionPages.SettingRow("Trigger level", image.TriggerLevel, baseline?.TriggerLevel, withBaseline));
+            html.Append("<table class=\"settings\"><tbody>");
+            html.Append(CollectionPages.SettingRow("T/DIV", image.TimePerDivision));
+            html.Append(CollectionPages.SettingRow("V/DIV", image.VoltsPerDivision));
+            html.Append(CollectionPages.SettingRow("Trigger level", image.TriggerLevel));
             html.Append("</tbody></table>");
 
             if (image.ExpectedReading is { } reading)
@@ -860,20 +924,9 @@ namespace CRT.Server.Handlers.Collections
         public static string PagePath(string siteBaseUrl, string id) =>
             $"{Accounts.WebSessions.PathOf(siteBaseUrl)}{CollectionRoutes.PagePath}/{id}";
 
-        // A setting of the capture beside the baseline's - in bold when the two differ (spaces and capitals aside).
-        private static string SettingRow(string name, string? value, string? baselineValue, bool withBaseline)
-        {
-            bool differs = withBaseline && value is not null && baselineValue is not null &&
-                           !string.Equals(CollectionPages.Comparable(value), CollectionPages.Comparable(baselineValue), StringComparison.Ordinal);
-
-            string shown = value is null ? "<span class=\"muted\">not read</span>" : differs ? $"<b>{Encode(value)}</b>" : Encode(value);
-
-            return $"<tr><th>{Encode(name)}</th><td>{shown}</td>" +
-                   (withBaseline ? $"<td>{(baselineValue is null ? "<span class=\"muted\">not given</span>" : Encode(baselineValue))}</td>" : string.Empty) +
-                   "</tr>";
-        }
-
-        private static string Comparable(string value) => string.Concat(value.Where(c => !char.IsWhiteSpace(c))).ToLowerInvariant();
+        // A setting of the capture, as read back from the oscilloscope.
+        private static string SettingRow(string name, string? value) =>
+            $"<tr><th>{Encode(name)}</th><td>{(value is null ? "<span class=\"muted\">not read</span>" : Encode(value))}</td></tr>";
 
         // A forum link as shown: its host and path, no scheme.
         private static string LinkText(string link) =>
@@ -884,7 +937,6 @@ namespace CRT.Server.Handlers.Collections
         // right - then the page. `panelled`: the title and `body` in one panel; else `body` is the page's own panels.
         // ###########################################################################################
         private static string Layout(
-            string siteBaseUrl,
             string title,
             string body,
             string head = "",
@@ -893,8 +945,6 @@ namespace CRT.Server.Handlers.Collections
             string actions = "",
             bool panelled = true)
         {
-            string site = Uri.TryCreate(siteBaseUrl, UriKind.Absolute, out Uri? uri) ? uri.GetLeftPart(UriPartial.Authority) + "/" : "/";
-
             return "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"utf-8\">" +
                 "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">" +
                 "<meta name=\"robots\" content=\"noindex, nofollow\">" +
@@ -902,7 +952,8 @@ namespace CRT.Server.Handlers.Collections
                 head +
                 $"<style>{CollectionPages.Css}</style></head><body id=\"top\">" +
                 "<header class=\"topbar\">" +
-                $"<div class=\"brand\"><a class=\"brand-title\" href=\"{Encode(site)}\">Classic Repair Toolbox</a>" +
+                // CRT's project page (owner request, 2026-11-27), not the site's front page.
+                $"<div class=\"brand\"><a class=\"brand-title\" href=\"{Encode(EmailTemplates.CrtProjectUrl)}\">Classic Repair Toolbox</a>" +
                 $"<div class=\"brand-sub\">{Encode(kind)}</div></div>" +
                 $"<div class=\"meta\">{middle}</div>" +
                 $"<div class=\"header-actions\">{actions}</div>" +
@@ -969,9 +1020,7 @@ namespace CRT.Server.Handlers.Collections
             ".flag{display:inline-block;font-size:.75em;font-weight:600;color:var(--red);border:1px solid var(--red);border-radius:10px;padding:0 8px;vertical-align:middle}" +
             ".badge{display:inline-block;font-size:.75em;font-weight:600;color:#fff;background:var(--link);border-radius:10px;padding:0 8px;vertical-align:middle}" +
             "figure{margin:0}.pair{display:flex;flex-wrap:wrap;gap:16px;margin-bottom:12px}.pair figure{flex:1 1 400px;max-width:100%}" +
-            "figcaption{color:var(--muted);font-size:.9em;margin-top:6px}" +
             ".settings{border-collapse:collapse;margin-bottom:12px}.settings th,.settings td{text-align:left;padding:4px 14px 4px 0}" +
-            ".settings thead th{color:var(--muted);font-weight:600;font-size:.9em}.settings b{background:var(--diff);padding:0 4px;border-radius:3px}" +
             ".steps{font-size:.9em;color:var(--muted);margin:0}.signedin{font-size:.9em;color:var(--muted);margin:0 0 12px}" +
             ".comments{margin:8px 0 12px;padding:12px 16px;border:1px solid var(--border);border-radius:10px;background:var(--card2)}" +
             ".comment{border-top:1px solid var(--border);padding:8px 0}.comment:first-of-type{border-top:0}" +
@@ -994,8 +1043,25 @@ namespace CRT.Server.Handlers.Collections
             ".close{position:absolute;top:10px;right:10px;z-index:1;width:40px;height:40px;display:grid;place-items:center;border-radius:12px;" +
             "border:1px solid var(--border);background:rgba(255,255,255,.9);color:var(--text);font-size:22px;line-height:1;text-decoration:none}" +
             ".close:hover{border-color:var(--border2)}" +
-            ".viewer{display:grid;grid-template-columns:64px 1fr 64px;align-items:stretch;flex:1 1 auto;min-height:0}" +
-            ".nav{display:grid;place-items:center;color:rgba(15,23,42,.75);font-size:46px;text-decoration:none}.nav:hover{color:rgba(15,23,42,.95)}" +
+            ".vbody{display:grid;grid-template-columns:minmax(0,1fr) 380px;flex:1 1 auto;min-height:0}.vbody.wide{grid-template-columns:minmax(0,1fr)}" +
+            ".viewer{position:relative;display:grid;min-height:0;min-width:0}" +
+            ".zone{position:absolute;z-index:1;display:flex;align-items:center;color:rgba(15,23,42,.7);text-decoration:none;transition:background 120ms ease}" +
+            ".zone span{display:grid;place-items:center;width:44px;height:44px;padding-bottom:4px;border-radius:50%;font-size:34px;line-height:1;" +
+            "color:var(--text);background:rgba(255,255,255,.82);border:1px solid var(--border2);box-shadow:0 4px 14px rgba(0,0,0,.35)}" +
+            ".zone:hover span{background:#fff}" +
+            ".zone-left{left:0;top:0;bottom:0;width:30%;justify-content:flex-start;padding-left:16px}" +
+            ".zone-right{right:0;top:0;bottom:0;width:30%;justify-content:flex-end;padding-right:16px}" +
+            ".zone-top{left:30%;right:30%;top:0;height:28%}.zone-bottom{left:30%;right:30%;bottom:0;height:28%}" +
+            ".zone-left:hover{background:linear-gradient(90deg,rgba(15,23,42,.14),transparent)}" +
+            ".zone-right:hover{background:linear-gradient(270deg,rgba(15,23,42,.14),transparent)}" +
+            ".zone-top:hover{background:linear-gradient(180deg,rgba(15,23,42,.12),transparent)}" +
+            ".zone-bottom:hover{background:linear-gradient(0deg,rgba(15,23,42,.12),transparent)}" +
+            ".info{overflow:auto;padding:16px 18px;border-left:1px solid var(--border);background:var(--card2);font-size:14px}" +
+            ".info h3{font-size:1.05em;margin:0 0 4px;padding-right:46px}.info p{margin:0 0 8px}" +
+            ".info .pinout{display:block;max-width:100%;height:auto;margin:10px auto;border-radius:8px;border:1px solid var(--border)}" +
+            ".pins{border-collapse:collapse;width:100%;font-size:12px;margin-top:6px}" +
+            ".pins th,.pins td{text-align:left;padding:3px 6px;border-bottom:1px solid var(--border);vertical-align:top}" +
+            ".pins th{color:var(--muted);font-weight:600}.pins tr.here td{background:var(--diff);font-weight:700}.pins .reading{white-space:pre-line}" +
             ".stage{display:grid;place-items:center;padding:14px;min-height:0;overflow:hidden;" +
             "background:radial-gradient(900px 600px at 30% 20%,rgba(14,165,233,.14),transparent 60%),linear-gradient(180deg,rgba(2,6,23,.06),rgba(2,6,23,.02))}" +
             ".stage img{width:100%;height:100%;object-fit:contain;border-radius:12px;background:#0b1220;border:1px solid rgba(15,23,42,.22);" +
@@ -1005,40 +1071,55 @@ namespace CRT.Server.Handlers.Collections
             ".m-name{color:var(--text);font-weight:750;font-size:14px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}" +
             ".m-time{color:var(--muted);font-size:12px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}" +
             ".modal .actions{grid-column:3;justify-self:end;display:flex;align-items:center;gap:10px;margin:0;font-size:13px}" +
+            "button.btn{font:inherit;font-weight:650;cursor:pointer}" +
+            ".share{position:relative}.share>summary{list-style:none;cursor:pointer}.share>summary::-webkit-details-marker{display:none}" +
+            ".share-panel{position:absolute;right:0;bottom:calc(100% + 8px);z-index:3;width:330px;display:grid;gap:6px;padding:12px;" +
+            "background:#fff;border:1px solid var(--border2);border-radius:12px;box-shadow:var(--shadow)}" +
+            ".share-panel label{margin:0;font-size:12px}" +
+            ".share-url{width:100%;padding:6px 8px;font:12px ui-monospace,Consolas,monospace;color:var(--text);border:1px solid var(--border2);border-radius:6px}" +
             "@media (max-width:720px){.topbar{position:static;height:auto;grid-template-columns:1fr;justify-items:center;padding:10px 14px;gap:8px}" +
             ".brand,.meta,.header-actions{grid-column:1;justify-self:center;align-items:center;text-align:center}.meta{white-space:normal}" +
             ".container{padding:14px 10px 6px}html{scroll-padding-top:12px}.grid.grid-few{grid-template-columns:1fr}.panel{padding:14px}" +
-            "footer{width:calc(100% - 20px)}.dialog{width:96vw;height:96vh;margin:2vh auto}.viewer{grid-template-columns:36px 1fr 36px}.nav{font-size:34px}" +
-            ".modal .footer{grid-template-columns:1fr;justify-items:center}.modal .title,.modal .actions{grid-column:1;justify-self:center}}";
+            "footer{width:calc(100% - 20px)}.dialog{width:96vw;height:96vh;margin:2vh auto}.zone span{width:34px;height:34px;font-size:26px}" +
+            ".vbody{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,55%) minmax(0,45%)}.info{border-left:0;border-top:1px solid var(--border)}" +
+            ".modal .footer{grid-template-columns:1fr;justify-items:center}.modal .title,.modal .actions{grid-column:1;justify-self:center}" +
+            ".share-panel{right:auto;left:50%;transform:translateX(-50%);width:min(330px,90vw)}}";
 
         public static readonly string StyleHash =
             "sha256-" + Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(CollectionPages.Css)));
 
         // ###########################################################################################
-        // THE PAGE'S ONE SCRIPT - the viewer's keys, as the gallery had them: Esc closes it, the arrows go to the previous and next
-        // capture. Nothing else: the viewer itself is CSS (:target) and works without it. Fixed text, nothing anybody typed in
-        // it, and allowed by its hash alone (ScriptHash) - no other script can run on the page. The address is REPLACED, so the
-        // arrows leave no trail of captures for "Back" to walk through.
+        // THE PAGE'S ONE SCRIPT - what the viewer cannot do in CSS (owner requests, 2026-11-27): Esc closes it; Left and Up go to
+        // the previous capture, Right and Down to the next, and so does the WHEEL - one step per turn, at most one every 350 ms,
+        // never over the component's facts, which scroll; and "Copy for ..." puts its data-copy on the clipboard, saying
+        // "Copied". Nothing else: the viewer itself is CSS (:target) and works without it. Fixed text, nothing anybody typed in
+        // it - the words copied are the button's attribute, encoded on the page - and allowed by its hash alone (ScriptHash).
+        // The address is REPLACED, so the keys and the wheel leave no trail of captures for "Back" to walk through.
         // ###########################################################################################
         public const string Script =
-            "document.addEventListener(\"keydown\",function(e){" +
-            "var m=document.querySelector(\".modal:target\");if(!m||e.altKey||e.ctrlKey||e.metaKey)return;" +
-            "var s=e.key===\"Escape\"?\".close\":e.key===\"ArrowRight\"?\".next\":e.key===\"ArrowLeft\"?\".prev\":null;" +
-            "var l=s&&m.querySelector(s);if(l){e.preventDefault();location.replace(l.getAttribute(\"href\"));}});";
+            "(function(){var last=0;" +
+            "function open(){return document.querySelector(\".modal:target\");}" +
+            "function go(m,s){var l=m.querySelector(s);if(!l)return false;location.replace(l.getAttribute(\"href\"));return true;}" +
+            "document.addEventListener(\"keydown\",function(e){var m=open();if(!m||e.altKey||e.ctrlKey||e.metaKey)return;" +
+            "if(e.target.closest&&e.target.closest(\"input,textarea\")&&e.key!==\"Escape\")return;" +
+            "var s=e.key===\"Escape\"?\".close\":(e.key===\"ArrowRight\"||e.key===\"ArrowDown\")?\".next\":(e.key===\"ArrowLeft\"||e.key===\"ArrowUp\")?\".prev\":null;" +
+            "if(s&&go(m,s))e.preventDefault();});" +
+            "document.addEventListener(\"wheel\",function(e){var m=open();if(!m||e.ctrlKey||e.deltaY===0)return;" +
+            "if(e.target.closest&&e.target.closest(\".info,.share-panel\"))return;e.preventDefault();" +
+            "var now=Date.now();if(now-last<350)return;last=now;go(m,e.deltaY>0?\".next\":\".prev\");},{passive:false});" +
+            "document.addEventListener(\"click\",function(e){var b=e.target.closest&&e.target.closest(\"[data-copy]\");" +
+            "if(!b||!navigator.clipboard)return;var w=b.textContent;navigator.clipboard.writeText(b.getAttribute(\"data-copy\"))" +
+            ".then(function(){b.textContent=\"Copied\";setTimeout(function(){b.textContent=w;},1500);});});})();";
 
         public static readonly string ScriptHash =
             "sha256-" + Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(CollectionPages.Script)));
 
-        // Nothing but the style and the script above may run, pictures only from this site or where the published data is
-        // served, and forms post only to this site (the comments and signing out).
-        public static string ContentSecurityPolicy(IEnumerable<string> imageOrigins)
-        {
-            string origins = string.Join(" ", imageOrigins.Distinct(StringComparer.OrdinalIgnoreCase));
-
-            return $"default-src 'none'; style-src '{CollectionPages.StyleHash}'; script-src '{CollectionPages.ScriptHash}'; " +
-                   $"img-src 'self'{(origins.Length > 0 ? " " + origins : string.Empty)}; " +
-                   "form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
-        }
+        // Nothing but the style and the script above may run, pictures only from this site (the captures and their pinout
+        // drawings - nothing of the published data since the baseline went, server 16.0.0), and forms post only to this site
+        // (the comments and signing out). The script copies to the clipboard, which asks for nothing more.
+        public static string ContentSecurityPolicy() =>
+            $"default-src 'none'; style-src '{CollectionPages.StyleHash}'; script-src '{CollectionPages.ScriptHash}'; " +
+            "img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
     }
 
     // ###########################################################################################

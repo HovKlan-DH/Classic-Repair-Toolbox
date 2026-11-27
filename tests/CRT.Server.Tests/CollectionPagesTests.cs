@@ -8,9 +8,10 @@ namespace CRT.Server.Tests
 {
     // ###########################################################################################
     // A shared collection's page (CollectionPages): it names nobody, says where it comes from and when it goes, shows each
-    // capture beside its baseline with the settings that differ in bold, and carries nothing anybody typed as markup.
+    // capture with its settings and, seen large, what CRT's component info window said of its component, and carries nothing
+    // anybody typed as markup.
     // ###########################################################################################
-    public sealed class CollectionPagesTests : IDisposable
+    public sealed class CollectionPagesTests
     {
         private static readonly DateTimeOffset Created = new(2026, 11, 26, 12, 0, 0, TimeSpan.Zero);
 
@@ -20,25 +21,17 @@ namespace CRT.Server.Tests
 
         private static readonly string ShaB = new('b', 64);
 
-        private static readonly string BaselineSha = new('c', 64);
+        private static readonly string PinoutSha = new('d', 64);
 
-        private readonly string thisTree = Path.Combine(Path.GetTempPath(), "crt-collection-tree-" + Guid.NewGuid().ToString("N"));
-
-        public void Dispose()
-        {
-            if (Directory.Exists(this.thisTree))
-                Directory.Delete(this.thisTree, recursive: true);
-        }
-
-        private static CollectionImageRecord Capture(string sha, string label, string pin, CollectionBaseline? baseline = null, string? caption = null) =>
-            new(new CollectionImageEntry(sha, label, pin, "/RAS", "Pulsing", "100us", "2V", "1V", baseline, caption, Created), 800, 480);
+        private static CollectionImageRecord Capture(string sha, string label, string pin, string? caption = null, string? pinout = null) =>
+            new(new CollectionImageEntry(sha, label, pin, "/RAS", "Pulsing", "100us", "2V", "1V", caption, Created, pinout), 800, 480);
 
         private static CollectionRecord Collection(params CollectionImageRecord[] images) =>
             new("k7mq3x9vbn2p", 42, "Commodore 64", "250407", "PAL", "No picture after changing the PLA", "It went black.\nThen it smelled.",
                 ["https://www.lemon64.com/forum/viewtopic.php?t=1"], Created, Created, Created.AddYears(1), null, null, null, images, images.Length);
 
-        private static string Page(CollectionRecord collection, Func<CollectionBaseline, string?>? baselineUrl = null, CollectionPageView? view = null) =>
-            CollectionPages.Page(Site, collection, baselineUrl ?? (_ => null), view);
+        private static string Page(CollectionRecord collection, CollectionPageView? view = null) =>
+            CollectionPages.Page(Site, collection, view);
 
         [Fact]
         public void The_page_says_the_board_the_id_and_when_it_was_shared_and_goes()
@@ -130,28 +123,15 @@ namespace CRT.Server.Tests
             Assert.Contains($"src=\"{Site}/collections/k7mq3x9vbn2p/{ShaA}.png\" width=\"800\" height=\"480\"", html, StringComparison.Ordinal);
         }
 
+        // Owner decision, 2026-11-27: the baseline "is not relevant" - a capture shows its own settings alone.
         [Fact]
-        public void The_baseline_stands_beside_the_capture_and_a_setting_that_differs_is_bold()
+        public void A_capture_shows_its_own_settings_and_no_baseline()
         {
-            var baseline = new CollectionBaseline(BaselineSha, "Scope baseline/U7_12_RAS.png", "50us", "2 V", null);
-
-            string html = Page(Collection(Capture(ShaA, "U7", "12", baseline)), _ => "https://example/baseline.png");
-
-            Assert.Contains("<img src=\"https://example/baseline.png\"", html, StringComparison.Ordinal);
-            Assert.Contains("<th>T/DIV</th><td><b>100us</b></td><td>50us</td>", html, StringComparison.Ordinal);
-
-            // "2V" and "2 V" are the same setting.
-            Assert.Contains("<th>V/DIV</th><td>2V</td><td>2 V</td>", html, StringComparison.Ordinal);
-            Assert.Contains("<th>Trigger level</th><td>1V</td><td><span class=\"muted\">not given</span></td>", html, StringComparison.Ordinal);
-        }
-
-        [Fact]
-        public void A_capture_with_no_baseline_shows_its_own_settings_alone()
-        {
-            string html = Page(Collection(Capture(ShaA, "U7", "12")));
+            string html = Page(Collection(Capture(ShaA, "U7", "12") with { Entry = Capture(ShaA, "U7", "12").Entry with { TriggerLevel = null } }));
 
             Assert.Contains("<th>T/DIV</th><td>100us</td></tr>", html, StringComparison.Ordinal);
-            Assert.DoesNotContain("<th>Baseline</th>", html, StringComparison.Ordinal);
+            Assert.Contains("<th>Trigger level</th><td><span class=\"muted\">not read</span></td></tr>", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("aseline", html, StringComparison.Ordinal);
         }
 
         // ---- The viewer and "Download all" (owner request, 2026-11-27: the owner's capture gallery's look) -------------------
@@ -163,11 +143,15 @@ namespace CRT.Server.Tests
         {
             string html = Page(Collection(Capture(ShaA, "U7", "12"), Capture(ShaB, "U8", "3")));
 
-            // Its card in the grid, its section's picture, and the other capture's viewer's previous and next.
-            Assert.Equal(4, html.Split("href=\"#view.U7-12\"").Length - 1);
+            // Its card in the grid, its section's picture, and the other capture's viewer's four areas.
+            Assert.Equal(6, html.Split("href=\"#view.U7-12\"").Length - 1);
             Assert.Contains("<div class=\"modal\" id=\"view.U7-12\"", html, StringComparison.Ordinal);
-            Assert.Contains("<a class=\"nav prev\" href=\"#view.U8-3\"", html, StringComparison.Ordinal);
-            Assert.Contains("<a class=\"nav next\" href=\"#view.U8-3\"", html, StringComparison.Ordinal);
+
+            // Owner request, 2026-11-27: a big part of the left and the top goes back, of the right and the bottom on.
+            Assert.Contains("<a class=\"zone zone-left prev\" href=\"#view.U8-3\"", html, StringComparison.Ordinal);
+            Assert.Contains("<a class=\"zone zone-right next\" href=\"#view.U8-3\"", html, StringComparison.Ordinal);
+            Assert.Contains("<a class=\"zone zone-top prev\" href=\"#view.U8-3\"", html, StringComparison.Ordinal);
+            Assert.Contains("<a class=\"zone zone-bottom next\" href=\"#view.U8-3\"", html, StringComparison.Ordinal);
             Assert.Contains("<span class=\"counter\">1 / 2</span>", html, StringComparison.Ordinal);
             Assert.Contains("<span class=\"counter\">2 / 2</span>", html, StringComparison.Ordinal);
             Assert.Contains($"href=\"{Site}/collections/k7mq3x9vbn2p/{ShaA}.png\" download=\"001-U7-12.png\"", html, StringComparison.Ordinal);
@@ -181,7 +165,7 @@ namespace CRT.Server.Tests
         {
             string html = Page(Collection(Capture(ShaA, "U7", "12")));
 
-            Assert.DoesNotContain("class=\"nav ", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("class=\"zone ", html, StringComparison.Ordinal);
             Assert.Contains("class=\"grid grid-few grid-single\"", html, StringComparison.Ordinal);
         }
 
@@ -196,17 +180,63 @@ namespace CRT.Server.Tests
             Assert.DoesNotContain(CollectionPages.ViewerClosed, anchors);
         }
 
+        // Owner request, 2026-11-27: "show something like the component info window ... for this specific component and pin" - the
+        // facts, CRT's drawing of the pinout with the pin marked, and the pins with this capture's highlighted.
         [Fact]
-        public void A_capture_s_baseline_opens_in_a_viewer_of_its_own()
+        public void A_capture_seen_large_tells_of_its_component_its_pinout_and_its_pin()
         {
-            CollectionBaseline baseline = new(BaselineSha, "Scope baseline/U7_12.png", "50us", "2V", null);
+            CollectionComponent component = new(
+                "U7", "U7 | VIC-II | 6569", "IC | 6569 | DIP-40", "Video chip <b>", "Makes the picture",
+                [new CollectionPin("11", "AEC", "Output", null, null), new CollectionPin("12", "/RAS", "Output", "RAS", "Pulsing\nLow [64K]")]);
 
-            string html = Page(Collection(Capture(ShaA, "U7", "12", baseline)), baselineUrl: _ => "https://example/baseline.png");
+            string html = Page(Collection(Capture(ShaA, "U7", "12", pinout: PinoutSha)) with { Components = [component] });
 
-            Assert.Contains("href=\"#base.U7-12\"", html, StringComparison.Ordinal);
-            Assert.Contains("<div class=\"modal\" id=\"base.U7-12\"", html, StringComparison.Ordinal);
-            Assert.Contains("U7, pin 12 - /RAS - Classic Repair Toolbox&#39;s baseline", html, StringComparison.Ordinal);
+            Assert.Contains("<aside class=\"info\"><h3>U7 | VIC-II | 6569</h3><p class=\"muted\">IC | 6569 | DIP-40</p><p>Video chip &lt;b&gt;</p>", html, StringComparison.Ordinal);
+            Assert.Contains($"<img class=\"pinout\" src=\"{Site}/collections/k7mq3x9vbn2p/{PinoutSha}.png\"", html, StringComparison.Ordinal);
+            Assert.Contains("alt=\"The pinout of U7, pin 12 marked\"", html, StringComparison.Ordinal);
+            Assert.Contains("<tr class=\"here\"><td>12</td><td>/RAS</td><td>Output</td><td>RAS</td><td class=\"reading\">Pulsing\nLow [64K]</td></tr>", html, StringComparison.Ordinal);
+            Assert.Contains("<tr><td>11</td><td>AEC</td><td>Output</td><td></td><td class=\"reading\"></td></tr>", html, StringComparison.Ordinal);
         }
+
+        // A capture of a component CRT told nothing of fills the viewer alone; a column no pin has is left out.
+        [Fact]
+        public void A_capture_whose_component_was_not_told_of_fills_the_viewer()
+        {
+            string bare = Page(Collection(Capture(ShaA, "U7", "12")));
+
+            Assert.DoesNotContain("<aside", bare, StringComparison.Ordinal);
+            Assert.Contains("<div class=\"vbody wide\">", bare, StringComparison.Ordinal);
+
+            string noNets = Page(Collection(Capture(ShaA, "U7", "12")) with
+            {
+                Components = [new CollectionComponent("u7", null, null, null, null, [new CollectionPin("12", "/RAS", "Output", null, null)])]
+            });
+
+            Assert.Contains("<thead><tr><th>Pin</th><th>Name</th><th>Direction</th></tr></thead>", noNets, StringComparison.Ordinal);
+        }
+
+        // Owner request, 2026-11-27: "a link, and clicking that link will expand an option to copy a link to either Forum64,
+        // Lemon64 or Reddit. The link should then navigate to this exact image, and show it large."
+        [Fact]
+        public void A_capture_seen_large_offers_its_own_link_for_each_forum()
+        {
+            string html = Page(Collection(Capture(ShaA, "U7", "12")));
+            string url = $"{Site}/collections/k7mq3x9vbn2p#view.U7-12";
+
+            Assert.Contains("<details class=\"share\"><summary class=\"btn\">Link</summary>", html, StringComparison.Ordinal);
+            Assert.Contains($"<input class=\"share-url\" type=\"text\" readonly value=\"{url}\"", html, StringComparison.Ordinal);
+            Assert.Contains($"data-copy=\"[url={url}]U7, pin 12 - /RAS (Commodore 64 250407)[/url]\">Copy for Lemon64</button>", html, StringComparison.Ordinal);
+            Assert.Contains($"data-copy=\"[url=&#39;{url}&#39;]U7, pin 12 - /RAS (Commodore 64 250407)[/url]\">Copy for Forum64</button>", html, StringComparison.Ordinal);
+            Assert.Contains($"data-copy=\"[U7, pin 12 - /RAS (Commodore 64 250407)]({url})\">Copy for Reddit</button>", html, StringComparison.Ordinal);
+        }
+
+        // Owner request, 2026-11-27: the top left corner leads to CRT's project page, not the site's front page.
+        [Fact]
+        public void The_name_in_the_top_left_corner_leads_to_the_project_page() =>
+            Assert.Contains(
+                "<a class=\"brand-title\" href=\"https://github.com/HovKlan-DH/Classic-Repair-Toolbox\">Classic Repair Toolbox</a>",
+                Page(Collection(Capture(ShaA, "U7", "12"))),
+                StringComparison.Ordinal);
 
         [Fact]
         public void The_page_offers_every_capture_in_one_download()
@@ -244,7 +274,7 @@ namespace CRT.Server.Tests
         {
             CollectionRecord gone = Collection() with { DeletedUtc = Created.AddMonths(2), DeletedReason = reason, Title = null };
 
-            string html = CollectionPages.Deleted(Site, gone);
+            string html = CollectionPages.Deleted(gone);
 
             Assert.Contains($"<h1>{CollectionPages.DeletedTitle}</h1>", html, StringComparison.Ordinal);
             Assert.Contains(why, html, StringComparison.Ordinal);
@@ -259,7 +289,7 @@ namespace CRT.Server.Tests
         [Fact]
         public void A_collection_its_owner_stopped_sharing_says_only_that_it_is_not_shared_at_the_moment()
         {
-            string html = CollectionPages.SharingStopped(Site, Collection(Capture(ShaA, "U7", "12")) with { UnsharedUtc = Created.AddDays(3) });
+            string html = CollectionPages.SharingStopped(Collection(Capture(ShaA, "U7", "12")) with { UnsharedUtc = Created.AddDays(3) });
 
             Assert.Contains($"<h1>{CollectionPages.SharingStoppedTitle}</h1>", html, StringComparison.Ordinal);
             Assert.Contains("comes back under this same link", html, StringComparison.Ordinal);
@@ -287,13 +317,16 @@ namespace CRT.Server.Tests
         [Fact]
         public void The_policy_allows_the_page_s_own_style_and_script_and_nothing_else()
         {
-            string policy = CollectionPages.ContentSecurityPolicy([Site]);
+            string policy = CollectionPages.ContentSecurityPolicy();
             string style = "sha256-" + Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(CollectionPages.Css)));
             string script = "sha256-" + Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(CollectionPages.Script)));
 
             Assert.Contains($"style-src '{style}'", policy, StringComparison.Ordinal);
             Assert.Contains($"script-src '{script}';", policy, StringComparison.Ordinal);
-            Assert.Contains($"img-src 'self' {Site};", policy, StringComparison.Ordinal);
+
+            // Pictures from this site alone - the captures and their pinout drawings; nothing of the published data since the
+            // baseline went (2026-11-27).
+            Assert.Contains("img-src 'self';", policy, StringComparison.Ordinal);
             Assert.Contains("default-src 'none'", policy, StringComparison.Ordinal);
             Assert.DoesNotContain("unsafe", policy, StringComparison.Ordinal);
         }
@@ -430,7 +463,7 @@ namespace CRT.Server.Tests
 
         [Fact]
         public void The_policy_lets_the_page_s_forms_post_to_this_site_alone() =>
-            Assert.Contains("form-action 'self'", CollectionPages.ContentSecurityPolicy([]), StringComparison.Ordinal);
+            Assert.Contains("form-action 'self'", CollectionPages.ContentSecurityPolicy(), StringComparison.Ordinal);
 
         // ---- "Your collections" and the administrator's delete (step 4) ---------------------
 
@@ -743,26 +776,6 @@ namespace CRT.Server.Tests
         {
             Assert.Contains($"{Site}/account/sign-in?return=%2Fcollections%2F\">Sign in</a>", CollectionPages.ListSignedOut(Site), StringComparison.Ordinal);
             Assert.Contains("sign-in?return=%2Fcrt-test%2Fcollections%2F", CollectionPages.ListSignedOut(Site + "/crt-test"), StringComparison.Ordinal);
-        }
-
-        // ---- Where a baseline's picture is served ------------------------------------------
-
-        [Fact]
-        public void A_baseline_is_linked_where_the_published_data_serves_it_only_when_it_is_there()
-        {
-            string stored = DataTreeLayout.StoredFilePath(BaselineSha, "Scope baseline/U7_12_RAS.png");
-
-            var baselines = new CollectionBaselines(this.thisTree, "https://classic-repair-toolbox.dk/app-data-v4/Data/");
-            var baseline = new CollectionBaseline(BaselineSha, "Scope baseline/U7_12_RAS.png", null, null, null);
-
-            Assert.Null(baselines.UrlOf(baseline));
-
-            Directory.CreateDirectory(Path.GetDirectoryName(Path.Combine(this.thisTree, stored))!);
-            File.WriteAllBytes(Path.Combine(this.thisTree, stored), [1]);
-
-            Assert.Equal($"https://classic-repair-toolbox.dk/app-data-v4/Data/{stored}", baselines.UrlOf(baseline));
-            Assert.Equal("https://classic-repair-toolbox.dk", baselines.Origin);
-            Assert.Null(baselines.UrlOf(baseline with { Sha256 = "../../x" }));
         }
     }
 }

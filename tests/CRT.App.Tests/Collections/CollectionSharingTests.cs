@@ -11,7 +11,7 @@ public sealed class CollectionSharingTests
 {
     private static readonly DateTimeOffset Now = new(2026, 11, 26, 12, 0, 0, TimeSpan.Zero);
 
-    private static LocalCapture Capture(string label, string? pin, int minute = 0, string? baselineTdiv = null) =>
+    private static LocalCapture Capture(string label, string? pin, int minute = 0, CollectionComponent? component = null) =>
         new()
         {
             Sha256 = new string((char)('a' + (label.Length + (pin?.Length ?? 0) + minute) % 6), 64),
@@ -19,7 +19,7 @@ public sealed class CollectionSharingTests
             Pin = pin,
             SignalName = "/RAS",
             TimePerDivision = "50us",
-            BaselineTimePerDivision = baselineTdiv,
+            Component = component,
             CapturedUtc = Now.AddMinutes(minute)
         };
 
@@ -52,26 +52,45 @@ public sealed class CollectionSharingTests
     }
 
     [Fact]
-    public void The_request_carries_every_capture_in_the_page_s_order_and_a_baseline_only_where_there_is_one()
+    public void The_request_carries_every_capture_in_the_page_s_order_and_its_pinout_drawing()
     {
         CollectionContentRequest request = CollectionSharing.RequestOf(
-            Collection(Capture("U8", "1"), Capture("U7", "12", baselineTdiv: "100us")),
+            Collection(Capture("U8", "1"), Capture("U7", "12") with { PinoutSha256 = new string('d', 64) }),
             Now.AddYears(1));
 
         Assert.Equal(("Commodore 64", "250407", "PAL", "No picture"), (request.HardwareName, request.BoardName, request.Region, request.Title));
         Assert.Equal(Now.AddYears(1), request.DeleteAtUtc);
         Assert.Equal(["U7", "U8"], request.Images.Select(image => image.ComponentLabel));
-        Assert.Equal("100us", request.Images[0].Baseline?.TimePerDivision);
-        Assert.Null(request.Images[1].Baseline);
+        Assert.Equal(new string('d', 64), request.Images[0].PinoutSha256);
+        Assert.Null(request.Images[1].PinoutSha256);
+        Assert.Null(request.Components);
     }
 
+    // Each component captured once, as its LATEST capture told of it - named as its captures name it, in the page's order.
     [Fact]
-    public void The_deletion_date_is_the_one_kept_else_the_choice_counted_from_now()
+    public void The_request_tells_of_each_component_once_as_last_captured()
+    {
+        CollectionComponent before = new("U7", "U7 | old", null, null, null, null);
+        CollectionComponent after = new("U7", "U7 | VIC-II", null, null, null, null);
+        CollectionComponent cpu = new("u2", "U2 | CPU", null, null, null, null);
+
+        CollectionContentRequest request = CollectionSharing.RequestOf(
+            Collection(Capture("U7", "12", minute: 1, component: before), Capture("U7", "13", minute: 9, component: after), Capture("U2", "1", component: cpu), Capture("U8", "1")),
+            Now.AddYears(1));
+
+        Assert.Equal([("U2", "U2 | CPU"), ("U7", "U7 | VIC-II")], request.Components!.Select(component => (component.Label, component.Title)));
+    }
+
+    // Owner decision, 2026-11-27: "every time the user shares it again, it resets its time" - counted from every share, whatever
+    // the last share sent.
+    [Fact]
+    public void The_deletion_date_is_the_choice_counted_from_the_share()
     {
         LocalCollection collection = Collection() with { Lifetime = "6m" };
 
         Assert.Equal(Now.AddMonths(6), CollectionSharing.DeleteAtFor(collection, Now));
-        Assert.Equal(Now.AddYears(3), CollectionSharing.DeleteAtFor(collection with { DeleteAtUtc = Now.AddYears(3) }, Now));
+        Assert.Equal(Now.AddMonths(6), CollectionSharing.DeleteAtFor(collection with { DeleteAtUtc = Now.AddMonths(1) }, Now));
+        Assert.Equal(Now.AddYears(1), CollectionSharing.DeleteAtFor(collection with { Lifetime = "5y" }, Now));
     }
 
     [Fact]
@@ -110,11 +129,11 @@ public sealed class CollectionSharingTests
     }
 
     // A capture copied into a worklog as a photo (owner decision, 2026-11-27: "A copy of its captures") says where it was taken,
-    // the settings and the baseline's beside them, what it should read and its note - the values bold, as a note with formatting.
+    // the settings, what it should read and its note - the values bold, as a note with formatting.
     [Fact]
-    public void A_capture_s_worklog_comment_says_its_place_settings_baseline_reading_and_note()
+    public void A_capture_s_worklog_comment_says_its_place_settings_reading_and_note()
     {
-        LocalCapture capture = Capture("U7", "12", baselineTdiv: "100us") with
+        LocalCapture capture = Capture("U7", "12") with
         {
             VoltsPerDivision = "2V",
             ExpectedReading = "Pulsing",
@@ -126,13 +145,11 @@ public sealed class CollectionSharingTests
         Assert.Equal(
             "**U7, pin 12** - /RAS\n" +
             "This capture: T/DIV **50us** | V/DIV **2V** | Trigger level not read\n" +
-            "Baseline: T/DIV **100us** | V/DIV not read | Trigger level not read\n" +
             "Expected reading: **Pulsing**\n" +
             "Stays low\nafter reset",
             comment);
         Assert.Equal(
-            "U7, pin 12 - /RAS\nThis capture: T/DIV 50us | V/DIV 2V | Trigger level not read\nBaseline: T/DIV 100us | V/DIV not read | Trigger level not read\n" +
-            "Expected reading: Pulsing\nStays low\nafter reset",
+            "U7, pin 12 - /RAS\nThis capture: T/DIV 50us | V/DIV 2V | Trigger level not read\nExpected reading: Pulsing\nStays low\nafter reset",
             RichNote.PlainOf(comment));
     }
 

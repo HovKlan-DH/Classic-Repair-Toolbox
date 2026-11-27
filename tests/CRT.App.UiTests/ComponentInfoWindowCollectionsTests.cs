@@ -180,10 +180,10 @@ public sealed class ComponentInfoWindowCollectionsTests : IDisposable
         UserSettings.SetCollectionOfBoard(BoardKey, collection.LocalId);
 
         string saved = this.thisWorkspace.Path_("U8_12_RAS.png");
-        string baseline = this.thisWorkspace.Path_("baseline.png");
+        byte[] pinout = CRT.Data.Tests.TestPng.Rgb(20, 12, seed: 7);
+        string pinoutSha = Convert.ToHexStringLower(SHA256.HashData(pinout));
 
         File.WriteAllBytes(saved, CRT.Data.Tests.TestPng.Rgb(16, 10));
-        File.WriteAllBytes(baseline, [4, 5, 6]);
 
         var shown = new ComponentImageEntry { BoardLabel = "U8", Pin = "12", Name = "/RAS", File = "Scope baseline/U8_12_RAS.png", TimeDiv = "100us" };
 
@@ -191,14 +191,17 @@ public sealed class ComponentInfoWindowCollectionsTests : IDisposable
         {
             ComponentInfoWindow window = this.Popup();
 
+            // The drawn pinout, pictured - the headless platform draws nothing of its own (owner request, 2026-11-27).
+            window.PinoutPictureOverrideForTests = () => pinout;
+
             window.CaptureOnScreenForTests(saved);
-            await window.CollectCaptureAsync(shown, baseline, saved);
+            await window.CollectCaptureAsync(shown, saved);
 
             LocalCapture kept = Assert.Single(this.thisStore.Find(collection.LocalId)!.Captures);
 
             Assert.Equal(("U8", "12", "50us", "2V", "1V"), (kept.ComponentLabel, kept.Pin, kept.TimePerDivision, kept.VoltsPerDivision, kept.TriggerLevel));
-            Assert.Equal(Convert.ToHexStringLower(SHA256.HashData([4, 5, 6])), kept.BaselineSha256);
-            Assert.Equal("100us", kept.BaselineTimePerDivision);
+            Assert.Equal(pinoutSha, kept.PinoutSha256);
+            Assert.True(File.Exists(this.thisStore.CapturePath(collection.LocalId, pinoutSha)));
             Assert.Equal("Added to [No picture]", window.CollectedTextForTests);
             Assert.Equal("No picture (1 capture)", window.FindControl<ComboBox>("CollectionComboBox")!.SelectedItem?.ToString());
 
@@ -210,6 +213,9 @@ public sealed class ComponentInfoWindowCollectionsTests : IDisposable
             Assert.Empty(this.thisStore.Find(collection.LocalId)!.Captures);
             Assert.Equal("Taken out of [No picture]", window.CollectedTextForTests);
             Assert.False(takeOut.IsVisible);
+
+            // Its pinout drawing went with it - no other capture shows it.
+            Assert.False(File.Exists(this.thisStore.CapturePath(collection.LocalId, pinoutSha)));
         });
     }
 
@@ -273,9 +279,9 @@ public sealed class ComponentInfoWindowCollectionsTests : IDisposable
             ComponentInfoWindow window = this.Popup();
 
             window.CaptureOnScreenForTests(first);
-            await window.CollectCaptureAsync(new ComponentImageEntry { BoardLabel = "U8", Pin = "7" }, null, first);
+            await window.CollectCaptureAsync(new ComponentImageEntry { BoardLabel = "U8", Pin = "7" }, first);
             window.CaptureOnScreenForTests(second);
-            await window.CollectCaptureAsync(new ComponentImageEntry { BoardLabel = "U8", Pin = "14" }, null, second);
+            await window.CollectCaptureAsync(new ComponentImageEntry { BoardLabel = "U8", Pin = "14" }, second);
 
             Assert.Equal("7", Assert.Single(this.thisStore.Find(collection.LocalId)!.Captures).Pin);
             Assert.Equal("The very same screen is in [No picture] already", window.CollectedTextForTests);
@@ -298,7 +304,7 @@ public sealed class ComponentInfoWindowCollectionsTests : IDisposable
             ComponentInfoWindow window = this.Popup();
 
             window.CaptureOnScreenForTests(saved);
-            await window.CollectCaptureAsync(new ComponentImageEntry { BoardLabel = "U8", Pin = "12" }, null, saved);
+            await window.CollectCaptureAsync(new ComponentImageEntry { BoardLabel = "U8", Pin = "12" }, saved);
 
             Assert.Empty(this.thisStore.Find(collection.LocalId)!.Captures);
             Assert.Equal($"Not added to [No picture]: {CollectionPng.NotAPicture}", window.CollectedTextForTests);
@@ -337,7 +343,7 @@ public sealed class ComponentInfoWindowCollectionsTests : IDisposable
             window.UpdateOscilloscopeSessionTitleState(true, true);
 
             window.CaptureOnScreenForTests(saved);
-            await window.CollectCaptureAsync(new ComponentImageEntry { BoardLabel = "U8", Pin = "5" }, null, saved);
+            await window.CollectCaptureAsync(new ComponentImageEntry { BoardLabel = "U8", Pin = "5" }, saved);
 
             Assert.Equal("5", Assert.Single(this.thisStore.Find(collection.LocalId)!.Captures).Pin);
             Assert.Null(window.CollectedTextForTests);
@@ -358,7 +364,7 @@ public sealed class ComponentInfoWindowCollectionsTests : IDisposable
             ComponentInfoWindow window = this.Popup();
 
             window.CaptureOnScreenForTests(saved);
-            await window.CollectCaptureAsync(new ComponentImageEntry { BoardLabel = "U8", Pin = "1" }, null, saved);
+            await window.CollectCaptureAsync(new ComponentImageEntry { BoardLabel = "U8", Pin = "1" }, saved);
 
             Assert.Empty(this.thisStore.Find(collection.LocalId)!.Captures);
             Assert.Null(window.CollectedTextForTests);

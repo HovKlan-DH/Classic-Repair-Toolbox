@@ -56,15 +56,34 @@ namespace Handlers.Collections
         public static string SettingsLine(string whose, string? timePerDivision, string? voltsPerDivision, string? triggerLevel) =>
             $"{whose}: T/DIV {timePerDivision ?? "not read"} | V/DIV {voltsPerDivision ?? "not read"} | Trigger level {triggerLevel ?? "not read"}";
 
-        // When the server is to delete it: the date kept, else the "Delete in" chosen counted from `now`.
+        // ###########################################################################################
+        // When the server is to delete it, sent with EVERY share: the "Delete in" chosen, counted from `now` (owner decision,
+        // 2026-11-27: "every time the user shares it again, it resets its time, so it will be for another year or another month
+        // etc."). The date kept is only what the last share sent.
+        // ###########################################################################################
         public static DateTimeOffset DeleteAtFor(LocalCollection collection, DateTimeOffset now) =>
-            collection.DeleteAtUtc ?? CollectionRules.DeleteAt(now, collection.Lifetime);
+            CollectionRules.DeleteAt(now, collection.Lifetime);
 
         // ###########################################################################################
-        // The request that shares the collection as it is now - every capture, in the page's order.
+        // The request that shares the collection as it is now - every capture, in the page's order, and what CRT's component
+        // info window said of each component captured: the latest capture's word of it (a component captured again later, its
+        // data changed meanwhile, is told as it was then).
         // ###########################################################################################
-        public static CollectionContentRequest RequestOf(LocalCollection collection, DateTimeOffset deleteAtUtc) =>
-            new(
+        public static CollectionContentRequest RequestOf(LocalCollection collection, DateTimeOffset deleteAtUtc)
+        {
+            ArgumentNullException.ThrowIfNull(collection);
+
+            IReadOnlyList<LocalCapture> captures = CollectionSharing.InPageOrder(collection.Captures);
+
+            List<CollectionComponent> components = captures
+                .Where(capture => capture.Component is not null)
+                .OrderBy(capture => capture.CapturedUtc)
+                .GroupBy(capture => capture.ComponentLabel.Trim(), StringComparer.OrdinalIgnoreCase)
+                .Select(group => group.Last().Component! with { Label = group.Key })
+                .OrderBy(component => component.Label, NaturalLabelComparer.Instance)
+                .ToList();
+
+            return new(
                 collection.HardwareName,
                 collection.BoardName,
                 collection.Region,
@@ -72,7 +91,9 @@ namespace Handlers.Collections
                 collection.Description,
                 collection.ForumLinks,
                 deleteAtUtc,
-                CollectionSharing.InPageOrder(collection.Captures).Select(CollectionSharing.EntryOf).ToList());
+                captures.Select(CollectionSharing.EntryOf).ToList(),
+                components.Count == 0 ? null : components);
+        }
 
         public static CollectionImageEntry EntryOf(LocalCapture capture) =>
             new(
@@ -84,20 +105,9 @@ namespace Handlers.Collections
                 capture.TimePerDivision,
                 capture.VoltsPerDivision,
                 capture.TriggerLevel,
-                CollectionSharing.HasBaseline(capture)
-                    ? new CollectionBaseline(
-                        capture.BaselineSha256,
-                        capture.BaselineFileName,
-                        capture.BaselineTimePerDivision,
-                        capture.BaselineVoltsPerDivision,
-                        capture.BaselineTriggerLevel)
-                    : null,
                 capture.Caption,
-                capture.CapturedUtc);
-
-        private static bool HasBaseline(LocalCapture capture) =>
-            capture.BaselineSha256 is not null || capture.BaselineTimePerDivision is not null ||
-            capture.BaselineVoltsPerDivision is not null || capture.BaselineTriggerLevel is not null;
+                capture.CapturedUtc,
+                capture.PinoutSha256);
 
         // ###########################################################################################
         // What was shared, as a checksum of the request - the same collection is the same checksum, so a change since it was
@@ -155,10 +165,9 @@ namespace Handlers.Collections
 
         // ###########################################################################################
         // A CAPTURE AS A WORKLOG'S PHOTO'S COMMENT (owner decision, 2026-11-27: a collection attached to a worklog is "A copy of its
-        // captures"): where it was taken, the oscilloscope's settings and the baseline's beside them, what it should read and the
-        // note typed on it - written as a note with formatting (RichNote), the names plain and the values bold, as the capture
-        // window's large picture writes settings (ComponentPaneWording.RunSettingsNamed). A character the format reads stays a
-        // character (RichNote.Serialize).
+        // captures"): where it was taken, the oscilloscope's settings, what it should read and the note typed on it - written as
+        // a note with formatting (RichNote), the names plain and the values bold, as the capture window's large picture writes
+        // settings (ComponentPaneWording.RunSettingsNamed). A character the format reads stays a character (RichNote.Serialize).
         // ###########################################################################################
         public static string WorklogCommentOf(LocalCapture capture)
         {
@@ -186,9 +195,6 @@ namespace Handlers.Collections
 
             Line((where, true), (capture.SignalName is { } signal ? $" - {signal}" : string.Empty, false));
             Line(CollectionSharing.SettingsRuns("This capture", capture.TimePerDivision, capture.VoltsPerDivision, capture.TriggerLevel));
-
-            if (CollectionSharing.HasBaseline(capture))
-                Line(CollectionSharing.SettingsRuns("Baseline", capture.BaselineTimePerDivision, capture.BaselineVoltsPerDivision, capture.BaselineTriggerLevel));
 
             if (capture.ExpectedReading is { } reading)
                 Line(("Expected reading: ", false), (reading, true));

@@ -224,6 +224,10 @@ namespace CRT.Server.Handlers.Email
         // separate CRT Maintainer application, and the repository its releases lived in, are gone.
         public const string CrtDownloadUrl = "https://github.com/HovKlan-DH/Classic-Repair-Toolbox/releases";
 
+        // CRT's project page - what the collection pages' "Classic Repair Toolbox" in the top left corner opens (owner request,
+        // 2026-11-27).
+        public const string CrtProjectUrl = "https://github.com/HovKlan-DH/Classic-Repair-Toolbox";
+
         // ###########################################################################################
         // AN INVITATION TO MAINTAIN A BOARD (owner request, 2026-09-27). The person has no account
         // and may not run CRT at all, so it says what a maintainer does, where CRT is, how to show
@@ -705,8 +709,8 @@ namespace CRT.Server.Handlers.Email
                     "After that its page says it was deleted:")
                 .Paragraph(MailText.Link(pageUrl, pageUrl))
                 .Paragraph(
-                    "To keep it longer, open the collection in Classic Repair Toolbox and choose for how long under \"Delete in\" - " +
-                    "it can be kept up to 5 years ahead. To let it go, there is nothing to do.")
+                    "To keep it longer, open the collection in Classic Repair Toolbox and press \"Share\" - it is then kept for the time " +
+                    "chosen under \"Delete in\" from that day, at most a year. To let it go, there is nothing to do.")
                 .WithContactLine()
                 .ToMessage(toAddress, "Your shared collection is deleted in 30 days");
         }

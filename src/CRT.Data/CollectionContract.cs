@@ -92,8 +92,11 @@ namespace Handlers.DataHandling
     //                            has regions.
     //   Title, Description       the owner's words, shown on the page as typed (encoded, never read as markup).
     //   ForumLinks               the threads where it was posted (CollectionRules.IsForumLink).
-    //   DeleteAtUtc              when the server deletes it (CollectionRules.Lifetimes, at most 5 years ahead).
+    //   DeleteAtUtc              when the server deletes it - the "Delete in" chosen, counted from the share (CollectionRules
+    //                            .Lifetimes, at most a year ahead).
     //   Images                   the captures in the order the page shows them.
+    //   Components               what CRT's component info window said of each component captured, as it was captured
+    //                            (server 16.0.0) - the page shows it beside a capture seen large. Null from a CRT before it.
     // ###########################################################################################
     public sealed record CollectionContentRequest(
         string HardwareName,
@@ -103,11 +106,14 @@ namespace Handlers.DataHandling
         string? Description,
         IReadOnlyList<string>? ForumLinks,
         DateTimeOffset DeleteAtUtc,
-        IReadOnlyList<CollectionImageEntry> Images);
+        IReadOnlyList<CollectionImageEntry> Images,
+        IReadOnlyList<CollectionComponent>? Components = null);
 
     // ###########################################################################################
-    // One capture: which pin it is of, what the oscilloscope was set to (read back from it, as a baseline stores them), and
-    // CRT's own baseline for that pin, if the board has one - the page shows the two side by side.
+    // One capture: which pin it is of and what the oscilloscope was set to (read back from it, as a baseline stores them).
+    // `PinoutSha256`: CRT's drawing of the component's pinout as its component info window showed it, the capture's pin
+    // marked - a picture uploaded as the captures are (server 16.0.0). (CRT's own baseline for the pin went with server 16.0.0
+    // - owner decision, 2026-11-27: "that is not relevant".)
     // ###########################################################################################
     public sealed record CollectionImageEntry(
         string Sha256,
@@ -118,18 +124,27 @@ namespace Handlers.DataHandling
         string? TimePerDivision,
         string? VoltsPerDivision,
         string? TriggerLevel,
-        CollectionBaseline? Baseline,
         string? Caption,
-        DateTimeOffset? CapturedUtc);
+        DateTimeOffset? CapturedUtc,
+        string? PinoutSha256 = null);
 
-    // CRT's baseline for the pin: its picture by checksum and board file name (the published tree stores it under both -
-    // DataTreeLayout.StoredFilePath), and how it was measured. Null checksum: the board has a baseline row with no picture.
-    public sealed record CollectionBaseline(
-        string? Sha256,
-        string? FileName,
-        string? TimePerDivision,
-        string? VoltsPerDivision,
-        string? TriggerLevel);
+    // ###########################################################################################
+    // A COMPONENT AS CRT'S COMPONENT INFO WINDOW SHOWED IT (owner request, 2026-11-27: "show something like the component info
+    // window from the CRT application ... to get some context for this specific component and pin") - its title ("U7 | VIC-II |
+    // 6569"), category line ("IC | 6569 | DIP-40"), short description, what it is there for (plain text), and its pins as the
+    // window lists them, of the region shown. Words only, shown on the page as typed (encoded).
+    // ###########################################################################################
+    public sealed record CollectionComponent(
+        string Label,
+        string? Title,
+        string? CategoryLine,
+        string? Description,
+        string? Purpose,
+        IReadOnlyList<CollectionPin>? Pins);
+
+    // One pin as the window lists it: its number or name, its signal name, direction, KiCad net and expected oscilloscope
+    // reading (several lines when its baselines differ).
+    public sealed record CollectionPin(string Pin, string? Name, string? Direction, string? Net, string? Reading);
 
     // A collection taken or changed.
     public sealed record CollectionAnswer(

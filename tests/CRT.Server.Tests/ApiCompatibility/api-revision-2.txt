@@ -1265,22 +1265,29 @@ body POST /api/admin/unused-files/remove | .files array of string
 body POST /api/admin/unused-files/remove | .tree string
 body POST /api/collections | (root) object
 body POST /api/collections | .boardName string
+body POST /api/collections | .components array of object
+body POST /api/collections | .components[].categoryLine string
+body POST /api/collections | .components[].description string
+body POST /api/collections | .components[].label string
+body POST /api/collections | .components[].pins array of object
+body POST /api/collections | .components[].pins[].direction string
+body POST /api/collections | .components[].pins[].name string
+body POST /api/collections | .components[].pins[].net string
+body POST /api/collections | .components[].pins[].pin string
+body POST /api/collections | .components[].pins[].reading string
+body POST /api/collections | .components[].purpose string
+body POST /api/collections | .components[].title string
 body POST /api/collections | .deleteAtUtc string
 body POST /api/collections | .description string
 body POST /api/collections | .forumLinks array of string
 body POST /api/collections | .hardwareName string
 body POST /api/collections | .images array of object
-body POST /api/collections | .images[].baseline object
-body POST /api/collections | .images[].baseline.fileName string
-body POST /api/collections | .images[].baseline.sha256 string
-body POST /api/collections | .images[].baseline.timePerDivision string
-body POST /api/collections | .images[].baseline.triggerLevel string
-body POST /api/collections | .images[].baseline.voltsPerDivision string
 body POST /api/collections | .images[].caption string
 body POST /api/collections | .images[].capturedUtc string
 body POST /api/collections | .images[].componentLabel string
 body POST /api/collections | .images[].expectedReading string
 body POST /api/collections | .images[].pin string
+body POST /api/collections | .images[].pinoutSha256 string
 body POST /api/collections | .images[].sha256 string
 body POST /api/collections | .images[].signalName string
 body POST /api/collections | .images[].timePerDivision string
@@ -1788,22 +1795,29 @@ body POST /api/usage/board-views | .views[].systemId string
 body POST /api/usage/board-views | .views[].viewedUtc string
 body PUT /api/collections/{id} | (root) object
 body PUT /api/collections/{id} | .boardName string
+body PUT /api/collections/{id} | .components array of object
+body PUT /api/collections/{id} | .components[].categoryLine string
+body PUT /api/collections/{id} | .components[].description string
+body PUT /api/collections/{id} | .components[].label string
+body PUT /api/collections/{id} | .components[].pins array of object
+body PUT /api/collections/{id} | .components[].pins[].direction string
+body PUT /api/collections/{id} | .components[].pins[].name string
+body PUT /api/collections/{id} | .components[].pins[].net string
+body PUT /api/collections/{id} | .components[].pins[].pin string
+body PUT /api/collections/{id} | .components[].pins[].reading string
+body PUT /api/collections/{id} | .components[].purpose string
+body PUT /api/collections/{id} | .components[].title string
 body PUT /api/collections/{id} | .deleteAtUtc string
 body PUT /api/collections/{id} | .description string
 body PUT /api/collections/{id} | .forumLinks array of string
 body PUT /api/collections/{id} | .hardwareName string
 body PUT /api/collections/{id} | .images array of object
-body PUT /api/collections/{id} | .images[].baseline object
-body PUT /api/collections/{id} | .images[].baseline.fileName string
-body PUT /api/collections/{id} | .images[].baseline.sha256 string
-body PUT /api/collections/{id} | .images[].baseline.timePerDivision string
-body PUT /api/collections/{id} | .images[].baseline.triggerLevel string
-body PUT /api/collections/{id} | .images[].baseline.voltsPerDivision string
 body PUT /api/collections/{id} | .images[].caption string
 body PUT /api/collections/{id} | .images[].capturedUtc string
 body PUT /api/collections/{id} | .images[].componentLabel string
 body PUT /api/collections/{id} | .images[].expectedReading string
 body PUT /api/collections/{id} | .images[].pin string
+body PUT /api/collections/{id} | .images[].pinoutSha256 string
 body PUT /api/collections/{id} | .images[].sha256 string
 body PUT /api/collections/{id} | .images[].signalName string
 body PUT /api/collections/{id} | .images[].timePerDivision string
