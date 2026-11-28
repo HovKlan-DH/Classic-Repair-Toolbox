@@ -21,21 +21,16 @@ namespace CRT.Server.Handlers.Email
     // when there is one ("Hi Dennis,") and with "Hi there," otherwise, names the board in bold
     // inside brackets, quotes the other person's words in italics, and ends with who to write to.
     //
-    // *** THE ANTI-ENUMERATION DESIGN LIVES HERE, NOT IN THE ENDPOINTS. *** Registration and
-    // password reset both answer a neutral 202 whatever the address turns out to be, so the HTTP
-    // response reveals nothing about who has an account. What differs is WHICH MAIL GETS SENT,
-    // and that difference is only ever visible to whoever controls the mailbox - the one party
-    // already entitled to know.
+    // *** THE ANTI-ENUMERATION DESIGN LIVES HERE, NOT IN THE ENDPOINTS. *** Password reset answers
+    // a neutral 202 whatever the address turns out to be, so the HTTP response reveals nothing about
+    // who has an account. What differs is WHICH MAIL GETS SENT, and that difference is only ever
+    // visible to whoever controls the mailbox - the one party already entitled to know.
     //
-    //   Register with an unknown address   -> Verification
-    //   Register with a KNOWN address      -> AlreadyRegistered (carrying a reset code)
     //   Reset an unknown address           -> NO MAIL AT ALL
     //   Reset a known address              -> PasswordReset
     //
-    // The AlreadyRegistered mail is the subtle one and it is doing real work. Someone re-
-    // registering is usually a person who forgot they had an account, so the useful answer is a
-    // reset code. It also means a stranger probing addresses learns nothing, while the genuine
-    // owner is told that somebody tried - which is a security notification they would want.
+    // (Registration sent a Verification or an AlreadyRegistered mail by the same rule until server
+    // 17.0.0, when it closed for everybody - owner decision, 2026-11-28.)
     //
     // WHY NO MAIL for an unknown reset address: there is nothing useful to say, and mailing a
     // stranger "you have no account here" turns this endpoint into a way to send unsolicited mail
@@ -65,54 +60,16 @@ namespace CRT.Server.Handlers.Email
 
         // ###########################################################################################
         // WHERE AN ACCOUNT LIVES IN CRT, and the buttons a mail names, in CRT's own words (CRT.Data's AccountWording - the
-        // account window labels its buttons with these very constants). The account icon in the top right corner of CRT's
-        // window since 2026-11-25, when accounts opened to everybody; the Maintainer tab's sign-in screen and its "Account" >
-        // "My account" until then.
+        // account window labels its buttons with these very constants). The "Maintainer" tab's "Sign in", turned on in
+        // "Configuration" - the account icon in the top right corner of CRT's window, from 2026-11-25, went on 2026-11-28 with the
+        // accounts for everybody (owner decision) - and "My account" under that tab's "Account": the same in every CRT a
+        // maintainer can have, 4.0 or later.
         // ###########################################################################################
         private const string WhereInCrt = global::Handlers.DataHandling.AccountWording.WhereInCrt;
 
-        // ###########################################################################################
-        // *** AND THE WAY IN FOR A CRT FROM BEFORE THE ICON *** (code review, 2026-11-25; "Installed CRTs keep working"). The
-        // live server takes the server CRT 4.1.0 is released with, and a maintainer still on 4.0 or older has no account icon: its
-        // sign-in, "I forgot my password" and "I have an invitation" are the "Maintainer" tab's (turned on in "Configuration"),
-        // "My account" is under that tab's "Account". The buttons' words are the same. Said in brackets after the icon, in the
-        // mails such a CRT's user can get - not the verification mail, whose "Send the mail again" no older CRT has.
-        // ###########################################################################################
-        private const string OlderCrtSignIn = "in CRT 4.0 and older, the \"Maintainer\" tab's sign-in";
-
-        private const string OlderCrtMyAccount = "in CRT 4.0 and older, the \"Maintainer\" tab's \"Account\" > \"My account\"";
+        private const string MyAccountInCrt = "the \"Maintainer\" tab's \"Account\" > \"My account\"";
 
         private static string Quoted(string button) => $"\"{button}\"";
-
-        // ###########################################################################################
-        // Sent when a NEW address registers. Carries the link that proves the address is theirs.
-        // ###########################################################################################
-        // *** SIGNING IN WAITS FOR THE LINK *** (2026-11-25: an address not confirmed cannot sign in - AccountFlows.LoginAsync),
-        // so an expired link is not answered by "sign in and press "Send the mail again"" (it was until then): a new password
-        // set with a mailed code confirms the address too, in CRT's account window or on the website's page.
-        public static EmailMessage Verification(
-            string toAddress,
-            string displayName,
-            string verificationUrl,
-            int validHours,
-            string forgotPasswordPageUrl)
-        {
-            ArgumentException.ThrowIfNullOrWhiteSpace(toAddress);
-            ArgumentException.ThrowIfNullOrWhiteSpace(verificationUrl);
-
-            return EmailTemplates.Greeted(displayName)
-                .Paragraph($"Thanks for signing up to {EmailTemplates.ProductName}. Open this link to confirm your address:")
-                .Paragraph(MailText.Link(verificationUrl, verificationUrl))
-                .Paragraph($"You can sign in once the address is confirmed. The link works for {validHours} hours.")
-                .Paragraph(
-                    $"If it expires, use {EmailTemplates.Quoted(global::Handlers.DataHandling.AccountWording.ForgotPasswordButton)} - in CRT, " +
-                    $"through {EmailTemplates.WhereInCrt}, or on the website - to set a password with a code mailed to you. That confirms the address too: ",
-                    MailText.Link(forgotPasswordPageUrl, forgotPasswordPageUrl))
-                .Paragraph("If you did not sign up, you can ignore this message - the address will not be used for anything else.")
-                .WithContactLine()
-                .ToMessage(toAddress, $"Confirm your {EmailTemplates.ProductName} address")
-                with { CarriesCredential = true };
-        }
 
         // ###########################################################################################
         // THE DISPLAY NAME WAS TAKEN MEANWHILE (2026-11-25; AccountFlows.ConfirmAddressAsync). A name is held only by an account
@@ -128,41 +85,6 @@ namespace CRT.Server.Handlers.Email
                 .Paragraph($"To choose another, sign in to CRT through {EmailTemplates.WhereInCrt} and change it under \"My account\".")
                 .WithContactLine()
                 .ToMessage(toAddress, $"Your {EmailTemplates.ProductName} display name");
-        }
-
-        // ###########################################################################################
-        // Sent when registration is attempted with an address that ALREADY has an account.
-        //
-        // This is what lets registration answer the same 202 for both cases. It carries a reset
-        // code because the overwhelmingly likely explanation is someone who forgot they had an
-        // account - and it says plainly that somebody tried, which is what the real owner needs to
-        // know if it was not them.
-        //
-        // It deliberately does NOT say "your password is X" or reveal when the account was made.
-        // Carries a CODE rather than a link, for the same reason PasswordReset below does - the
-        // link it used to print pointed at a path the server maps nothing at.
-        // ###########################################################################################
-        public static EmailMessage AlreadyRegistered(
-            string toAddress,
-            string displayName,
-            string resetCode,
-            int validHours,
-            string forgotPasswordPageUrl)
-        {
-            ArgumentException.ThrowIfNullOrWhiteSpace(toAddress);
-            ArgumentException.ThrowIfNullOrWhiteSpace(resetCode);
-
-            return EmailTemplates.WhereTheResetCodeGoes(
-                    EmailTemplates.Greeted(displayName)
-                        .Paragraph($"Someone just tried to create a {EmailTemplates.ProductName} account with this address, but you already have one.")
-                        .Paragraph("If that was you and you have forgotten your password, here is a reset code:")
-                        .Code(resetCode),
-                    forgotPasswordPageUrl)
-                .Paragraph($"The code works for {validHours} hours.")
-                .Paragraph("If it was not you, there is nothing to do. Your account has not changed, and whoever tried was not told whether this address is registered.")
-                .WithContactLine()
-                .ToMessage(toAddress, $"You already have a {EmailTemplates.ProductName} account")
-                with { CarriesCredential = true };
         }
 
         // ###########################################################################################
@@ -215,7 +137,7 @@ namespace CRT.Server.Handlers.Email
         private static MailBody WhereTheResetCodeGoes(MailBody body, string forgotPasswordPageUrl) =>
             body
                 .Paragraph(
-                    $"In CRT, open {EmailTemplates.WhereInCrt} ({EmailTemplates.OlderCrtSignIn}) and choose " +
+                    $"In CRT, open {EmailTemplates.WhereInCrt} and choose " +
                     $"{EmailTemplates.Quoted(global::Handlers.DataHandling.AccountWording.ForgotPasswordButton)}, " +
                     "then paste this code and type the password you want.")
                 .Paragraph("Or do the same on the website: ", MailText.Link(forgotPasswordPageUrl, forgotPasswordPageUrl));
@@ -273,7 +195,7 @@ namespace CRT.Server.Handlers.Email
                 .Steps(
                     ["Install Classic Repair Toolbox (CRT) from ", MailText.Link(EmailTemplates.CrtDownloadUrl, EmailTemplates.CrtDownloadUrl), ", or use the one you already have."],
                     [$"In CRT, open {EmailTemplates.WhereInCrt} and choose {EmailTemplates.Quoted(global::Handlers.DataHandling.AccountWording.HaveInvitationButton)} " +
-                     $"({EmailTemplates.OlderCrtSignIn}, once the box in the last step is checked)."],
+                     "(once the box in the last step is checked)."],
                     ["Paste the code, and pick the name others will see and a password - then sign in with this email address and that password."],
                     ["In CRT's \"Configuration\" tab, check the box that turns on the \"Maintainer\" tab."])
                 .Paragraph($"The code works for {validDays} days and can only be used once.")
@@ -308,7 +230,7 @@ namespace CRT.Server.Handlers.Email
                     "for everybody who uses the data. You get an email when somebody sends one.")
                 .Paragraph("To review them:")
                 .Steps(
-                    [$"In CRT, sign in through {EmailTemplates.WhereInCrt} ({EmailTemplates.OlderCrtSignIn}) with this email address and your password."],
+                    [$"In CRT, sign in through {EmailTemplates.WhereInCrt} with this email address and your password."],
                     ["In CRT's \"Configuration\" tab, check the box that turns on the \"Maintainer\" tab."])
                 .WithContactLine()
                 .ToMessage(toAddress, $"For CRT you are now the maintainer of the [{board}] board");
@@ -328,7 +250,7 @@ namespace CRT.Server.Handlers.Email
                 .Paragraph("If that was you, nothing further is needed.")
                 .Paragraph(
                     $"If it was not, your account may have been taken over. Use {EmailTemplates.Quoted(global::Handlers.DataHandling.AccountWording.ForgotPasswordButton)} " +
-                    $"- in CRT, through {EmailTemplates.WhereInCrt} ({EmailTemplates.OlderCrtSignIn}), or on the website - to take it back, and any other sessions will be signed out.")
+                    $"- in CRT, through {EmailTemplates.WhereInCrt}, or on the website - to take it back, and any other sessions will be signed out.")
                 .WithContactLine()
                 .ToMessage(toAddress, $"Your {EmailTemplates.ProductName} password was changed");
         }
@@ -363,7 +285,7 @@ namespace CRT.Server.Handlers.Email
             return EmailTemplates.Greeted(displayName)
                 .Paragraph($"You asked to use this address for your {EmailTemplates.ProductName} account. Here is the code that confirms it:")
                 .Code(code)
-                .Paragraph($"In CRT, open {EmailTemplates.WhereInCrt} ({EmailTemplates.OlderCrtMyAccount}), press \"I have received a code\", and type it in. Your address does not change until the code is used.")
+                .Paragraph($"In CRT, open {EmailTemplates.MyAccountInCrt}, press \"I have received a code\", and type it in. Your address does not change until the code is used.")
                 .Paragraph($"The code works for {validHours} hours and can only be used once.")
                 .Paragraph("If you did not ask for this, you can ignore it - nothing changes unless the code is used.")
                 .WithContactLine()
@@ -686,79 +608,6 @@ namespace CRT.Server.Handlers.Email
                     "published, and then it stays beside it as \"(my version)\".")
                 .WithContactLine()
                 .ToMessage(toAddress, "Your oscilloscope model is published");
-        }
-
-        // ###########################################################################################
-        // A SHARED COLLECTION GOES IN 30 DAYS (2026-11-26; CollectionFlows.SweepAsync) - to its owner, once. Keeping it longer is
-        // the collection's "Delete in" in CRT; nothing is needed to let it go.
-        // ###########################################################################################
-        public static EmailMessage CollectionDeletingSoon(
-            string toAddress,
-            string? displayName,
-            string collectionName,
-            DateTimeOffset deleteAtUtc,
-            string pageUrl)
-        {
-            ArgumentException.ThrowIfNullOrWhiteSpace(toAddress);
-
-            return EmailTemplates.Greeted(displayName)
-                .Paragraph(
-                    "Your shared oscilloscope collection ",
-                    MailText.Named($"[{collectionName}]"),
-                    $" is deleted on {(global::Handlers.DataHandling.CollectionRules.DateText(deleteAtUtc))}, as you chose when you shared it. " +
-                    "After that its page says it was deleted:")
-                .Paragraph(MailText.Link(pageUrl, pageUrl))
-                .Paragraph(
-                    "To keep it longer, open the collection in Classic Repair Toolbox and press \"Share\" - it is then kept for the time " +
-                    "chosen under \"Delete in\" from that day, at most a year. To let it go, there is nothing to do.")
-                .WithContactLine()
-                .ToMessage(toAddress, "Your shared collection is deleted in 30 days");
-        }
-
-        // ###########################################################################################
-        // A COMMENT ON A SHARED COLLECTION (step 3, 2026-11-26; CollectionCommentFlows.AddAsync) - to the collection's owner, for
-        // every comment but their own (owner decision, 2026-11-26: "A mail per comment"). The comment quoted, and the link to
-        // it on the page, where it is answered.
-        // ###########################################################################################
-        public static EmailMessage CollectionCommented(
-            string toAddress,
-            string? ownerName,
-            string collectionName,
-            string commenterName,
-            string captureName,
-            string comment,
-            string commentUrl)
-        {
-            ArgumentException.ThrowIfNullOrWhiteSpace(toAddress);
-
-            return EmailTemplates.Greeted(ownerName)
-                .Paragraph(
-                    MailText.Named(commenterName),
-                    " commented on ",
-                    MailText.Named($"[{captureName}]"),
-                    " in your shared oscilloscope collection ",
-                    MailText.Named($"[{collectionName}]"),
-                    ":")
-                .Quote(comment, "(no text)")
-                .Paragraph("Read it and answer on the page - or in Classic Repair Toolbox, in the collection's window:")
-                .Paragraph(MailText.Link(commentUrl, commentUrl))
-                .WithContactLine()
-                .ToMessage(toAddress, $"A comment on your collection {EmailTemplates.OneLine(collectionName)}");
-        }
-
-        // A name somebody typed, fit for a subject line: no line break or other control character - in a header one would
-        // start another header - and no longer than a subject reads.
-        internal static string OneLine(string text)
-        {
-            string line = string.Concat(text.Select(c => char.IsControl(c) ? ' ' : c)).Trim();
-
-            if (line.Length <= 80)
-                return line;
-
-            // Never half of a character written as two (an emoji's surrogate pair) - code review, 2026-11-27.
-            int cut = char.IsHighSurrogate(line[76]) ? 76 : 77;
-
-            return line[..cut] + "...";
         }
 
         public static EmailMessage OscilloscopeModelRejected(

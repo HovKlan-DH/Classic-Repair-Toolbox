@@ -715,27 +715,6 @@
 								   VerticalAlignment="Center"
 								   Foreground="{DynamicResource Main_ThemeIcon_Fg}" />
 					</Button>
-
-					<!-- THE ACCOUNT (owner requests, 2026-11-25: accounts for everybody): a person, a person with a check while signed
-					     in - drawn as the theme's icon is, and like it taking no keyboard focus. A click opens the account window
-					     (Main.Account.cs). -->
-					<Button x:Name="AccountButton"
-							Classes="ThemeIcon"
-							Focusable="False"
-							Width="22"
-							Height="22"
-							VerticalAlignment="Center"
-							HorizontalContentAlignment="Center"
-							VerticalContentAlignment="Center"
-							Click="OnAccountButtonClick">
-						<TextBlock x:Name="AccountGlyph"
-								   FontFamily="{StaticResource FontAwesomeSolid}"
-								   FontWeight="Black"
-								   FontSize="18"
-								   HorizontalAlignment="Center"
-								   VerticalAlignment="Center"
-								   Foreground="{DynamicResource Main_ThemeIcon_Fg}" />
-					</Button>
 				</StackPanel>
 
 				<!-- THE NOTICES (owner report, 2026-10-11): cards over the tabs' bottom-right corner,

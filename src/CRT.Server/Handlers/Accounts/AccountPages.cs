@@ -7,12 +7,12 @@ using Handlers.DataHandling;
 namespace CRT.Server.Handlers.Accounts
 {
     // ###########################################################################################
-    // THE ACCOUNT WEB PAGES (owner request, 2026-11-25: accounts for everybody, and "Allow registration both places - it does
-    // not matter, but it should be clear that it gives access to both"). Somebody reading a forum on a phone, with no CRT at
-    // hand, makes an account here, confirms its address and sets a new password - the same account CRT's account window signs
-    // in to (AccountWording says the sentences both say). Served by this service under "/account/" (AccountPageEndpoints,
-    // Apache forwarding the path as it forwards "/api/" - INSTALLING.md); the link in a verification mail, GET
-    // /api/accounts/verify, answers the same page as "/account/verify".
+    // THE ACCOUNT WEB PAGES (2026-11-25). *** NOBODY MAKES AN ACCOUNT HERE SINCE SERVER 17.0.0 *** (owner decision, 2026-11-28:
+    // "Entirely remove the new "Account" possibility ... I do not want the possibility for everyone to create an account" - an
+    // account is a maintainer's, made by invitation). What is left: "I forgot my password", the web's sign-in - the
+    // ADMINISTRATOR'S, for the list of every shared collection - and the link a verification mail sent before then carried.
+    // Served by this service under "/account/" (AccountPageEndpoints, Apache forwarding the path as it forwards "/api/" -
+    // INSTALLING.md); the link in a verification mail, GET /api/accounts/verify, answers the same page as "/account/verify".
     //
     // PURE: strings in, a page out. Every word a person typed is HTML-ENCODED here and nowhere else (Encode) - a page never
     // builds markup out of what it was sent, so a name like "<script>" is shown as those characters. No script at all, no
@@ -20,8 +20,8 @@ namespace CRT.Server.Handlers.Accounts
     // Content-Security-Policy (StyleHash), so not even a style can be injected. A plain form, posting to this service.
     //
     // What a page says of a refusal is the flows' own sentences (AccountFlows, AccountRules, DisplayNames), so the window, the
-    // JSON answers and these pages refuse in one set of words. The neutral answers stay neutral: "a message is on its way"
-    // for any address (AccountFlows' header - no page here says whether an address has an account).
+    // JSON answers and these pages refuse in one set of words. The neutral answer stays neutral: "a code is on its way" for
+    // any address (AccountFlows' header - no page here says whether an address has an account).
     // ###########################################################################################
     public static class AccountPages
     {
@@ -38,65 +38,6 @@ namespace CRT.Server.Handlers.Accounts
         }
 
         public static string Link(string baseUrl, string page) => $"{baseUrl}{AccountPages.Path}/{page}".TrimEnd('/');
-
-        // ###########################################################################################
-        // "Your account" - what an account is, and the ways in.
-        // ###########################################################################################
-        public static string Landing(string baseUrl) =>
-            AccountPages.Layout(
-                baseUrl,
-                "Your account",
-                $"<p>{Encode(AccountWording.OneAccount)}</p>" +
-                $"<p>In Classic Repair Toolbox, sign in through {Encode(AccountWording.WhereInCrt)}. Here, sign in to comment on " +
-                "shared oscilloscope collections.</p>" +
-                "<ul>" +
-                $"<li><a href=\"{Encode(AccountPages.Link(baseUrl, "sign-in"))}\">{Encode(AccountWording.SignInButton)}</a></li>" +
-                $"<li><a href=\"{Encode(AccountPages.Link(baseUrl, "register"))}\">{Encode(AccountWording.CreateAccountButton)}</a></li>" +
-                $"<li><a href=\"{Encode(AccountPages.Link(baseUrl, "forgot-password"))}\">{Encode(AccountWording.ForgotPasswordButton)}</a></li>" +
-                "</ul>");
-
-        // ###########################################################################################
-        // "Create an account" - the form, or the form again with what was typed and what was wrong (never the password).
-        // ###########################################################################################
-        public static string RegisterForm(string baseUrl, string? displayName = null, string? email = null, IReadOnlyList<string>? errors = null) =>
-            AccountPages.Layout(
-                baseUrl,
-                AccountWording.CreateAccountButton,
-                AccountPages.Errors(errors) +
-                $"<p>{Encode(AccountWording.OneAccount)}</p>" +
-                $"<form method=\"post\" action=\"{Encode(AccountPages.Link(baseUrl, "register"))}\">" +
-                "<label for=\"displayName\">Display name</label>" +
-                $"<input type=\"text\" id=\"displayName\" name=\"displayName\" maxlength=\"{DisplayNames.MaximumLength}\" autocomplete=\"nickname\" required value=\"{Encode(displayName)}\">" +
-                $"<p class=\"muted\">{Encode(DisplayNames.Explanation)} {Encode(DisplayNames.AllowedLine)}</p>" +
-                "<label for=\"email\">Email address</label>" +
-                $"<input type=\"email\" id=\"email\" name=\"email\" maxlength=\"{EmailAddressRules.MaximumLength}\" autocomplete=\"email\" required value=\"{Encode(email)}\">" +
-                "<p class=\"muted\">Never shown to anybody. A link to confirm it is mailed to it.</p>" +
-                "<label for=\"password\">Password</label>" +
-                "<input type=\"password\" id=\"password\" name=\"password\" autocomplete=\"new-password\" required>" +
-                $"<p class=\"muted\">{Encode(AccountWording.PasswordLine)}</p>" +
-                // A field no person sees or fills: a script that fills every field is answered as if it had made an account,
-                // and nothing is made (AccountPageEndpoints).
-                $"<div class=\"hp\" aria-hidden=\"true\"><label for=\"{AccountPages.TrapField}\">Leave this empty</label>" +
-                $"<input type=\"text\" id=\"{AccountPages.TrapField}\" name=\"{AccountPages.TrapField}\" tabindex=\"-1\" autocomplete=\"off\"></div>" +
-                $"<button type=\"submit\">{Encode(AccountWording.CreateAccountButton)}</button>" +
-                "</form>");
-
-        // ###########################################################################################
-        // The field the register form hides from people (above). *** A NAME NO BROWSER KNOWS *** (code review, 2026-11-25):
-        // "website" was one - autofill and password managers fill a field by its name, whatever autocomplete="off" says,
-        // and a person whose browser filled it was told "Check your mail" while nothing was made and no mail sent.
-        // ###########################################################################################
-        public const string TrapField = "f7q2x";
-
-        // ###########################################################################################
-        // After "Create an account": the server's neutral answer - the same whether or not the address had an account.
-        // ###########################################################################################
-        public static string Registered(string baseUrl, string email) =>
-            AccountPages.Layout(
-                baseUrl,
-                "Check your mail",
-                $"<p>If {Encode(email)} can receive mail, a message is on its way to it, with a link to confirm the address.</p>" +
-                $"<p>Then sign in with your address and password - in Classic Repair Toolbox, through {Encode(AccountWording.WhereInCrt)}.</p>");
 
         // ###########################################################################################
         // The link in a verification mail, opened. The token is the only subject, so the failures are told apart (AccountFlows'
@@ -152,21 +93,27 @@ namespace CRT.Server.Handlers.Accounts
                 "</form>");
 
         // ###########################################################################################
-        // "Sign in" on the website (step 3, 2026-11-26) - to comment on a shared collection. `returnTo`: the collection's page
-        // to go back to (WebSessions.ReturnPath decided it is one), carried in the form. A refusal is said without saying why,
-        // as every sign-in is (AccountFlows' header).
+        // "Sign in" on the website (step 3, 2026-11-26) - THE ADMINISTRATOR'S ALONE since server 17.0.0 (owner decision, 2026-11-28:
+        // "I (as web admin) still want to be able to see all collections, so I can control it looks correct"; nobody comments any
+        // more), for the list of every shared collection and the delete on a collection's page. `returnTo`: the page to go back to
+        // (WebSessions.ReturnPath decided it is one), carried in the form. A wrong address or password is said without saying why,
+        // as every sign-in is (AccountFlows' header); right ones of an account that is no administrator's are refused in words,
+        // and no session is kept for it (AccountPageEndpoints.SignInAsync).
         // ###########################################################################################
         public const string SignInRefused = "The address or the password is not right.";
 
         public const string SignInSlowDown = "Too many tries - wait a few minutes, then try again.";
+
+        public const string SignInAdministratorsOnly =
+            "Signing in here is for the site's administrator alone - the list of every shared collection is theirs. A maintainer signs " +
+            "in in Classic Repair Toolbox, on the \"Maintainer\" tab.";
 
         public static string SignIn(string baseUrl, string? email = null, string? returnTo = null, IReadOnlyList<string>? errors = null) =>
             AccountPages.Layout(
                 baseUrl,
                 AccountWording.SignInButton,
                 AccountPages.Errors(errors) +
-                "<p>Signed in, you can comment on shared oscilloscope collections. The same account signs in to Classic Repair " +
-                "Toolbox.</p>" +
+                "<p>For the site's administrator: the list of every shared oscilloscope collection, and taking one down.</p>" +
                 $"<form method=\"post\" action=\"{Encode(AccountPages.Link(baseUrl, "sign-in"))}\">" +
                 (returnTo is null ? string.Empty : $"<input type=\"hidden\" name=\"return\" value=\"{Encode(returnTo)}\">") +
                 "<label for=\"email\">Email address</label>" +
@@ -175,8 +122,7 @@ namespace CRT.Server.Handlers.Accounts
                 "<input type=\"password\" id=\"password\" name=\"password\" autocomplete=\"current-password\" required>" +
                 $"<button type=\"submit\">{Encode(AccountWording.SignInButton)}</button>" +
                 "</form>" +
-                $"<p class=\"muted\"><a href=\"{Encode(AccountPages.Link(baseUrl, "register"))}\">{Encode(AccountWording.CreateAccountButton)}</a> | " +
-                $"<a href=\"{Encode(AccountPages.Link(baseUrl, "forgot-password"))}\">{Encode(AccountWording.ForgotPasswordButton)}</a></p>");
+                $"<p class=\"muted\"><a href=\"{Encode(AccountPages.Link(baseUrl, "forgot-password"))}\">{Encode(AccountWording.ForgotPasswordButton)}</a></p>");
 
         public static string SignedOut(string baseUrl) =>
             AccountPages.Layout(baseUrl, "You are signed out", "<p>This browser is no longer signed in.</p>");
@@ -185,9 +131,8 @@ namespace CRT.Server.Handlers.Accounts
             AccountPages.Layout(
                 baseUrl,
                 "You are signed in",
-                $"<p>Signed in as <b>{Encode(displayName)}</b>. Open a shared collection's link to comment on its captures, or see " +
-                $"<a href=\"{Encode(Collections.CollectionPages.ListUrl(baseUrl))}\">your collections</a> - " +
-                "those you shared and those you commented on.</p>");
+                $"<p>Signed in as <b>{Encode(displayName)}</b>. See <a href=\"{Encode(Collections.CollectionPages.ListUrl(baseUrl))}\">" +
+                "all collections</a>, or open a collection's link to take it down.</p>");
 
         public static string PasswordSet(string baseUrl) =>
             AccountPages.Layout(
@@ -200,18 +145,18 @@ namespace CRT.Server.Handlers.Accounts
             AccountPages.Layout(
                 baseUrl,
                 "That form came from another website",
-                // Every form of the site is refused so - an account's, a comment's, a lock's (code review, 2026-11-27: this page
-                // spoke of making an account to all of them).
+                // Every form of the site is refused so (code review, 2026-11-27: this page spoke of making an account to all of
+                // them).
                 "<p>Nothing was done. Open the page here - " +
-                // With its slash: Apache forwards "/account/" (INSTALLING.md), never "/account".
-                $"<a href=\"{Encode(baseUrl + AccountPages.Path + "/")}\">the account page</a>, or the collection's own page - " +
-                "and send the form from it.</p>");
+                $"<a href=\"{Encode(AccountPages.Link(baseUrl, "sign-in"))}\">the sign-in</a>, " +
+                $"<a href=\"{Encode(AccountPages.Link(baseUrl, "forgot-password"))}\">{Encode(AccountWording.ForgotPasswordButton)}</a> " +
+                "or the collection's own page - and send the form from it.</p>");
 
         // ###########################################################################################
-        // *** A FORM ANOTHER WEBSITE POSTS HERE IS REFUSED *** (code review, 2026-11-25, Security). Making an account and asking
-        // for a code both MAIL somebody, and the mail budget is counted per IP address (AccountFlows.CheckMailBudgetAsync) - so
-        // a hidden form on a busy page, posting here from every visitor's browser, would spend each visitor's budget and
-        // flood an inbox, the limit never tripping. The JSON routes take application/json, which no form can send.
+        // *** A FORM ANOTHER WEBSITE POSTS HERE IS REFUSED *** (code review, 2026-11-25, Security). Asking for a code MAILS
+        // somebody, and the mail budget is counted per IP address (AccountFlows.CheckMailBudgetAsync) - so a hidden form on a
+        // busy page, posting here from every visitor's browser, would spend each visitor's budget and flood an inbox, the limit
+        // never tripping. The JSON routes take application/json, which no form can send.
         //
         //   Sec-Fetch-Site  every current browser sends it and no page can set it: "same-origin" or "same-site" (a page of
         //                   this site), or "none" (typed or bookmarked) is ours; "cross-site" - and anything else - is not.
@@ -299,7 +244,6 @@ namespace CRT.Server.Handlers.Accounts
             "a{color:var(--link)}" +
             ".errors{border:1px solid var(--fail);color:var(--fail);border-radius:4px;padding:8px 12px;margin:0 0 12px}.errors p{margin:0}" +
             ".notice{border:1px solid var(--go);border-radius:4px;padding:8px 12px;margin:0 0 12px}.notice p{margin:0}" +
-            ".hp{position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden}" +
             "footer{max-width:520px;margin:0 auto 28px;padding:0 24px;color:var(--muted);font-size:.85em}";
 
         public static readonly string StyleHash =

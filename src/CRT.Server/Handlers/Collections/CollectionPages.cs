@@ -22,8 +22,7 @@ namespace CRT.Server.Handlers.Collections
     // PURE: a collection in, a page out. Every word anybody typed is HTML-ENCODED here (Encode); the page's one style block and
     // its one small script - the viewer's keys, fixed text with nothing typed in it - are allowed by their hashes (StyleHash,
     // ScriptHash), and nothing else may run. Search engines are asked to keep nothing (noindex) - a
-    // collection is reached through its link alone; the one list of them, "Your collections" (List, step 4), shows a reader
-    // only their own and those they commented on, and every one to the administrator alone.
+    // collection is reached through its link alone; the one list of them (List) is the administrator's alone.
     // ###########################################################################################
     public static class CollectionPages
     {
@@ -45,7 +44,8 @@ namespace CRT.Server.Handlers.Collections
         // left, the board and the red "Will be deleted" badge in the middle, "Download all" on the right - then the captures as a
         // grid of cards, each opening the VIEWER (Viewers). The viewer is the page's own CSS (:target), so it works with no
         // script at all; the one small script (Script, allowed by its hash) only adds the keys, the wheel and "Copy". Under the
-        // grid each capture's section: the picture, its settings, the note and the comments. (CRT's own baseline beside each
+        // grid each capture's section: the picture, its settings and the note. (The comments under it went with the accounts for
+        // everybody - owner decision, 2026-11-28.) (CRT's own baseline beside each
         // went on 2026-11-27 - owner decision: "that is not relevant".)
         // ###########################################################################################
         public static string Page(string siteBaseUrl, CollectionRecord collection, CollectionPageView? view = null)
@@ -76,19 +76,16 @@ namespace CRT.Server.Handlers.Collections
                 .Append($" | {CollectionPages.Counted(collection.Images.Count, "capture")}")
                 .Append("</p>");
 
-            if (view.Viewer is { } viewer)
+            // The website's one signed-in reader is the administrator (owner decision, 2026-11-28).
+            if (view.Viewer is { IsAdministrator: true } viewer)
                 body.Append(CollectionPages.SignedInLine(siteBaseUrl, viewer, view.Csrf, CollectionPages.PagePath(siteBaseUrl, collection.Id), onList: false));
 
             if (view.PageErrors.Count > 0)
                 body.Append("<div class=\"errors\" role=\"alert\">" + string.Concat(view.PageErrors.Select(error => $"<p>{Encode(error)}</p>")) + "</div>");
 
-            // Shown to the administrator alone - and, sharing stopped, to its owner (CollectionFlows.FindShownToAsync).
+            // Shown to the administrator alone, its sharing stopped (CollectionFlows.FindShownToAsync).
             if (view.Offline != CollectionOffline.No)
-            {
-                body.Append("<div class=\"errors\" role=\"status\"><p>")
-                    .Append(Encode(CollectionPages.OfflineLine(view.Offline, ownerReads: view.Viewer is { } reader && reader.Id == collection.AccountId)))
-                    .Append("</p></div>");
-            }
+                body.Append($"<div class=\"errors\" role=\"status\"><p>{Encode(CollectionPages.OfflineSharingStopped)}</p></div>");
 
             if (view.Viewer is { IsAdministrator: true })
                 body.Append(CollectionPages.RemoveCollection(siteBaseUrl, collection, view));
@@ -106,7 +103,7 @@ namespace CRT.Server.Handlers.Collections
 
             body.Append("</section>");
 
-            body.Append(CollectionPages.Gallery(siteBaseUrl, collection, anchors, view));
+            body.Append(CollectionPages.Gallery(siteBaseUrl, collection, anchors));
 
             for (int i = 0; i < collection.Images.Count; i++)
             {
@@ -116,8 +113,7 @@ namespace CRT.Server.Handlers.Collections
                     collection.Images[i],
                     anchors[i],
                     previous: i > 0 ? anchors[i - 1] : null,
-                    next: i < collection.Images.Count - 1 ? anchors[i + 1] : null,
-                    view));
+                    next: i < collection.Images.Count - 1 ? anchors[i + 1] : null));
             }
 
             body.Append(CollectionPages.Viewers(siteBaseUrl, collection, anchors));
@@ -163,7 +159,7 @@ namespace CRT.Server.Handlers.Collections
         // card a thumbnail, however few (owner request, 2026-11-28: "For the front page of a collection, then it should not show any
         // large images - only the thumbnails") - the one or three before were larger cards, as the gallery's few were.
         // ###########################################################################################
-        private static string Gallery(string siteBaseUrl, CollectionRecord collection, IReadOnlyList<string> anchors, CollectionPageView view)
+        private static string Gallery(string siteBaseUrl, CollectionRecord collection, IReadOnlyList<string> anchors)
         {
             if (collection.Images.Count == 0)
                 return "<section class=\"panel\"><p class=\"muted\">No captures.</p></section>";
@@ -175,10 +171,6 @@ namespace CRT.Server.Handlers.Collections
                 CollectionImageEntry image = collection.Images[i].Entry;
                 string where = CollectionRules.WhereOf(image);
 
-                // The very comments the capture's own section lists for this reader - the owner's and the administrator's count
-                // hidden ones too, as that section does (code review, 2026-11-27: the two counts differed).
-                int comments = view.Comments.Count(comment => comment.ImageSha256 == image.Sha256);
-
                 html.Append("<figure class=\"card\">")
                     .Append($"<a class=\"thumb\" href=\"#{CollectionPages.ViewerId(anchors[i])}\" aria-label=\"{Encode($"Open {where} large")}\">")
                     .Append($"<img class=\"thumb-img\" src=\"{Encode(CollectionPages.ImageUrl(siteBaseUrl, collection.Id, image.Sha256))}\" ")
@@ -187,15 +179,7 @@ namespace CRT.Server.Handlers.Collections
                     .Append($"<a class=\"cap-title\" href=\"#{anchors[i]}\">{CollectionPages.HeadlineOf(collection, image)}</a>")
                     .Append("<div class=\"cap-sub\">");
 
-                var sub = new List<string>();
-
-                if (CollectionPages.PinLineOf(image) is { Length: > 0 } pinLine)
-                    sub.Add(Encode(pinLine));
-
-                if (comments > 0)
-                    sub.Add(CollectionPages.Counted(comments, "comment"));
-
-                html.Append(sub.Count == 0 ? "&nbsp;" : string.Join(" | ", sub))
+                html.Append(CollectionPages.PinLineOf(image) is { Length: > 0 } pinLine ? Encode(pinLine) : "&nbsp;")
                     .Append("</div></figcaption></figure>");
             }
 
@@ -210,10 +194,6 @@ namespace CRT.Server.Handlers.Collections
         // ###########################################################################################
         public static string HeadlineOf(CollectionRecord collection, CollectionImageEntry image) =>
             string.Join(" | ", CollectionPages.TitlePartsOf(collection, image).Select(part => $"<b>{Encode(part)}</b>"));
-
-        // The same as plain words - "U53 | Dynamic RAM | 4164".
-        public static string HeadlineTextOf(CollectionRecord collection, CollectionImageEntry image) =>
-            string.Join(" | ", CollectionPages.TitlePartsOf(collection, image));
 
         private static IReadOnlyList<string> TitlePartsOf(CollectionRecord collection, CollectionImageEntry image)
         {
@@ -412,7 +392,7 @@ namespace CRT.Server.Handlers.Collections
         // ###########################################################################################
         // *** A COLLECTION DELETED KEEPS ITS PAGE FOR GOOD (owner request, 2026-11-27: "replaced by a standard web page, explaining
         // the deletion period has passed etc. ... and do keep this page forever"). *** Its row stays in the database - only its
-        // words, captures and comments go (ICollectionStore.MarkDeletedAsync) - so the link a forum post holds answers years
+        // words and captures go (ICollectionStore.MarkDeletedAsync) - so the link a forum post holds answers years
         // later: what the page was, when and why it went, that it went on purpose, and what CRT is. It names nobody, as the
         // page did not.
         // ###########################################################################################
@@ -435,11 +415,11 @@ namespace CRT.Server.Handlers.Collections
                 CollectionDeletedReasons.Expired =>
                     $"It was deleted on {when}, as the time it was shared for had passed. Whoever shares a collection chooses how long " +
                     "it stays online - a day, a week, a month or a year from the last time it was shared - and when that time is up, " +
-                    "its captures and comments go.",
+                    "its captures go.",
                 CollectionDeletedReasons.Owner =>
-                    $"Its owner deleted it on {when}, and its captures and comments went with it.",
+                    $"Whoever shared it deleted it on {when}, and its captures went with it.",
                 CollectionDeletedReasons.Administrator =>
-                    $"It was taken down by the site's administrator on {when}, and its captures and comments went with it.",
+                    $"It was taken down by the site's administrator on {when}, and its captures went with it.",
                 _ => $"It was deleted on {when}."
             };
         }
@@ -462,7 +442,7 @@ namespace CRT.Server.Handlers.Collections
         public const string SharingStoppedTitle = "This collection is not shared at the moment";
 
         public const string SharingStoppedText =
-            "Its owner has stopped sharing it for now, so its captures and comments are not shown. If they share it again, it comes " +
+            "Whoever shared it has stopped sharing it for now, so its captures are not shown. If they share it again, it comes " +
             "back under this same link - so try it again later.";
 
         public static string SharingStopped(CollectionRecord collection) =>
@@ -480,27 +460,10 @@ namespace CRT.Server.Handlers.Collections
             "baselines for Commodore, Amstrad and ZX Spectrum boards, and the captures of your own oscilloscope beside them. " +
             $"<a href=\"{Encode(EmailTemplates.CrtDownloadUrl)}\">Download it</a>.</p>";
 
-        // A collection offline for everybody else, as the administrator sees it - nobody can comment on it, and its comments are
-        // still hidden or deleted here - or, its sharing stopped, as its owner and the administrator see it.
-        public const string OfflineOwnerLocked =
-            "Offline: its owner's account is locked, so only you see this page. Nobody can comment on it until the account is unlocked.";
-
-        public const string OfflineOwnerGone =
-            "Offline: its owner has no account any more, so only you see this page. Nobody can comment on it.";
-
-        public const string OfflineSharingStoppedOwner =
-            "Not shared: you stopped sharing it, so only you and the administrator see this page. \"Share\" in CRT brings it back " +
+        // A collection whose sharing was stopped, as the administrator - the one reader who still sees it - sees it.
+        public const string OfflineSharingStopped =
+            "Not shared: whoever shared it stopped sharing it, so only you see this page. \"Share\" in their CRT brings it back " +
             "under this same link.";
-
-        public const string OfflineSharingStoppedAdministrator =
-            "Not shared: its owner stopped sharing it, so only its owner and you see this page. Nobody can comment on it meanwhile.";
-
-        private static string OfflineLine(CollectionOffline offline, bool ownerReads) => offline switch
-        {
-            CollectionOffline.OwnerGone => CollectionPages.OfflineOwnerGone,
-            CollectionOffline.SharingStopped => ownerReads ? CollectionPages.OfflineSharingStoppedOwner : CollectionPages.OfflineSharingStoppedAdministrator,
-            _ => CollectionPages.OfflineOwnerLocked
-        };
 
         public static string NotFound() =>
             CollectionPages.Layout(
@@ -511,136 +474,37 @@ namespace CRT.Server.Handlers.Collections
             CollectionPages.Layout("Collections are not available", $"<p>{Encode(CollectionFlows.NotSetUp)}</p>");
 
         // ###########################################################################################
-        // "YOUR COLLECTIONS" (step 4, 2026-11-26; CollectionListFlows says what each list holds): the reader's own and those they
-        // commented on, and for the administrator every collection with whose it is and the newest comments, each a link to
-        // the comment on its page - where it is hidden or deleted. The one page naming owners, so the administrator's alone.
+        // "ALL COLLECTIONS" - THE ADMINISTRATOR'S LIST (CollectionListFlows; owner decision, 2026-11-28: "I (as web admin) still
+        // want to be able to see all collections, so I can control it looks correct"): every collection not deleted, newest
+        // first, each a link to its page - where it is deleted. Nobody else gets a list.
         // ###########################################################################################
-        public const string ListTitle = "Your collections";
-
-        public const string NoneSharedYet =
-            "None yet - captures are collected in CRT's component info window, under \"Collect captures into\", and shared from there.";
-
-        public const string OwnerLockedFlag = "Owner locked - offline";
-
-        public const string OwnerGoneFlag = "No owner account - offline";
+        public const string ListTitle = "All collections";
 
         public const string NotSharedFlag = "Not shared - offline";
 
-        // ###########################################################################################
-        // `locking` is the account the administrator asked to lock (?lock=<id>) - asked first, as a page of its own state - and
-        // `problem` what a lock or unlock refused said.
-        // ###########################################################################################
-        public static string List(string siteBaseUrl, CollectionViewer viewer, string? csrf, CollectionListView list, LockedAccount? locking = null, string? problem = null)
+        public static string List(string siteBaseUrl, CollectionViewer viewer, string? csrf, IReadOnlyList<CollectionRecord> all)
         {
+            ArgumentNullException.ThrowIfNull(all);
+
             var body = new StringBuilder();
-            bool administrator = viewer.IsAdministrator;
 
             body.Append(CollectionPages.SignedInLine(siteBaseUrl, viewer, csrf, CollectionPages.ListPath(siteBaseUrl), onList: true));
+            body.Append($"<h2>Every collection ({all.Count}) <span class=\"badge\">{CollectionPages.AdministratorBadge}</span></h2>");
 
-            if (administrator && problem is not null)
-                body.Append($"<div class=\"errors\" role=\"alert\"><p>{Encode(problem)}</p></div>");
+            if (all.Count >= CollectionListFlows.AllShownAtMost)
+                body.Append($"<p class=\"muted\">The newest {CollectionListFlows.AllShownAtMost} are listed.</p>");
 
-            if (administrator && locking is not null)
-                body.Append(CollectionPages.LockQuestion(siteBaseUrl, csrf, locking));
-
-            body.Append($"<h2>Shared by you ({list.Own.Count})</h2>");
-            body.Append(list.Own.Count == 0
-                ? $"<p class=\"muted\">{Encode(CollectionPages.NoneSharedYet)}</p>"
-                : CollectionPages.Rows(siteBaseUrl, list.Own.Select(collection => new ListedRow(collection))));
-
-            body.Append($"<h2>You commented on ({list.CommentedOn.Count})</h2>");
-            body.Append(list.CommentedOn.Count == 0
-                ? "<p class=\"muted\">None yet.</p>"
-                : CollectionPages.Rows(siteBaseUrl, list.CommentedOn.Select(collection => new ListedRow(collection))));
-
-            if (administrator && list.All is { } all)
-            {
-                body.Append($"<h2>Every collection ({all.Count}) <span class=\"badge\">{CollectionComments.AdministratorBadge}</span></h2>");
-
-                if (all.Count >= CollectionListFlows.AllShownAtMost)
-                    body.Append($"<p class=\"muted\">The newest {CollectionListFlows.AllShownAtMost} are listed.</p>");
-
-                body.Append(all.Count == 0
-                    ? "<p class=\"muted\">None.</p>"
-                    : CollectionPages.Rows(siteBaseUrl, all.Select(listed => new ListedRow(
-                        listed.Collection,
-                        CollectionPages.OwnerText(listed),
-                        listed.OwnerGone ? CollectionPages.OwnerGoneFlag : listed.OwnerLocked ? CollectionPages.OwnerLockedFlag : null,
-                        listed.IsOffline || listed.OwnerIsAdministrator ? null : CollectionPages.LockLink(siteBaseUrl, listed.Collection.AccountId)))));
-            }
-
-            if (administrator && list.NewestComments is { } comments)
-            {
-                Dictionary<string, CollectionRecord> named = list.Own
-                    .Concat(list.CommentedOn)
-                    .Concat(list.All?.Select(listed => listed.Collection) ?? [])
-                    .DistinctBy(collection => collection.Id)
-                    .ToDictionary(collection => collection.Id, StringComparer.Ordinal);
-
-                body.Append($"<h2>Newest comments ({comments.Count}) <span class=\"badge\">{CollectionComments.AdministratorBadge}</span></h2>");
-                body.Append(comments.Count == 0 ? "<p class=\"muted\">None.</p>" : CollectionPages.NewestComments(siteBaseUrl, comments, named));
-            }
-
-            if (administrator && list.Locked is { } locked)
-            {
-                body.Append($"<h2 id=\"locked\">Locked accounts ({locked.Count}) <span class=\"badge\">{CollectionComments.AdministratorBadge}</span></h2>");
-
-                if (locked.Count == 0)
-                {
-                    body.Append("<p class=\"muted\">None.</p>");
-                }
-                else
-                {
-                    body.Append("<ul class=\"collections\">");
-
-                    foreach (LockedAccount account in locked)
-                    {
-                        body.Append($"<li><b>{Encode(account.Name)}</b> <span class=\"muted\">({Encode(account.Email)})</span> ")
-                            .Append($"<form class=\"inline\" method=\"post\" action=\"{Encode(CollectionPages.AccountActionUrl(siteBaseUrl, account.Id, "unlock"))}\">")
-                            .Append(CollectionPages.Hidden("csrf", csrf))
-                            .Append("<button type=\"submit\" class=\"link\">Unlock</button></form></li>");
-                    }
-
-                    body.Append("</ul>");
-                }
-            }
+            body.Append(all.Count == 0 ? "<p class=\"muted\">None.</p>" : CollectionPages.Rows(siteBaseUrl, all));
 
             return CollectionPages.Layout(CollectionPages.ListTitle, $"<div class=\"list\">{body}</div>", kind: CollectionPages.ListKind);
         }
 
-        // ###########################################################################################
-        // LOCKING AN ACCOUNT (owner decision, 2026-11-27; AccountLockFlows): the administrator's, asked first, saying what it does.
-        // ###########################################################################################
-        public const string LockQuestionText =
-            "It can no longer sign in, its collections go offline and its comments are hidden from everybody but you. " +
-            "\"Unlock\" under \"Locked accounts\" puts them back; it then has to sign in again.";
-
-        public const string AccountLockedFlag = "Account locked";
-
-        // A hidden comment is shown to the collection's owner AND the administrator (CollectionCommentFlows.ShownTo) - said so,
-        // as "only you" misled each about the other (code review, 2026-11-27).
-        public const string HiddenFlag = "Hidden - only the owner and the administrator see it";
-
-        private static string LockQuestion(string siteBaseUrl, string? csrf, LockedAccount account) =>
-            $"<form class=\"admin\" method=\"post\" action=\"{Encode(CollectionPages.AccountActionUrl(siteBaseUrl, account.Id, "lock"))}\">" +
-            $"<p>Lock the account of <b>{Encode(account.Name)}</b> ({Encode(account.Email)})? {Encode(CollectionPages.LockQuestionText)}</p>" +
-            CollectionPages.Hidden("csrf", csrf) +
-            "<p class=\"actions\"><button type=\"submit\" class=\"danger\">Lock account</button> " +
-            $"<a href=\"{Encode(CollectionPages.ListUrl(siteBaseUrl))}\">Keep it</a></p></form>";
-
-        // The link asking to lock an account, the question then at the top of the list.
-        private static string LockLink(string siteBaseUrl, long accountId) =>
-            $"<a href=\"{Encode($"{CollectionPages.ListUrl(siteBaseUrl)}?lock={accountId}")}\">Lock account</a>";
-
-        // Where a lock or unlock posts: /collections/accounts/<id>/lock.
-        public static string AccountActionUrl(string siteBaseUrl, long accountId, string action) =>
-            $"{CollectionPages.ListUrl(siteBaseUrl)}accounts/{accountId}/{action}";
-
-        private sealed record ListedRow(CollectionRecord Collection, string? Owner = null, string? Flag = null, string? LockLink = null);
+        // What the administrator's own lines are marked with.
+        public const string AdministratorBadge = "Administrator";
 
         private const string ListKind = "Oscilloscope collections";
 
-        // The list asked for signed out: what it is, and the way in back to it.
+        // The list asked for by anybody else: it is the administrator's, and the way in back to it.
         public static string ListSignedOut(string siteBaseUrl)
         {
             string signIn = Accounts.AccountPages.Link(Accounts.AccountPages.BaseUrl(siteBaseUrl), "sign-in") +
@@ -648,7 +512,7 @@ namespace CRT.Server.Handlers.Collections
 
             return CollectionPages.Layout(
                 CollectionPages.ListTitle,
-                $"<p><a href=\"{Encode(signIn)}\">Sign in</a> to see the collections you shared and those you commented on.</p>",
+                $"<p>The list of every collection is the site's administrator's. <a href=\"{Encode(signIn)}\">Sign in</a> as the administrator to see it.</p>",
                 kind: CollectionPages.ListKind);
         }
 
@@ -657,85 +521,30 @@ namespace CRT.Server.Handlers.Collections
 
         public static string ListPath(string siteBaseUrl) => $"{Accounts.WebSessions.PathOf(siteBaseUrl)}{CollectionRoutes.PagePath}/";
 
-        private static string Rows(string siteBaseUrl, IEnumerable<ListedRow> rows)
+        private static string Rows(string siteBaseUrl, IEnumerable<CollectionRecord> collections)
         {
             var html = new StringBuilder("<ul class=\"collections\">");
 
-            foreach ((CollectionRecord collection, string? owner, string? flag, string? lockLink) in rows)
+            foreach (CollectionRecord collection in collections)
             {
                 html.Append($"<li><a href=\"{Encode(CollectionRules.PageUrl(siteBaseUrl, collection.Id))}\">{Encode(CollectionPages.NameOf(collection))}</a>");
 
-                if (flag is not null)
-                    html.Append($" <span class=\"flag\">{Encode(flag)}</span>");
-
-                // Its owner stopped sharing it - offline to everybody but its owner and the administrator (migration 0028).
+                // Its owner stopped sharing it - offline to everybody but the administrator (migration 0028).
                 if (collection.IsSharingStopped)
                     html.Append($" <span class=\"flag\">{CollectionPages.NotSharedFlag}</span>");
 
                 html.Append("<br><span class=\"muted\">")
                     .Append(Encode(CollectionPages.BoardLine(collection)))
-                    .Append($" | {CollectionPages.Counted(collection.ImageCount, "capture")} | {CollectionPages.Counted(collection.CommentCount, "comment")}")
+                    .Append($" | {CollectionPages.Counted(collection.ImageCount, "capture")}")
                     .Append($" | Shared {Encode(CollectionRules.DateText(collection.CreatedUtc))}")
-                    .Append($" | Deleted on {Encode(CollectionRules.DateText(collection.DeleteAtUtc))}");
-
-                if (owner is not null)
-                    html.Append($" | By {Encode(owner)}");
-
-                if (lockLink is not null)
-                    html.Append($" | {lockLink}");
-
-                html.Append("</span></li>");
+                    .Append($" | Deleted on {Encode(CollectionRules.DateText(collection.DeleteAtUtc))}")
+                    .Append("</span></li>");
             }
 
             return html.Append("</ul>").ToString();
         }
 
-        private static string OwnerText(CollectionListed listed) =>
-            listed.OwnerEmail is { } email ? $"{listed.OwnerName} ({email})" : listed.OwnerName;
-
-        private static string NewestComments(string siteBaseUrl, IReadOnlyList<CollectionCommentRecord> comments, IReadOnlyDictionary<string, CollectionRecord> named)
-        {
-            var html = new StringBuilder();
-
-            foreach (CollectionCommentRecord comment in comments)
-            {
-                string on = named.TryGetValue(comment.CollectionId, out CollectionRecord? collection) ? CollectionPages.NameOf(collection) : comment.CollectionId;
-
-                html.Append($"<article class=\"comment{(comment.IsHidden ? " hidden" : string.Empty)}\">")
-                    .Append($"<p class=\"who\"><b>{Encode(comment.AuthorName)}</b>")
-                    .Append($" <span class=\"muted\">{Encode(CollectionComments.WhenText(comment.CreatedUtc))}{(comment.EditedUtc is null ? string.Empty : " - edited")}</span>");
-
-                if (comment.IsHidden)
-                    html.Append(" <span class=\"flag\">Hidden</span>");
-
-                if (comment.AuthorIsLocked)
-                    html.Append($" <span class=\"flag\">{CollectionPages.AccountLockedFlag}</span>");
-
-                html.Append("</p>")
-                    .Append($"<p class=\"text\">{Encode(CollectionPages.Excerpt(comment.Body, 300))}</p>")
-                    .Append($"<p class=\"actions\">On <a href=\"{Encode($"{CollectionRules.PageUrl(siteBaseUrl, comment.CollectionId)}#comment-{comment.Id}")}\">{Encode(on)}</a>");
-
-                if (!comment.AuthorIsLocked && !comment.AuthorIsAdministrator)
-                    html.Append($" | {CollectionPages.LockLink(siteBaseUrl, comment.AccountId)}");
-
-                html.Append("</p></article>");
-            }
-
-            return html.ToString();
-        }
-
         private static string Counted(int count, string what) => $"{count} {what}{(count == 1 ? string.Empty : "s")}";
-
-        // At most `length` characters, never half of one written as two (a surrogate pair).
-        private static string Excerpt(string text, int length)
-        {
-            if (text.Length <= length)
-                return text;
-
-            int cut = char.IsHighSurrogate(text[length - 1]) ? length - 1 : length;
-
-            return text[..cut].TrimEnd() + "...";
-        }
 
         // Who is signed in, the way to the list (but on the list), and the way out - the form carries its token (WebSessions.Csrf)
         // and where to come back to.
@@ -750,11 +559,11 @@ namespace CRT.Server.Handlers.Collections
 
         // ###########################################################################################
         // THE ADMINISTRATOR TAKES A COLLECTION DOWN (step 4) - asked first, as a page of its own state (?remove=1), then a form
-        // posting to this service. Its page then says it was removed; its captures and comments go. The owner deletes their own
-        // in CRT, which keeps its window in step with the server - so the web offers it to the administrator alone.
+        // posting to this service. Its page then says it was removed; its captures go. Whoever shared it deletes their own in
+        // CRT, which keeps its window in step with the server - so the web offers it to the administrator alone.
         // ###########################################################################################
         public const string RemoveQuestion =
-            "Delete this collection for everybody? Its page will then say it was removed, and its captures and comments go. Its owner is not mailed.";
+            "Delete this collection for everybody? Its page will then say it was removed, and its captures go.";
 
         private static string RemoveCollection(string siteBaseUrl, CollectionRecord collection, CollectionPageView view)
         {
@@ -762,7 +571,7 @@ namespace CRT.Server.Handlers.Collections
 
             if (!view.RemovingCollection)
             {
-                return $"<p class=\"admin\"><span class=\"badge\">{CollectionComments.AdministratorBadge}</span> " +
+                return $"<p class=\"admin\"><span class=\"badge\">{CollectionPages.AdministratorBadge}</span> " +
                        $"<a href=\"{Encode(page + "?remove=1")}\">Delete this collection</a></p>";
             }
 
@@ -784,8 +593,7 @@ namespace CRT.Server.Handlers.Collections
             CollectionImageRecord capture,
             string anchor,
             string? previous,
-            string? next,
-            CollectionPageView view)
+            string? next)
         {
             CollectionImageEntry image = capture.Entry;
             string where = CollectionRules.WhereOf(image);
@@ -818,8 +626,6 @@ namespace CRT.Server.Handlers.Collections
 
             html.Append("</div></div>");
 
-            html.Append(CollectionPages.CommentsOf(siteBaseUrl, collection, image.Sha256, anchor, view));
-
             html.Append("<p class=\"steps\">");
             html.Append(previous is null ? "Previous" : $"<a href=\"#{previous}\">Previous</a>");
             html.Append(" | <a href=\"#top\">Top</a> | ");
@@ -828,131 +634,6 @@ namespace CRT.Server.Handlers.Collections
 
             return html.ToString();
         }
-
-        // ###########################################################################################
-        // A CAPTURE'S COMMENTS (step 3): each with its writer's name - "Owner" by the collection's owner's, "Administrator" by an
-        // administrator's - when, and its text as typed; its writer's "Edit" and "Delete", the owner's "Hide" and "Show again";
-        // then the form to comment, or the way to sign in. No script: editing or deleting one is a page of its own state
-        // (?edit=, ?delete=), every change a form posting to this service with the session's token.
-        // ###########################################################################################
-        private static string CommentsOf(string siteBaseUrl, CollectionRecord collection, string sha256, string anchor, CollectionPageView view)
-        {
-            List<CollectionCommentRecord> comments = view.Comments.Where(comment => comment.ImageSha256 == sha256).ToList();
-            string page = CollectionRules.PageUrl(siteBaseUrl, collection.Id);
-            CollectionViewer? viewer = view.Viewer;
-            bool moderates = viewer is not null && (viewer.Id == collection.AccountId || viewer.IsAdministrator);
-            var html = new StringBuilder();
-
-            html.Append($"<div class=\"comments\" id=\"comments-{anchor}\">");
-            html.Append($"<h3>Comments{(comments.Count > 0 ? $" ({comments.Count})" : string.Empty)}</h3>");
-
-            foreach (CollectionCommentRecord comment in comments)
-            {
-                bool mine = viewer is not null && viewer.Id == comment.AccountId;
-
-                html.Append($"<article class=\"comment{(comment.IsHidden ? " hidden" : string.Empty)}\" id=\"comment-{comment.Id}\">");
-                html.Append($"<p class=\"who\"><b>{Encode(comment.AuthorName)}</b>");
-
-                if (comment.AccountId == collection.AccountId)
-                    html.Append($" <span class=\"badge\">{CollectionComments.OwnerBadge}</span>");
-
-                if (comment.AuthorIsAdministrator)
-                    html.Append($" <span class=\"badge\">{CollectionComments.AdministratorBadge}</span>");
-
-                html.Append($" <span class=\"muted\">{Encode(CollectionComments.WhenText(comment.CreatedUtc))}{(comment.EditedUtc is null ? string.Empty : " - edited")}</span>");
-
-                if (comment.IsHidden)
-                    html.Append($" <span class=\"flag\">{CollectionPages.HiddenFlag}</span>");
-
-                // Shown to the administrator alone (CollectionCommentFlows.ShownTo).
-                if (comment.AuthorIsLocked)
-                    html.Append($" <span class=\"flag\">{CollectionPages.AccountLockedFlag} - only you see it</span>");
-
-                html.Append("</p>");
-
-                if (mine && view.EditingId == comment.Id)
-                {
-                    html.Append($"<form method=\"post\" action=\"{Encode($"{page}/comments/{comment.Id}/edit")}\">")
-                        .Append(CollectionPages.Hidden("csrf", view.Csrf))
-                        .Append(CollectionPages.TextArea(view.ErrorOn == comment.Id.ToString(System.Globalization.CultureInfo.InvariantCulture) ? view.Typed : comment.Body))
-                        .Append(CollectionPages.ErrorsFor(view, comment.Id.ToString(System.Globalization.CultureInfo.InvariantCulture)))
-                        .Append("<p class=\"actions\"><button type=\"submit\">Save</button> ")
-                        .Append($"<a href=\"{Encode($"{page}#comment-{comment.Id}")}\">Cancel</a></p></form>");
-                }
-                else
-                {
-                    html.Append($"<p class=\"text\">{Encode(comment.Body)}</p>");
-                }
-
-                if ((mine || viewer is { IsAdministrator: true }) && view.DeletingId == comment.Id)
-                {
-                    html.Append($"<form class=\"actions\" method=\"post\" action=\"{Encode($"{page}/comments/{comment.Id}/delete")}\">")
-                        .Append("Delete this comment? ")
-                        .Append(CollectionPages.Hidden("csrf", view.Csrf))
-                        .Append("<button type=\"submit\" class=\"danger\">Delete comment</button> ")
-                        .Append($"<a href=\"{Encode($"{page}#comment-{comment.Id}")}\">Keep it</a></form>");
-                }
-                else if (view.EditingId != comment.Id)
-                {
-                    var actions = new List<string>();
-
-                    // An offline collection's comments are not edited - CollectionCommentFlows.EditAsync asks FindShownAsync.
-                    if (mine && view.Offline == CollectionOffline.No)
-                        actions.Add($"<a href=\"{Encode($"{page}?edit={comment.Id}#comment-{comment.Id}")}\">Edit</a>");
-
-                    if (mine || viewer is { IsAdministrator: true })
-                        actions.Add($"<a href=\"{Encode($"{page}?delete={comment.Id}#comment-{comment.Id}")}\">Delete</a>");
-
-                    if (moderates && !mine)
-                    {
-                        string verb = comment.IsHidden ? "show" : "hide";
-
-                        actions.Add(
-                            $"<form class=\"inline\" method=\"post\" action=\"{Encode($"{page}/comments/{comment.Id}/{verb}")}\">" +
-                            CollectionPages.Hidden("csrf", view.Csrf) +
-                            $"<button type=\"submit\" class=\"link\">{(comment.IsHidden ? "Show again" : "Hide")}</button></form>");
-                    }
-
-                    if (actions.Count > 0)
-                        html.Append($"<p class=\"actions\">{string.Join(" | ", actions)}</p>");
-                }
-
-                html.Append("</article>");
-            }
-
-            // Nobody comments on a collection offline (CollectionCommentFlows.AddAsync), so the administrator, the one reader of
-            // its page, gets no form to be refused by.
-            if (viewer is not null && view.Offline == CollectionOffline.No)
-            {
-                html.Append($"<form method=\"post\" action=\"{Encode($"{page}/comments")}\">")
-                    .Append(CollectionPages.Hidden("csrf", view.Csrf))
-                    .Append(CollectionPages.Hidden("image", sha256))
-                    .Append($"<label for=\"comment-on-{anchor}\">Your comment</label>")
-                    .Append(CollectionPages.TextArea(view.ErrorOn == sha256 ? view.Typed : null, $"comment-on-{anchor}"))
-                    .Append(CollectionPages.ErrorsFor(view, sha256))
-                    .Append("<p class=\"actions\"><button type=\"submit\">Comment</button></p></form>");
-            }
-            else if (viewer is null)
-            {
-                string signIn = Accounts.AccountPages.Link(Accounts.AccountPages.BaseUrl(siteBaseUrl), "sign-in") +
-                                "?return=" + Uri.EscapeDataString($"{CollectionPages.PagePath(siteBaseUrl, collection.Id)}#comments-{anchor}");
-                string register = Accounts.AccountPages.Link(Accounts.AccountPages.BaseUrl(siteBaseUrl), "register");
-
-                html.Append($"<p class=\"muted\"><a href=\"{Encode(signIn)}\">Sign in</a> to comment - ")
-                    .Append($"<a href=\"{Encode(register)}\">make an account</a> if you have none.</p>");
-            }
-
-            html.Append("</div>");
-            return html.ToString();
-        }
-
-        private static string TextArea(string? text, string? id = null) =>
-            $"<textarea name=\"body\"{(id is null ? string.Empty : $" id=\"{id}\"")} rows=\"4\" maxlength=\"{CollectionComments.MaximumLength}\" required>{Encode(text)}</textarea>";
-
-        private static string ErrorsFor(CollectionPageView view, string where) =>
-            view.ErrorOn == where && view.Errors.Count > 0
-                ? "<div class=\"errors\" role=\"alert\">" + string.Concat(view.Errors.Select(error => $"<p>{Encode(error)}</p>")) + "</div>"
-                : string.Empty;
 
         private static string Hidden(string name, string? value) => $"<input type=\"hidden\" name=\"{name}\" value=\"{Encode(value)}\">";
 
@@ -1058,14 +739,10 @@ namespace CRT.Server.Handlers.Collections
             ".capture-thumb{flex:0 0 240px;max-width:100%}.capture-facts{flex:1 1 260px;min-width:0}.capture-facts>:last-child{margin-bottom:0}" +
             ".settings{border-collapse:collapse;margin-bottom:12px}.settings th,.settings td{text-align:left;padding:4px 14px 4px 0}" +
             ".steps{font-size:.9em;color:var(--muted);margin:0}.signedin{font-size:.9em;color:var(--muted);margin:0 0 12px}" +
-            ".comments{margin:8px 0 12px;padding:12px 16px;border:1px solid var(--border);border-radius:10px;background:var(--card2)}" +
-            ".comment{border-top:1px solid var(--border);padding:8px 0}.comment:first-of-type{border-top:0}" +
-            ".comment.hidden{opacity:.65}.who{margin:0 0 4px}.comment .text{margin:0 0 4px}.actions{font-size:.9em;margin:4px 0 0}" +
+            ".actions{font-size:.9em;margin:4px 0 0}" +
             "label{display:block;font-weight:600;margin:8px 0 4px}" +
-            "textarea{width:100%;padding:8px 10px;font:inherit;color:var(--text);background:#fff;border:1px solid var(--border2);border-radius:8px}" +
             "button{padding:6px 14px;font:inherit;color:#fff;background:var(--go);border:0;border-radius:8px;cursor:pointer}" +
             "button.danger{background:var(--red)}button.link{padding:0;color:var(--link);background:none;text-decoration:underline;border-radius:0}" +
-            "form.inline{display:inline}" +
             ".errors{border:1px solid var(--red);color:#8f2f2f;background:rgba(188,84,84,.08);border-radius:8px;padding:8px 12px;margin:8px 0}.errors p{margin:0}" +
             ".list h2{margin-top:24px}.collections{list-style:none;padding:0;margin:0 0 12px}" +
             ".collections li{padding:8px 0;border-top:1px solid var(--border);overflow-wrap:anywhere}.collections li:first-child{border-top:0}" +
@@ -1157,16 +834,15 @@ namespace CRT.Server.Handlers.Collections
 
         // Nothing but the style and the script above may run, pictures only from this site (the captures and their pinout
         // drawings - nothing of the published data since the baseline went, server 16.0.0), and forms post only to this site
-        // (the comments and signing out). The script copies to the clipboard, which asks for nothing more.
+        // (the administrator's delete and signing out). The script copies to the clipboard, which asks for nothing more.
         public static string ContentSecurityPolicy() =>
             $"default-src 'none'; style-src '{CollectionPages.StyleHash}'; script-src '{CollectionPages.ScriptHash}'; " +
             "img-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
     }
 
     // ###########################################################################################
-    // WHO READS THE PAGE, AND WHAT OF THE COMMENTS THEY SEE (step 3). Signed out: the comments shown to everybody, and the way to
-    // sign in. Signed in: a form under each capture, the token every form carries (WebSessions.Csrf), and what the reader is
-    // doing - a comment being edited (?edit=) or asked about before it is deleted (?delete=), or a refusal with what was typed.
+    // WHO READS THE PAGE. Anybody: the page. The administrator, signed in on the website: the way to delete it, with the token
+    // the form carries (WebSessions.Csrf), and a collection offline for everybody else, said so.
     // ###########################################################################################
     public sealed record CollectionPageView
     {
@@ -1176,30 +852,15 @@ namespace CRT.Server.Handlers.Collections
 
         public string? Csrf { get; init; }
 
-        // As shown to this reader (CollectionCommentFlows.ShownTo).
-        public IReadOnlyList<CollectionCommentRecord> Comments { get; init; } = [];
-
-        public long? EditingId { get; init; }
-
-        public long? DeletingId { get; init; }
-
         // The administrator asked to delete the collection (?remove=1) - the question shown, with its form.
         public bool RemovingCollection { get; init; }
 
         // Offline for everybody else - shown to the administrator alone (CollectionFlows.FindShownToAsync), saying so.
         public CollectionOffline Offline { get; init; }
 
-        // Why a form was refused, when its own place on the page cannot say it - a hide, a "Show again", a delete, or an edit of
-        // a comment gone meanwhile (code review, 2026-11-27: the page came back with an error status and no words).
+        // Why the administrator's delete was refused (code review, 2026-11-27: the page came back with an error status and no
+        // words).
         public IReadOnlyList<string> PageErrors { get; init; } = [];
-
-        // What a refusal is about - a capture's checksum (a new comment) or a comment's id (an edit) - its sentences, and the
-        // text that was typed, put back in its box.
-        public string? ErrorOn { get; init; }
-
-        public IReadOnlyList<string> Errors { get; init; } = [];
-
-        public string? Typed { get; init; }
     }
 
     // The reader signed in - never the account's address or anything else of it.

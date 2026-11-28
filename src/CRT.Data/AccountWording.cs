@@ -2,37 +2,30 @@ namespace Handlers.DataHandling
 {
     // ###########################################################################################
     // THE WORDS ABOUT AN ACCOUNT THAT MORE THAN ONE PLACE SAYS - CRT's account window, the account web pages the server
-    // serves, and the mails (owner request, 2026-11-25: accounts for everybody, registered "both places", where "it should be
-    // clear that it gives access to both"). A button a mail or a page tells somebody to press is named here, and the window's
-    // button reads the very constant, so the two cannot drift apart.
+    // serves, and the mails. A button a mail or a page tells somebody to press is named here, and the window's button reads
+    // the very constant, so the two cannot drift apart.
     //
-    // Where the account lives in CRT: the person icon in the top right corner of the window (Main.Account.cs), from any tab -
-    // the Maintainer tab's own sign-in screen until 2026-11-25, when only maintainers had accounts.
+    // An account is a MAINTAINER'S (owner decision, 2026-11-28: "Entirely remove the new "Account" possibility ... I do not want
+    // the possibility for everyone to create an account. This should of course continue to work as-is for the "Maintainer"
+    // tab") - made by an invitation, signed in to through the "Maintainer" tab's "Sign in", which opens the account window.
+    // (From 2026-11-25 to 2026-11-28 anybody made one, through an account icon in the top right corner of CRT's window.)
     // ###########################################################################################
     public static class AccountWording
     {
-        // What an account is, said first on the window and on every web page that makes one.
-        public const string OneAccount =
-            "One account for Classic Repair Toolbox, the same in the application and on its website. " +
-            "If you maintain a board, it is also your sign-in for the \"Maintainer\" tab.";
-
         // Where CRT keeps it, as a sentence names it.
-        public const string WhereInCrt = "the account icon in the top right corner of CRT's window";
+        public const string WhereInCrt = "the \"Maintainer\" tab's \"Sign in\"";
 
         // The buttons, as the window labels them and the mails and pages quote them.
         public const string SignInButton = "Sign in";
-        public const string CreateAccountButton = "Create an account";
         public const string ForgotPasswordButton = "I forgot my password";
         public const string HaveInvitationButton = "I have an invitation";
-        public const string SendMailAgainButton = "Send the mail again";
 
         // ###########################################################################################
-        // How long a mailed code and link last - the server's lifetimes (AccountFlows.PasswordResetTokenLifetime and
-        // VerificationTokenLifetime are made from these), so the window, the pages and the mails cannot promise another
-        // (code review, 2026-11-25: "2 hours" and "24 hours" were typed into three sentences by hand).
+        // How long a mailed code lasts - the server's lifetime (AccountFlows.PasswordResetTokenLifetime is made from it), so the
+        // window, the pages and the mails cannot promise another (code review, 2026-11-25: "2 hours" was typed into sentences
+        // by hand).
         // ###########################################################################################
         public const int PasswordResetCodeHours = 2;
-        public const int VerificationLinkHours = 24;
 
         // Said where a code for a new password is asked for - CRT's account window and the web page.
         public static readonly string ResetCodeWorks =
@@ -45,9 +38,5 @@ namespace Handlers.DataHandling
 
         public const string PasswordLine =
             "At least 12 characters. A few ordinary words together make a strong password that is easy to remember.";
-
-        // The address not confirmed yet - said where the signed-in account is shown.
-        public const string NotConfirmed =
-            "Your address is not confirmed yet. Open the link in the mail you were sent when you made the account.";
     }
 }

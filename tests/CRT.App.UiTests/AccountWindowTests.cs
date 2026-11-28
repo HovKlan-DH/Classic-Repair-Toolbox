@@ -12,9 +12,10 @@ using Handlers.MaintainerHandling;
 namespace ClassicRepairToolbox.Tests.Ui;
 
 // ###########################################################################################
-// CRT'S ACCOUNT WINDOW (2026-11-25, accounts for everybody - AccountWindow): signing in, "Create an account", "I forgot my
-// password", "I have an invitation" and, signed in, "My account". The sign-in and the invitation were the "Maintainer" tab's
-// until that day - their tests came with them (TabMaintainerInvitationTests, and the two notes from TabMaintainerSessionTests).
+// CRT'S ACCOUNT WINDOW (AccountWindow), opened by the "Maintainer" tab's "Sign in": signing in, "I forgot my password", "I have
+// an invitation" and, signed in, "My account" - no "Create an account" since 2026-11-28 (owner decision: no accounts for
+// everybody). The sign-in and the invitation were the tab's own until 2026-11-25 - their tests came with them
+// (TabMaintainerInvitationTests, and the two notes from TabMaintainerSessionTests).
 // The server is a function (AnsweringHttpHandler); the host - Main's, in CRT - is a test's, seeing what the window hands it.
 // ###########################################################################################
 [Collection("HeadlessUi")]
@@ -125,7 +126,6 @@ public sealed class AccountWindowTests
     // *** Each way from the sign-in shows its view and nothing of the sign-in form; Cancel comes back to it.
     // ###########################################################################################
     [Theory]
-    [InlineData("CreateAccountButton", "RegisterPanel", "CancelRegisterButton")]
     [InlineData("ForgotPasswordButton", "ForgotPanel", "CancelForgotButton")]
     [InlineData("HaveInvitationButton", "InvitationPanel", "CancelInvitationButton")]
     public void Each_way_from_the_sign_in_shows_its_view_alone_and_Cancel_comes_back(string way, string view, string cancel)
@@ -140,7 +140,7 @@ public sealed class AccountWindowTests
 
             AccountWindowTests.Press(window, way);
 
-            foreach (string panel in new[] { "SignInFormPanel", "RegisterPanel", "ForgotPanel", "InvitationPanel", "SignedInPanel" })
+            foreach (string panel in new[] { "SignInFormPanel", "ForgotPanel", "InvitationPanel", "SignedInPanel" })
                 Assert.Equal(panel == view, AccountWindowTests.Shows(window, panel));
 
             AccountWindowTests.Press(window, cancel);
@@ -163,10 +163,8 @@ public sealed class AccountWindowTests
             AccountWindow window = AccountWindowTests.Shown(AccountWindowTests.Host(AccountWindowTests.Unexpected, new Seen()));
 
             Assert.Equal(AccountWording.SignInButton, window.GetControl<Button>("SignInButton").Content);
-            Assert.Equal(AccountWording.CreateAccountButton, window.GetControl<Button>("CreateAccountButton").Content);
             Assert.Equal(AccountWording.ForgotPasswordButton, window.GetControl<Button>("ForgotPasswordButton").Content);
             Assert.Equal(AccountWording.HaveInvitationButton, window.GetControl<Button>("HaveInvitationButton").Content);
-            Assert.Equal(AccountWording.SendMailAgainButton, window.GetControl<Button>("SendMailAgainButton").Content);
 
             window.Close();
         });
@@ -307,108 +305,47 @@ public sealed class AccountWindowTests
     }
 
     // -----------------------------------------------------------------------------------
-    // Create an account
+    // No "Create an account" (owner decision, 2026-11-28)
     // -----------------------------------------------------------------------------------
 
-    // ###########################################################################################
-    // *** THE DISPLAY NAME IS HELD TO ITS RULE AS IT IS TYPED (owner request, 2026-11-25: "only normal A-Z + 0-9 and then some
-    // common special charatcers like: +-/@.[]() ... max length 30"). *** The server's own sentence under the box, gone once
-    // the name keeps the rule - and a name breaking it is never sent.
-    // ###########################################################################################
+    // Owner decision, 2026-11-28: "Entirely remove the new "Account" possibility ... This should of course continue to work as-is
+    // for the "Maintainer" tab" - an account is a maintainer's, made by an invitation; the window offers no other way to one.
     [Fact]
-    public async Task The_display_name_is_held_to_its_rule_as_it_is_typed_and_never_sent_breaking_it()
+    public void The_window_offers_no_way_to_make_an_account_but_an_invitation()
+    {
+        UiTest.Run(() =>
+        {
+            AccountWindow window = AccountWindowTests.Shown(AccountWindowTests.Host(AccountWindowTests.Unexpected, new Seen()));
+
+            Assert.Null(window.FindControl<Button>("CreateAccountButton"));
+            Assert.Null(window.FindControl<Control>("RegisterPanel"));
+            Assert.True(window.GetControl<Button>("HaveInvitationButton").IsVisible);
+
+            window.Close();
+        });
+    }
+
+    // The display name an invitation makes the account with is held to its rule - a name breaking it is never sent.
+    [Fact]
+    public async Task An_invitation_s_display_name_breaking_the_rule_is_never_sent()
     {
         await UiTest.RunAsync(async () =>
         {
             var seen = new Seen();
             AccountWindow window = AccountWindowTests.Shown(AccountWindowTests.Host(AccountWindowTests.Unexpected, seen));
-            AccountWindowTests.Press(window, "CreateAccountButton");
+            AccountWindowTests.Press(window, "HaveInvitationButton");
 
-            TextBox name = window.GetControl<TextBox>("RegisterNameTextBox");
+            TextBox name = window.GetControl<TextBox>("InvitationNameTextBox");
             Assert.Equal(DisplayNames.MaximumLength, name.MaxLength);
 
-            // TextChanged is posted (Avalonia), so the line follows once the jobs have run.
+            window.GetControl<TextBox>("InvitationCodeTextBox").Text = "CODE-123";
             name.Text = "Dennis#CRT";
-            Dispatcher.UIThread.RunJobs();
-            Assert.True(AccountWindowTests.Shows(window, "RegisterNameProblemText"));
-            Assert.Equal(DisplayNames.Problem("Dennis#CRT", sayRule: false), AccountWindowTests.Text(window, "RegisterNameProblemText"));
+            window.GetControl<TextBox>("InvitationPasswordTextBox").Text = AccountWindowTests.Password;
 
-            window.GetControl<TextBox>("RegisterEmailTextBox").Text = "dennis@example.com";
-            window.GetControl<TextBox>("RegisterPasswordTextBox").Text = AccountWindowTests.Password;
-
-            await window.RegisterAsync();
+            await window.AcceptInvitationAsync();
 
             Assert.Empty(seen.Requests);
-            Assert.Equal(DisplayNames.Problem("Dennis#CRT", sayRule: false), AccountWindowTests.Text(window, "RegisterMessageText"));
-
-            name.Text = "Dennis@CRT";
-            Dispatcher.UIThread.RunJobs();
-            Assert.False(AccountWindowTests.Shows(window, "RegisterNameProblemText"));
-
-            window.Close();
-        });
-    }
-
-    // ###########################################################################################
-    // *** THE ANSWER IS THE SERVER'S NEUTRAL ONE, AND MAKING AN ACCOUNT IS NOT SIGNING IN. *** The name, the address and the
-    // password go to POST /api/accounts/register; the sign-in comes back with the address filled in and that sentence, and
-    // the password is not kept - the address may have had an account already, and signing in waits for the mail.
-    // ###########################################################################################
-    [Fact]
-    public async Task Creating_an_account_sends_name_address_and_password_and_comes_back_with_the_neutral_answer()
-    {
-        await UiTest.RunAsync(async () =>
-        {
-            var seen = new Seen();
-            AccountWindow window = AccountWindowTests.Shown(AccountWindowTests.Host(
-                request => request.RequestUri!.AbsolutePath == "/api/accounts/register"
-                    ? AccountWindowTests.Answer(HttpStatusCode.Accepted, new { message = "If that address can receive mail, a message is on its way to it." })
-                    : AccountWindowTests.Unexpected(request),
-                seen));
-
-            AccountWindowTests.Press(window, "CreateAccountButton");
-            window.GetControl<TextBox>("RegisterNameTextBox").Text = " Dennis@CRT ";
-            window.GetControl<TextBox>("RegisterEmailTextBox").Text = "dennis@example.com";
-            window.GetControl<TextBox>("RegisterPasswordTextBox").Text = AccountWindowTests.Password;
-
-            await window.RegisterAsync();
-
-            RegisterAccountRequest sent = JsonSerializer.Deserialize<RegisterAccountRequest>(seen.Bodies.Single(), ReviewApiContract.WireSettings)!;
-            Assert.Equal(new RegisterAccountRequest("dennis@example.com", AccountWindowTests.Password, "Dennis@CRT"), sent);
-
-            Assert.Equal(AccountWindow.AccountView.SignIn, window.ViewShown);
-            Assert.Equal("dennis@example.com", window.GetControl<TextBox>("EmailTextBox").Text);
-            Assert.Equal(string.Empty, window.GetControl<TextBox>("PasswordTextBox").Text ?? string.Empty);
-            Assert.Equal(string.Empty, window.GetControl<TextBox>("RegisterPasswordTextBox").Text);
-            Assert.Equal(
-                AccountWindow.AfterRegistering("If that address can receive mail, a message is on its way to it."),
-                AccountWindowTests.Text(window, "SignInMessageText"));
-            Assert.Empty(seen.SignIns);
-
-            window.Close();
-        });
-    }
-
-    // Every rule the server says was broken - a name taken among them - shown as it says them, the view kept.
-    [Fact]
-    public async Task A_refused_account_shows_every_rule_broken_and_keeps_the_view()
-    {
-        await UiTest.RunAsync(async () =>
-        {
-            var seen = new Seen();
-            AccountWindow window = AccountWindowTests.Shown(AccountWindowTests.Host(
-                _ => AccountWindowTests.Answer(HttpStatusCode.BadRequest, new { errors = new[] { DisplayNames.Taken, "The password must be at least 12 characters." } }),
-                seen));
-
-            AccountWindowTests.Press(window, "CreateAccountButton");
-            window.GetControl<TextBox>("RegisterNameTextBox").Text = "Dennis";
-            window.GetControl<TextBox>("RegisterEmailTextBox").Text = "dennis@example.com";
-            window.GetControl<TextBox>("RegisterPasswordTextBox").Text = "short";
-
-            await window.RegisterAsync();
-
-            Assert.Equal(AccountWindow.AccountView.Register, window.ViewShown);
-            Assert.Equal($"{DisplayNames.Taken} The password must be at least 12 characters.", AccountWindowTests.Text(window, "RegisterMessageText"));
+            Assert.Equal(DisplayNames.Problem("Dennis#CRT", sayRule: false), AccountWindowTests.Text(window, "InvitationMessageText"));
 
             window.Close();
         });
@@ -560,46 +497,29 @@ public sealed class AccountWindowTests
     // -----------------------------------------------------------------------------------
 
     // ###########################################################################################
-    // *** SIGNED IN, THE WINDOW IS "MY ACCOUNT", AND SAYS WHEN THE ADDRESS IS NOT CONFIRMED. *** The account is read as the
-    // window opens; a new link is one press away, and the notice goes once the server says the address is confirmed. Every
-    // account the server hands back goes to the host (the Maintainer tab, which owns the session).
+    // *** SIGNED IN, THE WINDOW IS "MY ACCOUNT". *** The account is read as the window opens, with the session's token, and
+    // handed to the host (the Maintainer tab, which owns the session). (The notice of an address not confirmed went with the
+    // accounts for everybody, 2026-11-28 - an invitation's account is confirmed from the start.)
     // ###########################################################################################
     [Fact]
-    public async Task Signed_in_the_window_is_My_account_and_says_when_the_address_is_not_confirmed()
+    public async Task Signed_in_the_window_is_My_account_and_hands_the_account_read_to_the_host()
     {
         await UiTest.RunAsync(async () =>
         {
             var seen = new Seen();
-            bool confirmed = false;
-
-            AccountAnswer Account() =>
-                new(7, "dennis@example.com", "Dennis", confirmed, IsAdministrator: false, MaintainerOf: [], CreatedUtc: DateTimeOffset.UtcNow);
 
             AccountWindow window = AccountWindowTests.Shown(AccountWindowTests.Host(
-                request => request.RequestUri!.AbsolutePath switch
-                {
-                    "/api/accounts/me" => AccountWindowTests.Answer(HttpStatusCode.OK, Account()),
-                    "/api/accounts/me/verify-again" => AccountWindowTests.Answer(HttpStatusCode.OK, new AccountChangeAnswer("A new link is on its way.", Account())),
-                    _ => AccountWindowTests.Unexpected(request)
-                },
+                request => request.RequestUri!.AbsolutePath == "/api/accounts/me"
+                    ? AccountWindowTests.Answer(HttpStatusCode.OK, new AccountAnswer(7, "dennis@example.com", "Dennis", true, false, [], DateTimeOffset.UtcNow))
+                    : AccountWindowTests.Unexpected(request),
                 seen,
                 AccountWindowTests.Signed));
 
             Assert.Equal(AccountWindow.AccountView.SignedIn, window.ViewShown);
-            await AccountWindowTests.Until(() => AccountWindowTests.Shows(window, "NotConfirmedPanel"), "the account read as the window opened says the address is not confirmed");
-            Assert.Contains(seen.AccountsChanged, account => !account.IsVerified);
+            await AccountWindowTests.Until(() => seen.AccountsChanged.Count == 1, "the account is read as the window opens");
 
-            await window.SendMailAgainAsync();
-
-            Assert.Equal("/api/accounts/me/verify-again", seen.Requests[^1].RequestUri!.AbsolutePath);
-            Assert.Equal("Bearer bearer-1", seen.Requests[^1].Headers.Authorization!.ToString());
-            Assert.Equal("A new link is on its way.", AccountWindowTests.Text(window, "AccountMessageText"));
-            Assert.True(AccountWindowTests.Shows(window, "NotConfirmedPanel"));
-
-            // Confirmed meanwhile: the server says so, and the notice goes.
-            confirmed = true;
-            await window.SendMailAgainAsync();
-            Assert.False(AccountWindowTests.Shows(window, "NotConfirmedPanel"));
+            Assert.Equal("Bearer bearer-1", seen.Requests.Single().Headers.Authorization!.ToString());
+            Assert.Null(window.FindControl<Control>("NotConfirmedPanel"));
 
             window.Close();
         });
@@ -730,7 +650,6 @@ public sealed class AccountWindowTests
                 foreach ((AccountWindow.AccountView view, string message) in new[]
                 {
                     (AccountWindow.AccountView.SignIn, "SignInMessageText"),
-                    (AccountWindow.AccountView.Register, "RegisterMessageText"),
                     (AccountWindow.AccountView.Forgot, "ResetMessageText"),
                     (AccountWindow.AccountView.Invitation, "InvitationMessageText")
                 })

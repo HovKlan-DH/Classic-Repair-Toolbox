@@ -420,63 +420,6 @@ namespace CRT.Server.Handlers.Accounts
                 await AccountSelfServiceFlows.DescribeCurrentAsync(account, store, cancellationToken)));
         }
 
-        // ###########################################################################################
-        // THE VERIFICATION MAIL AGAIN (2026-11-25, accounts for everybody - CRT's account window, "Send the mail again"): a new
-        // link to the account's own address, for a person who missed the first or let it expire. Signed in, so it names no
-        // address but the account's, and the mail budget is spent as for every mail (the header). An address confirmed already
-        // is said so, and nothing is sent.
-        // ###########################################################################################
-        public static async Task<AccountChangeOutcome> SendVerificationAgainAsync(
-            string? bearerToken,
-            string? ipAddress,
-            IAccountStore store,
-            IEmailSender mailer,
-            ServerOptions options,
-            DateTimeOffset now,
-            CancellationToken cancellationToken = default)
-        {
-            ArgumentNullException.ThrowIfNull(store);
-            ArgumentNullException.ThrowIfNull(mailer);
-            ArgumentNullException.ThrowIfNull(options);
-
-            SignedIn? signedIn = await AccountSelfServiceFlows.SignedInAsync(bearerToken, store, options, now, cancellationToken);
-
-            if (signedIn is null)
-                return AccountChangeOutcome.NotSignedIn();
-
-            AccountRecord account = signedIn.Account;
-
-            if (account.IsVerified)
-            {
-                return AccountChangeOutcome.Done(new AccountChangeAnswer(
-                    AccountSelfServiceFlows.AlreadyConfirmedMessage,
-                    await AccountSelfServiceFlows.DescribeAsync(account, store, cancellationToken)));
-            }
-
-            RateLimitVerdict mailVerdict = await AccountFlows.CheckMailBudgetAsync(ipAddress, store, now, cancellationToken);
-
-            if (!mailVerdict.IsAllowed)
-                return AccountChangeOutcome.RateLimited(mailVerdict.RetryAfter);
-
-            await AccountFlows.SendVerificationAsync(account.Id, account.Email, account.DisplayName, store, mailer, options, now, cancellationToken);
-
-            await store.WriteAuditAsync(
-                new AuditEntry(account.Id, account.Email, AccountSelfServiceFlows.VerificationResentAction,
-                    $"account:{account.Id}", null, now),
-                cancellationToken);
-
-            return AccountChangeOutcome.Done(new AccountChangeAnswer(
-                AccountSelfServiceFlows.VerificationSentMessage(account.Email),
-                await AccountSelfServiceFlows.DescribeAsync(account, store, cancellationToken)));
-        }
-
-        public const string VerificationResentAction = "account.verification_resent";
-
-        public const string AlreadyConfirmedMessage = "Your address is confirmed already.";
-
-        public static string VerificationSentMessage(string address) =>
-            $"A new link to confirm your address is on its way to {address}. It works for {(int)AccountFlows.VerificationTokenLifetime.TotalHours} hours.";
-
         // -------------------------------------------------------------------------------------
         // Helpers.
         // -------------------------------------------------------------------------------------

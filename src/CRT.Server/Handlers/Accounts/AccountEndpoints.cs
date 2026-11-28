@@ -16,9 +16,10 @@ namespace CRT.Server.Handlers.Accounts
     //
     // THE STATUS CODES ARE PART OF THE SECURITY DESIGN, not presentation:
     //
-    //   Registration and password reset ALWAYS answer 202 Accepted, whether or not the address is
-    //   known. A 409 Conflict for a taken address - the obvious REST-shaped answer - is an account
-    //   enumeration oracle. Anything that makes these two respond differently reopens it.
+    //   Password reset ALWAYS answers 202 Accepted, whether or not the address is known. A 409
+    //   Conflict for a taken address - the obvious REST-shaped answer - is an account enumeration
+    //   oracle. Anything that makes it respond differently reopens it. (Registration answered so too
+    //   until server 17.0.0; it is refused for everybody since, whatever the address.)
     //
     //   Login answers 401 for every failure with no reason attached, for the same reason.
     //
@@ -53,45 +54,23 @@ namespace CRT.Server.Handlers.Accounts
             accounts.MapPost("/me/email", AccountEndpoints.RequestEmailChangeAsync);
             accounts.MapPost("/me/email/confirm", AccountEndpoints.ConfirmEmailChangeAsync);
             accounts.MapPost("/me/password", AccountEndpoints.ChangePasswordAsync);
-
-            // The verification mail again (2026-11-25) - CRT's account window, "Send the mail again". No body.
-            accounts.MapPost("/me/verify-again", AccountEndpoints.SendVerificationAgainAsync);
         }
 
         // ###########################################################################################
-        // POST /api/accounts/register
-        //
-        // 202 for both a new address and one already registered - see the header.
+        // POST /api/accounts/register - REFUSED, FOR EVERYBODY, SINCE SERVER 17.0.0 (owner decision, 2026-11-28: "Entirely remove
+        // the new "Account" possibility ... I do not want the possibility for everyone to create an account"). An account is a
+        // maintainer's, made by accepting an invitation (accept-invitation). The route stays mapped - an installed CRT 4.0's API
+        // surface lists it (crt-4.0.0.txt) - and answers 403 in words; nothing is read of the body, nothing written or mailed, so
+        // it says nothing of any address.
         // ###########################################################################################
-        private static async Task<IResult> RegisterAsync(
-            global::Handlers.DataHandling.RegisterAccountRequest body,
-            HttpContext context,
-            IAccountStore store,
-            IEmailSender mailer,
-            Argon2PasswordHasher hasher,
-            ServerOptions options,
-            CancellationToken cancellationToken)
+        public const string RegistrationClosed =
+            "Accounts are not open to everybody - an account is made by an invitation to maintain a board.";
+
+        private static IResult RegisterAsync(global::Handlers.DataHandling.RegisterAccountRequest? body)
         {
-            RegistrationOutcome outcome = await AccountFlows.RegisterAsync(
-                new RegistrationRequest(
-                    body?.Email,
-                    body?.Password,
-                    body?.DisplayName,
-                    AccountEndpoints.ClientAddress(context)),
-                store,
-                mailer,
-                hasher,
-                options,
-                DateTimeOffset.UtcNow,
-                cancellationToken);
+            _ = body;
 
-            if (!outcome.IsAccepted)
-                return Results.BadRequest(new { errors = outcome.Failures });
-
-            return Results.Accepted(value: new
-            {
-                message = "If that address can receive mail, a message is on its way to it."
-            });
+            return Results.Json(new { errors = new[] { AccountEndpoints.RegistrationClosed } }, statusCode: StatusCodes.Status403Forbidden);
         }
 
         // ###########################################################################################
@@ -120,29 +99,6 @@ namespace CRT.Server.Handlers.Accounts
             (string html, int status) = AccountPages.Verified(AccountPages.BaseUrl(options.PublicApiBaseUrl), outcome);
 
             return AccountPageEndpoints.Page(context, html, status);
-        }
-
-        // ###########################################################################################
-        // POST /api/accounts/me/verify-again - see AccountSelfServiceFlows.SendVerificationAgainAsync. ChangeResult's
-        // answers: 200 with AccountChangeAnswer, 401, or 429 with Retry-After.
-        // ###########################################################################################
-        private static async Task<IResult> SendVerificationAgainAsync(
-            HttpContext context,
-            IAccountStore store,
-            IEmailSender mailer,
-            ServerOptions options,
-            CancellationToken cancellationToken)
-        {
-            AccountChangeOutcome outcome = await AccountSelfServiceFlows.SendVerificationAgainAsync(
-                AccountEndpoints.BearerToken(context),
-                AccountEndpoints.ClientAddress(context),
-                store,
-                mailer,
-                options,
-                DateTimeOffset.UtcNow,
-                cancellationToken);
-
-            return AccountEndpoints.ChangeResult(outcome, context);
         }
 
         // ###########################################################################################

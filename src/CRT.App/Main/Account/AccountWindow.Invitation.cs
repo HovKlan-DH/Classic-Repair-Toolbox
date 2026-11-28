@@ -10,132 +10,14 @@ using Handlers.MaintainerHandling;
 namespace CRT
 {
     // ###########################################################################################
-    // "CREATE AN ACCOUNT" AND "I HAVE AN INVITATION" in CRT's account window.
-    //
-    // CREATE AN ACCOUNT (2026-11-25, accounts for everybody): a display name, an address and a password, sent to POST
-    // /api/accounts/register. The name is held to CRT.Data's DisplayNames AS IT IS TYPED - the server's own rule, said under
-    // the box in its words - and whether another account has it is the server's to say. The answer is the server's NEUTRAL
-    // one, the same whether or not the address had an account ("If that address can receive mail ..." - AccountFlows' header),
-    // so the sign-in view comes back with the address filled in and that sentence: the person confirms the address from the
-    // mail, then signs in. Making an account is not signing in - the server issues no session for it.
-    //
-    // I HAVE AN INVITATION (2026-09-27; the "Maintainer" tab's sign-in screen's until 2026-11-25): the code from the
-    // administrator's mail, a name and a password make the account for the address invited and put it in the pool of every
-    // board that address was invited to. On success the sign-in view comes back filled in, one press from signed in - as for
-    // a new password, no session is invented.
+    // "I HAVE AN INVITATION" in CRT's account window (2026-09-27; the "Maintainer" tab's sign-in screen's until 2026-11-25):
+    // the code from the administrator's mail, a name and a password make the account for the address invited and put it in
+    // the pool of every board that address was invited to - THE ONE WAY AN ACCOUNT IS MADE (owner decision, 2026-11-28:
+    // "Entirely remove the new "Account" possibility"; "Create an account" was here from 2026-11-25). On success the sign-in
+    // view comes back filled in, one press from signed in - as for a new password, no session is invented.
     // ###########################################################################################
     public partial class AccountWindow
     {
-        // -----------------------------------------------------------------------------------
-        // Create an account
-        // -----------------------------------------------------------------------------------
-
-        private void OnCreateAccountClick(object? sender, RoutedEventArgs e)
-        {
-            TextBox email = this.Box("RegisterEmailTextBox");
-
-            if (string.IsNullOrWhiteSpace(email.Text))
-                email.Text = this.Box("EmailTextBox").Text?.Trim();
-
-            this.ShowView(AccountView.Register);
-        }
-
-        // The rule's sentence under the box as the name is typed - nothing for an empty box, which "Create an account" asks for.
-        private void OnRegisterNameChanged(object? sender, TextChangedEventArgs e)
-        {
-            string? typed = this.Box("RegisterNameTextBox").Text;
-            string? problem = string.IsNullOrWhiteSpace(typed) ? null : DisplayNames.Problem(typed, sayRule: false);
-
-            TextBlock line = this.FindControl<TextBlock>("RegisterNameProblemText")!;
-            line.Text = problem ?? string.Empty;
-            line.IsVisible = problem is not null;
-        }
-
-        private async void OnRegisterClick(object? sender, RoutedEventArgs e) =>
-            await HandlerGuard.RunAsync(this.RegisterAsync, message => this.ShowRegisterMessage(message, isError: true));
-
-        private async void OnRegisterPasswordKeyDown(object? sender, KeyEventArgs e)
-        {
-            if (e.Key != Key.Enter)
-                return;
-
-            e.Handled = true;
-            await HandlerGuard.RunAsync(this.RegisterAsync, message => this.ShowRegisterMessage(message, isError: true));
-        }
-
-        internal async Task RegisterAsync()
-        {
-            if (this.thisHost is not AccountHost host)
-                return;
-
-            string name = this.Box("RegisterNameTextBox").Text?.Trim() ?? string.Empty;
-            string email = this.Box("RegisterEmailTextBox").Text?.Trim() ?? string.Empty;
-            TextBox password = this.Box("RegisterPasswordTextBox");
-            string typedPassword = password.Text ?? string.Empty;
-
-            // What the round trip could say no better: the name's rule (the server's own), an empty address or password.
-            if (DisplayNames.Problem(name, sayRule: false) is string nameProblem)
-            {
-                this.ShowRegisterMessage(nameProblem, isError: true);
-                return;
-            }
-
-            if (email.Length == 0)
-            {
-                this.ShowRegisterMessage("Type your email address.", isError: true);
-                return;
-            }
-
-            if (typedPassword.Length == 0)
-            {
-                this.ShowRegisterMessage("Type the password you want to use.", isError: true);
-                return;
-            }
-
-            Button button = this.FindControl<Button>("RegisterButton")!;
-            button.IsEnabled = false;
-            this.ShowRegisterMessage(null, isError: false);
-
-            try
-            {
-                using ReviewApiClient client = host.NewClient();
-
-                ReviewApiResult<string> result = await ServerWait.CallAsync(
-                    this, MaintainerWaitWording.CreatingAccount, token => client.RegisterAsync(email, typedPassword, name, token));
-
-                if (result.Failure == ReviewApiFailure.TimedOut)
-                {
-                    this.ShowRegisterMessage(MaintainerWaitWording.CreateAccountNoAnswer, isError: true);
-                    return;
-                }
-
-                if (!result.IsOk)
-                {
-                    this.ShowRegisterMessage(result.Message, isError: true);
-                    return;
-                }
-
-                // The server's neutral sentence, on the sign-in view with the address filled in - the password is not kept:
-                // the account may not be this person's (the address had one already), and signing in waits for the mail.
-                password.Text = string.Empty;
-                this.Box("EmailTextBox").Text = email;
-                this.ShowView(AccountView.SignIn);
-                this.ShowSignInMessage(AccountWindow.AfterRegistering(result.Value), isError: false);
-            }
-            finally
-            {
-                button.IsEnabled = true;
-            }
-        }
-
-        // What the sign-in view says once an account was asked for: the server's neutral sentence, then what to do next.
-        internal static string AfterRegistering(string? serverSentence) =>
-            (string.IsNullOrWhiteSpace(serverSentence) ? "If that address can receive mail, a message is on its way to it." : serverSentence.Trim()) +
-            " Open the link in it to confirm your address, then sign in here with your address and password.";
-
-        private void ShowRegisterMessage(string? message, bool isError) =>
-            WindowMessage.ShowOutcome(this.FindControl<TextBlock>("RegisterMessageText"), message, isError);
-
         // -----------------------------------------------------------------------------------
         // I have an invitation
         // -----------------------------------------------------------------------------------

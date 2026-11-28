@@ -40,99 +40,6 @@ namespace CRT.Server.Tests
         private static Argon2PasswordHasher Hasher() => new(EndpointNegativeTests.Options());
 
         // -----------------------------------------------------------------------------------
-        // Registration with rubbish input.
-        // -----------------------------------------------------------------------------------
-
-        [Theory]
-        [InlineData(null, null, null)]
-        [InlineData("", "", "")]
-        [InlineData("   ", "   ", "   ")]
-        [InlineData("dennis@example.com", null, "Dennis")]
-        [InlineData(null, "correct horse battery staple", "Dennis")]
-        [InlineData("dennis@example.com", "correct horse battery staple", null)]
-        public async Task A_registration_with_missing_fields_is_refused_without_throwing(
-            string? email, string? password, string? displayName)
-        {
-            var store = new FakeAccountStore();
-            var mailer = new FakeEmailSender();
-
-            RegistrationOutcome outcome = await AccountFlows.RegisterAsync(
-                new RegistrationRequest(email, password, displayName, null),
-                store, mailer, EndpointNegativeTests.Hasher(), EndpointNegativeTests.Options(),
-                EndpointNegativeTests.Now);
-
-            Assert.False(outcome.IsAccepted);
-            Assert.NotEmpty(outcome.Failures);
-
-            // Nothing was written and nothing was sent - a rejected request must leave no trace.
-            Assert.Empty(store.Accounts);
-            Assert.Empty(store.Tokens);
-            Assert.Empty(mailer.Sent);
-        }
-
-        [Fact]
-        public async Task A_registration_carrying_a_newline_in_the_display_name_is_refused()
-        {
-            // A newline in a name reaches a mail body and a log line. Refusing it here is cheaper
-            // than escaping it everywhere it is later rendered.
-            var store = new FakeAccountStore();
-            var mailer = new FakeEmailSender();
-
-            RegistrationOutcome outcome = await AccountFlows.RegisterAsync(
-                new RegistrationRequest(
-                    "dennis@example.com",
-                    EndpointNegativeTests.GoodPassword,
-                    "Dennis\r\nBcc: someone@example.com",
-                    null),
-                store, mailer, EndpointNegativeTests.Hasher(), EndpointNegativeTests.Options(),
-                EndpointNegativeTests.Now);
-
-            Assert.False(outcome.IsAccepted);
-            Assert.Empty(store.Accounts);
-        }
-
-        [Fact]
-        public async Task A_registration_with_a_SQL_shaped_address_is_treated_as_ordinary_text()
-        {
-            // Not because SQL injection is plausible here - every value goes through a parameter -
-            // but because the refusal must come from the address being malformed, with no special
-            // handling and no exception.
-            var store = new FakeAccountStore();
-            var mailer = new FakeEmailSender();
-
-            RegistrationOutcome outcome = await AccountFlows.RegisterAsync(
-                new RegistrationRequest(
-                    "'; DROP TABLE accounts; --",
-                    EndpointNegativeTests.GoodPassword,
-                    "Dennis",
-                    null),
-                store, mailer, EndpointNegativeTests.Hasher(), EndpointNegativeTests.Options(),
-                EndpointNegativeTests.Now);
-
-            Assert.False(outcome.IsAccepted);
-        }
-
-        [Fact]
-        public async Task A_display_name_of_exactly_the_maximum_length_is_accepted()
-        {
-            // Boundary in the permissive direction: an off-by-one here silently rejects a legal
-            // name, which nobody reports as a bug - they just give up.
-            var store = new FakeAccountStore();
-            var mailer = new FakeEmailSender();
-
-            RegistrationOutcome outcome = await AccountFlows.RegisterAsync(
-                new RegistrationRequest(
-                    "dennis@example.com",
-                    EndpointNegativeTests.GoodPassword,
-                    new string('a', DisplayNames.MaximumLength),
-                    null),
-                store, mailer, EndpointNegativeTests.Hasher(), EndpointNegativeTests.Options(),
-                EndpointNegativeTests.Now);
-
-            Assert.True(outcome.IsAccepted);
-        }
-
-        // -----------------------------------------------------------------------------------
         // Login with rubbish input.
         // -----------------------------------------------------------------------------------
 
@@ -176,12 +83,8 @@ namespace CRT.Server.Tests
             // Unbounded input reaching Argon2 is a memory amplification: the caller controls the
             // input size and the hasher allocates per call. It must fail on length, fast.
             var store = new FakeAccountStore();
-            var mailer = new FakeEmailSender();
 
-            await AccountFlows.RegisterAsync(
-                new RegistrationRequest("dennis@example.com", EndpointNegativeTests.GoodPassword, "Dennis", null),
-                store, mailer, EndpointNegativeTests.Hasher(), EndpointNegativeTests.Options(),
-                EndpointNegativeTests.Now);
+            await store.AddAccountAsync("dennis@example.com", EndpointNegativeTests.GoodPassword, "Dennis", EndpointNegativeTests.Hasher(), EndpointNegativeTests.Now);
 
             LoginOutcome outcome = await AccountFlows.LoginAsync(
                 new LoginRequest("dennis@example.com", new string('x', 100_000), null, null),
@@ -276,13 +179,6 @@ namespace CRT.Server.Tests
         public async Task A_missing_collaborator_throws_rather_than_failing_quietly()
         {
             var store = new FakeAccountStore();
-            var mailer = new FakeEmailSender();
-
-            await Assert.ThrowsAsync<ArgumentNullException>(() =>
-                AccountFlows.RegisterAsync(
-                    new RegistrationRequest("a@b.com", EndpointNegativeTests.GoodPassword, "A", null),
-                    null!, mailer, EndpointNegativeTests.Hasher(), EndpointNegativeTests.Options(),
-                    EndpointNegativeTests.Now));
 
             await Assert.ThrowsAsync<ArgumentNullException>(() =>
                 AccountFlows.LoginAsync(

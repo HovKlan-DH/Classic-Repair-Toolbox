@@ -15,16 +15,14 @@
         Foreground="{DynamicResource Fg}">
 
 	<!--
-	CRT'S ACCOUNT WINDOW (owner requests, 2026-11-25: accounts for everybody - "we now need a possibility to have user accounts in
-	CRT. This user account can then be used for "Maintainer" tab or this collection thing, but also anyone else can register an
-	account"). Opened by the account icon in the top right corner of CRT's window (Main.Account.cs), from any tab. Until then the
-	only way in was the "Maintainer" tab's own sign-in screen, and only an invitation made an account.
+	CRT'S ACCOUNT WINDOW - A MAINTAINER'S (2026-11-25), opened by the "Maintainer" tab's "Sign in" (Main.Account.cs). An account
+	icon in the top right corner of CRT's window opened it too, with "Create an account" for everybody, from 2026-11-25 to
+	2026-11-28 (owner decision: "Entirely remove the new "Account" possibility") - only an invitation makes an account again.
 
-	FIVE VIEWS, ONE AT A TIME (AccountWindow.axaml.cs, ShowView): signing in; "Create an account"; "I forgot my password" - asking
-	for a code and setting a password with it, the account web page's two steps; "I have an invitation" (the Maintainer tab's
-	until 2026-11-25); and, signed in, "My account" (MyAccountView - the Maintainer tab's "Account" screen's until then) under a
-	notice while the address is not confirmed. The words a mail or a web page also says are CRT.Data's AccountWording and
-	DisplayNames, so the three say the same.
+	FOUR VIEWS, ONE AT A TIME (AccountWindow.axaml.cs, ShowView): signing in; "I forgot my password" - asking for a code and
+	setting a password with it, the account web page's two steps; "I have an invitation" (the Maintainer tab's until
+	2026-11-25); and, signed in, "My account" (MyAccountView - under the Maintainer tab's "Account" screen too). The words a mail
+	or a web page also says are CRT.Data's AccountWording and DisplayNames, so the three say the same.
 
 	NO TALLER THAN ITS SCREEN (ScreenSizedDialog), its views scrolling above the "Close" button - the lesson of the owner's report
 	of 2026-11-25 about the "Maintainer" tab's sign-in out of reach on Linux. Every wait the person watches runs under its own
@@ -76,9 +74,10 @@
 				<StackPanel x:Name="SignInFormPanel" Spacing="4">
 					<TextBlock Classes="Heading" Text="Sign in" />
 
-					<!-- What an account is, said before anything is asked - the same sentence the account web pages open with. -->
+					<!-- Whose an account is - a maintainer's, made by an invitation (owner decision, 2026-11-28: accounts for everybody
+					     removed). -->
 					<Border Background="#20808080" CornerRadius="4" Padding="10" Margin="0,0,0,6">
-						<TextBlock TextWrapping="Wrap" Text="{x:Static data:AccountWording.OneAccount}" />
+						<TextBlock TextWrapping="Wrap" Text="{x:Static local:AccountWindow.WhoseAccount}" />
 					</Border>
 
 					<!-- The TEST instance's accounts are its own (ContributionServer.SignInNote) - said while a pre-release uses it. -->
@@ -110,10 +109,6 @@
 							   IsVisible="False" />
 
 					<StackPanel Spacing="6" Margin="0,8,0,0">
-						<Button x:Name="CreateAccountButton"
-								Classes="Link"
-								Content="{x:Static data:AccountWording.CreateAccountButton}"
-								Click="OnCreateAccountClick" />
 						<Button x:Name="ForgotPasswordButton"
 								Classes="Link"
 								Content="{x:Static data:AccountWording.ForgotPasswordButton}"
@@ -131,52 +126,9 @@
 							   IsVisible="False" />
 				</StackPanel>
 
-				<!-- ================= Create an account ================= -->
-				<StackPanel x:Name="RegisterPanel" Spacing="4" IsVisible="False">
-					<TextBlock Classes="Heading" Text="{x:Static data:AccountWording.CreateAccountButton}" />
-
-					<TextBlock TextWrapping="Wrap" Margin="0,0,0,6" Text="{x:Static data:AccountWording.OneAccount}" />
-
-					<TextBlock Classes="Label" Text="Display name" />
-					<TextBlock Classes="Hint" Text="{x:Static data:DisplayNames.Explanation}" />
-					<TextBlock Classes="Hint" Text="{x:Static data:DisplayNames.AllowedLine}" />
-					<TextBox x:Name="RegisterNameTextBox"
-							 MaxLength="{x:Static data:DisplayNames.MaximumLength}"
-							 TextChanged="OnRegisterNameChanged" />
-					<!-- What is wrong with the name typed, as it is typed - the server's own rule. -->
-					<TextBlock x:Name="RegisterNameProblemText"
-							   TextWrapping="Wrap"
-							   Foreground="{DynamicResource Text_Fail_Fg}"
-							   IsVisible="False" />
-
-					<TextBlock Classes="Label" Text="Email address" />
-					<TextBlock Classes="Hint" Text="Never shown to anybody. A link to confirm it is mailed to it." />
-					<TextBox x:Name="RegisterEmailTextBox" />
-
-					<TextBlock Classes="Label" Text="Password" />
-					<TextBlock Classes="Hint" Text="{x:Static data:AccountWording.PasswordLine}" />
-					<TextBox x:Name="RegisterPasswordTextBox"
-							 PasswordChar="*"
-							 KeyDown="OnRegisterPasswordKeyDown" />
-
-					<!-- Cancel first and the action last, as in CRT's dialogs. -->
-					<StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="6" Margin="0,10,0,0">
-						<Button x:Name="CancelRegisterButton" Content="Cancel" Click="OnBackToSignInClick" />
-						<Button x:Name="RegisterButton"
-								Classes="Accept"
-								Content="{x:Static data:AccountWording.CreateAccountButton}"
-								Click="OnRegisterClick" />
-					</StackPanel>
-
-					<TextBlock x:Name="RegisterMessageText"
-							   TextWrapping="Wrap"
-							   Margin="0,4,0,0"
-							   IsVisible="False" />
-				</StackPanel>
-
 				<!-- ================= I forgot my password =================
 				     The account web page's two steps on one page (AccountPages.ForgotPassword): ask for a code, then set a password
-				     with it - a code mailed some other way (somebody registering this address again) is typed straight into step 2.
+				     with it - a code mailed some other way is typed straight into step 2.
 				     *** THE ANSWER TO STEP 1 IS THE SAME FOR EVERY ADDRESS *** - the server's neutral 202, so nothing here tells
 				     whether an address has an account. -->
 				<StackPanel x:Name="ForgotPanel" Spacing="4" IsVisible="False">
@@ -255,21 +207,6 @@
 
 				<!-- ================= Signed in: My account ================= -->
 				<StackPanel x:Name="SignedInPanel" Spacing="10" IsVisible="False">
-
-					<!-- The address not confirmed yet - read from the server as the window opens (GET /api/accounts/me), with
-					     a new link one press away. Hidden for a confirmed address, and until the server has said. -->
-					<Border x:Name="NotConfirmedPanel" Classes="Notice" IsVisible="False">
-						<Grid ColumnDefinitions="Auto,*">
-							<TextBlock Grid.Column="0" Classes="NoticeIcon" Text="&#xf0e0;" />
-							<StackPanel Grid.Column="1" Spacing="8">
-								<TextBlock Classes="NoticeText" Text="{x:Static data:AccountWording.NotConfirmed}" />
-								<Button x:Name="SendMailAgainButton"
-										Classes="Accept"
-										Content="{x:Static data:AccountWording.SendMailAgainButton}"
-										Click="OnSendMailAgainClick" />
-							</StackPanel>
-						</Grid>
-					</Border>
 
 					<TextBlock x:Name="AccountMessageText" TextWrapping="Wrap" IsVisible="False" />
 

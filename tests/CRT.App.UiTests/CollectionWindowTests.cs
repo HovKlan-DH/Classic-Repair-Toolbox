@@ -6,19 +6,19 @@ using ClassicRepairToolbox.Tests.Maintainer;
 using CRT;
 using Handlers.Collections;
 using Handlers.DataHandling;
-using Handlers.MaintainerHandling;
 using Handlers.Theming;
 
 namespace ClassicRepairToolbox.Tests.Ui;
 
 // ###########################################################################################
-// A collection's window (CollectionWindow): edits kept on this computer, "Share" signing in first and keeping the page it
-// made, a page the server no longer has forgotten, "Copy link", and "Delete collection" asking first - on a fake server.
+// A collection's window (CollectionWindow): edits kept on this computer, "Share" making the collection's KEY and keeping the
+// page it made (no account - owner decision, 2026-11-28: "Anybody, no account"), "Update share", a page the server no longer
+// has forgotten, "Copy link", and "Delete collection" asking first - on a fake server.
 // ###########################################################################################
 [Collection("HeadlessUi")]
 public sealed class CollectionWindowTests : IDisposable
 {
-    private static readonly string Sha = new('a', 64);
+    private static readonly string Key = new('c', CollectionRules.OwnerKeyLength);
 
     private readonly TempWorkspace thisWorkspace = new();
 
@@ -27,12 +27,6 @@ public sealed class CollectionWindowTests : IDisposable
     private readonly List<(HttpMethod Method, string Path)> thisRequests = [];
 
     private readonly List<string> thisCopied = [];
-
-    private ReviewSession? thisSession;
-
-    private int thisSignIns;
-
-    private bool thisSignInSucceeds = true;
 
     private Func<HttpRequestMessage, HttpResponseMessage> thisAnswer = _ => new HttpResponseMessage(HttpStatusCode.InternalServerError);
 
@@ -43,10 +37,11 @@ public sealed class CollectionWindowTests : IDisposable
 
     public void Dispose() => this.thisWorkspace.Dispose();
 
-    private static ReviewSession Session() => new("token-1", DateTimeOffset.UtcNow.AddDays(30), 1, "anna@example.com", "Anna");
-
     private static HttpResponseMessage Json(HttpStatusCode status, object body) =>
         new(status) { Content = new StringContent(JsonSerializer.Serialize(body, ReviewApiContract.WireSettings), Encoding.UTF8, "application/json") };
+
+    private static CollectionAnswer Page(string id = "k7mq3x9vbn2p", DateTimeOffset? deleteAt = null) =>
+        new(id, $"https://x/collections/{id}", DateTimeOffset.UtcNow, deleteAt ?? DateTimeOffset.UtcNow.AddYears(1), 1);
 
     private LocalCollection Collection()
     {
@@ -58,8 +53,8 @@ public sealed class CollectionWindowTests : IDisposable
     // Held, a request that is no GET waits for it to be let go - an answer on its way while the test clicks again.
     private TaskCompletionSource? thisHold;
 
-    // The keys first shares were sent under (CollectionRoutes.ClientKeyHeader).
-    private readonly List<string> thisKeysSent = [];
+    // The keys requests were sent under (CollectionRoutes.OwnerKeyHeader), one per request.
+    private readonly List<string?> thisKeysSent = [];
 
     // The bodies of the requests sent, as JSON.
     private readonly List<string> thisBodies = [];
@@ -76,12 +71,10 @@ public sealed class CollectionWindowTests : IDisposable
         var client = new CollectionClient("https://classic-repair-toolbox.dk", new HttpClient(new AnsweringHttpHandler(async (request, _) =>
         {
             this.thisRequests.Add((request.Method, request.RequestUri!.AbsolutePath));
+            this.thisKeysSent.Add(request.Headers.TryGetValues(CollectionRoutes.OwnerKeyHeader, out IEnumerable<string>? keys) ? keys.Single() : null);
 
             if (request.Content is { } content)
                 this.thisBodies.Add(await content.ReadAsStringAsync());
-
-            if (request.Headers.TryGetValues(CollectionRoutes.ClientKeyHeader, out IEnumerable<string>? keys))
-                this.thisKeysSent.AddRange(keys);
 
             if (this.thisHold is { } hold && request.Method != HttpMethod.Get)
                 await hold.Task;
@@ -92,16 +85,6 @@ public sealed class CollectionWindowTests : IDisposable
         var host = new CollectionWindowHost(
             this.thisStore,
             client,
-            SignedIn: () => this.thisSession,
-            SignIn: () =>
-            {
-                this.thisSignIns++;
-
-                if (this.thisSignInSucceeds)
-                    this.thisSession = Session();
-
-                return Task.CompletedTask;
-            },
             OpenLink: _ => { },
             CopyText: text =>
             {
@@ -122,6 +105,41 @@ public sealed class CollectionWindowTests : IDisposable
         return window;
     }
 
+    // A collection shared under its key, as shared - its page up, nothing changed since.
+    private LocalCollection SharedCollection()
+    {
+        LocalCollection collection = this.Collection();
+        DateTimeOffset deleteAt = DateTimeOffset.UtcNow.AddYears(1);
+        LocalCollection kept = this.thisStore.Find(collection.LocalId)! with
+        {
+            OwnerKey = Key,
+            ServerId = "k7mq3x9vbn2p",
+            PageUrl = "https://classic-repair-toolbox.dk/collections/k7mq3x9vbn2p",
+            DeleteAtUtc = deleteAt,
+            SharedUtc = DateTimeOffset.UtcNow
+        };
+
+        this.thisStore.Save(kept with { SharedContentHash = CollectionSharing.ContentHash(CollectionSharing.RequestOf(kept, deleteAt)) });
+
+        return this.thisStore.Find(collection.LocalId)!;
+    }
+
+    // A collection shared WITH AN ACCOUNT before 2026-11-28: a page on the server, no key here.
+    private LocalCollection SharedWithAnAccountBefore()
+    {
+        LocalCollection collection = this.Collection();
+
+        this.thisStore.Save(this.thisStore.Find(collection.LocalId)! with
+        {
+            ServerId = "k7mq3x9vbn2p",
+            PageUrl = "https://x/collections/k7mq3x9vbn2p",
+            DeleteAtUtc = DateTimeOffset.UtcNow.AddYears(1),
+            SharedContentHash = "old"
+        });
+
+        return this.thisStore.Find(collection.LocalId)!;
+    }
+
     [Fact]
     public void The_window_shows_the_collection_and_keeps_an_edit_on_this_computer()
     {
@@ -135,7 +153,8 @@ public sealed class CollectionWindowTests : IDisposable
             Assert.Equal("Commodore 64 - 250407 (PAL)", window.BoardText.Text);
             Assert.Equal("1 year", window.LifetimeComboBox.SelectedItem);
             Assert.Single(window.RowsForTests);
-            Assert.StartsWith("Not shared yet", window.SharedStateText.Text, StringComparison.Ordinal);
+            Assert.Equal(CollectionWindow.NotSharedYet, window.SharedStateText.Text);
+            Assert.Equal("Share", window.ShareButton.Content);
             Assert.False(window.StopSharingButton.IsVisible);
 
             window.TitleBox.Text = "Found the bad trace";
@@ -152,11 +171,16 @@ public sealed class CollectionWindowTests : IDisposable
         });
     }
 
+    // ###########################################################################################
+    // *** "SHARE" NEEDS NO ACCOUNT: THE COLLECTION'S KEY IS MADE AND KEPT HERE (owner decision, 2026-11-28). *** Sent with the
+    // share, the page made kept - and the window says the page is this computer's alone (owner request, the same day: "It must
+    // also be clear that the collection is then tied to the computer").
+    // ###########################################################################################
     [Fact]
-    public async Task Share_signs_in_first_and_keeps_the_page_it_made()
+    public async Task Share_makes_the_collection_s_key_keeps_it_here_and_keeps_the_page_it_made()
     {
         LocalCollection collection = this.Collection();
-        this.thisAnswer = _ => Json(HttpStatusCode.Created, new CollectionAnswer("k7mq3x9vbn2p", "https://classic-repair-toolbox.dk/collections/k7mq3x9vbn2p", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddYears(1), 1));
+        this.thisAnswer = _ => Json(HttpStatusCode.Created, Page());
 
         await UiTest.RunAsync(async () =>
         {
@@ -164,36 +188,67 @@ public sealed class CollectionWindowTests : IDisposable
 
             await window.ShareAsync();
 
-            Assert.Equal(1, this.thisSignIns);
             Assert.Equal([(HttpMethod.Post, "/api/collections")], this.thisRequests);
 
             LocalCollection kept = this.thisStore.Find(collection.LocalId)!;
 
+            Assert.True(CollectionRules.IsOwnerKey(kept.OwnerKey));
+            Assert.Equal([kept.OwnerKey], this.thisKeysSent);
             Assert.Equal("k7mq3x9vbn2p", kept.ServerId);
-            Assert.Equal("https://classic-repair-toolbox.dk/collections/k7mq3x9vbn2p", kept.PageUrl);
+            Assert.Equal("https://x/collections/k7mq3x9vbn2p", kept.PageUrl);
             Assert.False(CollectionSharing.HasChangesNotShared(kept));
-            Assert.Contains("https://classic-repair-toolbox.dk/collections/k7mq3x9vbn2p", window.StatusText.Text, StringComparison.Ordinal);
+            Assert.Equal(CollectionWindow.FirstSharedLine("https://x/collections/k7mq3x9vbn2p"), window.StatusText.Text);
+            Assert.Contains("Only this computer can change or delete the page.", window.StatusText.Text, StringComparison.Ordinal);
             Assert.True(window.CopyLinkButton.IsEnabled);
             Assert.True(window.OpenPageButton.IsEnabled);
 
-            // Owner decision, 2026-11-27: every share counts its time again, so "Share" is offered with nothing changed too -
-            // and the window says what it does, the date bold, in the owner's words (2026-11-28) - and no "Shared on" line.
+            // Owner request, 2026-11-28: "rename the "Share" to "Update share", if it is already shared" - offered with nothing
+            // changed too, as every share counts its time again, the date bold.
+            Assert.Equal("Update share", window.ShareButton.Content);
             Assert.True(window.ShareButton.IsEnabled);
             string deleteAt = CollectionRules.DateText(kept.DeleteAtUtc!.Value);
             Assert.Equal(
-                $"Its page is deleted on {deleteAt}. Clicking \"Share\" again will update the deletion day.",
-                Handlers.Theming.BoldRuns.TextOf(window.DeleteDateText));
+                $"Its page is deleted on {deleteAt}. Clicking \"Update share\" will update the deletion day.",
+                BoldRuns.TextOf(window.DeleteDateText));
             Assert.Contains(window.DeleteDateText.Inlines!, inline => inline is Avalonia.Controls.Documents.Run { Text: var text, FontWeight: Avalonia.Media.FontWeight.Bold } && text == deleteAt);
-            Assert.False(window.SharedStateText.IsVisible);
+            Assert.Equal(CollectionWindow.ThisComputerOnly, window.SharedStateText.Text);
 
-            // Changed since: "Share" sends the change.
+            // Changed since: "Update share" sends the change.
             window.DescriptionBox.Text = "It went black.";
             window.SaveEdits();
 
             Assert.True(window.ShareButton.IsEnabled);
-            Assert.True(window.SharedStateText.IsVisible);
-            Assert.Equal("Changed since it was shared - \"Share\" sends the change.", window.SharedStateText.Text);
+            Assert.Equal($"Changed since it was shared - \"Update share\" sends the change. {CollectionWindow.ThisComputerOnly}", window.SharedStateText.Text);
         });
+    }
+
+    // Shared again, under the same key, to its own page.
+    [Fact]
+    public async Task Update_share_sends_the_collection_to_its_page_under_its_key()
+    {
+        LocalCollection collection = this.SharedCollection();
+        this.thisAnswer = _ => Json(HttpStatusCode.OK, Page());
+
+        await UiTest.RunAsync(async () =>
+        {
+            await this.Window(collection).ShareAsync();
+
+            Assert.Equal([(HttpMethod.Put, "/api/collections/k7mq3x9vbn2p")], this.thisRequests);
+            Assert.Equal([Key], this.thisKeysSent);
+            Assert.Equal(Key, this.thisStore.Find(collection.LocalId)!.OwnerKey);
+        });
+    }
+
+    // "Share" never shared, "Update share" while the page is up, "Share" again once it is offline - which brings it back.
+    [Fact]
+    public void The_share_button_reads_Update_share_while_the_page_is_up()
+    {
+        LocalCollection shared = this.SharedCollection();
+
+        Assert.Equal("Share", CollectionWindow.ShareLabel(shared with { ServerId = null }));
+        Assert.Equal("Update share", CollectionWindow.ShareLabel(shared));
+        Assert.Equal("Share", CollectionWindow.ShareLabel(shared with { SharingStoppedUtc = DateTimeOffset.UtcNow }));
+        Assert.Equal("Share", CollectionWindow.ShareLabel(shared with { OwnerKey = null }));
     }
 
     // Owner request, 2026-11-28: "Rename "Open web page" to "Open shared page", but only if it is shared - if not shared, this button
@@ -209,6 +264,7 @@ public sealed class CollectionWindowTests : IDisposable
 
             this.thisStore.Save(this.thisStore.Find(collection.LocalId)! with
             {
+                OwnerKey = Key,
                 ServerId = "k7mq3x9vbn2p",
                 PageUrl = "https://x/collections/k7mq3x9vbn2p",
                 SharingStoppedUtc = DateTimeOffset.UtcNow
@@ -255,18 +311,15 @@ public sealed class CollectionWindowTests : IDisposable
     }
 
     // Owner request, 2026-11-28: "The "Delete image" should also remove it right away from the shared page, and do not touch the
-    // expiry date. This date should only change when the USER does something" - that capture alone off the server, then here; the
-    // page followed, so nothing is said to be "changed since it was shared".
+    // expiry date. This date should only change when the USER does something" - that capture alone off the server under the key,
+    // then here; the page followed, so nothing is said to be "changed since it was shared".
     [Fact]
     public async Task Delete_image_on_a_shared_collection_takes_it_off_its_page_at_once_and_keeps_its_date()
     {
         (LocalCollection collection, string second) = this.SharedWithTwo();
         DateTimeOffset deleteAt = collection.DeleteAtUtc!.Value;
 
-        this.thisSession = Session();
-        this.thisAnswer = request => request.Method == HttpMethod.Get
-            ? Json(HttpStatusCode.OK, new CollectionCommentsAnswer([]))
-            : Json(HttpStatusCode.OK, new CollectionAnswer("k7mq3x9vbn2p", "https://x/collections/k7mq3x9vbn2p", DateTimeOffset.UtcNow, deleteAt, 1));
+        this.thisAnswer = _ => Json(HttpStatusCode.OK, Page(deleteAt: deleteAt));
 
         await UiTest.RunAsync(async () =>
         {
@@ -274,8 +327,8 @@ public sealed class CollectionWindowTests : IDisposable
 
             await window.TakeOutAsync(second);
 
-            Assert.Equal((HttpMethod.Delete, $"/api/collections/k7mq3x9vbn2p/images/{second}"), this.thisRequests.Last());
-            Assert.DoesNotContain(this.thisRequests, sent => sent.Method == HttpMethod.Put);
+            Assert.Equal([(HttpMethod.Delete, $"/api/collections/k7mq3x9vbn2p/images/{second}")], this.thisRequests);
+            Assert.Equal([Key], this.thisKeysSent);
 
             LocalCollection kept = this.thisStore.Find(collection.LocalId)!;
 
@@ -287,17 +340,14 @@ public sealed class CollectionWindowTests : IDisposable
         });
     }
 
-    // A change typed and not shared yet stays one - "Share" still sends it.
+    // A change typed and not shared yet stays one - "Update share" still sends it.
     [Fact]
     public async Task Delete_image_leaves_a_change_not_shared_yet_to_Share()
     {
         (LocalCollection collection, string second) = this.SharedWithTwo();
         this.thisStore.Save(collection with { Title = "A title not shared yet" });
 
-        this.thisSession = Session();
-        this.thisAnswer = request => request.Method == HttpMethod.Get
-            ? Json(HttpStatusCode.OK, new CollectionCommentsAnswer([]))
-            : Json(HttpStatusCode.OK, new CollectionAnswer("k7mq3x9vbn2p", "https://x/collections/k7mq3x9vbn2p", DateTimeOffset.UtcNow, collection.DeleteAtUtc!.Value, 1));
+        this.thisAnswer = _ => Json(HttpStatusCode.OK, Page(deleteAt: collection.DeleteAtUtc!.Value));
 
         await UiTest.RunAsync(async () =>
         {
@@ -315,10 +365,7 @@ public sealed class CollectionWindowTests : IDisposable
     {
         (LocalCollection collection, string second) = this.SharedWithTwo();
 
-        this.thisSession = Session();
-        this.thisAnswer = request => request.Method == HttpMethod.Get
-            ? Json(HttpStatusCode.OK, new CollectionCommentsAnswer([]))
-            : Json(HttpStatusCode.ServiceUnavailable, new CollectionRefusalAnswer(["Sharing collections is not set up on this server."]));
+        this.thisAnswer = _ => Json(HttpStatusCode.ServiceUnavailable, new CollectionRefusalAnswer(["Sharing collections is not set up on this server."]));
 
         await UiTest.RunAsync(async () =>
         {
@@ -331,22 +378,20 @@ public sealed class CollectionWindowTests : IDisposable
         });
     }
 
-    // Signed out, signing in is asked for first - and nothing is deleted when it does not happen.
+    // Shared with an account before 2026-11-28, no key here owns the old page - a capture is deleted here alone, nothing sent.
     [Fact]
-    public async Task Delete_image_on_a_shared_collection_signed_out_asks_to_sign_in_and_deletes_nothing_without()
+    public async Task Delete_image_on_a_collection_shared_with_an_account_before_deletes_it_here_only()
     {
-        (LocalCollection collection, string second) = this.SharedWithTwo();
-        this.thisSignInSucceeds = false;
+        LocalCollection collection = this.SharedWithAnAccountBefore();
 
         await UiTest.RunAsync(async () =>
         {
             CollectionWindow window = this.Window(collection);
 
-            await window.TakeOutAsync(second);
+            await window.TakeOutAsync(collection.Captures[0].Sha256);
 
-            Assert.Equal(1, this.thisSignIns);
-            Assert.Equal(2, this.thisStore.Find(collection.LocalId)!.Captures.Count);
-            Assert.Equal(CollectionWindow.SignInToDeleteImage, window.StatusText.Text);
+            Assert.Empty(this.thisRequests);
+            Assert.Empty(this.thisStore.Find(collection.LocalId)!.Captures);
         });
     }
 
@@ -413,50 +458,18 @@ public sealed class CollectionWindowTests : IDisposable
         });
     }
 
-    // Signing in asked for - and the account window closed without it.
-    [Fact]
-    public async Task Nobody_signing_in_shares_nothing()
-    {
-        LocalCollection collection = this.Collection();
-        this.thisSignInSucceeds = false;
-
-        await UiTest.RunAsync(async () =>
-        {
-            CollectionWindow window = this.Window(collection);
-
-            await window.ShareAsync();
-
-            Assert.Equal(1, this.thisSignIns);
-            Assert.Empty(this.thisRequests);
-            Assert.False(this.thisStore.Find(collection.LocalId)!.IsShared);
-            Assert.Equal(CollectionClient.SignInFirst, window.StatusText.Text);
-        });
-    }
-
     [Fact]
     public async Task A_page_the_server_no_longer_has_is_forgotten_so_Share_makes_a_new_one()
     {
-        LocalCollection collection = this.Collection();
-        this.thisStore.Save(this.thisStore.Find(collection.LocalId)! with
-        {
-            ServerId = "k7mq3x9vbn2p",
-            PageUrl = "https://classic-repair-toolbox.dk/collections/k7mq3x9vbn2p",
-            DeleteAtUtc = DateTimeOffset.UtcNow.AddYears(1),
-            SharedContentHash = "old"
-        });
-
-        this.thisSession = Session();
-
-        // The comments read as the window opens still there (a page gone then is forgotten at once - the test below); the share
-        // finds it gone.
-        this.thisAnswer = request => request.Method == HttpMethod.Get
-            ? Json(HttpStatusCode.OK, new CollectionCommentsAnswer([]))
-            : Json(HttpStatusCode.Gone, new CollectionRefusalAnswer(["That collection was deleted on 2026-November-1."]));
+        LocalCollection collection = this.SharedCollection();
+        this.thisAnswer = _ => Json(HttpStatusCode.Gone, new CollectionRefusalAnswer(["That collection was deleted on 2026-November-1."]));
 
         await UiTest.RunAsync(async () =>
         {
             CollectionWindow window = this.Window(collection);
 
+            window.DescriptionBox.Text = "Changed";
+            window.SaveEdits();
             await window.ShareAsync();
 
             LocalCollection kept = this.thisStore.Find(collection.LocalId)!;
@@ -465,6 +478,58 @@ public sealed class CollectionWindowTests : IDisposable
             Assert.Null(kept.PageUrl);
             Assert.Contains("\"Share\" makes a new page", window.StatusText.Text, StringComparison.Ordinal);
             Assert.True(window.ShareButton.IsEnabled);
+            Assert.Equal("Share", window.ShareButton.Content);
+        });
+    }
+
+    // ###########################################################################################
+    // *** A COLLECTION SHARED WITH AN ACCOUNT BEFORE 2026-11-28 IS SHARED AS A NEW PAGE, UNDER A KEY OF ITS OWN. *** No key of
+    // this computer owns the old page, which goes at its date: the window says the collection is here only, "Share" makes its
+    // key and a new page - its captures kept.
+    // ###########################################################################################
+    [Fact]
+    public async Task A_collection_shared_with_an_account_before_is_shared_as_a_new_page_under_its_own_key()
+    {
+        LocalCollection collection = this.SharedWithAnAccountBefore();
+        this.thisAnswer = _ => Json(HttpStatusCode.Created, Page("zzzzzzzzzzzz"));
+
+        await UiTest.RunAsync(async () =>
+        {
+            CollectionWindow window = this.Window(collection);
+
+            Assert.Equal(CollectionWindow.NotSharedYet, window.SharedStateText.Text);
+            Assert.Equal("Share", window.ShareButton.Content);
+            Assert.False(window.OpenPageButton.IsEnabled);
+
+            await window.ShareAsync();
+
+            LocalCollection kept = this.thisStore.Find(collection.LocalId)!;
+
+            Assert.Equal([(HttpMethod.Post, "/api/collections")], this.thisRequests);
+            Assert.True(CollectionRules.IsOwnerKey(kept.OwnerKey));
+            Assert.Equal([kept.OwnerKey], this.thisKeysSent);
+            Assert.Equal("zzzzzzzzzzzz", kept.ServerId);
+            Assert.Single(kept.Captures);
+        });
+    }
+
+    // ... and deleted from this computer alone, asked first - the old page is left to its date, nothing sent.
+    [Fact]
+    public async Task A_collection_shared_with_an_account_before_is_deleted_from_this_computer_only()
+    {
+        LocalCollection collection = this.SharedWithAnAccountBefore();
+
+        await UiTest.RunAsync(async () =>
+        {
+            CollectionWindow window = this.Window(collection);
+
+            window.AskToDelete();
+            Assert.Equal("Delete [No picture] from this computer?", window.DeleteQuestionText.Text);
+
+            await window.DeleteAsync();
+
+            Assert.Empty(this.thisRequests);
+            Assert.Null(this.thisStore.Find(collection.LocalId));
         });
     }
 
@@ -474,7 +539,7 @@ public sealed class CollectionWindowTests : IDisposable
     public async Task Copy_link_copies_in_the_format_picked_last_and_names_it()
     {
         LocalCollection collection = this.Collection();
-        this.thisStore.Save(this.thisStore.Find(collection.LocalId)! with { ServerId = "k7mq3x9vbn2p", PageUrl = "https://x/collections/k7mq3x9vbn2p" });
+        this.thisStore.Save(this.thisStore.Find(collection.LocalId)! with { OwnerKey = Key, ServerId = "k7mq3x9vbn2p", PageUrl = "https://x/collections/k7mq3x9vbn2p" });
 
         await UiTest.RunAsync(async () =>
         {
@@ -494,13 +559,13 @@ public sealed class CollectionWindowTests : IDisposable
         });
     }
 
-    // The arrow lists the three formats, each saying where it works, the one a click copies in checked; one picked there is copied
-    // and remembered, so the next click repeats it.
+    // The arrow lists the formats, each saying where it works, the one a click copies in checked; one picked there is copied and
+    // remembered, so the next click repeats it.
     [Fact]
     public async Task A_format_picked_from_the_list_is_copied_and_remembered()
     {
         LocalCollection collection = this.Collection();
-        this.thisStore.Save(this.thisStore.Find(collection.LocalId)! with { ServerId = "k7mq3x9vbn2p", PageUrl = "https://x/collections/k7mq3x9vbn2p" });
+        this.thisStore.Save(this.thisStore.Find(collection.LocalId)! with { OwnerKey = Key, ServerId = "k7mq3x9vbn2p", PageUrl = "https://x/collections/k7mq3x9vbn2p" });
         List<CollectionLinkFormat> remembered = [];
 
         await UiTest.RunAsync(async () =>
@@ -508,38 +573,45 @@ public sealed class CollectionWindowTests : IDisposable
             CollectionWindow window = this.Window(collection, rememberLinkFormat: remembered.Add);
 
             Assert.Equal(
-                ["BBCode - Lemon64, Forum64, AtariAge, VOGONS and most other forums", "Markdown - Reddit, Discord, GitHub and Discourse", "Plain link - Facebook groups, email and anything else"],
+                [
+                    "BBCode - Lemon64, Forum64, AtariAge, VOGONS and most other forums",
+                    "Markdown - Reddit, Discord, GitHub and Discourse",
+                    "HTML - Web pages, blogs and HTML mail",
+                    "Plain link - Facebook groups, email and anything else"
+                ],
                 window.LinkFormatItemsForTests.Select(item => BoldRuns.TextOf((TextBlock)item.Header!)));
-            Assert.Equal([true, false, false], window.LinkFormatItemsForTests.Select(item => item.IsChecked));
+            Assert.Equal([true, false, false, false], window.LinkFormatItemsForTests.Select(item => item.IsChecked));
 
             await window.CopyAsync(CollectionLinkFormat.Plain, remember: true);
 
             Assert.Equal([CollectionLinkFormat.Plain], remembered);
             Assert.EndsWith(": https://x/collections/k7mq3x9vbn2p", this.thisCopied.Last(), StringComparison.Ordinal);
             Assert.Equal("Copy link (plain)", window.CopyLinkButton.Content);
-            Assert.Equal([false, false, true], window.LinkFormatItemsForTests.Select(item => item.IsChecked));
+            Assert.Equal([false, false, false, true], window.LinkFormatItemsForTests.Select(item => item.IsChecked));
 
             await window.CopyAsync(window.LinkFormatShown);
 
             Assert.EndsWith(": https://x/collections/k7mq3x9vbn2p", this.thisCopied.Last(), StringComparison.Ordinal);
             Assert.Single(remembered);
+
+            // Owner request, 2026-11-28: "add an option of "HTML" ... embed the link in "<a href>"".
+            await window.CopyAsync(CollectionLinkFormat.Html, remember: true);
+
+            Assert.StartsWith("<a href=\"https://x/collections/k7mq3x9vbn2p\">No picture</a>", this.thisCopied.Last(), StringComparison.Ordinal);
+            Assert.Equal("Copy link (HTML)", window.CopyLinkButton.Content);
+            Assert.Equal([CollectionLinkFormat.Plain, CollectionLinkFormat.Html], remembered);
         });
     }
 
     [Fact]
-    public async Task Delete_asks_first_then_takes_the_page_off_the_server_and_the_collection_off_this_computer()
+    public async Task Delete_asks_first_then_takes_the_page_off_the_server_under_its_key_and_the_collection_off_this_computer()
     {
-        LocalCollection collection = this.Collection();
-        this.thisStore.Save(this.thisStore.Find(collection.LocalId)! with { ServerId = "k7mq3x9vbn2p", PageUrl = "https://x/collections/k7mq3x9vbn2p" });
-        this.thisSession = Session();
+        LocalCollection collection = this.SharedCollection();
         this.thisAnswer = _ => new HttpResponseMessage(HttpStatusCode.NoContent);
 
         await UiTest.RunAsync(async () =>
         {
             CollectionWindow window = this.Window(collection);
-
-            // What the window read as it opened (its comments) is no part of the delete.
-            this.thisRequests.Clear();
 
             window.DeleteButton.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Avalonia.Controls.Button.ClickEvent));
 
@@ -550,6 +622,7 @@ public sealed class CollectionWindowTests : IDisposable
             await window.DeleteAsync();
 
             Assert.Equal([(HttpMethod.Delete, "/api/collections/k7mq3x9vbn2p")], this.thisRequests);
+            Assert.Equal([Key], this.thisKeysSent);
             Assert.Null(this.thisStore.Find(collection.LocalId));
         });
     }
@@ -564,7 +637,6 @@ public sealed class CollectionWindowTests : IDisposable
         UiTest.Run(() =>
         {
             CollectionWindow window = this.Window(collection);
-            this.thisRequests.Clear();
 
             window.AskToDelete();
 
@@ -576,111 +648,11 @@ public sealed class CollectionWindowTests : IDisposable
         });
     }
 
-    // ---- Comments (step 3) ---------------------------------------------------------------------
-
-    private LocalCollection Shared(long seenCommentId = 0)
-    {
-        LocalCollection collection = this.Collection();
-        LocalCollection shared = this.thisStore.Find(collection.LocalId)! with
-        {
-            ServerId = "k7mq3x9vbn2p",
-            PageUrl = "https://x/collections/k7mq3x9vbn2p",
-            SeenCommentId = seenCommentId
-        };
-
-        this.thisStore.Save(shared);
-        return shared;
-    }
-
-    private static CollectionCommentAnswer Comment(long id, string sha, bool mine = false, bool hidden = false) =>
-        new(id, sha, mine ? "Anna" : "Bo", ByOwner: mine, ByAdministrator: false, Mine: mine, $"Comment {id}", DateTimeOffset.UtcNow, null, hidden);
-
-    // The comments answered for every GET of them, and 204 for anything done to one.
-    private void AnswerComments(params CollectionCommentAnswer[] comments) =>
-        this.thisAnswer = request => request.Method == HttpMethod.Get
-            ? Json(HttpStatusCode.OK, new CollectionCommentsAnswer(comments))
-            : new HttpResponseMessage(HttpStatusCode.NoContent);
-
-    [Fact]
-    public async Task A_shared_collection_s_comments_are_read_and_those_not_read_before_marked_new()
-    {
-        LocalCollection collection = this.Shared(seenCommentId: 5);
-        string sha = collection.Captures[0].Sha256;
-
-        this.thisSession = Session();
-        this.AnswerComments(Comment(5, sha), Comment(6, sha), Comment(7, sha, mine: true));
-
-        await UiTest.RunAsync(async () =>
-        {
-            CollectionWindow window = this.Window(collection);
-
-            await window.LoadCommentsAsync();
-
-            CollectionCaptureRow row = Assert.Single(window.RowsForTests);
-
-            Assert.True(row.ShowsComments);
-            Assert.Equal("3 comments - 1 new", row.CommentsHeading);
-            Assert.Equal([false, true, false], row.Comments.Select(comment => comment.IsNew));
-            Assert.Equal(("You", true), (row.Comments[2].Author, row.Comments[2].IsMine));
-            Assert.Equal([true, true, false], row.Comments.Select(comment => comment.CanHide));
-            Assert.Equal([false, false, true], row.Comments.Select(comment => comment.CanDelete));
-
-            // Read now: the popups' "new comments" goes.
-            Assert.Equal(7, this.thisStore.Find(collection.LocalId)!.SeenCommentId);
-        });
-    }
-
-    [Fact]
-    public async Task Hiding_a_comment_asks_the_server_and_reads_the_comments_again()
-    {
-        LocalCollection collection = this.Shared();
-        string sha = collection.Captures[0].Sha256;
-
-        this.thisSession = Session();
-        this.AnswerComments(Comment(6, sha, hidden: true));
-
-        await UiTest.RunAsync(async () =>
-        {
-            CollectionWindow window = this.Window(collection);
-            this.thisRequests.Clear();
-
-            await window.CommentActionAsync((client, serverId, token) => client.SetCommentHiddenAsync(serverId, 6, true, token));
-
-            Assert.Equal(
-                [(HttpMethod.Put, "/api/collections/k7mq3x9vbn2p/comments/6/hidden"), (HttpMethod.Get, "/api/collections/k7mq3x9vbn2p/comments")],
-                this.thisRequests);
-
-            CollectionCommentRow hidden = Assert.Single(Assert.Single(window.RowsForTests).Comments);
-
-            Assert.True(hidden.CanShow);
-            Assert.Contains("hidden from the page", hidden.Details, StringComparison.Ordinal);
-        });
-    }
-
-    // Signed out, nothing is asked - the comments are read once CRT is signed in.
-    [Fact]
-    public async Task Signed_out_no_comments_are_read()
-    {
-        LocalCollection collection = this.Shared();
-
-        await UiTest.RunAsync(async () =>
-        {
-            CollectionWindow window = this.Window(collection);
-
-            await window.LoadCommentsAsync();
-
-            Assert.Empty(this.thisRequests);
-            Assert.False(Assert.Single(window.RowsForTests).ShowsComments);
-        });
-    }
-
     // The page could not be taken off: the collection stays, so it can be tried again.
     [Fact]
     public async Task A_page_the_server_would_not_take_off_keeps_the_collection()
     {
-        LocalCollection collection = this.Collection();
-        this.thisStore.Save(this.thisStore.Find(collection.LocalId)! with { ServerId = "k7mq3x9vbn2p" });
-        this.thisSession = Session();
+        LocalCollection collection = this.SharedCollection();
         this.thisAnswer = _ => new HttpResponseMessage(HttpStatusCode.InternalServerError);
 
         await UiTest.RunAsync(async () =>
@@ -694,117 +666,12 @@ public sealed class CollectionWindowTests : IDisposable
         });
     }
 
-    // ---- Code review, 2026-11-27 -------------------------------------------------------------------
-
-    // The server answers "not found" for another account's collection: with another account signed in, nothing is sent -
-    // the collection kept here, and its page left to the account that shared it.
-    [Fact]
-    public async Task With_another_account_signed_in_nothing_is_deleted_or_shared()
-    {
-        LocalCollection collection = this.Collection();
-        this.thisStore.Save(this.thisStore.Find(collection.LocalId)! with
-        {
-            ServerId = "k7mq3x9vbn2p",
-            PageUrl = "https://x/collections/k7mq3x9vbn2p",
-            SharedByAccountId = 2,
-            SharedByName = "Bo"
-        });
-
-        this.thisSession = Session();
-        this.thisAnswer = _ => new HttpResponseMessage(HttpStatusCode.NotFound);
-
-        await UiTest.RunAsync(async () =>
-        {
-            CollectionWindow window = this.Window(collection);
-
-            window.DescriptionBox.Text = "Changed";
-            window.SaveEdits();
-            await window.ShareAsync();
-
-            Assert.Empty(this.thisRequests);
-            Assert.Equal("k7mq3x9vbn2p", this.thisStore.Find(collection.LocalId)?.ServerId);
-            Assert.Contains("[Bo]", window.StatusText.Text, StringComparison.Ordinal);
-
-            // "Delete collection" asks first whether to delete it from this computer only - nothing is sent either way.
-            await window.DeleteAsync();
-
-            Assert.Empty(this.thisRequests);
-            Assert.True(window.DeleteQuestion.IsVisible);
-            Assert.Contains("from this computer only", window.DeleteQuestionText.Text, StringComparison.Ordinal);
-            Assert.NotNull(this.thisStore.Find(collection.LocalId));
-        });
-    }
-
-    // Shared with an account that is no more - a data reset deleted it - the collection still goes from this computer, asked
-    // first; its page is left to its date (code review, 2026-11-27: it could never be deleted at all).
-    [Fact]
-    public async Task Another_account_s_collection_is_deleted_from_this_computer_only_once_asked()
-    {
-        LocalCollection collection = this.Collection();
-        this.thisStore.Save(this.thisStore.Find(collection.LocalId)! with { ServerId = "k7mq3x9vbn2p", SharedByAccountId = 2, SharedByName = "Bo" });
-        this.thisSession = Session();
-
-        await UiTest.RunAsync(async () =>
-        {
-            CollectionWindow window = this.Window(collection);
-
-            await window.DeleteAsync();
-            await window.DeleteAsync();
-
-            Assert.Empty(this.thisRequests);
-            Assert.Null(this.thisStore.Find(collection.LocalId));
-        });
-    }
-
-    // Another account's collection - one gone in a data reset - is shared again as a NEW page once "Share" is pressed again:
-    // its captures kept, the old page's id let go of (code review, 2026-11-27: it could never be shared again).
-    [Fact]
-    public async Task Another_account_s_collection_is_shared_as_a_new_page_once_asked()
-    {
-        LocalCollection collection = this.Collection();
-        this.thisStore.Save(this.thisStore.Find(collection.LocalId)! with
-        {
-            ServerId = "k7mq3x9vbn2p",
-            PageUrl = "https://x/collections/k7mq3x9vbn2p",
-            SharedByAccountId = 2,
-            SharedByName = "Bo"
-        });
-
-        this.thisSession = Session();
-        this.thisAnswer = _ => Json(HttpStatusCode.Created, new CollectionAnswer("zzzzzzzzzzzz", "https://x/collections/zzzzzzzzzzzz", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddYears(1), 1));
-
-        await UiTest.RunAsync(async () =>
-        {
-            CollectionWindow window = this.Window(collection);
-
-            await window.ShareAsync();
-            Assert.Empty(this.thisRequests);
-
-            await window.ShareAsync();
-
-            (HttpMethod Method, string Path) sent = Assert.Single(this.thisRequests);
-            LocalCollection kept = this.thisStore.Find(collection.LocalId)!;
-
-            Assert.Equal(HttpMethod.Post, sent.Method);
-            Assert.Equal(("zzzzzzzzzzzz", 1L), (kept.ServerId, kept.SharedByAccountId));
-            Assert.Single(kept.Captures);
-        });
-    }
-
     // What is copied names the captures by their places on the page - with a change not shared, it would name ones the page
-    // does not have: the copy buttons wait for "Share" (code review, 2026-11-27).
+    // does not have: the copy buttons wait for "Update share" (code review, 2026-11-27).
     [Fact]
     public async Task The_copy_buttons_wait_for_a_change_to_be_shared()
     {
-        LocalCollection shared = this.Shared();
-        DateTimeOffset deleteAt = DateTimeOffset.UtcNow.AddYears(1);
-        LocalCollection collection = shared with
-        {
-            DeleteAtUtc = deleteAt,
-            SharedContentHash = CollectionSharing.ContentHash(CollectionSharing.RequestOf(shared with { DeleteAtUtc = deleteAt }, deleteAt))
-        };
-
-        this.thisStore.Save(collection);
+        LocalCollection collection = this.SharedCollection();
 
         await UiTest.RunAsync(() =>
         {
@@ -820,35 +687,17 @@ public sealed class CollectionWindowTests : IDisposable
         });
     }
 
-    [Fact]
-    public async Task Share_keeps_the_account_it_shared_with()
-    {
-        LocalCollection collection = this.Collection();
-        this.thisSession = Session();
-        this.thisAnswer = _ => Json(HttpStatusCode.Created, new CollectionAnswer("k7mq3x9vbn2p", "https://x/collections/k7mq3x9vbn2p", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddYears(1), 1));
-
-        await UiTest.RunAsync(async () =>
-        {
-            await this.Window(collection).ShareAsync();
-
-            LocalCollection kept = this.thisStore.Find(collection.LocalId)!;
-
-            Assert.Equal((1L, "Anna"), (kept.SharedByAccountId, kept.SharedByName));
-        });
-    }
-
     // A note kept while the share was on its way stays - only the server's part is written over the collection as it is now.
     [Fact]
     public async Task An_edit_kept_while_sharing_stays()
     {
         LocalCollection collection = this.Collection();
-        this.thisSession = Session();
         this.thisAnswer = request =>
         {
             if (request.Method == HttpMethod.Post)
                 this.thisStore.Save(this.thisStore.Find(collection.LocalId)! with { Title = "Edited meanwhile" });
 
-            return Json(HttpStatusCode.Created, new CollectionAnswer("k7mq3x9vbn2p", "https://x/collections/k7mq3x9vbn2p", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddYears(1), 1));
+            return Json(HttpStatusCode.Created, Page());
         };
 
         await UiTest.RunAsync(async () =>
@@ -864,55 +713,23 @@ public sealed class CollectionWindowTests : IDisposable
         });
     }
 
-    // "Answer" pressed again while the first is on its way sends nothing more.
+    // Past the overlay's limit with no answer, the window stays busy until the request really ends - let go, a second press sent
+    // the request again (code review, 2026-11-27).
     [Fact]
-    public async Task An_answer_clicked_twice_is_sent_once()
+    public async Task Stop_sharing_past_the_wait_s_limit_keeps_the_window_busy_until_it_ends()
     {
-        LocalCollection collection = this.Shared();
-        string sha = collection.Captures[0].Sha256;
-
-        this.thisSession = Session();
-        this.AnswerComments();
+        LocalCollection collection = this.SharedCollection();
+        this.thisAnswer = _ => Json(HttpStatusCode.OK, Page());
 
         await UiTest.RunAsync(async () =>
         {
             CollectionWindow window = this.Window(collection);
-            await window.LoadCommentsAsync();
-            this.thisRequests.Clear();
-            this.thisHold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-
-            Task first = window.CommentActionAsync((client, serverId, token) => client.AddCommentAsync(serverId, sha, "Check R7.", token));
-            Task second = window.CommentActionAsync((client, serverId, token) => client.AddCommentAsync(serverId, sha, "Check R7.", token));
-
-            this.thisHold.SetResult();
-            await Task.WhenAll(first, second);
-
-            Assert.Single(this.thisRequests, request => request.Method == HttpMethod.Post);
-        });
-    }
-
-    // Past the overlay's limit with no answer, the window stays busy until the request really ends - let go, "Answer" pressed
-    // again posted the answer a second time (code review, 2026-11-27).
-    [Fact]
-    public async Task An_answer_past_the_wait_s_limit_keeps_the_window_busy_until_it_ends()
-    {
-        LocalCollection collection = this.Shared();
-        string sha = collection.Captures[0].Sha256;
-
-        this.thisSession = Session();
-        this.AnswerComments();
-
-        await UiTest.RunAsync(async () =>
-        {
-            CollectionWindow window = this.Window(collection);
-            await window.LoadCommentsAsync();
-            this.thisRequests.Clear();
             this.thisHold = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
 
             // The overlay's clock runs out at once.
             BusyOverlay.For(window)!.LimitOverrideForTests = _ => Task.CompletedTask;
 
-            Task first = window.CommentActionAsync((client, serverId, token) => client.AddCommentAsync(serverId, sha, "Check R7.", token));
+            Task first = window.StopSharingAsync();
 
             for (int i = 0; i < 200 && window.StatusText.Text != CollectionWindow.NoAnswerYet; i++)
                 await Task.Delay(10);
@@ -920,96 +737,12 @@ public sealed class CollectionWindowTests : IDisposable
             Assert.Equal(CollectionWindow.NoAnswerYet, window.StatusText.Text);
 
             // Still busy: a second press sends nothing.
-            Assert.False(await window.CommentActionAsync((client, serverId, token) => client.AddCommentAsync(serverId, sha, "Check R7.", token)));
+            await window.StopSharingAsync();
 
             this.thisHold.SetResult();
             await first;
 
-            Assert.Single(this.thisRequests, request => request.Method == HttpMethod.Post);
-        });
-    }
-
-    // An answer sent leaves its box empty, so a second press sends nothing again (code review, 2026-11-27).
-    [Fact]
-    public async Task An_answer_sent_empties_its_box()
-    {
-        LocalCollection collection = this.Shared();
-        string sha = collection.Captures[0].Sha256;
-
-        this.thisSession = Session();
-        this.AnswerComments();
-
-        await UiTest.RunAsync(async () =>
-        {
-            CollectionWindow window = this.Window(collection);
-            await window.LoadCommentsAsync();
-            this.thisRequests.Clear();
-
-            CollectionCaptureRow row = Assert.Single(window.RowsForTests);
-            row.Answer = "Check R7.";
-
-            await window.AnswerAsync(new Avalonia.Controls.Button { Tag = sha });
-
-            Assert.Null(row.Answer);
-            Assert.Single(this.thisRequests, request => request.Method == HttpMethod.Post);
-
-            // Refused, what was typed stays to be sent again.
-            this.thisAnswer = request => request.Method == HttpMethod.Get
-                ? Json(HttpStatusCode.OK, new CollectionCommentsAnswer([]))
-                : Json(HttpStatusCode.BadRequest, new CollectionRefusalAnswer(["Write the comment first."]));
-            row.Answer = "   ";
-
-            await window.AnswerAsync(new Avalonia.Controls.Button { Tag = sha });
-
-            Assert.Equal("   ", row.Answer);
-        });
-    }
-
-    // Taken down on the website by the administrator, the page is forgotten as the comments are read - "Share" makes a new one
-    // (code review, 2026-11-27: "There is no collection of yours with that id", and the window went on showing it shared).
-    [Fact]
-    public async Task A_page_taken_down_is_forgotten_as_its_comments_are_read()
-    {
-        LocalCollection collection = this.Shared();
-
-        this.thisSession = Session();
-        this.thisAnswer = _ => Json(HttpStatusCode.Gone, new CollectionRefusalAnswer(["That collection was deleted on 2026-November-27."]));
-
-        await UiTest.RunAsync(async () =>
-        {
-            CollectionWindow window = this.Window(collection);
-
-            await window.LoadCommentsAsync();
-
-            LocalCollection kept = this.thisStore.Find(collection.LocalId)!;
-
-            Assert.Null(kept.ServerId);
-            Assert.Equal(CollectionWindow.PageGone, window.StatusText.Text);
-            Assert.True(window.ShareButton.IsEnabled);
-            Assert.False(Assert.Single(window.RowsForTests).ShowsComments);
-        });
-    }
-
-    // A comment gone meanwhile is that comment's 404 - the page stays known (code review, 2026-11-27: it was forgotten, and the
-    // next "Share" made a second page).
-    [Fact]
-    public async Task A_comment_gone_meanwhile_leaves_the_page_known()
-    {
-        LocalCollection collection = this.Shared();
-
-        this.thisSession = Session();
-        this.thisAnswer = request => request.Method == HttpMethod.Get
-            ? Json(HttpStatusCode.OK, new CollectionCommentsAnswer([]))
-            : Json(HttpStatusCode.NotFound, new CollectionRefusalAnswer(["There is no comment of yours with that id."]));
-
-        await UiTest.RunAsync(async () =>
-        {
-            CollectionWindow window = this.Window(collection);
-
-            Assert.False(await window.CommentActionAsync((client, serverId, token) => client.SetCommentHiddenAsync(serverId, 6, true, token)));
-
-            Assert.Equal("k7mq3x9vbn2p", this.thisStore.Find(collection.LocalId)?.ServerId);
-            Assert.Equal("There is no comment of yours with that id.", window.StatusText.Text);
+            Assert.Single(this.thisRequests, request => request.Method == HttpMethod.Put);
         });
     }
 
@@ -1026,7 +759,7 @@ public sealed class CollectionWindowTests : IDisposable
 
             CollectionCaptureRow firstRow = window.RowsForTests[0];
             string first = firstRow.Sha256;
-            firstRow.Answer = "An answer being typed";
+            firstRow.Caption = "A note being typed";
 
             this.thisStore.AddCapture(collection.LocalId, CRT.Data.Tests.TestPng.Rgb(16, 10, seed: 5), new LocalCapture { ComponentLabel = "U8", Pin = "3", CapturedUtc = DateTimeOffset.UtcNow });
             window.ShowAgain();
@@ -1035,31 +768,29 @@ public sealed class CollectionWindowTests : IDisposable
             Assert.Equal("Typed before", window.TitleBox.Text);
             Assert.Equal("Typed before", this.thisStore.Find(collection.LocalId)!.Title);
 
-            // The rows are changed in place: the capture there before keeps its very row - and so its box and the answer being
+            // The rows are changed in place: the capture there before keeps its very row - and so its box and the note being
             // typed in it (code review, 2026-11-27: every row was made again at each capture, the caret lost).
             Assert.Same(firstRow, window.RowsForTests.Single(row => row.Sha256 == first));
-            Assert.Equal("An answer being typed", firstRow.Answer);
+            Assert.Equal("A note being typed", firstRow.Caption);
         });
     }
 
-    // A first share whose answer was lost made its page all the same: "Share" again sends it under the very same key, and the
-    // server changes the page it made - never a second one only the administrator could take down (code review, 2026-11-27;
-    // the server's half is CollectionFlowsTests).
+    // A first share whose answer was lost made its page all the same: "Share" again sends it under the very same key - kept here
+    // BEFORE the first was sent - and the server changes the page it made, never a second one only the administrator could take
+    // down (code review, 2026-11-27; the server's half is CollectionFlowsTests).
     [Fact]
     public async Task A_first_share_sent_again_carries_the_same_key()
     {
         LocalCollection collection = this.Collection();
-        this.thisSession = Session();
 
         int posts = 0;
-        DateTimeOffset made = DateTimeOffset.UtcNow;
 
         this.thisAnswer = request =>
         {
             if (request.Method == HttpMethod.Post && posts++ == 0)
                 throw new HttpRequestException("The answer was lost on the way.");
 
-            return Json(HttpStatusCode.OK, new CollectionAnswer("k7mq3x9vbn2p", "https://x/collections/k7mq3x9vbn2p", made, made.AddYears(1), 1));
+            return Json(HttpStatusCode.OK, Page());
         };
 
         await UiTest.RunAsync(async () =>
@@ -1068,12 +799,15 @@ public sealed class CollectionWindowTests : IDisposable
 
             await window.ShareAsync();
 
-            Assert.Null(this.thisStore.Find(collection.LocalId)!.ServerId);
+            LocalCollection afterLost = this.thisStore.Find(collection.LocalId)!;
+
+            Assert.Null(afterLost.ServerId);
+            Assert.True(CollectionRules.IsOwnerKey(afterLost.OwnerKey));
 
             await window.ShareAsync();
 
             Assert.Equal([(HttpMethod.Post, "/api/collections"), (HttpMethod.Post, "/api/collections")], this.thisRequests);
-            Assert.Equal([collection.LocalId, collection.LocalId], this.thisKeysSent);
+            Assert.Equal([afterLost.OwnerKey, afterLost.OwnerKey], this.thisKeysSent);
             Assert.Equal("k7mq3x9vbn2p", this.thisStore.Find(collection.LocalId)!.ServerId);
         });
     }
@@ -1091,8 +825,6 @@ public sealed class CollectionWindowTests : IDisposable
             var host = new CollectionWindowHost(
                 this.thisStore,
                 new CollectionClient("https://classic-repair-toolbox.dk", new HttpClient(new AnsweringHttpHandler(this.thisAnswer))),
-                SignedIn: () => null,
-                SignIn: () => Task.CompletedTask,
                 OpenLink: _ => { },
                 CopyText: _ => Task.CompletedTask,
                 Changed: () => { });
@@ -1153,35 +885,11 @@ public sealed class CollectionWindowTests : IDisposable
 
     // ---- "Stop sharing" (owner decision, 2026-11-27: "Offline, same link back") -------------------------------------------
 
-    private LocalCollection SharedCollection()
-    {
-        LocalCollection collection = this.Collection();
-        DateTimeOffset deleteAt = DateTimeOffset.UtcNow.AddYears(1);
-        LocalCollection kept = this.thisStore.Find(collection.LocalId)! with
-        {
-            ServerId = "k7mq3x9vbn2p",
-            PageUrl = "https://classic-repair-toolbox.dk/collections/k7mq3x9vbn2p",
-            DeleteAtUtc = deleteAt,
-            SharedUtc = DateTimeOffset.UtcNow,
-            SharedByAccountId = 1,
-            SharedByName = "Anna"
-        };
-
-        this.thisStore.Save(kept with { SharedContentHash = CollectionSharing.ContentHash(CollectionSharing.RequestOf(kept, deleteAt)) });
-
-        return this.thisStore.Find(collection.LocalId)!;
-    }
-
     [Fact]
     public async Task Stop_sharing_takes_the_page_offline_and_Share_brings_it_back_under_the_same_link()
     {
         LocalCollection collection = this.SharedCollection();
-        CollectionAnswer page = new("k7mq3x9vbn2p", "https://classic-repair-toolbox.dk/collections/k7mq3x9vbn2p", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddYears(1), 1);
-
-        this.thisSession = Session();
-        this.thisAnswer = request => request.Method == HttpMethod.Get
-            ? Json(HttpStatusCode.OK, new CollectionCommentsAnswer([]))
-            : Json(HttpStatusCode.OK, page);
+        this.thisAnswer = _ => Json(HttpStatusCode.OK, Page());
 
         await UiTest.RunAsync(async () =>
         {
@@ -1191,7 +899,8 @@ public sealed class CollectionWindowTests : IDisposable
 
             await window.StopSharingAsync();
 
-            Assert.Contains((HttpMethod.Put, "/api/collections/k7mq3x9vbn2p/sharing"), this.thisRequests);
+            Assert.Equal([(HttpMethod.Put, "/api/collections/k7mq3x9vbn2p/sharing")], this.thisRequests);
+            Assert.Equal([Key], this.thisKeysSent);
             Assert.Contains("\"shared\":false", this.thisBodies.Last(), StringComparison.Ordinal);
 
             LocalCollection stopped = this.thisStore.Find(collection.LocalId)!;
@@ -1201,10 +910,12 @@ public sealed class CollectionWindowTests : IDisposable
             Assert.False(stopped.IsOnline);
             Assert.Equal(CollectionWindow.SharingStopped, window.StatusText.Text);
             Assert.StartsWith("Not shared at the moment", window.SharedStateText.Text, StringComparison.Ordinal);
+            Assert.EndsWith(CollectionWindow.ThisComputerOnly, window.SharedStateText.Text, StringComparison.Ordinal);
             Assert.False(window.StopSharingButton.IsVisible);
             Assert.False(window.CopyLinkButton.IsEnabled);
 
             // Nothing changed, and still "Share" brings it back - the collection sent again under its id.
+            Assert.Equal("Share", window.ShareButton.Content);
             Assert.True(window.ShareButton.IsEnabled);
 
             await window.ShareAsync();
@@ -1214,8 +925,9 @@ public sealed class CollectionWindowTests : IDisposable
             LocalCollection back = this.thisStore.Find(collection.LocalId)!;
 
             Assert.Null(back.SharingStoppedUtc);
-            Assert.Equal("https://classic-repair-toolbox.dk/collections/k7mq3x9vbn2p", back.PageUrl);
+            Assert.Equal("https://x/collections/k7mq3x9vbn2p", back.PageUrl);
             Assert.True(window.StopSharingButton.IsVisible);
+            Assert.Equal("Update share", window.ShareButton.Content);
         });
     }
 
@@ -1224,11 +936,7 @@ public sealed class CollectionWindowTests : IDisposable
     public async Task Stop_sharing_a_page_the_server_no_longer_has_forgets_the_page_and_keeps_the_collection()
     {
         LocalCollection collection = this.SharedCollection();
-
-        this.thisSession = Session();
-        this.thisAnswer = request => request.Method == HttpMethod.Get
-            ? Json(HttpStatusCode.OK, new CollectionCommentsAnswer([]))
-            : Json(HttpStatusCode.Gone, new CollectionRefusalAnswer(["That collection was deleted on 2026-November-1."]));
+        this.thisAnswer = _ => Json(HttpStatusCode.Gone, new CollectionRefusalAnswer(["That collection was deleted on 2026-November-1."]));
 
         await UiTest.RunAsync(async () =>
         {
@@ -1245,7 +953,7 @@ public sealed class CollectionWindowTests : IDisposable
         });
     }
 
-    // ---- "Attach to worklog" (owner decision, 2026-11-27: "A copy of its captures") -----------------------------------
+    // ---- "Attach collection to worklog" (owner decision, 2026-11-27: "A copy of its captures") ----------------------------
 
     [Fact]
     public async Task Attach_to_worklog_hands_CRT_the_collection_as_kept_and_says_what_came_of_it()
@@ -1297,8 +1005,7 @@ public sealed class CollectionWindowTests : IDisposable
         LocalCollection collection = this.Collection();
         string sha = collection.Captures[0].Sha256;
 
-        this.thisSession = Session();
-        this.thisAnswer = _ => Json(HttpStatusCode.Created, new CollectionAnswer("k7mq3x9vbn2p", "https://x/collections/k7mq3x9vbn2p", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddYears(1), 1));
+        this.thisAnswer = _ => Json(HttpStatusCode.Created, Page());
 
         await UiTest.RunAsync(async () =>
         {
@@ -1317,32 +1024,6 @@ public sealed class CollectionWindowTests : IDisposable
 
             Assert.Single(this.thisStore.Find(collection.LocalId)!.Captures);
             Assert.True(window.LifetimeComboBox.IsEnabled);
-        });
-    }
-
-    // Comments read again change the rows in place - a note being typed keeps its text and the keyboard.
-    [Fact]
-    public async Task Comments_read_again_keep_the_rows_shown()
-    {
-        LocalCollection collection = this.Shared();
-        string sha = collection.Captures[0].Sha256;
-
-        this.thisSession = Session();
-        this.AnswerComments(Comment(6, sha));
-
-        await UiTest.RunAsync(async () =>
-        {
-            CollectionWindow window = this.Window(collection);
-            CollectionCaptureRow before = Assert.Single(window.RowsForTests);
-            before.Caption = "Being typed";
-            window.TitleBox.Text = "Typed, not left";
-
-            await window.LoadCommentsAsync();
-
-            Assert.Same(before, Assert.Single(window.RowsForTests));
-            Assert.Equal("Being typed", before.Caption);
-            Assert.Equal("Typed, not left", window.TitleBox.Text);
-            Assert.Single(before.Comments);
         });
     }
 }

@@ -401,31 +401,6 @@ answer CollectionAnswer | .deleteAtUtc string
 answer CollectionAnswer | .id string
 answer CollectionAnswer | .imageCount number
 answer CollectionAnswer | .url string
-answer CollectionCommentAnswer | (root) object
-answer CollectionCommentAnswer | .authorLocked boolean
-answer CollectionCommentAnswer | .authorName string
-answer CollectionCommentAnswer | .body string
-answer CollectionCommentAnswer | .byAdministrator boolean
-answer CollectionCommentAnswer | .byOwner boolean
-answer CollectionCommentAnswer | .createdUtc string
-answer CollectionCommentAnswer | .editedUtc string
-answer CollectionCommentAnswer | .hidden boolean
-answer CollectionCommentAnswer | .id number
-answer CollectionCommentAnswer | .imageSha256 string
-answer CollectionCommentAnswer | .mine boolean
-answer CollectionCommentsAnswer | (root) object
-answer CollectionCommentsAnswer | .comments array of object
-answer CollectionCommentsAnswer | .comments[].authorLocked boolean
-answer CollectionCommentsAnswer | .comments[].authorName string
-answer CollectionCommentsAnswer | .comments[].body string
-answer CollectionCommentsAnswer | .comments[].byAdministrator boolean
-answer CollectionCommentsAnswer | .comments[].byOwner boolean
-answer CollectionCommentsAnswer | .comments[].createdUtc string
-answer CollectionCommentsAnswer | .comments[].editedUtc string
-answer CollectionCommentsAnswer | .comments[].hidden boolean
-answer CollectionCommentsAnswer | .comments[].id number
-answer CollectionCommentsAnswer | .comments[].imageSha256 string
-answer CollectionCommentsAnswer | .comments[].mine boolean
 answer CollectionImageUploadAnswer | (root) object
 answer CollectionImageUploadAnswer | .height number
 answer CollectionImageUploadAnswer | .sha256 string
@@ -433,19 +408,6 @@ answer CollectionImageUploadAnswer | .width number
 answer CollectionRefusalAnswer | (root) object
 answer CollectionRefusalAnswer | .errors array of string
 answer CollectionRefusalAnswer | .missingImages array of string
-answer CollectionSummaryAnswer | (root) object
-answer CollectionSummaryAnswer | .boardName string
-answer CollectionSummaryAnswer | .commentCount number
-answer CollectionSummaryAnswer | .createdUtc string
-answer CollectionSummaryAnswer | .deleteAtUtc string
-answer CollectionSummaryAnswer | .hardwareName string
-answer CollectionSummaryAnswer | .id string
-answer CollectionSummaryAnswer | .imageCount number
-answer CollectionSummaryAnswer | .latestCommentId number
-answer CollectionSummaryAnswer | .region string
-answer CollectionSummaryAnswer | .title string
-answer CollectionSummaryAnswer | .updatedUtc string
-answer CollectionSummaryAnswer | .url string
 answer DataResetAnswer | (root) object
 answer DataResetAnswer | .accountsDeleted number
 answer DataResetAnswer | .apiUsageRowsDeleted number
@@ -523,20 +485,6 @@ answer ManifestRebuildAnswer | .trees[].entries number
 answer ManifestRebuildAnswer | .trees[].message string
 answer ManifestRebuildAnswer | .trees[].skipped boolean
 answer ManifestRebuildAnswer | .trees[].tree string
-answer MyCollectionsAnswer | (root) object
-answer MyCollectionsAnswer | .collections array of object
-answer MyCollectionsAnswer | .collections[].boardName string
-answer MyCollectionsAnswer | .collections[].commentCount number
-answer MyCollectionsAnswer | .collections[].createdUtc string
-answer MyCollectionsAnswer | .collections[].deleteAtUtc string
-answer MyCollectionsAnswer | .collections[].hardwareName string
-answer MyCollectionsAnswer | .collections[].id string
-answer MyCollectionsAnswer | .collections[].imageCount number
-answer MyCollectionsAnswer | .collections[].latestCommentId number
-answer MyCollectionsAnswer | .collections[].region string
-answer MyCollectionsAnswer | .collections[].title string
-answer MyCollectionsAnswer | .collections[].updatedUtc string
-answer MyCollectionsAnswer | .collections[].url string
 answer OscilloscopeModelDecisionAnswer | (root) object
 answer OscilloscopeModelDecisionAnswer | .betaChanged boolean
 answer OscilloscopeModelDecisionAnswer | .message string
@@ -1296,9 +1244,6 @@ body POST /api/collections | .images[].voltsPerDivision string
 body POST /api/collections | .oscilloscopes array of string
 body POST /api/collections | .region string
 body POST /api/collections | .title string
-body POST /api/collections/{id}/comments | (root) object
-body POST /api/collections/{id}/comments | .body string
-body POST /api/collections/{id}/comments | .imageSha256 string
 body POST /api/review/boards/detail | (root) object
 body POST /api/review/boards/detail | .boardId string
 body POST /api/review/boards/detail | .tree string
@@ -1827,10 +1772,6 @@ body PUT /api/collections/{id} | .images[].voltsPerDivision string
 body PUT /api/collections/{id} | .oscilloscopes array of string
 body PUT /api/collections/{id} | .region string
 body PUT /api/collections/{id} | .title string
-body PUT /api/collections/{id}/comments/{commentId:long} | (root) object
-body PUT /api/collections/{id}/comments/{commentId:long} | .body string
-body PUT /api/collections/{id}/comments/{commentId:long}/hidden | (root) object
-body PUT /api/collections/{id}/comments/{commentId:long}/hidden | .hidden boolean
 body PUT /api/collections/{id}/sharing | (root) object
 body PUT /api/collections/{id}/sharing | .shared boolean
 const BoardViewContract.PathUnderApi = "usage/board-views"
@@ -1875,7 +1816,6 @@ enum SubmissionFileScope | Own -> "Own"
 enum ValidationSeverity | Error -> 1
 enum ValidationSeverity | Warning -> 0
 route DELETE /api/collections/{id}
-route DELETE /api/collections/{id}/comments/{commentId:long}
 route DELETE /api/collections/{id}/images/{sha256}
 route GET /api/accounts/me
 route GET /api/accounts/verify
@@ -1885,8 +1825,6 @@ route GET /api/admin/boards
 route GET /api/admin/oscilloscope-models
 route GET /api/admin/reset
 route GET /api/admin/unused-files
-route GET /api/collections/mine
-route GET /api/collections/{id}/comments
 route GET /api/health
 route GET /api/review/boards
 route GET /api/review/boards/listing
@@ -1908,7 +1846,6 @@ route POST /api/accounts/me/email
 route POST /api/accounts/me/email/confirm
 route POST /api/accounts/me/name
 route POST /api/accounts/me/password
-route POST /api/accounts/me/verify-again
 route POST /api/accounts/refresh
 route POST /api/accounts/register
 route POST /api/accounts/reset-password
@@ -1925,7 +1862,6 @@ route POST /api/admin/oscilloscope-models/reject
 route POST /api/admin/reset
 route POST /api/admin/unused-files/remove
 route POST /api/collections
-route POST /api/collections/{id}/comments
 route POST /api/feedback
 route POST /api/legacy/contribution
 route POST /api/review/boards/detail
@@ -1950,7 +1886,5 @@ route POST /api/usage/board-views
 route POST /api/usage/check-in
 route PUT /api/collections/images/{sha256}
 route PUT /api/collections/{id}
-route PUT /api/collections/{id}/comments/{commentId:long}
-route PUT /api/collections/{id}/comments/{commentId:long}/hidden
 route PUT /api/collections/{id}/sharing
 route PUT /api/submissions/{submissionId:long}/blobs/{hash}

@@ -70,10 +70,6 @@ namespace CRT.Server.Handlers
 
         public const long CollectionContentBytes = 2L * 1024 * 1024;
 
-        // A comment posted from a collection's page (step 3): its text of at most CollectionComments.MaximumLength characters -
-        // up to nine bytes each as a form sends a letter of three UTF-8 bytes - and its token.
-        public const long CommentFormBytes = 32L * 1024;
-
         // The limit for the endpoint routing chose, or the default when it chose none.
         public static long For(Endpoint? endpoint) =>
             endpoint?.Metadata.GetMetadata<BodyLimit>()?.Bytes ?? RequestBodyLimits.DefaultBytes;

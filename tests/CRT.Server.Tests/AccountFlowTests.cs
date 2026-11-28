@@ -7,13 +7,14 @@ using Handlers.DataHandling;
 namespace CRT.Server.Tests
 {
     // ###########################################################################################
-    // Covers registration, verification, login and password reset end to end against fakes.
+    // Covers verification, login and password reset end to end against fakes. (Registration went with server 17.0.0 - owner
+    // decision, 2026-11-28: no accounts for everybody; an account is made by an invitation.)
     //
     // These are the flows an attacker reaches first, so the tests are written around what must NOT
     // leak as much as around what must work. The enumeration tests in particular assert that two
     // different situations produce the SAME answer - a test shape that looks odd until you
-    // remember the failure it prevents: a registration endpoint that says "that address is taken"
-    // is a list of everyone with an account.
+    // remember the failure it prevents: a sign-in that says "no such account" is a list of
+    // everyone with one.
     //
     // Weak Argon2 parameters throughout - see PasswordHashingTests for why.
     // ###########################################################################################
@@ -22,6 +23,9 @@ namespace CRT.Server.Tests
         private static readonly DateTimeOffset Now = new(2026, 9, 21, 12, 0, 0, TimeSpan.Zero);
 
         private const string GoodPassword = "correct horse battery staple";
+
+        // How long the verification link the helper below makes lasts - as the links mailed before server 17.0.0 did.
+        private static readonly TimeSpan VerificationLinkLasts = TimeSpan.FromHours(48);
 
         private static ServerOptions Options()
         {
@@ -38,252 +42,56 @@ namespace CRT.Server.Tests
 
         private static Argon2PasswordHasher Hasher() => new(AccountFlowTests.Options());
 
-        // Registers an account and returns the store, mailer and the verification token that was
-        // mailed - the starting point for most of the tests below. `confirmed`: its address confirmed
-        // too, as opening the link does - an address not confirmed cannot sign in (since 2026-11-25).
-        private static async Task<(FakeAccountStore Store, FakeEmailSender Mailer, string Token)> RegisteredAsync(
+        // ###########################################################################################
+        // An account with GoodPassword, as one registered before server 17.0.0 is: unconfirmed, with the verification link its
+        // mail carried (the token returned) - the starting point for most of the tests below. `confirmed`: its address
+        // confirmed too, as opening the link does - an address not confirmed cannot sign in (since 2026-11-25).
+        // ###########################################################################################
+        private static async Task<(FakeAccountStore Store, FakeEmailSender Mailer, string Token)> AccountAsync(
             string email = "dennis@example.com",
-            bool confirmed = false)
+            bool confirmed = false,
+            string name = "Dennis",
+            FakeAccountStore? store = null,
+            Argon2PasswordHasher? hasher = null)
         {
-            var store = new FakeAccountStore();
-            var mailer = new FakeEmailSender();
+            store ??= new FakeAccountStore();
 
-            await AccountFlows.RegisterAsync(
-                new RegistrationRequest(email, AccountFlowTests.GoodPassword, "Dennis", "192.0.2.1"),
-                store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
+            long id = await store.CreateAccountAsync(new NewAccount(
+                email, AccountRules.NormaliseEmail(email), await (hasher ?? AccountFlowTests.Hasher()).HashAsync(AccountFlowTests.GoodPassword), name, AccountFlowTests.Now));
+
+            string token = SecureToken.Create();
+
+            await store.CreateTokenAsync(new NewAccountToken(
+                id, TokenPurpose.EmailVerification, SecureToken.Hash(token), AccountFlowTests.Now, AccountFlowTests.Now + AccountFlowTests.VerificationLinkLasts));
 
             if (confirmed)
                 store.ConfirmAddress(email);
 
-            return (store, mailer, mailer.ExtractTokenFromLastMail());
+            return (store, new FakeEmailSender(), token);
         }
 
-        // -----------------------------------------------------------------------------------
-        // Registration.
-        // -----------------------------------------------------------------------------------
-
-        [Fact]
-        public async Task Registering_creates_an_unverified_account_and_mails_a_verification_link()
-        {
-            (FakeAccountStore store, FakeEmailSender mailer, _) = await AccountFlowTests.RegisteredAsync();
-
-            AccountRecord account = Assert.Single(store.Accounts.Values);
-            Assert.Equal("dennis@example.com", account.Email);
-            Assert.False(account.IsVerified);
-
-            EmailMessageAssert(mailer, "Confirm your");
-        }
-
-        [Fact]
-        public async Task The_stored_password_is_hashed_not_the_plaintext()
-        {
-            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync();
-
-            AccountRecord account = Assert.Single(store.Accounts.Values);
-
-            Assert.DoesNotContain(AccountFlowTests.GoodPassword, account.PasswordHash, StringComparison.Ordinal);
-            Assert.StartsWith("$argon2id$", account.PasswordHash, StringComparison.Ordinal);
-        }
-
+        // A reset's token is stored as its hash alone - a database read must not yield working reset links.
         [Fact]
         public async Task Only_the_token_HASH_is_stored_never_the_token_itself()
         {
-            // A database read must not yield working verification or reset links.
-            (FakeAccountStore store, _, string token) = await AccountFlowTests.RegisteredAsync();
+            (FakeAccountStore store, FakeEmailSender mailer, _) = await AccountFlowTests.AccountAsync(confirmed: true);
 
-            string stored = Assert.Single(store.TokenHashes.Values);
+            await AccountFlows.RequestPasswordResetAsync("dennis@example.com", store, mailer, AccountFlowTests.Options(), AccountFlowTests.Now);
 
-            Assert.NotEqual(token, stored);
-            Assert.Equal(SecureToken.Hash(token), stored);
-        }
+            string token = mailer.ExtractTokenFromLastMail();
 
-        [Fact]
-        public async Task Registering_with_an_address_that_ALREADY_EXISTS_gives_the_SAME_answer()
-        {
-            // THE anti-enumeration property. A different status, a different message or a
-            // different set of failures here would make this endpoint a way to test whether any
-            // given address has an account.
-            (FakeAccountStore store, FakeEmailSender mailer, _) = await AccountFlowTests.RegisteredAsync();
-
-            RegistrationOutcome second = await AccountFlows.RegisterAsync(
-                new RegistrationRequest("dennis@example.com", "a completely different password", "Someone-Else", "203.0.113.9"),
-                store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
-
-            Assert.True(second.IsAccepted);
-            Assert.Empty(second.Failures);
-        }
-
-        [Fact]
-        public async Task Registering_with_an_existing_address_does_not_create_a_second_account()
-        {
-            (FakeAccountStore store, FakeEmailSender mailer, _) = await AccountFlowTests.RegisteredAsync();
-
-            await AccountFlows.RegisterAsync(
-                new RegistrationRequest("dennis@example.com", "a completely different password", "Someone-Else", null),
-                store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
-
-            Assert.Single(store.Accounts);
-        }
-
-        [Fact]
-        public async Task Registering_with_an_existing_address_does_not_change_the_existing_password()
-        {
-            // Otherwise anyone could overwrite anyone's password by "registering" again.
-            (FakeAccountStore store, FakeEmailSender mailer, _) = await AccountFlowTests.RegisteredAsync();
-
-            string originalHash = store.Accounts.Values.Single().PasswordHash;
-
-            await AccountFlows.RegisterAsync(
-                new RegistrationRequest("dennis@example.com", "attacker chosen password", "Someone-Else", null),
-                store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
-
-            Assert.Equal(originalHash, store.Accounts.Values.Single().PasswordHash);
-        }
-
-        [Fact]
-        public async Task The_already_registered_mail_goes_to_the_OWNER_and_uses_THEIR_name()
-        {
-            // The mail goes to the existing account's inbox, so the display name supplied by
-            // whoever is registering must never appear in it - that would be an injection into
-            // somebody else's mail.
-            (FakeAccountStore store, FakeEmailSender mailer, _) = await AccountFlowTests.RegisteredAsync();
-
-            await AccountFlows.RegisterAsync(
-                new RegistrationRequest("dennis@example.com", "another password", "ATTACKER-TEXT", null),
-                store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
-
-            Assert.Equal("dennis@example.com", mailer.Last!.ToAddress);
-            Assert.Contains("Hi Dennis,", mailer.Last.Body, StringComparison.Ordinal);
-            Assert.DoesNotContain("ATTACKER-TEXT", mailer.Last.Body, StringComparison.Ordinal);
-        }
-
-        [Fact]
-        public async Task Registering_with_a_differently_cased_address_is_treated_as_the_same_account()
-        {
-            // The unique index is on the normalised address, so this must not create a second
-            // account - and must produce the already-registered mail instead.
-            (FakeAccountStore store, FakeEmailSender mailer, _) = await AccountFlowTests.RegisteredAsync();
-
-            await AccountFlows.RegisterAsync(
-                new RegistrationRequest("DENNIS@Example.COM", AccountFlowTests.GoodPassword, "Dennis-again", null),
-                store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
-
-            Assert.Single(store.Accounts);
-            Assert.Contains("already have", mailer.Last!.Subject, StringComparison.OrdinalIgnoreCase);
-        }
-
-        // ###########################################################################################
-        // *** A TAKEN ADDRESS COSTS THE SAME HASHING AS A NEW ONE (security review, 2026-10-11). ***
-        // Only a new account's password was hashed, so a registration answered measurably faster
-        // for an address that already had an account - the answer was the same, the time was not.
-        // ###########################################################################################
-        [Fact]
-        public async Task Registering_a_taken_address_costs_the_same_hashing_as_a_new_one()
-        {
-            var store = new FakeAccountStore();
-            var mailer = new FakeEmailSender();
-
-            Argon2PasswordHasher forNewAddress = AccountFlowTests.Hasher();
-            Argon2PasswordHasher forTakenAddress = AccountFlowTests.Hasher();
-
-            await AccountFlows.RegisterAsync(
-                new RegistrationRequest("dennis@example.com", AccountFlowTests.GoodPassword, "Dennis", null),
-                store, mailer, forNewAddress, AccountFlowTests.Options(), AccountFlowTests.Now);
-
-            await AccountFlows.RegisterAsync(
-                new RegistrationRequest("dennis@example.com", "a completely different password", "Someone-Else", null),
-                store, mailer, forTakenAddress, AccountFlowTests.Options(), AccountFlowTests.Now);
-
-            Assert.Equal(1, forNewAddress.Computations);
-            Assert.Equal(forNewAddress.Computations, forTakenAddress.Computations);
-        }
-
-        [Fact]
-        public async Task An_invalid_registration_is_rejected_and_sends_no_mail()
-        {
-            var store = new FakeAccountStore();
-            var mailer = new FakeEmailSender();
-
-            RegistrationOutcome outcome = await AccountFlows.RegisterAsync(
-                new RegistrationRequest("not-an-address", "short", "", null),
-                store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
-
-            Assert.False(outcome.IsAccepted);
-
-            // Every problem at once, not just the first.
-            Assert.True(outcome.Failures.Count >= 3, $"Got: {string.Join(" | ", outcome.Failures)}");
-
-            Assert.Empty(mailer.Sent);
-            Assert.Empty(store.Accounts);
-        }
-
-        // ###########################################################################################
-        // *** A DISPLAY NAME IS ONE ACCOUNT'S (owner request, 2026-11-25: "it needs to be unique for all users"). *** The same
-        // name in other capitals or with spaces round it is the same name; refused before anything is made or mailed.
-        // ###########################################################################################
-        [Fact]
-        public async Task A_display_name_another_account_has_is_refused_in_any_capitals_and_nothing_is_made_or_mailed()
-        {
-            // Confirmed: only a confirmed account holds its name (the test after the next).
-            (FakeAccountStore store, FakeEmailSender mailer, _) = await AccountFlowTests.RegisteredAsync(confirmed: true);
-            mailer.Sent.Clear();
-
-            RegistrationOutcome outcome = await AccountFlows.RegisterAsync(
-                new RegistrationRequest("anna@example.com", AccountFlowTests.GoodPassword, " DENNIS ", "198.51.100.4"),
-                store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
-
-            Assert.False(outcome.IsAccepted);
-            Assert.Equal([DisplayNames.Taken], outcome.Failures);
-            Assert.Single(store.Accounts);
-            Assert.Empty(mailer.Sent);
-        }
-
-        // ###########################################################################################
-        // *** "THAT NAME IS TAKEN" SAYS NOTHING OF THE ADDRESS. *** A name is what others see, so saying it is taken tells
-        // nobody anything; asked whatever the address is, the answer is the same for an address with an account and one
-        // without - the registration's anti-enumeration property kept (AccountFlows' header). Asked any other way (the name
-        // judged only against OTHER accounts than the address's) it would pair a public name with its private address.
-        // ###########################################################################################
-        [Fact]
-        public async Task A_taken_name_is_answered_alike_whether_or_not_the_address_has_an_account()
-        {
-            (FakeAccountStore store, FakeEmailSender mailer, _) = await AccountFlowTests.RegisteredAsync();
-
-            RegistrationOutcome atTheOwnersAddress = await AccountFlows.RegisterAsync(
-                new RegistrationRequest("dennis@example.com", AccountFlowTests.GoodPassword, "Dennis", null),
-                store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
-
-            RegistrationOutcome atAFreeAddress = await AccountFlows.RegisterAsync(
-                new RegistrationRequest("free@example.com", AccountFlowTests.GoodPassword, "Dennis", null),
-                store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
-
-            Assert.Equal(atAFreeAddress.IsAccepted, atTheOwnersAddress.IsAccepted);
-            Assert.Equal(atAFreeAddress.Failures, atTheOwnersAddress.Failures);
-        }
-
-        // A name of the old rule's (any letters, spaces) is refused for a NEW account - CRT.Data's DisplayNames is asked.
-        [Fact]
-        public async Task A_display_name_outside_the_rule_is_refused_at_registration()
-        {
-            var store = new FakeAccountStore();
-            var mailer = new FakeEmailSender();
-
-            RegistrationOutcome outcome = await AccountFlows.RegisterAsync(
-                new RegistrationRequest("dennis@example.com", AccountFlowTests.GoodPassword, "Dennis#CRT", null),
-                store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
-
-            Assert.Equal([DisplayNames.Problem("Dennis#CRT")!], outcome.Failures);
-            Assert.Empty(store.Accounts);
+            Assert.Contains(SecureToken.Hash(token), store.TokenHashes.Values);
+            Assert.DoesNotContain(token, store.TokenHashes.Values);
         }
 
         // -----------------------------------------------------------------------------------
-        // Verification.
+        // Verification - a link mailed before server 17.0.0 still answers.
         // -----------------------------------------------------------------------------------
 
         [Fact]
         public async Task A_verification_token_from_the_mail_verifies_the_account()
         {
-            (FakeAccountStore store, _, string token) = await AccountFlowTests.RegisteredAsync();
+            (FakeAccountStore store, _, string token) = await AccountFlowTests.AccountAsync();
 
             TokenRedemptionOutcome outcome = await AccountFlows.VerifyEmailAsync(
                 token, store, new FakeEmailSender(), AccountFlowTests.Now);
@@ -296,7 +104,7 @@ namespace CRT.Server.Tests
         public async Task A_verification_token_cannot_be_used_twice()
         {
             // Without this, a verification link sitting in a mailbox stays live forever.
-            (FakeAccountStore store, _, string token) = await AccountFlowTests.RegisteredAsync();
+            (FakeAccountStore store, _, string token) = await AccountFlowTests.AccountAsync();
 
             await AccountFlows.VerifyEmailAsync(token, store, new FakeEmailSender(), AccountFlowTests.Now);
 
@@ -308,9 +116,9 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task An_expired_verification_token_is_refused()
         {
-            (FakeAccountStore store, _, string token) = await AccountFlowTests.RegisteredAsync();
+            (FakeAccountStore store, _, string token) = await AccountFlowTests.AccountAsync();
 
-            DateTimeOffset tooLate = AccountFlowTests.Now + AccountFlows.VerificationTokenLifetime + TimeSpan.FromMinutes(1);
+            DateTimeOffset tooLate = AccountFlowTests.Now + AccountFlowTests.VerificationLinkLasts + TimeSpan.FromMinutes(1);
 
             Assert.Equal(
                 TokenRedemptionOutcome.Expired,
@@ -325,7 +133,7 @@ namespace CRT.Server.Tests
         [InlineData("not-a-real-token")]
         public async Task A_bogus_verification_token_is_refused(string? token)
         {
-            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync();
+            (FakeAccountStore store, _, _) = await AccountFlowTests.AccountAsync();
 
             Assert.Equal(
                 TokenRedemptionOutcome.Invalid,
@@ -337,7 +145,7 @@ namespace CRT.Server.Tests
         {
             // The purposes are separate for exactly this reason: one bug in a WHERE clause must
             // not let a reset token act as a verification, or vice versa.
-            (FakeAccountStore store, FakeEmailSender mailer, _) = await AccountFlowTests.RegisteredAsync();
+            (FakeAccountStore store, FakeEmailSender mailer, _) = await AccountFlowTests.AccountAsync();
 
             await AccountFlows.RequestPasswordResetAsync(
                 "dennis@example.com", store, mailer, AccountFlowTests.Options(), AccountFlowTests.Now);
@@ -356,7 +164,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task A_correct_password_logs_in_and_issues_a_session()
         {
-            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync(confirmed: true);
+            (FakeAccountStore store, _, _) = await AccountFlowTests.AccountAsync(confirmed: true);
 
             LoginOutcome outcome = await AccountFlows.LoginAsync(
                 new LoginRequest("dennis@example.com", AccountFlowTests.GoodPassword, "CRT/2.6", "192.0.2.1"),
@@ -377,7 +185,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task A_long_user_agent_is_cut_without_splitting_a_character()
         {
-            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync(confirmed: true);
+            (FakeAccountStore store, _, _) = await AccountFlowTests.AccountAsync(confirmed: true);
             string userAgent = new string('a', 254) + "\U0001F600 and more";
 
             LoginOutcome outcome = await AccountFlows.LoginAsync(
@@ -401,7 +209,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task An_UNCONFIRMED_account_cannot_sign_in_and_fails_as_a_wrong_password_does()
         {
-            (FakeAccountStore store, _, string token) = await AccountFlowTests.RegisteredAsync();
+            (FakeAccountStore store, _, string token) = await AccountFlowTests.AccountAsync();
 
             Assert.False(store.Accounts.Values.Single().IsVerified);
 
@@ -429,50 +237,15 @@ namespace CRT.Server.Tests
         }
 
         // ###########################################################################################
-        // *** A NAME ASKED FOR BY A NEW ACCOUNT IS NOT HELD UNTIL ITS ADDRESS IS CONFIRMED (project owner,
-        // 2026-11-25). *** Held at once, it was an oracle: register somebody's address under a name nobody
-        // has, then that name again - "taken" meant no account had existed, and one was just made. Now the
-        // second registration is accepted whether the first made an account or not.
-        // ###########################################################################################
-        [Fact]
-        public async Task A_name_asked_for_says_nothing_of_whether_registering_made_an_account()
-        {
-            // The owner of anna@ has an account already; somebody registers both addresses under a fresh name.
-            (FakeAccountStore store, FakeEmailSender mailer, _) = await AccountFlowTests.RegisteredAsync("anna@example.com", confirmed: true);
-
-            foreach (string probed in new[] { "anna@example.com", "nobody-yet@example.com" })
-            {
-                await AccountFlows.RegisterAsync(
-                    new RegistrationRequest(probed, AccountFlowTests.GoodPassword, "Zq9x7Kp2", "203.0.113.9"),
-                    store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
-
-                RegistrationOutcome again = await AccountFlows.RegisterAsync(
-                    new RegistrationRequest("prober@example.com", AccountFlowTests.GoodPassword, "Zq9x7Kp2", "203.0.113.9"),
-                    store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
-
-                Assert.True(again.IsAccepted, probed);
-            }
-        }
-
-        // ###########################################################################################
-        // Two new accounts asked for one name, and the first confirmed: the second, confirming, is given the name with "-2"
-        // after it and told so by mail (AccountFlows.ConfirmAddressAsync) - a confirmed name is never shared.
+        // Two accounts left unconfirmed from when anybody could register asked for one name, and the first confirmed: the
+        // second, confirming, is given the name with "-2" after it and told so by mail (AccountFlows.ConfirmAddressAsync) - a
+        // confirmed name is never shared.
         // ###########################################################################################
         [Fact]
         public async Task The_second_to_confirm_a_name_is_given_it_numbered_and_told_by_mail()
         {
-            var store = new FakeAccountStore();
-            var mailer = new FakeEmailSender();
-
-            await AccountFlows.RegisterAsync(
-                new RegistrationRequest("anna@example.com", AccountFlowTests.GoodPassword, "Anna", "192.0.2.1"),
-                store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
-            string annasLink = mailer.ExtractTokenFromLastMail();
-
-            await AccountFlows.RegisterAsync(
-                new RegistrationRequest("other@example.com", AccountFlowTests.GoodPassword, "ANNA", "192.0.2.2"),
-                store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
-            string othersLink = mailer.ExtractTokenFromLastMail();
+            (FakeAccountStore store, FakeEmailSender mailer, string annasLink) = await AccountFlowTests.AccountAsync("anna@example.com", name: "Anna");
+            (_, _, string othersLink) = await AccountFlowTests.AccountAsync("other@example.com", name: "ANNA", store: store);
 
             Assert.Equal(TokenRedemptionOutcome.Success, await AccountFlows.VerifyEmailAsync(annasLink, store, mailer, AccountFlowTests.Now));
             int mailsBefore = mailer.Sent.Count;
@@ -507,7 +280,7 @@ namespace CRT.Server.Tests
             // The enumeration guarantee on the one endpoint everybody can reach. If these two
             // answered differently - a different status, a different message, even a different
             // shape - login would be a way to discover who has an account.
-            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync(confirmed: true);
+            (FakeAccountStore store, _, _) = await AccountFlowTests.AccountAsync(confirmed: true);
 
             LoginOutcome wrongPassword = await AccountFlows.LoginAsync(
                 new LoginRequest("dennis@example.com", "the wrong password entirely", null, null),
@@ -524,7 +297,7 @@ namespace CRT.Server.Tests
         public async Task A_LOCKED_account_fails_exactly_like_a_wrong_password()
         {
             // A distinct "your account is locked" reply would confirm the address exists.
-            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync(confirmed: true);
+            (FakeAccountStore store, _, _) = await AccountFlowTests.AccountAsync(confirmed: true);
 
             store.Accounts[1] = store.Accounts[1] with { IsLocked = true };
 
@@ -551,7 +324,7 @@ namespace CRT.Server.Tests
         public async Task Every_failed_login_costs_exactly_one_password_verification(
             string email, string password, bool locked)
         {
-            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync(confirmed: true);
+            (FakeAccountStore store, _, _) = await AccountFlowTests.AccountAsync(confirmed: true);
 
             if (locked)
                 store.Accounts[1] = store.Accounts[1] with { IsLocked = true };
@@ -571,7 +344,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task A_login_to_an_account_with_an_unreadable_stored_hash_costs_one_verification()
         {
-            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync(confirmed: true);
+            (FakeAccountStore store, _, _) = await AccountFlowTests.AccountAsync(confirmed: true);
 
             store.Accounts[1] = store.Accounts[1] with { PasswordHash = "not a password hash" };
 
@@ -595,7 +368,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task After_the_cost_is_raised_a_wrong_password_costs_the_same_work_as_an_unknown_address()
         {
-            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync(confirmed: true);
+            (FakeAccountStore store, _, _) = await AccountFlowTests.AccountAsync(confirmed: true);
 
             ServerOptions raised = AccountFlowTests.Options();
             raised.Argon2MemoryKib = 16384;
@@ -620,130 +393,70 @@ namespace CRT.Server.Tests
         // -----------------------------------------------------------------------------------
         // The mail-sending budget.
         //
-        // Registration and "forgot my password" both send a message to an address the CALLER
-        // names, so without a limit this service is a way to flood a stranger's inbox under its
-        // own reputation. NewContributeStrategy.md's threat 6 requires the limit; these pin that
-        // it is actually applied, which AuthRateLimitPolicy's own tests cannot - the policy was
-        // written, tested and then wired to nothing at all.
+        // "Forgot my password" sends a message to an address the CALLER names, so without a limit
+        // this service is a way to flood a stranger's inbox under its own reputation. These pin that
+        // the limit is actually applied, which AuthRateLimitPolicy's own tests cannot - the policy
+        // was once written, tested and then wired to nothing at all.
         // -----------------------------------------------------------------------------------
 
-        [Fact]
-        public async Task Registration_stops_sending_mail_once_the_per_IP_budget_is_spent()
+        // `count` accounts, victim0@ to victim(N-1)@, each of which a reset mails.
+        private static async Task<(FakeAccountStore Store, FakeEmailSender Mailer)> VictimsAsync(int count)
         {
             var store = new FakeAccountStore();
-            var mailer = new FakeEmailSender();
 
+            for (int i = 0; i < count; i++)
+                await AccountFlowTests.AccountAsync($"victim{i}@example.com", name: $"Victim{i}", store: store);
+
+            return (store, new FakeEmailSender());
+        }
+
+        private static Task ResetAsync(FakeAccountStore store, FakeEmailSender mailer, string email, string ip, DateTimeOffset? when = null) =>
+            AccountFlows.RequestPasswordResetAsync(email, store, mailer, AccountFlowTests.Options(), when ?? AccountFlowTests.Now, ip);
+
+        [Fact]
+        public async Task Reset_requests_stop_sending_mail_once_the_per_IP_budget_is_spent()
+        {
             // One more than the budget, every one from the same address and each naming a
             // DIFFERENT victim - the shape inbox flooding actually takes.
+            (FakeAccountStore store, FakeEmailSender mailer) = await AccountFlowTests.VictimsAsync(AuthRateLimitPolicy.MaxMailRequestsPerAddress + 1);
+
             for (int attempt = 0; attempt <= AuthRateLimitPolicy.MaxMailRequestsPerAddress; attempt++)
-            {
-                await AccountFlows.RegisterAsync(
-                    new RegistrationRequest(
-                        $"victim{attempt}@example.com", AccountFlowTests.GoodPassword, $"Victim{attempt}", "192.0.2.9"),
-                    store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
-            }
+                await AccountFlowTests.ResetAsync(store, mailer, $"victim{attempt}@example.com", "192.0.2.9");
 
             Assert.Equal(AuthRateLimitPolicy.MaxMailRequestsPerAddress, mailer.Sent.Count);
         }
 
         [Fact]
-        public async Task A_rate_limited_registration_still_answers_ACCEPTED()
-        {
-            // The anti-enumeration guarantee survives the limit. A distinct "you are being rate
-            // limited" answer would tell a caller their probing was noticed, and an answer that
-            // changed only sometimes would itself be a signal to correlate against the addresses
-            // that had been tried.
-            var store = new FakeAccountStore();
-            var mailer = new FakeEmailSender();
-
-            RegistrationOutcome outcome = RegistrationOutcome.Accepted();
-
-            for (int attempt = 0; attempt <= AuthRateLimitPolicy.MaxMailRequestsPerAddress; attempt++)
-            {
-                outcome = await AccountFlows.RegisterAsync(
-                    new RegistrationRequest(
-                        $"victim{attempt}@example.com", AccountFlowTests.GoodPassword, $"Victim{attempt}", "192.0.2.9"),
-                    store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
-            }
-
-            Assert.True(outcome.IsAccepted);
-
-            // And no account was created for the refused one, so the limit is not merely silencing
-            // the mail while still doing the work.
-            Assert.Equal(AuthRateLimitPolicy.MaxMailRequestsPerAddress, store.Accounts.Count);
-        }
-
-        [Fact]
-        public async Task An_INVALID_registration_does_not_spend_the_mail_budget()
+        public async Task An_INVALID_reset_request_does_not_spend_the_mail_budget()
         {
             // The limit sits after validation deliberately: a malformed request sends nothing, so
-            // charging it would let a clumsy client lock itself out of registering at all.
-            var store = new FakeAccountStore();
-            var mailer = new FakeEmailSender();
+            // charging it would let a clumsy client lock itself out.
+            (FakeAccountStore store, FakeEmailSender mailer) = await AccountFlowTests.VictimsAsync(1);
 
             for (int attempt = 0; attempt < AuthRateLimitPolicy.MaxMailRequestsPerAddress * 2; attempt++)
-            {
-                await AccountFlows.RegisterAsync(
-                    new RegistrationRequest("not-an-address", "short", "Dennis", "192.0.2.9"),
-                    store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
-            }
+                await AccountFlowTests.ResetAsync(store, mailer, "not-an-address", "192.0.2.9");
 
             Assert.Empty(store.MailRequests);
 
             // A valid one afterwards still gets through.
-            await AccountFlows.RegisterAsync(
-                new RegistrationRequest("dennis@example.com", AccountFlowTests.GoodPassword, "Dennis", "192.0.2.9"),
-                store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
+            await AccountFlowTests.ResetAsync(store, mailer, "victim0@example.com", "192.0.2.9");
 
             Assert.Single(mailer.Sent);
-        }
-
-        [Fact]
-        public async Task Password_reset_requests_share_the_same_per_IP_budget()
-        {
-            // Both endpoints send mail to a caller-named address, so a limit on only one of them
-            // just moves the flooding to the other.
-            (FakeAccountStore store, FakeEmailSender mailer, _) = await AccountFlowTests.RegisteredAsync();
-
-            int alreadySent = mailer.Sent.Count;
-
-            for (int attempt = 0; attempt <= AuthRateLimitPolicy.MaxMailRequestsPerAddress; attempt++)
-            {
-                await AccountFlows.RequestPasswordResetAsync(
-                    "dennis@example.com",
-                    store,
-                    mailer,
-                    AccountFlowTests.Options(),
-                    AccountFlowTests.Now,
-                    "192.0.2.9");
-            }
-
-            // The registration in RegisteredAsync came from a different address, so the whole
-            // budget was available here - and exactly that many reset mails went out.
-            Assert.Equal(alreadySent + AuthRateLimitPolicy.MaxMailRequestsPerAddress, mailer.Sent.Count);
         }
 
         [Fact]
         public async Task The_mail_budget_is_per_ADDRESS_so_one_caller_cannot_block_everybody()
         {
             // A single global bucket would mean one abuser stops every other person on the
-            // internet from registering - the limit becoming the denial of service.
-            var store = new FakeAccountStore();
-            var mailer = new FakeEmailSender();
+            // internet from resetting a password - the limit becoming the denial of service.
+            (FakeAccountStore store, FakeEmailSender mailer) = await AccountFlowTests.VictimsAsync(AuthRateLimitPolicy.MaxMailRequestsPerAddress + 2);
 
             for (int attempt = 0; attempt <= AuthRateLimitPolicy.MaxMailRequestsPerAddress; attempt++)
-            {
-                await AccountFlows.RegisterAsync(
-                    new RegistrationRequest(
-                        $"victim{attempt}@example.com", AccountFlowTests.GoodPassword, $"Victim{attempt}", "192.0.2.9"),
-                    store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
-            }
+                await AccountFlowTests.ResetAsync(store, mailer, $"victim{attempt}@example.com", "192.0.2.9");
 
             int spent = mailer.Sent.Count;
 
-            await AccountFlows.RegisterAsync(
-                new RegistrationRequest("someone@example.com", AccountFlowTests.GoodPassword, "Someone", "198.51.100.4"),
-                store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
+            await AccountFlowTests.ResetAsync(store, mailer, $"victim{AuthRateLimitPolicy.MaxMailRequestsPerAddress + 1}@example.com", "198.51.100.4");
 
             Assert.Equal(spent + 1, mailer.Sent.Count);
         }
@@ -752,27 +465,19 @@ namespace CRT.Server.Tests
         public async Task The_mail_budget_EXPIRES_rather_than_locking_an_address_out_for_ever()
         {
             // The same reasoning as the login lockout: a limit that never clears is a permanent
-            // ban on whatever shares that address - a household, a workplace, a whole country
-            // behind CGNAT.
-            var store = new FakeAccountStore();
-            var mailer = new FakeEmailSender();
+            // ban on whatever shares that address - a household, a whole country behind CGNAT.
+            (FakeAccountStore store, FakeEmailSender mailer) = await AccountFlowTests.VictimsAsync(AuthRateLimitPolicy.MaxMailRequestsPerAddress + 2);
 
             for (int attempt = 0; attempt <= AuthRateLimitPolicy.MaxMailRequestsPerAddress; attempt++)
-            {
-                await AccountFlows.RegisterAsync(
-                    new RegistrationRequest(
-                        $"victim{attempt}@example.com", AccountFlowTests.GoodPassword, $"Victim{attempt}", "192.0.2.9"),
-                    store, mailer, AccountFlowTests.Hasher(), AccountFlowTests.Options(), AccountFlowTests.Now);
-            }
+                await AccountFlowTests.ResetAsync(store, mailer, $"victim{attempt}@example.com", "192.0.2.9");
 
             int spent = mailer.Sent.Count;
 
-            await AccountFlows.RegisterAsync(
-                new RegistrationRequest("later@example.com", AccountFlowTests.GoodPassword, "Later", "192.0.2.9"),
+            await AccountFlowTests.ResetAsync(
                 store,
                 mailer,
-                AccountFlowTests.Hasher(),
-                AccountFlowTests.Options(),
+                $"victim{AuthRateLimitPolicy.MaxMailRequestsPerAddress + 1}@example.com",
+                "192.0.2.9",
                 AccountFlowTests.Now + AuthRateLimitPolicy.MailWindow + TimeSpan.FromMinutes(1));
 
             Assert.Equal(spent + 1, mailer.Sent.Count);
@@ -793,7 +498,7 @@ namespace CRT.Server.Tests
             // twice against the per-IP bucket (30 attempts became 15), and because
             // ClearAuthFailuresAsync only clears rows whose subject is the address, the extra
             // "account:{id}" row survived every successful login and accumulated for ever.
-            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync(confirmed: true);
+            (FakeAccountStore store, _, _) = await AccountFlowTests.AccountAsync(confirmed: true);
 
             await AccountFlows.LoginAsync(
                 new LoginRequest("dennis@example.com", "the wrong password entirely", null, "192.0.2.1"),
@@ -825,7 +530,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task Repeated_failures_trip_the_rate_limiter()
         {
-            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync(confirmed: true);
+            (FakeAccountStore store, _, _) = await AccountFlowTests.AccountAsync(confirmed: true);
 
             for (int attempt = 0; attempt < AuthRateLimitPolicy.MaxFailuresPerAccountAndAddress; attempt++)
             {
@@ -849,7 +554,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task Failures_from_another_address_do_not_stop_the_owner_signing_in()
         {
-            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync(confirmed: true);
+            (FakeAccountStore store, _, _) = await AccountFlowTests.AccountAsync(confirmed: true);
 
             for (int attempt = 0; attempt < AuthRateLimitPolicy.MaxFailuresPerAccountAndAddress; attempt++)
             {
@@ -875,7 +580,7 @@ namespace CRT.Server.Tests
         {
             // Someone who gets it right on the fourth try is not an attacker and must not be
             // locked out afterwards.
-            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync(confirmed: true);
+            (FakeAccountStore store, _, _) = await AccountFlowTests.AccountAsync(confirmed: true);
 
             for (int attempt = 0; attempt < 3; attempt++)
             {
@@ -898,7 +603,7 @@ namespace CRT.Server.Tests
             // decoration and leaves the memory-exhaustion vector open. Proven by observing that a
             // rate-limited request does not record another failure - it never reached the code
             // that would.
-            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync(confirmed: true);
+            (FakeAccountStore store, _, _) = await AccountFlowTests.AccountAsync(confirmed: true);
 
             for (int attempt = 0; attempt < AuthRateLimitPolicy.MaxFailuresPerAccountAndAddress; attempt++)
             {
@@ -919,7 +624,7 @@ namespace CRT.Server.Tests
         [Fact]
         public async Task Logging_in_with_a_differently_cased_address_works()
         {
-            (FakeAccountStore store, _, _) = await AccountFlowTests.RegisteredAsync(confirmed: true);
+            (FakeAccountStore store, _, _) = await AccountFlowTests.AccountAsync(confirmed: true);
 
             LoginOutcome outcome = await AccountFlows.LoginAsync(
                 new LoginRequest("DENNIS@EXAMPLE.COM", AccountFlowTests.GoodPassword, null, null),
@@ -933,9 +638,6 @@ namespace CRT.Server.Tests
         {
             // The rehash-on-login path, end to end: the plaintext is legitimately in hand for this
             // one instant, so a below-policy hash is replaced.
-            var store = new FakeAccountStore();
-            var mailer = new FakeEmailSender();
-
             var weak = new ServerOptions
             {
                 Argon2MemoryKib = 8192, Argon2Iterations = 1, Argon2Parallelism = 1,
@@ -943,10 +645,7 @@ namespace CRT.Server.Tests
                 MailFromAddress = "noreply@classic-repair-toolbox.dk", RefreshTokenDays = 30
             };
 
-            await AccountFlows.RegisterAsync(
-                new RegistrationRequest("dennis@example.com", AccountFlowTests.GoodPassword, "Dennis", null),
-                store, mailer, new Argon2PasswordHasher(weak), weak, AccountFlowTests.Now);
-            store.ConfirmAddress("dennis@example.com");
+            (FakeAccountStore store, _, _) = await AccountFlowTests.AccountAsync(confirmed: true, hasher: new Argon2PasswordHasher(weak));
 
             string hashBefore = store.Accounts.Values.Single().PasswordHash;
 
@@ -969,12 +668,6 @@ namespace CRT.Server.Tests
 
             Assert.NotEqual(hashBefore, hashAfter);
             Assert.Contains("m=16384", hashAfter, StringComparison.Ordinal);
-        }
-
-        private static void EmailMessageAssert(FakeEmailSender mailer, string expectedSubjectFragment)
-        {
-            EmailMessage message = Assert.Single(mailer.Sent);
-            Assert.Contains(expectedSubjectFragment, message.Subject, StringComparison.Ordinal);
         }
     }
 }

@@ -15,14 +15,11 @@ namespace CRT
 {
     // ###########################################################################################
     // WHAT THE "Collections" TAB NEEDS FROM CRT (Main.Collections.cs, HandCollectionsToOscilloscopeTab): the collections on
-    // this computer - asked for each time, as a test sets its own store after Main is made - the newest comment each shared
-    // page shows (0 when not known), a way to ask the server for those again, and the collection's window: opened, or opened
-    // asking to delete it. A test hands its own.
+    // this computer - asked for each time, as a test sets its own store after Main is made - and the collection's window:
+    // opened, or opened asking to delete it. A test hands its own.
     // ###########################################################################################
     internal sealed record OscilloscopeCollectionsHost(
         Func<CollectionStore> Store,
-        Func<string, long> LatestCommentIdOf,
-        Action AskForNewComments,
         Action<string> OpenCollection,
         Action<string> AskToDeleteCollection,
         Action<string> OpenLink);
@@ -68,15 +65,14 @@ namespace CRT
     //   - "Communication log" is the black box it always was - what CRT and the oscilloscope said to each other - and the tab
     //     shown first.
     //   - "Collections" lists every collection on this computer, of every board, the newest made first (CollectionListing): a
-    //     card each with its first capture, its board, how many captures, where it stands, and "New comments" while its page
-    //     has comments not read. "Open collection" ("Show collection" until 2026-11-28 - owner request) or its picture clicked
-    //     opens its window, where it is named, shared and answered; "Open shared page" while it is shared (offline, or never
-    //     shared, none - owner request, 2026-11-28); "Delete collection" opens its window ASKING - the window's delete is the
-    //     one that takes the page down, signs in, and knows another account's collection (CollectionWindow.DeleteAsync), so
-    //     there is no second copy of it here. No oscilloscope needs to be connected for any of it.
-    //   - Its tab's badge counts the collections with new comments. The list is read again whenever Main says the collections
-    //     changed (Main.ShowCollectionsAsTheyAre), as the tab is shown, and as "Collections" is picked - the server asked then
-    //     for new comments (at most every five minutes, Main.AskForNewCommentsSoon).
+    //     card each with its first capture, its board, how many captures and where it stands. "Open collection" ("Show
+    //     collection" until 2026-11-28 - owner request) or its picture clicked opens its window, where it is named and shared;
+    //     "Open shared page" while it is shared (offline, or never shared, none - owner request, 2026-11-28); "Delete
+    //     collection" opens its window ASKING - the window's delete is the one that takes the page down too
+    //     (CollectionWindow.DeleteAsync), so there is no second copy of it here. No oscilloscope needs to be connected for any of
+    //     it. (A badge counted collections with new comments until 2026-11-28, when the comments went - owner decision.)
+    //   - The list is read again whenever Main says the collections changed (Main.ShowCollectionsAsTheyAre), as the tab is
+    //     shown, and as "Collections" is picked.
     // ###########################################################################################
     public partial class TabOscilloscope
     {
@@ -97,13 +93,8 @@ namespace CRT
         {
             this.CollectionsList.ItemsSource = this.thisCollectionRows;
 
-            // Shown again (the "Oscilloscope" tab picked): the list as it is now, and the server asked for new comments - so the
-            // badge says them before "Collections" is picked.
-            this.AttachedToVisualTree += (_, _) =>
-            {
-                this.ShowCollections();
-                this.thisCollectionsHost?.AskForNewComments();
-            };
+            // Shown again (the "Oscilloscope" tab picked): the list as it is now.
+            this.AttachedToVisualTree += (_, _) => this.ShowCollections();
         }
 
         internal void UseCollections(OscilloscopeCollectionsHost host)
@@ -139,22 +130,19 @@ namespace CRT
             this.CollectionsTabButton.Classes.Set("Selected", collections);
             this.CommunicationLogTabButton.Classes.Set("Selected", !collections);
 
-            if (!collections)
-                return;
-
-            this.ShowCollections();
-            this.thisCollectionsHost?.AskForNewComments();
+            if (collections)
+                this.ShowCollections();
         }
 
         // ###########################################################################################
-        // The collections as they are now - the rows, the words over them and the tab's badge.
+        // The collections as they are now - the rows and the words over them.
         // ###########################################################################################
         internal void ShowCollections()
         {
             if (this.thisCollectionsHost is not { } host)
                 return;
 
-            IReadOnlyList<CollectionListItem> items = CollectionListing.ItemsOf(host.Store().All(), host.LatestCommentIdOf);
+            IReadOnlyList<CollectionListItem> items = CollectionListing.ItemsOf(host.Store().All());
 
             InPlaceList.Sync(
                 this.thisCollectionRows,
@@ -170,10 +158,6 @@ namespace CRT
             this.CollectionsHeadingText.Text = items.Count == 0 ? CollectionListing.NoneYet : CollectionListing.HeadingOf(items.ToList());
             this.CollectionsIntroText.Text = CollectionListing.Intro;
             this.CollectionsIntroText.IsVisible = items.Count > 0;
-
-            int withNewComments = items.Count(item => item.HasNewComments);
-            this.CollectionsBadge.IsVisible = withNewComments > 0;
-            this.CollectionsBadgeText.Text = withNewComments.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
             // Pictures only for a list somebody looks at.
             if (this.IsCollectionsTabShown)

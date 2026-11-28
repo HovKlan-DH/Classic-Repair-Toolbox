@@ -86,12 +86,11 @@ namespace CRT.Server.Tests
             Assert.Equal("For CRT you are invited to maintain the [Commodore / C64 / 250407] board", mail.Subject);
             Assert.Contains("Dennis has invited you", mail.Body, StringComparison.Ordinal);
             Assert.Contains("\"I have an invitation\"", mail.Body, StringComparison.Ordinal);
-            // Accepted where every account lives since 2026-11-25 - the account icon; the Maintainer tab's sign-in only as the
-            // way of a CRT from before it, which an invitee told to "use the one you already have" may run (code review,
-            // 2026-11-25).
+            // Accepted on the Maintainer tab's sign-in - in every CRT since the account icon went (server 17.0.0), so the words
+            // hold for an invitee told to "use the one you already have".
             Assert.Contains(
-                $"In CRT, open {(global::Handlers.DataHandling.AccountWording.WhereInCrt)} and choose \"I have an invitation\" " +
-                "(in CRT 4.0 and older, the \"Maintainer\" tab's sign-in, once the box in the last step is checked).",
+                "In CRT, open the \"Maintainer\" tab's \"Sign in\" and choose \"I have an invitation\" " +
+                "(once the box in the last step is checked).",
                 mail.Body,
                 StringComparison.Ordinal);
             // CRT itself, and how to show its Maintainer tab (2026-09-29) - the separate CRT

@@ -18,8 +18,9 @@ namespace Handlers.Collections
     // everything it decides - send the collection, upload what the server asks for, send it again - is here and tested on a
     // fake handler (CollectionClientTests).
     //
-    // Signed in with the account CRT is signed in to (the "Maintainer" tab's session, shared with the whole of CRT). Answers
-    // a result, never throws for a refusal or a server out of reach: the collection window says it in words.
+    // *** NO ACCOUNT (owner decision, 2026-11-28: "Anybody, no account"). *** Every request carries the collection's own KEY
+    // (LocalCollection.OwnerKey, CollectionRoutes.OwnerKeyHeader) - the server knows its page by it, and nothing else may change
+    // it. Answers a result, never throws for a refusal or a server out of reach: the collection window says it in words.
     // ###########################################################################################
     public sealed class CollectionClient
     {
@@ -40,7 +41,6 @@ namespace Handlers.Collections
             Done,
             Shared,
             Deleted,
-            SignInNeeded,
             GoneFromServer,
             Refused,
             Failed
@@ -61,20 +61,26 @@ namespace Handlers.Collections
 
         public const string NotReachable = "Could not reach the server - check the internet connection, and try again in a moment.";
 
-        public const string SignInFirst = "Sign in first - an account shares collections (the account icon in the top right corner).";
+        public const string NoKey = "This collection has no key to share it with - close its window and open it again.";
 
         // ###########################################################################################
-        // SHARES THE COLLECTION AS IT IS NOW: sent whole; the captures the server does not hold yet sent then, each from
-        // `readCapture`; and the collection again. `progress` hears each capture as it goes.
+        // SHARES THE COLLECTION AS IT IS NOW, under its key: sent whole - a new page while it has none (POST), else its page
+        // changed (PUT); the captures the server does not hold yet sent then, each from `readCapture`; and the collection again.
+        // `progress` hears each capture as it goes. A first share whose answer was lost, sent again under the same key, changes
+        // the page it made (CollectionFlows.CreateAsync).
         // ###########################################################################################
         public async Task<Result> ShareAsync(
             LocalCollection collection,
-            string bearerToken,
             Func<string, byte[]?> readCapture,
             DateTimeOffset now,
             IProgress<string>? progress = null,
             CancellationToken cancellationToken = default)
         {
+            ArgumentNullException.ThrowIfNull(collection);
+
+            if (collection.OwnerKey is not { } key || !CollectionRules.IsOwnerKey(key))
+                return new Result(Outcome.Refused, [CollectionClient.NoKey]);
+
             DateTimeOffset deleteAt = CollectionSharing.DeleteAtFor(collection, now);
 
             // A date that passed while it was not shared again counts from today with the choice made.
@@ -93,7 +99,7 @@ namespace Handlers.Collections
                 {
                     progress?.Report(attempt == 0 ? "Sending the collection" : "Sending the collection again");
 
-                    using HttpResponseMessage response = await this.SendContentAsync(collection.ServerId, collection.LocalId, request, bearerToken, cancellationToken);
+                    using HttpResponseMessage response = await this.SendContentAsync(collection.ServerId, request, key, cancellationToken);
                     string body = await response.Content.ReadAsStringAsync(cancellationToken);
 
                     if (response.IsSuccessStatusCode)
@@ -108,7 +114,7 @@ namespace Handlers.Collections
                     if (response.StatusCode == HttpStatusCode.Conflict && attempt == 0 &&
                         CollectionClient.RefusalOf(body).MissingImages is { Count: > 0 } missing)
                     {
-                        if (await this.UploadAsync(missing, readCapture, bearerToken, progress, cancellationToken) is { } failed)
+                        if (await this.UploadAsync(missing, readCapture, key, progress, cancellationToken) is { } failed)
                             return failed;
 
                         continue;
@@ -126,16 +132,15 @@ namespace Handlers.Collections
         }
 
         // ###########################################################################################
-        // Takes the collection's page off the server. One the server deleted already is deleted.
+        // Takes the collection's page off the server. One the server deleted already - or does not know under this key - is
+        // deleted.
         // ###########################################################################################
-        public async Task<Result> DeleteAsync(string serverId, string bearerToken, CancellationToken cancellationToken = default)
+        public async Task<Result> DeleteAsync(string serverId, string ownerKey, CancellationToken cancellationToken = default)
         {
             try
             {
-                using var message = new HttpRequestMessage(HttpMethod.Delete, $"{this.thisRootUrl}{CollectionRoutes.Collections}/{Uri.EscapeDataString(serverId)}");
-                message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
-
-                using HttpResponseMessage response = await this.thisHttp.SendAsync(message, cancellationToken);
+                using HttpResponseMessage response = await this.SendAsync(
+                    HttpMethod.Delete, $"{CollectionRoutes.Collections}/{Uri.EscapeDataString(serverId)}", ownerKey, null, cancellationToken);
 
                 if (response.IsSuccessStatusCode || response.StatusCode is HttpStatusCode.NotFound or HttpStatusCode.Gone)
                     return new Result(Outcome.Deleted, []);
@@ -150,97 +155,35 @@ namespace Handlers.Collections
 
         // ###########################################################################################
         // "STOP SHARING" (owner decision, 2026-11-27: "Offline, same link back"), and sharing it again with nothing changed - its
-        // page offline or back, under the same link, its captures and comments kept on the server either way. Done, or what
-        // came of it; a page the server no longer has (410) is GoneFromServer.
+        // page offline or back, under the same link, its captures kept on the server either way. Done, or what came of it; a page
+        // the server no longer has is GoneFromServer.
         // ###########################################################################################
-        public Task<Result> SetSharingAsync(string serverId, bool shared, string bearerToken, CancellationToken cancellationToken = default) =>
-            this.CommentRequestAsync(HttpMethod.Put, CollectionRoutes.SharingOf(Uri.EscapeDataString(serverId)), bearerToken, new CollectionSharingRequest(shared), cancellationToken);
+        public Task<Result> SetSharingAsync(string serverId, bool shared, string ownerKey, CancellationToken cancellationToken = default) =>
+            this.RequestAsync(HttpMethod.Put, CollectionRoutes.SharingOf(Uri.EscapeDataString(serverId)), ownerKey, new CollectionSharingRequest(shared), cancellationToken);
 
         // ###########################################################################################
         // "DELETE IMAGE" on a shared collection (owner request, 2026-11-28: "should also remove it right away from the shared
-        // page, and do not touch the expiry date"; server 16.2.0): that one capture off its page now, nothing else sent - its
-        // deletion date, its sharing and any change not shared yet stay as they are. Done; a page the server no longer has
-        // (410) is GoneFromServer.
+        // page, and do not touch the expiry date"; server 16.1.0): that one capture off its page now, nothing else sent - its
+        // deletion date, its sharing and any change not shared yet stay as they are. Done; a page the server no longer has is
+        // GoneFromServer.
         // ###########################################################################################
-        public Task<Result> RemoveImageAsync(string serverId, string sha256, string bearerToken, CancellationToken cancellationToken = default) =>
-            this.CommentRequestAsync(
+        public Task<Result> RemoveImageAsync(string serverId, string sha256, string ownerKey, CancellationToken cancellationToken = default) =>
+            this.RequestAsync(
                 HttpMethod.Delete,
                 CollectionRoutes.ImageOf(Uri.EscapeDataString(serverId), Uri.EscapeDataString(sha256)),
-                bearerToken,
+                ownerKey,
                 null,
                 cancellationToken);
 
-        // ###########################################################################################
-        // COMMENTS (step 3, 2026-11-26) - the owner's: every comment on the collection, hidden ones too; answering one capture;
-        // deleting the owner's own; hiding and showing others'. Editing is the page's.
-        // ###########################################################################################
-        public sealed record CommentsResult(Outcome Kind, IReadOnlyList<string> Errors, IReadOnlyList<CollectionCommentAnswer> Comments)
-        {
-            public string Message => string.Join(" ", this.Errors);
-        }
-
-        public async Task<CommentsResult> ListCommentsAsync(string serverId, string bearerToken, CancellationToken cancellationToken = default)
+        private async Task<Result> RequestAsync(HttpMethod method, string path, string ownerKey, object? content, CancellationToken cancellationToken)
         {
             try
             {
-                using HttpResponseMessage response = await this.SendAsync(HttpMethod.Get, CollectionRoutes.CommentsOf(Uri.EscapeDataString(serverId)), bearerToken, null, cancellationToken);
-                string body = await response.Content.ReadAsStringAsync(cancellationToken);
-
-                if (!response.IsSuccessStatusCode)
-                {
-                    Result refused = CollectionClient.ResultOfRefusal(response.StatusCode, body, wasShared: true, notFoundIsGone: false);
-                    return new CommentsResult(refused.Kind, refused.Errors, []);
-                }
-
-                CollectionCommentsAnswer? answer = JsonSerializer.Deserialize<CollectionCommentsAnswer>(body, ReviewApiContract.WireSettings);
-
-                return new CommentsResult(Outcome.Done, [], answer?.Comments ?? []);
-            }
-            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
-            {
-                return new CommentsResult(Outcome.Failed, [CollectionClient.NotReachable], []);
-            }
-        }
-
-        public Task<Result> AddCommentAsync(string serverId, string imageSha256, string body, string bearerToken, CancellationToken cancellationToken = default) =>
-            this.CommentRequestAsync(HttpMethod.Post, CollectionRoutes.CommentsOf(Uri.EscapeDataString(serverId)), bearerToken, new CollectionCommentRequest(imageSha256, body), cancellationToken);
-
-        public Task<Result> DeleteCommentAsync(string serverId, long commentId, string bearerToken, CancellationToken cancellationToken = default) =>
-            this.CommentRequestAsync(HttpMethod.Delete, CollectionRoutes.CommentOf(Uri.EscapeDataString(serverId), commentId), bearerToken, null, cancellationToken);
-
-        public Task<Result> SetCommentHiddenAsync(string serverId, long commentId, bool hidden, string bearerToken, CancellationToken cancellationToken = default) =>
-            this.CommentRequestAsync(HttpMethod.Put, CollectionRoutes.CommentOf(Uri.EscapeDataString(serverId), commentId) + "/hidden", bearerToken, new CollectionCommentHideRequest(hidden), cancellationToken);
-
-        // ###########################################################################################
-        // The account's collections on the server, each with how many comments its page shows and the newest's id - what marks
-        // a collection with comments not read yet. Null when it could not be asked (signed out, out of reach).
-        // ###########################################################################################
-        public async Task<IReadOnlyList<CollectionSummaryAnswer>?> ListMineAsync(string bearerToken, CancellationToken cancellationToken = default)
-        {
-            try
-            {
-                using HttpResponseMessage response = await this.SendAsync(HttpMethod.Get, CollectionRoutes.Mine, bearerToken, null, cancellationToken);
-
-                if (!response.IsSuccessStatusCode)
-                    return null;
-
-                return JsonSerializer.Deserialize<MyCollectionsAnswer>(await response.Content.ReadAsStringAsync(cancellationToken), ReviewApiContract.WireSettings)?.Collections;
-            }
-            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException)
-            {
-                return null;
-            }
-        }
-
-        private async Task<Result> CommentRequestAsync(HttpMethod method, string path, string bearerToken, object? content, CancellationToken cancellationToken)
-        {
-            try
-            {
-                using HttpResponseMessage response = await this.SendAsync(method, path, bearerToken, content, cancellationToken);
+                using HttpResponseMessage response = await this.SendAsync(method, path, ownerKey, content, cancellationToken);
 
                 return response.IsSuccessStatusCode
                     ? new Result(Outcome.Done, [])
-                    : CollectionClient.ResultOfRefusal(response.StatusCode, await response.Content.ReadAsStringAsync(cancellationToken), wasShared: true, notFoundIsGone: false);
+                    : CollectionClient.ResultOfRefusal(response.StatusCode, await response.Content.ReadAsStringAsync(cancellationToken), wasShared: true);
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
             {
@@ -248,21 +191,20 @@ namespace Handlers.Collections
             }
         }
 
-        private Task<HttpResponseMessage> SendAsync(HttpMethod method, string path, string bearerToken, object? content, CancellationToken cancellationToken)
+        private Task<HttpResponseMessage> SendAsync(HttpMethod method, string path, string ownerKey, object? content, CancellationToken cancellationToken)
         {
             var message = new HttpRequestMessage(method, $"{this.thisRootUrl}{path}");
 
             if (content is not null)
                 message.Content = JsonContent.Create(content, content.GetType(), options: ReviewApiContract.WireSettings);
 
-            message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+            message.Headers.Add(CollectionRoutes.OwnerKeyHeader, ownerKey);
 
             return this.thisHttp.SendAsync(message, cancellationToken);
         }
 
-        // A first share (POST) carries the collection's local id as its key: sent again with its answer lost, the server changes
-        // the page it made instead of making a second (CollectionRoutes.ClientKeyHeader; code review, 2026-11-27).
-        private Task<HttpResponseMessage> SendContentAsync(string? serverId, string localId, CollectionContentRequest request, string bearerToken, CancellationToken cancellationToken)
+        // The whole collection: POST while it has no page, PUT to its page after.
+        private Task<HttpResponseMessage> SendContentAsync(string? serverId, CollectionContentRequest request, string ownerKey, CancellationToken cancellationToken)
         {
             var message = new HttpRequestMessage(
                 serverId is null ? HttpMethod.Post : HttpMethod.Put,
@@ -271,10 +213,7 @@ namespace Handlers.Collections
                 Content = JsonContent.Create(request, options: ReviewApiContract.WireSettings)
             };
 
-            message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
-
-            if (serverId is null && CollectionRules.IsClientKey(localId))
-                message.Headers.Add(CollectionRoutes.ClientKeyHeader, localId);
+            message.Headers.Add(CollectionRoutes.OwnerKeyHeader, ownerKey);
 
             return this.thisHttp.SendAsync(message, cancellationToken);
         }
@@ -283,7 +222,7 @@ namespace Handlers.Collections
         private async Task<Result?> UploadAsync(
             IReadOnlyList<string> missing,
             Func<string, byte[]?> readCapture,
-            string bearerToken,
+            string ownerKey,
             IProgress<string>? progress,
             CancellationToken cancellationToken)
         {
@@ -302,7 +241,7 @@ namespace Handlers.Collections
                 };
 
                 message.Content.Headers.ContentType = new MediaTypeHeaderValue(CollectionPng.ContentType);
-                message.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearerToken);
+                message.Headers.Add(CollectionRoutes.OwnerKeyHeader, ownerKey);
 
                 using HttpResponseMessage response = await this.thisHttp.SendAsync(message, cancellationToken);
 
@@ -314,18 +253,11 @@ namespace Handlers.Collections
         }
 
         // ###########################################################################################
-        // A refusal in words: the server's own sentences when it wrote any, an "update CRT" answer told to the rest of CRT.
-        //
-        // *** ON THE COMMENT ROUTES ONLY 410 SAYS THE PAGE IS GONE (`notFoundIsGone: false`; code review, 2026-11-27). *** A
-        // comment's 404 is that COMMENT - deleted by its writer or the administrator meanwhile - and read as the page gone,
-        // "Hide" on it made CRT forget a live page, whose next "Share" made a second one. The server answers 410 for its
-        // owner's collection taken down (CollectionCommentFlows.ListForOwnerAsync).
+        // A refusal in words: the server's own sentences when it wrote any, an "update CRT" answer told to the rest of CRT. A
+        // page shared before that the server no longer has - its time up, taken down, or (404) under this key no more - is gone.
         // ###########################################################################################
-        private static Result ResultOfRefusal(HttpStatusCode status, string body, bool wasShared, bool notFoundIsGone = true)
+        private static Result ResultOfRefusal(HttpStatusCode status, string body, bool wasShared)
         {
-            if (status == HttpStatusCode.Unauthorized)
-                return new Result(Outcome.SignInNeeded, [CollectionClient.SignInFirst]);
-
             if (SubmissionClient.SignalIfOutdated((int)status, body) is { } outdated)
                 return new Result(Outcome.Failed, [outdated]);
 
@@ -333,8 +265,7 @@ namespace Handlers.Collections
                 ? said
                 : [SubmissionClient.RefusalMessage(body, $"The server refused it ({(int)status}).")];
 
-            // A collection shared before that the server no longer has: deleted there - its time up, or taken down.
-            if (wasShared && (status == HttpStatusCode.Gone || (notFoundIsGone && status == HttpStatusCode.NotFound)))
+            if (wasShared && status is HttpStatusCode.Gone or HttpStatusCode.NotFound)
                 return new Result(Outcome.GoneFromServer, errors);
 
             return new Result((int)status >= 500 ? Outcome.Failed : Outcome.Refused, errors);

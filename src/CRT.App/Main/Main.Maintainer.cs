@@ -108,9 +108,6 @@ namespace CRT
             this.TabFeedback.UseMaintainerAccount(account);
             this.TabDrafts.UseMaintainerAccount(account);
             this.TabOscilloscopeControl.UseMaintainerAccount(account);
-
-            // The account icon in the top right corner (2026-11-25, Main.Account.cs) - signed in or not, and as whom.
-            this.ShowAccountIcon();
         }
 
         // ###########################################################################################

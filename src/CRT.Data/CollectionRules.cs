@@ -14,7 +14,8 @@ namespace Handlers.DataHandling
     // the server again as it takes it (CollectionFlows), in these words.
     //
     //   - A collection is ONE BOARD'S, made from captures taken in CRT's component info window, kept on the computer until it
-    //     is shared (CRT's own store) - only an account may share one, and only from CRT.
+    //     is shared (CRT's own store) - shared only from CRT, by anybody, NO ACCOUNT (owner decision, 2026-11-28: "Anybody, no
+    //     account"): its page is owned by a key kept with it on that computer (IsOwnerKey).
     //   - Its page is https://classic-repair-toolbox.dk/collections/<id> - anybody with the link sees it, nobody gets a list of
     //     them, no search engine is asked to keep it, and it names nobody (owner decision, 2026-11-25).
     //   - "Delete in" 1 day, 1 week, 1 month or 1 year (the default), counted from every share - never past a year ahead.
@@ -43,12 +44,17 @@ namespace Handlers.DataHandling
             id is { Length: CollectionRules.IdLength } && id.All(c => CollectionRules.IdCharacters.Contains(c, StringComparison.Ordinal));
 
         // ###########################################################################################
-        // The key a collection is kept under on CRT's computer - its local id, a GUID without dashes, lower case (CRT's
-        // CollectionStore names its folder by it). Sent with a first share (CollectionRoutes.ClientKeyHeader), so the same first
-        // share sent again, its answer lost, changes the page it made instead of making a second (code review, 2026-11-27).
+        // *** THE KEY A SHARED COLLECTION IS OWNED BY (owner decision, 2026-11-28: "Entirely remove the new "Account" possibility";
+        // asked, "Anybody, no account"). *** 64 lower-case hex characters, 256 random bits, made by CRT as the collection is first
+        // shared and kept with it on that computer alone - so only that computer changes or deletes its page. Sent with every
+        // request (CollectionRoutes.OwnerKeyHeader); the server keeps nothing but its SHA-256, as it keeps a session's.
         // ###########################################################################################
-        public static bool IsClientKey(string? key) =>
-            key is { Length: 32 } && key.All(c => c is (>= '0' and <= '9') or (>= 'a' and <= 'f'));
+        public const int OwnerKeyLength = 64;
+
+        public static bool IsOwnerKey(string? key) =>
+            key is { Length: CollectionRules.OwnerKeyLength } && key.All(c => c is (>= '0' and <= '9') or (>= 'a' and <= 'f'));
+
+        public static string NewOwnerKey() => RandomNumberGenerator.GetHexString(CollectionRules.OwnerKeyLength, lowercase: true);
 
         // ---------------------------------------------------------------------------------------
         // "DELETE IN" (owner decisions, 2026-11-25: "no need to show the "2 years""; 2026-11-27: "The max years a collection can
@@ -87,9 +93,6 @@ namespace Handlers.DataHandling
         public static DateTimeOffset LatestDeleteAt(DateTimeOffset now) =>
             now.ToUniversalTime().AddYears(CollectionRules.MaximumYearsAhead).AddDays(1);
 
-        // When the owner is reminded by mail that the collection is about to go.
-        public static readonly TimeSpan ReminderBefore = TimeSpan.FromDays(30);
-
         // ---------------------------------------------------------------------------------------
         // WHAT A COLLECTION MAY HOLD. A 40-pin chip is 40 captures; a whole board's worth of chips a few hundred.
         // ---------------------------------------------------------------------------------------
@@ -112,10 +115,9 @@ namespace Handlers.DataHandling
         // The oscilloscopes the captures were taken with (server 16.1.0) - a few at most, each its vendor and model.
         public const int MaximumOscilloscopes = 10;
 
-        // How many collections one account keeps at once, and how many it may make, and captures it may upload, in a day -
-        // the server's (CollectionFlows), said here so CRT says the same numbers.
-        public const int MaximumLiveCollectionsPerAccount = 100;
-
+        // How many collections one INTERNET CONNECTION may share, and captures it may upload, in a day - an IPv4 address, or an
+        // IPv6 /64 (no account says who shares, since server 17.0.0) - the server's (CollectionFlows), said here so CRT says the
+        // same numbers.
         public const int MaximumCollectionsPerDay = 20;
 
         public const int MaximumUploadsPerDay = 1000;

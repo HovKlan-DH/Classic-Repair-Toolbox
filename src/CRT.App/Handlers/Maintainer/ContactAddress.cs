@@ -40,13 +40,10 @@ namespace Handlers.MaintainerHandling
             return new ContactAddress(typedEmail?.Trim() ?? string.Empty, null);
         }
 
-        // ###########################################################################################
-        // Under the Feedback tab's address while it is the account's. *** ANYBODY'S ACCOUNT SINCE 2026-11-25 *** (accounts for
-        // everybody), signed in and out with the account icon in the top right corner of CRT's window - so no "maintainer" and
-        // no "Maintainer" tab here any more, and no promise that the address is verified: a new account's may not be yet.
-        // ###########################################################################################
+        // Under the Feedback tab's address while it is the account's - a maintainer's again since 2026-11-28 (owner decision:
+        // the accounts for everybody, and the account icon they were signed in with, removed).
         public const string FeedbackNote =
-            "Your account's address, as you are signed in. To use another one, sign out with " + AccountWording.WhereInCrt + ".";
+            "Your maintainer account's address, as you are signed in on the \"Maintainer\" tab. Sign out there to use another one.";
 
         // Under the Submit dialog's address while it is the account's - in place of the line saying
         // there is no account to create, which would then be untrue. It no longer tells how to send with

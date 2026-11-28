@@ -18,8 +18,10 @@ namespace CRT.Server.Handlers.Submissions
     //     shown and held to the fingerprint like the submissions (code review, 2026-10-29);
     //   - every account that is not an administrator, with its sessions and tokens ("yes, just
     //     delete them as I need real data anyway"), and so every maintainer and invitation - and
-    //     every oscilloscope collection those accounts shared (migration 0025, 2026-11-26), marked
-    //     deleted so its page says so, its pictures taken by the collections' sweep a day later;
+    //     every oscilloscope collection those accounts shared (migration 0025, 2026-11-26) and, since
+    //     server 17.0.0, every one shared under a key (no account, migration 0031) - all but an
+    //     administrator's account's from before - marked deleted so its page says so, its pictures
+    //     taken by the collections' sweep a day later;
     //   - every production approval and every BOARD RECORD - see below;
     //   - the whole history (audit), the board views ("yes, delete them") and the API usage counts;
     //   - and then, on disk, every stored file no submission needs any more (all of them) and every

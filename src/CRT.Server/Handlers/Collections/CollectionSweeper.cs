@@ -1,18 +1,14 @@
 using CRT.Server.Configuration;
-using CRT.Server.Handlers.Accounts;
-using CRT.Server.Handlers.Email;
 
 namespace CRT.Server.Handlers.Collections
 {
     // ###########################################################################################
     // THE HOURLY SWEEP OF SHARED COLLECTIONS (2026-11-26): CollectionFlows.SweepAsync, run once at start and then every hour -
-    // collections whose time is up deleted, their owners reminded 30 days before, pictures nobody shows any more taken away.
-    // Nothing while sharing is not set up. A failed sweep is logged and tried again an hour later; it never stops the service.
+    // collections whose time is up deleted, pictures nobody shows any more taken away. Nothing while sharing is not set up. A
+    // failed sweep is logged and tried again an hour later; it never stops the service.
     // ###########################################################################################
     public sealed class CollectionSweeper(
         ICollectionStore store,
-        IAccountStore accounts,
-        IEmailSender mailer,
         ServerOptions options,
         ILogger<CollectionSweeper> logger) : BackgroundService
     {
@@ -34,18 +30,14 @@ namespace CRT.Server.Handlers.Collections
                         CollectionSweepResult result = await CollectionFlows.SweepAsync(
                             store,
                             new CollectionFiles(options.CollectionsRoot!),
-                            accounts,
-                            mailer,
-                            AccountPages.BaseUrl(options.PublicApiBaseUrl),
                             DateTimeOffset.UtcNow,
                             stoppingToken);
 
-                        if (result.Expired + result.Reminded + result.FilesDeleted > 0)
+                        if (result.Expired + result.FilesDeleted > 0)
                         {
                             logger.LogInformation(
-                                "Collections: {Expired} deleted as their time was up, {Reminded} owner(s) reminded, {Files} capture(s) nobody shows deleted.",
+                                "Collections: {Expired} deleted as their time was up, {Files} capture(s) nobody shows deleted.",
                                 result.Expired,
-                                result.Reminded,
                                 result.FilesDeleted);
                         }
 

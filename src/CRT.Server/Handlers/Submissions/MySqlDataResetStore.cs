@@ -134,12 +134,15 @@ namespace CRT.Server.Handlers.Submissions
                 // Oscilloscope models sent in from CRT (migration 0024) - contribution data too.
                 "DELETE FROM oscilloscope_submissions;",
 
-                // Shared collections (migration 0025) go with the accounts that shared them: marked deleted by the
-                // administrator, so their pages say they went, and their captures' rows taken. The hourly sweep then deletes
-                // the uploads nothing shows and their pictures (CollectionFlows.SweepAsync) - the files are not this
-                // transaction's to delete.
+                // Shared collections (migration 0025) go with the accounts that shared them - and, since server 17.0.0, every
+                // collection shared under a KEY (no account, migration 0031: "account_id IS NULL", which NOT IN alone never
+                // matches): marked deleted by the administrator, so their pages say they went, their words emptied as
+                // MarkDeletedAsync empties them, and their captures' rows taken. Only one an administrator's account shared
+                // before 17.0.0 stays. The hourly sweep then deletes the uploads nothing shows and their pictures
+                // (CollectionFlows.SweepAsync) - the files are not this transaction's to delete.
                 "UPDATE collections SET deleted_utc = UTC_TIMESTAMP(3), deleted_reason = 'administrator', title = NULL, " +
-                "description = NULL, forum_links_json = NULL WHERE deleted_utc IS NULL AND account_id NOT IN (SELECT id FROM accounts);",
+                "description = NULL, forum_links_json = NULL, components_json = NULL, oscilloscopes_json = NULL " +
+                "WHERE deleted_utc IS NULL AND (account_id IS NULL OR account_id NOT IN (SELECT id FROM accounts));",
                 "DELETE FROM collection_images WHERE collection_id IN (SELECT id FROM collections WHERE deleted_utc IS NOT NULL);",
 
                 // Their comments (migration 0026) - those the deleted accounts wrote anywhere, and every one on a collection
@@ -208,12 +211,14 @@ namespace CRT.Server.Handlers.Submissions
                     (SELECT COUNT(*) FROM oscilloscope_submissions),
                     (SELECT COALESCE(MAX(id), 0) FROM oscilloscope_submissions),
                     (SELECT COUNT(*) FROM collections
-                        WHERE deleted_utc IS NULL AND account_id NOT IN (SELECT id FROM accounts WHERE is_administrator <> 0)),
+                        WHERE deleted_utc IS NULL
+                          AND (account_id IS NULL OR account_id NOT IN (SELECT id FROM accounts WHERE is_administrator <> 0))),
                     (SELECT COUNT(*) FROM collection_comments
                         WHERE deleted_utc IS NULL
                           AND (account_id NOT IN (SELECT id FROM accounts WHERE is_administrator <> 0)
                                OR collection_id IN (SELECT id FROM collections
                                                     WHERE deleted_utc IS NOT NULL
+                                                       OR account_id IS NULL
                                                        OR account_id NOT IN (SELECT id FROM accounts WHERE is_administrator <> 0))));
                 """;
 

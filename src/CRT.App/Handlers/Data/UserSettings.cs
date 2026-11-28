@@ -1338,10 +1338,6 @@ namespace Handlers.DataHandling
                 new HashSet<string>(_data.CatalogueCollapsedKeys ?? new HashSet<string>(), CatalogueVisibility.KeyComparer);
         }
 
-        // Test seam: re-applies the comparer without going through a file load, so a test can prove
-        // an ordinal set deserialized from disk answers case-insensitively afterwards.
-        internal static void NormalizeCatalogueKeySetsForTests() => NormalizeCatalogueKeySets();
-
         // ###########################################################################################
         // Which hardware/board/schematic keys are UNchecked (hidden) in the Configuration tab's
         // catalogue tree - see CatalogueVisibility for the key format and the ancestor-AND

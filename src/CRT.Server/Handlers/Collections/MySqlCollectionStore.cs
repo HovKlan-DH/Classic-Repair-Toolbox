@@ -6,14 +6,14 @@ using MySqlConnector;
 namespace CRT.Server.Handlers.Collections
 {
     // ###########################################################################################
-    // ICollectionStore on MySQL (migration 0025). An I/O boundary like the other MySql* stores - the rules are
+    // ICollectionStore on MySQL (migrations 0025-0031). An I/O boundary like the other MySql* stores - the rules are
     // CollectionFlows', tested against a fake.
     // ###########################################################################################
     public sealed class MySqlCollectionStore : ICollectionStore
     {
         private const string CollectionColumns =
-            "c.id, c.account_id, c.hardware_name, c.board_name, c.region, c.title, c.description, c.forum_links_json, " +
-            "c.created_utc, c.updated_utc, c.delete_at_utc, c.reminded_utc, c.deleted_utc, c.deleted_reason, c.unshared_utc, c.components_json, " +
+            "c.id, c.owner_key_hash, c.connection, c.hardware_name, c.board_name, c.region, c.title, c.description, c.forum_links_json, " +
+            "c.created_utc, c.updated_utc, c.delete_at_utc, c.deleted_utc, c.deleted_reason, c.unshared_utc, c.components_json, " +
             "c.oscilloscopes_json";
 
         private const string ImageColumns =
@@ -77,81 +77,33 @@ namespace CRT.Server.Handlers.Collections
             return collection with { Images = images, ImageCount = images.Count };
         }
 
-        // CollectionColumns, the captures counted, and the comments the page shows counted - none hidden, none of a locked
-        // account (AccountLockFlows), none on a capture the collection no longer shows (OnACaptureShown) - with the newest one's
-        // id of OTHERS than the owner: what marks "new comments" in CRT, and the owner's own answer on the website is nothing
-        // new to them (code review, 2026-11-27).
-        private const string CountedColumns =
-            $"{CollectionColumns}, (SELECT COUNT(*) FROM collection_images i WHERE i.collection_id = c.id), " +
-            "(SELECT COUNT(*) FROM collection_comments m JOIN accounts w ON w.id = m.account_id " +
-            $"WHERE m.collection_id = c.id AND m.deleted_utc IS NULL AND m.hidden_utc IS NULL AND w.is_locked = 0 AND {OnACaptureShown}), " +
-            "(SELECT COALESCE(MAX(m.id), 0) FROM collection_comments m JOIN accounts w ON w.id = m.account_id " +
-            $"WHERE m.collection_id = c.id AND m.deleted_utc IS NULL AND m.hidden_utc IS NULL AND w.is_locked = 0 AND m.account_id <> c.account_id AND {OnACaptureShown})";
-
-        // ###########################################################################################
-        // *** A COMMENT COUNTS ONLY ON A CAPTURE ITS COLLECTION SHOWS NOW (code review, 2026-11-27). *** A capture taken out and
-        // shared again leaves its comments - nothing deletes them, so the capture shared again brings them back - but no page
-        // shows them and no CRT window lists them: counted, a collection read "1 comment" and "new comments" for one nobody
-        // could see, hide or delete, and the administrator's newest comments linked to a place no page has.
-        // ###########################################################################################
-        private const string OnACaptureShown =
-            "EXISTS (SELECT 1 FROM collection_images s WHERE s.collection_id = m.collection_id AND s.sha256 = m.image_sha256)";
-
-        public Task<IReadOnlyList<CollectionRecord>> ListLiveForAccountAsync(long accountId, CancellationToken cancellationToken = default) =>
-            this.ListCountedAsync(
-                $"SELECT {CountedColumns} FROM collections c WHERE c.account_id = @account AND c.deleted_utc IS NULL ORDER BY c.created_utc DESC;",
-                cancellationToken,
-                ("@account", accountId));
-
-        public Task<IReadOnlyList<CollectionRecord>> ListLiveCommentedOnAsync(long accountId, CancellationToken cancellationToken = default) =>
-            this.ListCountedAsync(
-                $"SELECT {CountedColumns} FROM collections c " +
-                "JOIN (SELECT m.collection_id, MAX(m.id) AS latest FROM collection_comments m WHERE m.account_id = @account AND m.deleted_utc IS NULL " +
-                $"AND {OnACaptureShown} GROUP BY m.collection_id) w " +
-                "ON w.collection_id = c.id " +
-                "WHERE c.account_id <> @account AND c.deleted_utc IS NULL ORDER BY w.latest DESC;",
-                cancellationToken,
-                ("@account", accountId));
-
-        public Task<IReadOnlyList<CollectionRecord>> ListAllLiveAsync(int count, CancellationToken cancellationToken = default) =>
-            this.ListCountedAsync(
-                $"SELECT {CountedColumns} FROM collections c WHERE c.deleted_utc IS NULL ORDER BY c.created_utc DESC LIMIT @count;",
-                cancellationToken,
-                ("@count", count));
-
-        private async Task<IReadOnlyList<CollectionRecord>> ListCountedAsync(string sql, CancellationToken cancellationToken, params (string Name, object Value)[] parameters)
+        public async Task<IReadOnlyList<CollectionRecord>> ListAllLiveAsync(int count, CancellationToken cancellationToken = default)
         {
             await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
             await using MySqlCommand select = connection.CreateCommand();
 
-            select.CommandText = sql;
-
-            foreach ((string name, object value) in parameters)
-                select.Parameters.AddWithValue(name, value);
+            select.CommandText =
+                $"SELECT {CollectionColumns}, (SELECT COUNT(*) FROM collection_images i WHERE i.collection_id = c.id) " +
+                "FROM collections c WHERE c.deleted_utc IS NULL ORDER BY c.created_utc DESC LIMIT @count;";
+            select.Parameters.AddWithValue("@count", count);
 
             var collections = new List<CollectionRecord>();
 
             await using MySqlDataReader reader = await select.ExecuteReaderAsync(cancellationToken);
 
             while (await reader.ReadAsync(cancellationToken))
-            {
-                collections.Add(MySqlCollectionStore.ReadCollection(reader) with
-                {
-                    CommentCount = Convert.ToInt32(reader.GetValue(18)),
-                    LatestCommentId = Convert.ToInt64(reader.GetValue(19))
-                });
-            }
+                collections.Add(MySqlCollectionStore.ReadCollection(reader));
 
             return collections;
         }
 
-        public async Task<int> CountCreatedSinceAsync(long accountId, DateTimeOffset sinceUtc, CancellationToken cancellationToken = default)
+        public async Task<int> CountCreatedSinceAsync(string connection, DateTimeOffset sinceUtc, CancellationToken cancellationToken = default)
         {
-            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
-            await using MySqlCommand count = connection.CreateCommand();
+            await using MySqlConnection database = await this.OpenAsync(cancellationToken);
+            await using MySqlCommand count = database.CreateCommand();
 
-            count.CommandText = "SELECT COUNT(*) FROM collections WHERE account_id = @account AND created_utc > @since;";
-            count.Parameters.AddWithValue("@account", accountId);
+            count.CommandText = "SELECT COUNT(*) FROM collections WHERE connection = @connection AND created_utc > @since;";
+            count.Parameters.AddWithValue("@connection", connection);
             count.Parameters.AddWithValue("@since", sinceUtc.UtcDateTime);
 
             return Convert.ToInt32(await count.ExecuteScalarAsync(cancellationToken));
@@ -168,13 +120,13 @@ namespace CRT.Server.Handlers.Collections
             {
                 insert.Transaction = transaction;
                 insert.CommandText =
-                    "INSERT IGNORE INTO collections (id, account_id, client_key, hardware_name, board_name, region, title, description, " +
-                    "forum_links_json, components_json, oscilloscopes_json, created_utc, updated_utc, delete_at_utc, reminded_utc) VALUES " +
-                    "(@id, @account, @clientKey, @hardware, @board, @region, @title, @description, @links, @components, @oscilloscopes, @created, " +
-                    "@updated, @deleteAt, @reminded);";
+                    "INSERT IGNORE INTO collections (id, owner_key_hash, connection, hardware_name, board_name, region, title, description, " +
+                    "forum_links_json, components_json, oscilloscopes_json, created_utc, updated_utc, delete_at_utc) VALUES " +
+                    "(@id, @owner, @connection, @hardware, @board, @region, @title, @description, @links, @components, @oscilloscopes, @created, " +
+                    "@updated, @deleteAt);";
                 MySqlCollectionStore.AddContent(insert, collection);
-                insert.Parameters.AddWithValue("@account", collection.AccountId);
-                insert.Parameters.AddWithValue("@clientKey", (object?)collection.ClientKey ?? DBNull.Value);
+                insert.Parameters.AddWithValue("@owner", (object?)collection.OwnerKeyHash ?? DBNull.Value);
+                insert.Parameters.AddWithValue("@connection", (object?)collection.Connection ?? DBNull.Value);
                 insert.Parameters.AddWithValue("@created", collection.CreatedUtc.UtcDateTime);
 
                 // The id taken already: nothing written, and CollectionFlows draws another.
@@ -188,7 +140,7 @@ namespace CRT.Server.Handlers.Collections
             return true;
         }
 
-        public async Task<CollectionRecord?> FindLiveByClientKeyAsync(long accountId, string clientKey, CancellationToken cancellationToken = default)
+        public async Task<CollectionRecord?> FindLiveByOwnerAsync(string ownerKeyHash, CancellationToken cancellationToken = default)
         {
             string? id;
 
@@ -196,10 +148,8 @@ namespace CRT.Server.Handlers.Collections
             await using (MySqlCommand command = connection.CreateCommand())
             {
                 command.CommandText =
-                    "SELECT id FROM collections WHERE account_id = @account AND client_key = @clientKey AND deleted_utc IS NULL " +
-                    "ORDER BY created_utc DESC LIMIT 1;";
-                command.Parameters.AddWithValue("@account", accountId);
-                command.Parameters.AddWithValue("@clientKey", clientKey);
+                    "SELECT id FROM collections WHERE owner_key_hash = @owner AND deleted_utc IS NULL ORDER BY created_utc DESC LIMIT 1;";
+                command.Parameters.AddWithValue("@owner", ownerKeyHash);
 
                 id = await command.ExecuteScalarAsync(cancellationToken) as string;
             }
@@ -220,11 +170,7 @@ namespace CRT.Server.Handlers.Collections
                 update.CommandText =
                     "UPDATE collections SET hardware_name = @hardware, board_name = @board, region = @region, title = @title, " +
                     "description = @description, forum_links_json = @links, components_json = @components, " +
-                    "oscilloscopes_json = @oscilloscopes, updated_utc = @updated, " +
-                    // A new date takes what the flow decided of its reminder (CollectionFlows.ReminderSettledAt); the same date keeps
-                    // what was decided - the sweep's mark too, set meanwhile. Before delete_at_utc's own assignment, which MariaDB
-                    // makes in order.
-                    "reminded_utc = CASE WHEN @deleteAt <> delete_at_utc THEN @reminded ELSE reminded_utc END, delete_at_utc = @deleteAt, " +
+                    "oscilloscopes_json = @oscilloscopes, updated_utc = @updated, delete_at_utc = @deleteAt, " +
                     // Shared again: "Share" brings a collection whose sharing was stopped back under its link (migration 0028).
                     "unshared_utc = NULL " +
                     "WHERE id = @id AND deleted_utc IS NULL;";
@@ -271,7 +217,7 @@ namespace CRT.Server.Handlers.Collections
             await using MySqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken);
 
             // The collection's row first, so a delete or a share running at the same time waits for it - and only while it is
-            // not deleted. Its date, its reminder and its sharing are never named here.
+            // not deleted. Its date and its sharing are never named here.
             await using (MySqlCommand update = connection.CreateCommand())
             {
                 update.Transaction = transaction;
@@ -317,7 +263,8 @@ namespace CRT.Server.Handlers.Collections
                     return false;
             }
 
-            // Its captures and their comments go with it.
+            // Its captures go with it - and the comments written before server 17.0.0, which nothing reads any more (migration
+            // 0031), so a collection deleted leaves none behind.
             await using (MySqlCommand delete = connection.CreateCommand())
             {
                 delete.Transaction = transaction;
@@ -330,153 +277,6 @@ namespace CRT.Server.Handlers.Collections
 
             return true;
         }
-
-        // ---------------------------------------------------------------------------------------
-        // Comments (migration 0026).
-        // ---------------------------------------------------------------------------------------
-
-        private const string CommentColumns =
-            "m.id, m.collection_id, m.image_sha256, m.account_id, a.display_name, a.is_administrator, m.body, m.created_utc, m.edited_utc, m.hidden_utc, a.is_locked";
-
-        public async Task<IReadOnlyList<CollectionCommentRecord>> ListCommentsAsync(string collectionId, CancellationToken cancellationToken = default)
-        {
-            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
-            await using MySqlCommand select = connection.CreateCommand();
-
-            select.CommandText =
-                $"SELECT {CommentColumns} FROM collection_comments m JOIN accounts a ON a.id = m.account_id " +
-                "WHERE m.collection_id = @id AND m.deleted_utc IS NULL ORDER BY m.created_utc, m.id;";
-            select.Parameters.AddWithValue("@id", collectionId);
-
-            var comments = new List<CollectionCommentRecord>();
-
-            await using MySqlDataReader reader = await select.ExecuteReaderAsync(cancellationToken);
-
-            while (await reader.ReadAsync(cancellationToken))
-                comments.Add(MySqlCollectionStore.ReadComment(reader));
-
-            return comments;
-        }
-
-        public async Task<CollectionCommentRecord?> FindCommentAsync(long commentId, CancellationToken cancellationToken = default)
-        {
-            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
-            await using MySqlCommand select = connection.CreateCommand();
-
-            select.CommandText =
-                $"SELECT {CommentColumns} FROM collection_comments m JOIN accounts a ON a.id = m.account_id " +
-                "WHERE m.id = @id AND m.deleted_utc IS NULL;";
-            select.Parameters.AddWithValue("@id", commentId);
-
-            await using MySqlDataReader reader = await select.ExecuteReaderAsync(cancellationToken);
-
-            return await reader.ReadAsync(cancellationToken) ? MySqlCollectionStore.ReadComment(reader) : null;
-        }
-
-        public async Task<long> AddCommentAsync(string collectionId, string imageSha256, long accountId, string body, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
-        {
-            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
-            await using MySqlCommand insert = connection.CreateCommand();
-
-            insert.CommandText =
-                "INSERT INTO collection_comments (collection_id, image_sha256, account_id, body, created_utc) " +
-                "VALUES (@collection, @sha, @account, @body, @when); SELECT LAST_INSERT_ID();";
-            insert.Parameters.AddWithValue("@collection", collectionId);
-            insert.Parameters.AddWithValue("@sha", imageSha256);
-            insert.Parameters.AddWithValue("@account", accountId);
-            insert.Parameters.AddWithValue("@body", body);
-            insert.Parameters.AddWithValue("@when", whenUtc.UtcDateTime);
-
-            return Convert.ToInt64(await insert.ExecuteScalarAsync(cancellationToken));
-        }
-
-        public Task<bool> EditCommentAsync(long commentId, string body, DateTimeOffset whenUtc, CancellationToken cancellationToken = default) =>
-            this.ChangeCommentAsync(
-                "UPDATE collection_comments SET body = @body, edited_utc = @when WHERE id = @id AND deleted_utc IS NULL;",
-                commentId,
-                whenUtc,
-                cancellationToken,
-                ("@body", body));
-
-        public Task<bool> DeleteCommentAsync(long commentId, DateTimeOffset whenUtc, CancellationToken cancellationToken = default) =>
-            this.ChangeCommentAsync(
-                "UPDATE collection_comments SET deleted_utc = @when WHERE id = @id AND deleted_utc IS NULL;",
-                commentId,
-                whenUtc,
-                cancellationToken);
-
-        public Task<bool> SetCommentHiddenAsync(long commentId, bool hidden, DateTimeOffset whenUtc, CancellationToken cancellationToken = default) =>
-            this.ChangeCommentAsync(
-                hidden
-                    ? "UPDATE collection_comments SET hidden_utc = @when WHERE id = @id AND deleted_utc IS NULL;"
-                    : "UPDATE collection_comments SET hidden_utc = NULL WHERE id = @id AND deleted_utc IS NULL;",
-                commentId,
-                whenUtc,
-                cancellationToken);
-
-        public async Task<IReadOnlyList<CollectionCommentRecord>> ListNewestCommentsAsync(int count, CancellationToken cancellationToken = default)
-        {
-            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
-            await using MySqlCommand select = connection.CreateCommand();
-
-            select.CommandText =
-                $"SELECT {CommentColumns} FROM collection_comments m JOIN accounts a ON a.id = m.account_id " +
-                "JOIN collections c ON c.id = m.collection_id " +
-                // A collection whose time is up is gone already, the sweep or not (CollectionFlows.IsGone).
-                $"WHERE m.deleted_utc IS NULL AND c.deleted_utc IS NULL AND c.delete_at_utc > UTC_TIMESTAMP(3) AND {OnACaptureShown} " +
-                "ORDER BY m.id DESC LIMIT @count;";
-            select.Parameters.AddWithValue("@count", count);
-
-            var comments = new List<CollectionCommentRecord>();
-
-            await using MySqlDataReader reader = await select.ExecuteReaderAsync(cancellationToken);
-
-            while (await reader.ReadAsync(cancellationToken))
-                comments.Add(MySqlCollectionStore.ReadComment(reader));
-
-            return comments;
-        }
-
-        public async Task<int> CountCommentsSinceAsync(long accountId, DateTimeOffset sinceUtc, CancellationToken cancellationToken = default)
-        {
-            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
-            await using MySqlCommand count = connection.CreateCommand();
-
-            count.CommandText = "SELECT COUNT(*) FROM collection_comments WHERE account_id = @account AND created_utc > @since;";
-            count.Parameters.AddWithValue("@account", accountId);
-            count.Parameters.AddWithValue("@since", sinceUtc.UtcDateTime);
-
-            return Convert.ToInt32(await count.ExecuteScalarAsync(cancellationToken));
-        }
-
-        private async Task<bool> ChangeCommentAsync(string sql, long commentId, DateTimeOffset whenUtc, CancellationToken cancellationToken, params (string Name, object Value)[] more)
-        {
-            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
-            await using MySqlCommand update = connection.CreateCommand();
-
-            update.CommandText = sql;
-            update.Parameters.AddWithValue("@id", commentId);
-            update.Parameters.AddWithValue("@when", whenUtc.UtcDateTime);
-
-            foreach ((string name, object value) in more)
-                update.Parameters.AddWithValue(name, value);
-
-            return await update.ExecuteNonQueryAsync(cancellationToken) == 1;
-        }
-
-        private static CollectionCommentRecord ReadComment(MySqlDataReader reader) =>
-            new(
-                Convert.ToInt64(reader.GetValue(0)),
-                reader.GetString(1),
-                reader.GetString(2),
-                Convert.ToInt64(reader.GetValue(3)),
-                reader.GetString(4),
-                reader.GetBoolean(5),
-                reader.GetString(6),
-                MySqlCollectionStore.Utc(reader.GetDateTime(7)),
-                reader.IsDBNull(8) ? null : MySqlCollectionStore.Utc(reader.GetDateTime(8)),
-                reader.IsDBNull(9) ? null : MySqlCollectionStore.Utc(reader.GetDateTime(9)),
-                reader.GetBoolean(10));
 
         public async Task<IReadOnlyList<string>> ListExpiredAsync(DateTimeOffset nowUtc, CancellationToken cancellationToken = default)
         {
@@ -496,32 +296,8 @@ namespace CRT.Server.Handlers.Collections
             return ids;
         }
 
-        public async Task<IReadOnlyList<CollectionRecord>> ListToRemindAsync(DateTimeOffset byUtc, CancellationToken cancellationToken = default)
-        {
-            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
-            await using MySqlCommand select = connection.CreateCommand();
-
-            select.CommandText =
-                $"SELECT {CollectionColumns}, 0 FROM collections c " +
-                "WHERE c.deleted_utc IS NULL AND c.reminded_utc IS NULL AND c.delete_at_utc <= @by;";
-            select.Parameters.AddWithValue("@by", byUtc.UtcDateTime);
-
-            return await MySqlCollectionStore.ReadCollectionsAsync(select, cancellationToken);
-        }
-
-        public async Task MarkRemindedAsync(string id, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
-        {
-            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
-            await using MySqlCommand update = connection.CreateCommand();
-
-            update.CommandText = "UPDATE collections SET reminded_utc = @when WHERE id = @id;";
-            update.Parameters.AddWithValue("@id", id);
-            update.Parameters.AddWithValue("@when", whenUtc.UtcDateTime);
-            await update.ExecuteNonQueryAsync(cancellationToken);
-        }
-
         public async Task<IReadOnlyDictionary<string, CollectionUploadRecord>> FindUploadsAsync(
-            long accountId,
+            string ownerKeyHash,
             IReadOnlyCollection<string> sha256s,
             CancellationToken cancellationToken = default)
         {
@@ -536,9 +312,9 @@ namespace CRT.Server.Handlers.Collections
             string[] names = sha256s.Select((_, index) => $"@s{index}").ToArray();
 
             select.CommandText =
-                "SELECT account_id, sha256, byte_count, width, height, uploaded_utc FROM collection_uploads " +
-                $"WHERE account_id = @account AND sha256 IN ({string.Join(", ", names)});";
-            select.Parameters.AddWithValue("@account", accountId);
+                "SELECT owner_key_hash, sha256, byte_count, width, height, uploaded_utc, connection FROM collection_uploads " +
+                $"WHERE owner_key_hash = @owner AND sha256 IN ({string.Join(", ", names)});";
+            select.Parameters.AddWithValue("@owner", ownerKeyHash);
 
             int at = 0;
 
@@ -550,12 +326,13 @@ namespace CRT.Server.Handlers.Collections
             while (await reader.ReadAsync(cancellationToken))
             {
                 var upload = new CollectionUploadRecord(
-                    Convert.ToInt64(reader.GetValue(0)),
+                    reader.GetString(0),
                     reader.GetString(1),
                     reader.GetInt32(2),
                     reader.GetInt32(3),
                     reader.GetInt32(4),
-                    MySqlCollectionStore.Utc(reader.GetDateTime(5)));
+                    MySqlCollectionStore.Utc(reader.GetDateTime(5)),
+                    MySqlCollectionStore.Text(reader, 6));
 
                 found[upload.Sha256] = upload;
             }
@@ -570,11 +347,13 @@ namespace CRT.Server.Handlers.Collections
             await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
             await using MySqlCommand insert = connection.CreateCommand();
 
+            // One row per key and picture (ux_collection_uploads_owner, migration 0031).
             insert.CommandText =
-                "INSERT INTO collection_uploads (account_id, sha256, byte_count, width, height, uploaded_utc) " +
-                "VALUES (@account, @sha, @bytes, @width, @height, @when) " +
+                "INSERT INTO collection_uploads (owner_key_hash, connection, sha256, byte_count, width, height, uploaded_utc) " +
+                "VALUES (@owner, @connection, @sha, @bytes, @width, @height, @when) " +
                 "ON DUPLICATE KEY UPDATE uploaded_utc = GREATEST(uploaded_utc, VALUES(uploaded_utc));";
-            insert.Parameters.AddWithValue("@account", upload.AccountId);
+            insert.Parameters.AddWithValue("@owner", upload.OwnerKeyHash);
+            insert.Parameters.AddWithValue("@connection", (object?)upload.Connection ?? DBNull.Value);
             insert.Parameters.AddWithValue("@sha", upload.Sha256);
             insert.Parameters.AddWithValue("@bytes", upload.ByteCount);
             insert.Parameters.AddWithValue("@width", upload.Width);
@@ -584,13 +363,13 @@ namespace CRT.Server.Handlers.Collections
             await insert.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        public async Task<int> CountUploadsSinceAsync(long accountId, DateTimeOffset sinceUtc, CancellationToken cancellationToken = default)
+        public async Task<int> CountUploadsSinceAsync(string connection, DateTimeOffset sinceUtc, CancellationToken cancellationToken = default)
         {
-            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
-            await using MySqlCommand count = connection.CreateCommand();
+            await using MySqlConnection database = await this.OpenAsync(cancellationToken);
+            await using MySqlCommand count = database.CreateCommand();
 
-            count.CommandText = "SELECT COUNT(*) FROM collection_uploads WHERE account_id = @account AND uploaded_utc > @since;";
-            count.Parameters.AddWithValue("@account", accountId);
+            count.CommandText = "SELECT COUNT(*) FROM collection_uploads WHERE connection = @connection AND uploaded_utc > @since;";
+            count.Parameters.AddWithValue("@connection", connection);
             count.Parameters.AddWithValue("@since", sinceUtc.UtcDateTime);
 
             return Convert.ToInt32(await count.ExecuteScalarAsync(cancellationToken));
@@ -623,16 +402,19 @@ namespace CRT.Server.Handlers.Collections
             await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
             await using MySqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken);
 
-            var unused = new List<(long Account, string Sha)>();
+            var unused = new List<(long Id, string Sha)>();
 
             await using (MySqlCommand select = connection.CreateCommand())
             {
                 select.Transaction = transaction;
+
+                // An upload is in use while a collection not deleted of ITS OWNER shows it - the same key, or, for an upload from
+                // before server 17.0.0 (migration 0031), the same account - a capture, or a capture's pinout drawing (0029).
                 select.CommandText =
-                    "SELECT u.account_id, u.sha256 FROM collection_uploads u WHERE u.uploaded_utc < @before AND NOT EXISTS (" +
+                    "SELECT u.id, u.sha256 FROM collection_uploads u WHERE u.uploaded_utc < @before AND NOT EXISTS (" +
                     "SELECT 1 FROM collection_images i JOIN collections c ON c.id = i.collection_id " +
-                    // A capture's pinout drawing is shown too (migration 0029).
-                    "WHERE c.account_id = u.account_id AND c.deleted_utc IS NULL AND (i.sha256 = u.sha256 OR i.pinout_sha256 = u.sha256)) FOR UPDATE;";
+                    "WHERE c.deleted_utc IS NULL AND (i.sha256 = u.sha256 OR i.pinout_sha256 = u.sha256) AND (" +
+                    "c.owner_key_hash = u.owner_key_hash OR (u.account_id IS NOT NULL AND c.account_id = u.account_id))) FOR UPDATE;";
                 select.Parameters.AddWithValue("@before", uploadedBeforeUtc.UtcDateTime);
 
                 await using MySqlDataReader reader = await select.ExecuteReaderAsync(cancellationToken);
@@ -641,14 +423,13 @@ namespace CRT.Server.Handlers.Collections
                     unused.Add((Convert.ToInt64(reader.GetValue(0)), reader.GetString(1)));
             }
 
-            foreach ((long account, string sha) in unused)
+            foreach ((long id, _) in unused)
             {
                 await using MySqlCommand delete = connection.CreateCommand();
 
                 delete.Transaction = transaction;
-                delete.CommandText = "DELETE FROM collection_uploads WHERE account_id = @account AND sha256 = @sha;";
-                delete.Parameters.AddWithValue("@account", account);
-                delete.Parameters.AddWithValue("@sha", sha);
+                delete.CommandText = "DELETE FROM collection_uploads WHERE id = @id;";
+                delete.Parameters.AddWithValue("@id", id);
                 await delete.ExecuteNonQueryAsync(cancellationToken);
             }
 
@@ -686,7 +467,6 @@ namespace CRT.Server.Handlers.Collections
             command.Parameters.AddWithValue("@oscilloscopes", collection.Oscilloscopes is not { Count: > 0 } oscilloscopes ? DBNull.Value : JsonSerializer.Serialize(oscilloscopes));
             command.Parameters.AddWithValue("@updated", collection.UpdatedUtc.UtcDateTime);
             command.Parameters.AddWithValue("@deleteAt", collection.DeleteAtUtc.UtcDateTime);
-            command.Parameters.AddWithValue("@reminded", collection.RemindedUtc is { } reminded ? reminded.UtcDateTime : DBNull.Value);
         }
 
         private static async Task InsertImagesAsync(MySqlConnection connection, MySqlTransaction transaction, CollectionRecord collection, CancellationToken cancellationToken)
@@ -722,40 +502,28 @@ namespace CRT.Server.Handlers.Collections
             }
         }
 
-        private static async Task<IReadOnlyList<CollectionRecord>> ReadCollectionsAsync(MySqlCommand select, CancellationToken cancellationToken)
-        {
-            var collections = new List<CollectionRecord>();
-
-            await using MySqlDataReader reader = await select.ExecuteReaderAsync(cancellationToken);
-
-            while (await reader.ReadAsync(cancellationToken))
-                collections.Add(MySqlCollectionStore.ReadCollection(reader));
-
-            return collections;
-        }
-
         // CollectionColumns, then the image count.
         private static CollectionRecord ReadCollection(MySqlDataReader reader)
         {
-            string? links = MySqlCollectionStore.Text(reader, 7);
+            string? links = MySqlCollectionStore.Text(reader, 8);
 
             return new CollectionRecord(
                 reader.GetString(0),
-                Convert.ToInt64(reader.GetValue(1)),
-                reader.GetString(2),
+                MySqlCollectionStore.Text(reader, 1),
                 reader.GetString(3),
-                MySqlCollectionStore.Text(reader, 4),
+                reader.GetString(4),
                 MySqlCollectionStore.Text(reader, 5),
                 MySqlCollectionStore.Text(reader, 6),
+                MySqlCollectionStore.Text(reader, 7),
                 links is null ? [] : JsonSerializer.Deserialize<List<string>>(links) ?? [],
-                MySqlCollectionStore.Utc(reader.GetDateTime(8)),
                 MySqlCollectionStore.Utc(reader.GetDateTime(9)),
                 MySqlCollectionStore.Utc(reader.GetDateTime(10)),
-                reader.IsDBNull(11) ? null : MySqlCollectionStore.Utc(reader.GetDateTime(11)),
+                MySqlCollectionStore.Utc(reader.GetDateTime(11)),
                 reader.IsDBNull(12) ? null : MySqlCollectionStore.Utc(reader.GetDateTime(12)),
                 MySqlCollectionStore.Text(reader, 13),
                 [],
                 Convert.ToInt32(reader.GetValue(17)),
+                Connection: MySqlCollectionStore.Text(reader, 2),
                 UnsharedUtc: reader.IsDBNull(14) ? null : MySqlCollectionStore.Utc(reader.GetDateTime(14)),
                 Components: MySqlCollectionStore.Text(reader, 15) is { } components
                     ? JsonSerializer.Deserialize<List<CollectionComponent>>(components) ?? []

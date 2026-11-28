@@ -9,11 +9,11 @@ using Handlers.MaintainerHandling;
 namespace CRT
 {
     // ###########################################################################################
-    // CRT'S ACCOUNT WINDOW (owner requests, 2026-11-25: accounts for everybody - "This user account can then be used for
-    // "Maintainer" tab or this collection thing, but also anyone else can register an account"; "Allow registration both
-    // places ... it should be clear that it gives access to both"). Opened by the account icon in the top right corner of CRT's
-    // window (Main.Account.cs). Until then the only way in was the "Maintainer" tab's sign-in screen, and an account was made
-    // only by the administrator's invitation.
+    // CRT'S ACCOUNT WINDOW - A MAINTAINER'S (2026-11-25). Opened by the "Maintainer" tab's "Sign in" (Main.Account.cs): sign in,
+    // "I forgot my password", "I have an invitation", and signed in "My account". From 2026-11-25 to 2026-11-28 it was opened
+    // by an account icon in the top right corner of CRT's window too, with "Create an account" for everybody - both went
+    // (owner decision, 2026-11-28: "Entirely remove the new "Account" possibility ... This should of course continue to work
+    // as-is for the "Maintainer" tab"); an account is made by the administrator's invitation again.
     //
     // *** THE SESSION STAYS THE MAINTAINER TAB'S. *** The tab holds it (TabMaintainer.Session.cs - remembered, restored at
     // launch, slid as the server slides it, forgotten on a 401) and hands it to the rest of CRT (Main.ShareMaintainerSignIn);
@@ -21,14 +21,18 @@ namespace CRT
     // account" works on the tab's own client and session, and every account the server hands back goes to the tab
     // (AccountHost.AccountChanged), which owns what follows from it. So one session, one remembered file, as before.
     //
-    // *** SIGNED IN, THE WINDOW CLOSES *** - the account icon then shows the sign-in; opened again, "My account". Signing out
-    // closes it too, and the tab signs out (it asks about a table's unsaved changes first, over CRT's window).
+    // *** SIGNED IN, THE WINDOW CLOSES *** - the tab then shows its screens; opened again, "My account". Signing out closes it
+    // too, and the tab signs out (it asks about a table's unsaved changes first, over CRT's window).
     //
-    // FILE MAP - this file (the views, opening, "My account" and the address not confirmed), AccountWindow.SignIn.cs (signing
-    // in, "I forgot my password") and AccountWindow.Register.cs ("Create an account", "I have an invitation").
+    // FILE MAP - this file (the views, opening and "My account"), AccountWindow.SignIn.cs (signing in, "I forgot my password")
+    // and AccountWindow.Invitation.cs ("I have an invitation").
     // ###########################################################################################
     public partial class AccountWindow : Window
     {
+        // Whose an account is, said over the sign-in.
+        public const string WhoseAccount =
+            "For the boards' maintainers. An account is made by an invitation from the administrator - \"I have an invitation\" below.";
+
         private AccountHost? thisHost;
 
         public AccountWindow()
@@ -84,13 +88,12 @@ namespace CRT
         private MyAccountView MyAccountDetail => this.FindControl<MyAccountView>("MyAccountPanel")!;
 
         // -----------------------------------------------------------------------------------
-        // The five views
+        // The four views
         // -----------------------------------------------------------------------------------
 
         internal enum AccountView
         {
             SignIn,
-            Register,
             Forgot,
             Invitation,
             SignedIn
@@ -105,17 +108,11 @@ namespace CRT
             this.ViewShown = view;
 
             this.Panel("SignInFormPanel").IsVisible = view == AccountView.SignIn;
-            this.Panel("RegisterPanel").IsVisible = view == AccountView.Register;
             this.Panel("ForgotPanel").IsVisible = view == AccountView.Forgot;
             this.Panel("InvitationPanel").IsVisible = view == AccountView.Invitation;
             this.Panel("SignedInPanel").IsVisible = view == AccountView.SignedIn;
 
-            this.Title = view switch
-            {
-                AccountView.Register => AccountWording.CreateAccountButton,
-                AccountView.SignedIn => "My account",
-                _ => "Account"
-            };
+            this.Title = view == AccountView.SignedIn ? "My account" : "Account";
 
             this.FocusFirstBox();
         }
@@ -126,7 +123,6 @@ namespace CRT
             string? first = this.ViewShown switch
             {
                 AccountView.SignIn => "EmailTextBox",
-                AccountView.Register => "RegisterNameTextBox",
                 AccountView.Forgot => "ForgotEmailTextBox",
                 AccountView.Invitation => "InvitationCodeTextBox",
                 _ => null
@@ -139,8 +135,8 @@ namespace CRT
         // ###########################################################################################
         // Cancel - back to the sign-in view as it was left. *** A PASSWORD TYPED IN THE VIEW LEFT GOES WITH IT *** (the
         // invitation's rule since 2026-10-04): a password must not sit in a hidden box. The invitation is emptied whole, its
-        // code and message too, so the next "I have an invitation" starts blank; the other views keep the name, the address
-        // and a code typed, should the person come back.
+        // code and message too, so the next "I have an invitation" starts blank; "I forgot my password" keeps the address and a
+        // code typed, should the person come back.
         // ###########################################################################################
         private void OnBackToSignInClick(object? sender, RoutedEventArgs e)
         {
@@ -148,10 +144,6 @@ namespace CRT
             {
                 case AccountView.Invitation:
                     this.ClearInvitation();
-                    break;
-
-                case AccountView.Register:
-                    this.Box("RegisterPasswordTextBox").Text = string.Empty;
                     break;
 
                 case AccountView.Forgot:
@@ -165,14 +157,13 @@ namespace CRT
         private void OnCloseClick(object? sender, RoutedEventArgs e) => this.Close();
 
         // -----------------------------------------------------------------------------------
-        // Signed in: "My account", and the address not confirmed yet
+        // Signed in: "My account"
         // -----------------------------------------------------------------------------------
 
         // ###########################################################################################
         // GET /api/accounts/me, quietly - nobody pressed anything, so no "please wait": the window is usable while it is
-        // asked. Shows the notice for an address not confirmed, and hands the account on (the name or address may have
-        // changed elsewhere). A failure says nothing - "My account" still works on the session held - BUT the server saying
-        // the session is over (a 401) ends it here (OnSessionEnded): with the Maintainer tab off nothing else asks.
+        // asked. Hands the account on (the name or address may have changed elsewhere). A failure says nothing - "My account"
+        // still works on the session held - BUT the server saying the session is over (a 401) ends it here (OnSessionEnded).
         // ###########################################################################################
         private async Task ReadAccountAsync()
         {
@@ -188,9 +179,9 @@ namespace CRT
         }
 
         // ###########################################################################################
-        // *** THE SERVER SAID THE SESSION IS OVER *** (code review, 2026-11-25) - the read above, "Send the mail again" or a
-        // change under "My account". The tab ends it (AccountHost.SessionEnded - its one funnel, which forgets the remembered
-        // sign-in and tells the icon), and the window goes back to the sign-in, saying why. A table on the tab with unsaved
+        // *** THE SERVER SAID THE SESSION IS OVER *** (code review, 2026-11-25) - the read above or a change under "My
+        // account". The tab ends it (AccountHost.SessionEnded - its one funnel, which forgets the remembered sign-in), and the
+        // window goes back to the sign-in, saying why. A table on the tab with unsaved
         // changes keeps the session for them (TabMaintainer.EndSessionTheServerRefused); the window then stays as it is.
         // ###########################################################################################
         private void OnSessionEnded()
@@ -201,69 +192,18 @@ namespace CRT
                 return;
 
             this.MyAccountDetail.Initialize(null, null);
-            this.ShowNotConfirmed(false);
             this.ShowAccountMessage(null, isError: false);
             this.ShowView(AccountView.SignIn);
             this.ShowSignInMessage(TabMaintainer.SessionEndedMessage);
         }
 
-        // Every account the server hands back - "My account"'s changes and the read above: to the tab, which owns the session,
-        // and to the notice.
+        // Every account the server hands back - "My account"'s changes and the read above: to the tab, which owns the session.
         private void OnAccountChanged(AccountAnswer account)
         {
             this.thisHost?.AccountChanged(account);
 
             if (this.thisHost?.SignedIn() is ReviewSession session)
                 this.MyAccountDetail.UseAccount(session);
-
-            this.ShowNotConfirmed(!account.IsVerified);
-        }
-
-        private void ShowNotConfirmed(bool show) => this.Panel("NotConfirmedPanel").IsVisible = show;
-
-        private async void OnSendMailAgainClick(object? sender, RoutedEventArgs e) =>
-            await HandlerGuard.RunAsync(this.SendMailAgainAsync, message => this.ShowAccountMessage(message, isError: true));
-
-        // A new link to the account's own address - or, confirmed meanwhile, the server says so and the notice goes.
-        internal async Task SendMailAgainAsync()
-        {
-            if (this.thisHost?.ClientInUse() is not ReviewApiClient client || this.thisHost.SignedIn() is not ReviewSession session)
-                return;
-
-            Button button = this.FindControl<Button>("SendMailAgainButton")!;
-            button.IsEnabled = false;
-            this.ShowAccountMessage(null, isError: false);
-
-            try
-            {
-                ReviewApiResult<AccountChangeAnswer> result = await ServerWait.CallAsync(
-                    this, MaintainerWaitWording.SendingVerificationAgain, token => client.SendVerificationAgainAsync(session, token));
-
-                if (result.Failure == ReviewApiFailure.TimedOut)
-                {
-                    this.ShowAccountMessage(MaintainerWaitWording.VerificationAgainNoAnswer, isError: false);
-                    return;
-                }
-
-                if (!result.IsOk)
-                {
-                    this.ShowAccountMessage(result.Message, isError: true);
-
-                    if (result.Failure == ReviewApiFailure.NotSignedIn)
-                        this.OnSessionEnded();
-
-                    return;
-                }
-
-                if (result.Value!.Account is AccountAnswer account)
-                    this.OnAccountChanged(account);
-
-                this.ShowAccountMessage(result.Value.Message, isError: false);
-            }
-            finally
-            {
-                button.IsEnabled = true;
-            }
         }
 
         // "Sign out" under "My account": the window closes, then the tab signs out - it asks about a table's unsaved changes

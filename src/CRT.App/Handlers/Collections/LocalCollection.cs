@@ -48,25 +48,26 @@ namespace Handlers.Collections
 
         [JsonPropertyName("sharedContentHash")] public string? SharedContentHash { get; init; }
 
-        // The account it was shared with, and its name then (code review, 2026-11-27) - only that account shares, deletes or
-        // answers it again (CollectionSharing.OtherAccountLine). Null for one shared before CRT kept it.
-        [JsonPropertyName("sharedByAccountId")] public long? SharedByAccountId { get; init; }
-
-        [JsonPropertyName("sharedByName")] public string? SharedByName { get; init; }
+        // ###########################################################################################
+        // *** THE KEY ITS PAGE IS OWNED BY (owner decision, 2026-11-28: "Entirely remove the new "Account" possibility"; asked,
+        // "Anybody, no account"; CollectionRules.IsOwnerKey). *** Made as it is first shared and kept here ALONE - so only this
+        // computer changes, stops or deletes its page; CRT on another computer cannot (owner request, the same day: "It must also
+        // be clear that the collection is then tied to the computer"). Null until it is shared. A collection shared with an
+        // account before then has none, and counts as not shared: "Share" makes a new page. (The account it was shared with, and
+        // the comments read, were kept here until then - left in the file, JsonExtensionData, and read no more.)
+        // ###########################################################################################
+        [JsonPropertyName("ownerKey")] public string? OwnerKey { get; init; }
 
         // When its owner pressed "Stop sharing" (owner decision, 2026-11-27: "Offline, same link back") - its page offline, kept
         // on the server under its link, until "Share" brings it back. Null while it is shared, or never was.
         [JsonPropertyName("sharingStoppedUtc")] public DateTimeOffset? SharingStoppedUtc { get; init; }
 
-        // The newest comment its owner has read in CRT (step 3) - comments newer than it are marked new.
-        [JsonPropertyName("seenCommentId")] public long SeenCommentId { get; init; }
-
         [JsonPropertyName("captures")] public IReadOnlyList<LocalCapture> Captures { get; init; } = [];
 
         [JsonExtensionData] public Dictionary<string, JsonElement>? Unknown { get; init; }
 
-        // It has a page on the server - shown, or offline with its sharing stopped.
-        [JsonIgnore] public bool IsShared => this.ServerId is not null;
+        // It has a page on the server that this computer owns - shown, or offline with its sharing stopped.
+        [JsonIgnore] public bool IsShared => this.ServerId is not null && CollectionRules.IsOwnerKey(this.OwnerKey);
 
         // Its page is up for anybody with the link.
         [JsonIgnore] public bool IsOnline => this.IsShared && this.SharingStoppedUtc is null;

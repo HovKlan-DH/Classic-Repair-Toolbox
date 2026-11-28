@@ -6,10 +6,9 @@ namespace CRT.Server.Handlers.Accounts
     // sits behind it as an untested I/O boundary, and an in-memory fake stands in under test.
     //
     // WHY THIS EXISTS. CLAUDE.md test rule 6 forbids a test that needs a network call, and a
-    // database is one. Without this seam, "registering with an existing address sends the
-    // already-registered mail rather than creating a second account" could not be tested at all -
-    // and that is precisely the logic most worth pinning down, because getting it wrong either
-    // leaks who has an account or lets one person register twice.
+    // database is one. Without this seam, "a wrong password and an unknown address fail alike,
+    // after the same hashing" could not be tested at all - and that is precisely the logic most
+    // worth pinning down, because getting it wrong leaks who has an account.
     //
     // WHAT BELONGS HERE AND WHAT DOES NOT. These methods are deliberately dumb: find a row, insert
     // a row, mark a row consumed. Not one of them decides anything. Every rule - whether a token
@@ -18,7 +17,7 @@ namespace CRT.Server.Handlers.Accounts
     // ends up inside an implementation of this interface, it is a decision no test can reach.
     //
     // NULLABLE RETURNS RATHER THAN EXCEPTIONS. "No account with that address" is the ordinary
-    // case on every registration, not an exceptional one.
+    // case on every password reset asked for, not an exceptional one.
     // ###########################################################################################
     public interface IAccountStore
     {
@@ -37,18 +36,16 @@ namespace CRT.Server.Handlers.Accounts
         // id with no account is simply absent.
         Task<IReadOnlyDictionary<long, AccountRecord>> FindByIdsAsync(IReadOnlyCollection<long> accountIds, CancellationToken cancellationToken = default);
 
-        // Returns the new account's id. The caller has already validated everything; this inserts.
-        Task<long> CreateAccountAsync(NewAccount account, CancellationToken cancellationToken = default);
-
         // ###########################################################################################
         // Whether ANOTHER account WHOSE ADDRESS IS CONFIRMED has this display name, ignoring capitals and the spaces around it
         // (owner request, 2026-11-25: "it needs to be unique for all users"; MySqlAccountStore's query is the rule).
         // `exceptAccountId` is the account being renamed: its own name in other capitals is no clash. Asked before a name is
-        // set - at registration, under "My account" and accepting an invitation - and as an address is confirmed
-        // (AccountFlows.ConfirmAddressAsync). *** ONLY A CONFIRMED ACCOUNT HOLDS A NAME *** (owner, the same day: "I do not
-        // think any address should be revealed"): held by an account just made, a name taken said whether registering had
-        // made one, so whether the address already had an account. Two people taking one new name in the same moment could
-        // both pass, which no index holds against (names set before were never unique, so none could be made).
+        // set - under "My account" and accepting an invitation - and as an address is confirmed (AccountFlows
+        // .ConfirmAddressAsync). *** ONLY A CONFIRMED ACCOUNT HOLDS A NAME *** (owner, 2026-11-25: "I do not think any address
+        // should be revealed"): while anybody could register (server 13.0.0 to 16.1.0), a name held by an account just made said
+        // whether registering had made one. Accounts left unconfirmed from then keep the rule. Two people taking one new name in
+        // the same moment could both pass, which no index holds against (names set before were never unique, so none could be
+        // made).
         // ###########################################################################################
         Task<bool> IsDisplayNameTakenAsync(string displayName, long? exceptAccountId, CancellationToken cancellationToken = default);
 
@@ -144,12 +141,6 @@ namespace CRT.Server.Handlers.Accounts
         // Where a submission goes when no maintainer is assigned to its board, or it changes
         // shared files.
         Task<IReadOnlyList<AccountRecord>> GetAdministratorsAsync(CancellationToken cancellationToken = default);
-
-        // Locks or unlocks an account (AccountLockFlows - the administrator's, from the website).
-        Task SetLockedAsync(long accountId, bool locked, CancellationToken cancellationToken = default);
-
-        // The accounts locked, by name - for the administrator to unlock one.
-        Task<IReadOnlyList<AccountRecord>> ListLockedAccountsAsync(CancellationToken cancellationToken = default);
 
         // -----------------------------------------------------------------------------------
         // Rate limiting and audit.

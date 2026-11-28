@@ -116,7 +116,12 @@ public sealed class CollectionSharingTests
     [Fact]
     public void A_change_since_it_was_shared_is_known_by_what_was_sent()
     {
-        LocalCollection collection = Collection(Capture("U7", "12")) with { ServerId = "k7mq3x9vbn2p", DeleteAtUtc = Now.AddYears(1) };
+        LocalCollection collection = Collection(Capture("U7", "12")) with
+        {
+            OwnerKey = new string('c', CollectionRules.OwnerKeyLength),
+            ServerId = "k7mq3x9vbn2p",
+            DeleteAtUtc = Now.AddYears(1)
+        };
 
         string sent = CollectionSharing.ContentHash(CollectionSharing.RequestOf(collection, Now.AddYears(1)));
         LocalCollection shared = collection with { SharedContentHash = sent };
@@ -125,8 +130,9 @@ public sealed class CollectionSharingTests
         Assert.True(CollectionSharing.HasChangesNotShared(shared with { Description = "Found the bad trace" }));
         Assert.True(CollectionSharing.HasChangesNotShared(shared with { DeleteAtUtc = Now.AddYears(5) }));
 
-        // Never shared: nothing to send a change to.
+        // Never shared: nothing to send a change to - nor shared with an account before 2026-11-28, which no key here owns.
         Assert.False(CollectionSharing.HasChangesNotShared(shared with { ServerId = null, Description = "x" }));
+        Assert.False(CollectionSharing.HasChangesNotShared(shared with { OwnerKey = null, Description = "x" }));
     }
 
     // The link and a line saying what it is, in each format (owner decision, 2026-11-28) - each capture's own link went with the
@@ -150,6 +156,16 @@ public sealed class CollectionSharingTests
         Assert.Equal(
             "No picture - 2 oscilloscope captures of Commodore 64 250407 (PAL), shared with Classic Repair Toolbox: https://classic-repair-toolbox.dk/collections/k7mq3x9vbn2p",
             CollectionSharing.ForumText(shared, CollectionLinkFormat.Plain));
+
+        Assert.Equal(
+            "<a href=\"https://classic-repair-toolbox.dk/collections/k7mq3x9vbn2p\">No picture</a> - 2 oscilloscope captures of Commodore 64 250407 (PAL), shared with Classic Repair Toolbox",
+            CollectionSharing.ForumText(shared, CollectionLinkFormat.Html));
+
+        // The line after an HTML link is HTML too.
+        Assert.EndsWith(
+            "of Amstrad &amp; Schneider CPC 664 (PAL), shared with Classic Repair Toolbox",
+            CollectionSharing.ForumText(shared with { HardwareName = "Amstrad & Schneider", BoardName = "CPC 664" }, CollectionLinkFormat.Html),
+            StringComparison.Ordinal);
     }
 
     // A capture copied into a worklog as a photo (owner decision, 2026-11-27: "A copy of its captures") says where it was taken,
@@ -191,38 +207,11 @@ public sealed class CollectionSharingTests
     public void A_collection_not_shared_has_nothing_to_copy() =>
         Assert.Equal(string.Empty, CollectionSharing.ForumText(Collection(Capture("U7", "12")), CollectionLinkFormat.BbCode));
 
-    // Comments newer than the owner read in CRT mark the collection in the popups' drop-downs (step 3).
-    [Fact]
-    public void A_shared_collection_with_comments_not_read_says_so()
-    {
-        LocalCollection shared = Collection(Capture("U7", "1")) with { ServerId = "k7mq3x9vbn2p", SeenCommentId = 5 };
-
-        Assert.Equal("No picture (1 capture, new comments)", CollectionSharing.LineOf(shared, latestCommentId: 6));
-        Assert.Equal("No picture (1 capture)", CollectionSharing.LineOf(shared, latestCommentId: 5));
-        Assert.False(CollectionSharing.HasNewComments(shared with { ServerId = null }, 6));
-    }
-
     [Fact]
     public void A_collection_is_named_by_its_title_and_listed_with_its_count()
     {
         Assert.Equal("No picture (2 captures)", CollectionSharing.LineOf(Collection(Capture("U7", "1"), Capture("U7", "2"))));
         Assert.Equal("Untitled collection (1 capture)", CollectionSharing.LineOf(Collection(Capture("U7", "1")) with { Title = " " }));
         Assert.Equal("U7 captures, 2026-November-26", CollectionSharing.DefaultTitle("U7", Now));
-    }
-
-    // The server answers "not found" for another account's collection - so with another account signed in, nothing is shared,
-    // deleted or answered: "not found" would delete it here and leave its page up (code review, 2026-11-27).
-    [Fact]
-    public void A_collection_shared_by_another_account_is_left_to_it()
-    {
-        LocalCollection shared = Collection(Capture("U7", "1")) with { ServerId = "k7mq3x9vbn2p", SharedByAccountId = 4, SharedByName = "Anna" };
-
-        Assert.Null(CollectionSharing.OtherAccountLine(shared, signedInAccountId: 4));
-        Assert.Contains("[Anna]", CollectionSharing.OtherAccountLine(shared, signedInAccountId: 5), StringComparison.Ordinal);
-
-        // Nothing says otherwise: shared before CRT kept the account, a session that does not know its own, or not shared.
-        Assert.Null(CollectionSharing.OtherAccountLine(shared with { SharedByAccountId = null }, signedInAccountId: 5));
-        Assert.Null(CollectionSharing.OtherAccountLine(shared, signedInAccountId: 0));
-        Assert.Null(CollectionSharing.OtherAccountLine(shared with { ServerId = null }, signedInAccountId: 5));
     }
 }

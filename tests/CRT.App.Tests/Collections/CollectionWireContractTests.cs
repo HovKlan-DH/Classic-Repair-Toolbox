@@ -53,12 +53,12 @@ public sealed class CollectionWireContractTests
         Assert.Equal(sent.Components[0].Pins, component.Pins);
     }
 
+    // "Stop sharing" and sharing again with nothing changed.
     [Fact]
-    public void A_comment_an_edit_and_a_hide_arrive_as_sent()
+    public void A_sharing_change_arrives_as_sent()
     {
-        Assert.Equal(new CollectionCommentRequest(Sha, "Check R7."), CollectionWireContractTests.Received(new CollectionCommentRequest(Sha, "Check R7.")));
-        Assert.Equal(new CollectionCommentEditRequest("Check R8."), CollectionWireContractTests.Received(new CollectionCommentEditRequest("Check R8.")));
-        Assert.Equal(new CollectionCommentHideRequest(true), CollectionWireContractTests.Received(new CollectionCommentHideRequest(true)));
+        Assert.False(CollectionWireContractTests.Received(new CollectionSharingRequest(false)).Shared);
+        Assert.True(CollectionWireContractTests.Received(new CollectionSharingRequest(true)).Shared);
     }
 
     [Fact]
@@ -71,17 +71,5 @@ public sealed class CollectionWireContractTests
 
         Assert.Equal(["The server does not hold 1 of the captures yet."], refusal.Errors);
         Assert.Equal([Sha], refusal.MissingImages);
-    }
-
-    [Fact]
-    public void The_account_s_collections_and_a_collection_s_comments_are_read_as_written()
-    {
-        var summary = new CollectionSummaryAnswer("k7mq3x9vbn2p", "https://x/collections/k7mq3x9vbn2p", "No picture", "Commodore 64", "250407", "PAL", 3, When, When, When.AddYears(1), 2, 17);
-
-        Assert.Equal(summary, Assert.Single(CollectionWireContractTests.Read(new MyCollectionsAnswer([summary])).Collections));
-
-        var comment = new CollectionCommentAnswer(5, Sha, "Bo", ByOwner: false, ByAdministrator: true, Mine: false, "Check R7.", When, When.AddHours(1), Hidden: true, AuthorLocked: true);
-
-        Assert.Equal(comment, Assert.Single(CollectionWireContractTests.Read(new CollectionCommentsAnswer([comment])).Comments));
     }
 }

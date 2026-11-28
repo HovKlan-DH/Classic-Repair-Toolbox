@@ -10,20 +10,6 @@ namespace CRT.Server.Handlers.Accounts
     // ###########################################################################################
 
     // ###########################################################################################
-    // Registration. Accepted is returned BOTH for a new account and for an address that already
-    // has one - see AccountFlows.RegisterAsync. Only Invalid is distinguishable, because that is
-    // about the input rather than about who exists.
-    // ###########################################################################################
-    public sealed record RegistrationOutcome(bool IsAccepted, IReadOnlyList<string> Failures)
-    {
-        public static RegistrationOutcome Accepted() =>
-            new(true, Array.Empty<string>());
-
-        public static RegistrationOutcome Invalid(IReadOnlyList<string> failures) =>
-            new(false, failures);
-    }
-
-    // ###########################################################################################
     // Redeeming a one-shot token (verification or password reset).
     //
     // These ARE distinguished, unlike login's, because the token is the only subject - none of
@@ -85,12 +71,6 @@ namespace CRT.Server.Handlers.Accounts
     // Request shapes. Plain records rather than anything bound directly from JSON, so the
     // endpoint does the reading and the flow takes values - the thin-rim rule from the csproj.
     // ###########################################################################################
-    public sealed record RegistrationRequest(
-        string? Email,
-        string? Password,
-        string? DisplayName,
-        string? IpAddress);
-
     public sealed record LoginRequest(
         string? Email,
         string? Password,

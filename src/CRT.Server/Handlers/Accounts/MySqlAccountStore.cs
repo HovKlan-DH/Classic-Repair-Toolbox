@@ -114,28 +114,6 @@ namespace CRT.Server.Handlers.Accounts
                 .ToDictionary(account => account.Id);
         }
 
-        public async Task<long> CreateAccountAsync(NewAccount account, CancellationToken cancellationToken = default)
-        {
-            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
-            await using MySqlCommand command = connection.CreateCommand();
-
-            command.CommandText = """
-                INSERT INTO accounts (email, email_normalised, password_hash, display_name, created_utc)
-                VALUES (@email, @normalised, @hash, @displayName, @created);
-                SELECT LAST_INSERT_ID();
-                """;
-
-            command.Parameters.AddWithValue("@email", account.Email);
-            command.Parameters.AddWithValue("@normalised", account.NormalisedEmail);
-            command.Parameters.AddWithValue("@hash", account.PasswordHash);
-            command.Parameters.AddWithValue("@displayName", account.DisplayName);
-            command.Parameters.AddWithValue("@created", account.CreatedUtc.UtcDateTime);
-
-            object? id = await command.ExecuteScalarAsync(cancellationToken);
-
-            return Convert.ToInt64(id, System.Globalization.CultureInfo.InvariantCulture);
-        }
-
         public Task SetPasswordHashAsync(long accountId, string passwordHash, CancellationToken cancellationToken = default)
         {
             return this.ExecuteAsync(
@@ -713,29 +691,6 @@ namespace CRT.Server.Handlers.Accounts
             command.CommandText =
                 $"SELECT {MySqlAccountStore.AccountColumns} FROM accounts ORDER BY display_name, id LIMIT @limit;";
             command.Parameters.AddWithValue("@limit", Math.Clamp(limit, 1, 1000));
-
-            return await MySqlAccountStore.ReadAccountsAsync(command, cancellationToken);
-        }
-
-        public Task SetLockedAsync(long accountId, bool locked, CancellationToken cancellationToken = default)
-        {
-            return this.ExecuteAsync(
-                "UPDATE accounts SET is_locked = @locked WHERE id = @id;",
-                command =>
-                {
-                    command.Parameters.AddWithValue("@locked", locked);
-                    command.Parameters.AddWithValue("@id", accountId);
-                },
-                cancellationToken);
-        }
-
-        public async Task<IReadOnlyList<AccountRecord>> ListLockedAccountsAsync(CancellationToken cancellationToken = default)
-        {
-            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
-            await using MySqlCommand command = connection.CreateCommand();
-
-            command.CommandText =
-                $"SELECT {MySqlAccountStore.AccountColumns} FROM accounts WHERE is_locked = 1 ORDER BY display_name, id;";
 
             return await MySqlAccountStore.ReadAccountsAsync(command, cancellationToken);
         }

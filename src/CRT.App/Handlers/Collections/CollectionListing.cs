@@ -21,7 +21,6 @@ namespace Handlers.Collections
         string Board,
         string Facts,
         string State,
-        bool HasNewComments,
         string? PageUrl,
         string? FirstCaptureSha256,
         bool IsShared = false);
@@ -30,22 +29,20 @@ namespace Handlers.Collections
     {
         // ###########################################################################################
         // Every collection on this computer, the newest made first - each board's together reads less well than "the one I made
-        // yesterday at the top", and the board is said on every row. `latestCommentIdOf`: the newest comment a shared
-        // collection's page shows, by its server id - 0 when not known (Main asks the server for it now and then).
+        // yesterday at the top", and the board is said on every row.
         // ###########################################################################################
-        public static IReadOnlyList<CollectionListItem> ItemsOf(IEnumerable<LocalCollection> collections, Func<string, long> latestCommentIdOf)
+        public static IReadOnlyList<CollectionListItem> ItemsOf(IEnumerable<LocalCollection> collections)
         {
             ArgumentNullException.ThrowIfNull(collections);
-            ArgumentNullException.ThrowIfNull(latestCommentIdOf);
 
             return collections
                 .OrderByDescending(collection => collection.CreatedUtc)
                 .ThenBy(collection => CollectionSharing.NameOf(collection), StringComparer.CurrentCultureIgnoreCase)
-                .Select(collection => CollectionListing.ItemOf(collection, collection.ServerId is { } serverId ? latestCommentIdOf(serverId) : 0))
+                .Select(CollectionListing.ItemOf)
                 .ToList();
         }
 
-        public static CollectionListItem ItemOf(LocalCollection collection, long latestCommentId)
+        public static CollectionListItem ItemOf(LocalCollection collection)
         {
             ArgumentNullException.ThrowIfNull(collection);
 
@@ -55,7 +52,6 @@ namespace Handlers.Collections
                 CollectionListing.BoardOf(collection),
                 $"{CollectionListing.CapturesOf(collection.Captures.Count)} | Made on {CollectionRules.DateText(collection.CreatedUtc)}",
                 CollectionListing.StateOf(collection),
-                CollectionSharing.HasNewComments(collection, latestCommentId),
                 collection.PageUrl,
                 CollectionSharing.InPageOrder(collection.Captures).FirstOrDefault(capture => DataTreeLayout.IsSha256(capture.Sha256))?.Sha256,
                 collection.IsOnline && collection.PageUrl is not null);
@@ -102,23 +98,17 @@ namespace Handlers.Collections
             return state + ".";
         }
 
-        // ###########################################################################################
-        // The words over the list - how many, and how many have comments not read - and what it says with none.
-        // ###########################################################################################
+        // The words over the list - how many - and what it says with none.
         public static string HeadingOf(IReadOnlyCollection<CollectionListItem> items)
         {
             ArgumentNullException.ThrowIfNull(items);
 
-            int withNewComments = items.Count(item => item.HasNewComments);
-
-            string heading = items.Count == 1 ? "1 collection on this computer" : $"{items.Count} collections on this computer";
-
-            return withNewComments == 0 ? heading : $"{heading} - {withNewComments} with new comments";
+            return items.Count == 1 ? "1 collection on this computer" : $"{items.Count} collections on this computer";
         }
 
         public const string Intro =
-            "Your oscilloscope collections. Open one to name it, share it, read its comments or delete it - your oscilloscope " +
-            "does not need to be connected for that.";
+            "Your oscilloscope collections. Open one to name it, share it or delete it - your oscilloscope does not need to be " +
+            "connected for that. A shared page is changed or deleted from this computer only.";
 
         public const string NoneYet =
             "No collections on this computer yet. A collection is made in a component's information window: with your " +

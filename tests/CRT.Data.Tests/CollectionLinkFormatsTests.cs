@@ -14,7 +14,16 @@ namespace CRT.Data.Tests
             Assert.Equal($"[url={Url}]U7, pin 12 - /RAS[/url]", CollectionLinkFormats.Write(CollectionLinkFormat.BbCode, Url, "U7, pin 12 - /RAS"));
             Assert.Equal($"[U7, pin 12 - /RAS]({Url})", CollectionLinkFormats.Write(CollectionLinkFormat.Markdown, Url, "U7, pin 12 - /RAS"));
             Assert.Equal($"U7, pin 12 - /RAS: {Url}", CollectionLinkFormats.Write(CollectionLinkFormat.Plain, Url, "U7, pin 12 - /RAS"));
+            Assert.Equal($"<a href=\"{Url}\">U7, pin 12 - /RAS</a>", CollectionLinkFormats.Write(CollectionLinkFormat.Html, Url, "U7, pin 12 - /RAS"));
         }
+
+        // Owner request, 2026-11-28: "add an option of "HTML" ... embed the link in "<a href>"" - what a title holds stays words, so
+        // a "<" or a quote typed in it can neither end the link nor open a tag.
+        [Fact]
+        public void An_HTML_link_encodes_its_words_and_its_address() =>
+            Assert.Equal(
+                "<a href=\"https://x/collections/k?a=1&amp;b=&quot;2&quot;\">&lt;script&gt; &amp; [C64]</a>",
+                CollectionLinkFormats.Write(CollectionLinkFormat.Html, "https://x/collections/k?a=1&b=\"2\"", "<script> & [C64]"));
 
         // A title typed with "[/url]" in it would end a BBCode link, and a "]" a Markdown link's words.
         [Fact]
@@ -32,6 +41,7 @@ namespace CRT.Data.Tests
         [Theory]
         [InlineData("Markdown", CollectionLinkFormat.Markdown)]
         [InlineData("plain", CollectionLinkFormat.Plain)]
+        [InlineData("Html", CollectionLinkFormat.Html)]
         [InlineData("BbCode", CollectionLinkFormat.BbCode)]
         [InlineData("Reddit", CollectionLinkFormat.BbCode)]
         [InlineData("1", CollectionLinkFormat.BbCode)]
@@ -43,7 +53,7 @@ namespace CRT.Data.Tests
         [Fact]
         public void Every_format_has_a_name_and_says_where_it_works()
         {
-            Assert.Equal(["BBCode", "Markdown", "Plain link"], CollectionLinkFormats.All.Select(CollectionLinkFormats.NameOf));
+            Assert.Equal(["BBCode", "Markdown", "HTML", "Plain link"], CollectionLinkFormats.All.Select(CollectionLinkFormats.NameOf));
             Assert.All(CollectionLinkFormats.All, format => Assert.False(string.IsNullOrWhiteSpace(CollectionLinkFormats.WhereOf(format))));
             Assert.Contains("Lemon64", CollectionLinkFormats.WhereOf(CollectionLinkFormat.BbCode), StringComparison.Ordinal);
             Assert.Contains("Reddit", CollectionLinkFormats.WhereOf(CollectionLinkFormat.Markdown), StringComparison.Ordinal);

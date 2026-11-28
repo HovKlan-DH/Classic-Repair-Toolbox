@@ -100,6 +100,23 @@ namespace CRT.Server.Tests.Fakes
                 account.IsVerified &&
                 string.Equals(account.DisplayName.Trim().ToUpperInvariant(), displayName.Trim().ToUpperInvariant(), StringComparison.Ordinal)));
 
+        // ###########################################################################################
+        // An account with this password, as registering made one before server 17.0.0: unconfirmed, with the verification link
+        // its mail carried - the token returned. For a test of what follows: signing in (ConfirmAddress first), a reset, the
+        // account's own changes.
+        // ###########################################################################################
+        public async Task<string> AddAccountAsync(string email, string password, string displayName, Argon2PasswordHasher hasher, DateTimeOffset now)
+        {
+            long id = await this.CreateAccountAsync(new NewAccount(email, AccountRules.NormaliseEmail(email), await hasher.HashAsync(password), displayName, now));
+            string token = SecureToken.Create();
+
+            await this.CreateTokenAsync(new NewAccountToken(id, TokenPurpose.EmailVerification, SecureToken.Hash(token), now, now + TimeSpan.FromHours(48)));
+
+            return token;
+        }
+
+        // A test's own account, made unconfirmed as an account registered before server 17.0.0 was. Not IAccountStore's: since
+        // registration closed nothing in the service makes an account but an accepted invitation (AcceptInvitationsAsync).
         public Task<long> CreateAccountAsync(NewAccount account, CancellationToken cancellationToken = default)
         {
             long id = this.thisNextAccountId++;
@@ -463,23 +480,6 @@ namespace CRT.Server.Tests.Fakes
 
             return Task.FromResult(admins);
         }
-
-        public Task SetLockedAsync(long accountId, bool locked, CancellationToken cancellationToken = default)
-        {
-            this.Accounts[accountId] = this.Accounts[accountId] with { IsLocked = locked };
-            this.AfterSetLocked?.Invoke();
-            return Task.CompletedTask;
-        }
-
-        // Run once a lock is written - a test cancels its request there, as a browser closed at that moment would.
-        public Action? AfterSetLocked { get; set; }
-
-        public Task<IReadOnlyList<AccountRecord>> ListLockedAccountsAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyList<AccountRecord>>(this.Accounts.Values
-                .Where(account => account.IsLocked)
-                .OrderBy(account => account.DisplayName, StringComparer.Ordinal)
-                .ThenBy(account => account.Id)
-                .ToList());
 
         // ---------------------------------------------------------------------------------------
         // Maintainer invitations (2026-09-27). TokenHash is kept beside each record, as the tokens'

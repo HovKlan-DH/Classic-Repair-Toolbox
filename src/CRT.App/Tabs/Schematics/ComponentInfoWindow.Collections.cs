@@ -16,7 +16,6 @@ namespace CRT
     // collections on this computer, the board shown, the region shown when the board has regions, how to read the oscilloscope's
     // settings back, and how to open a collection's window. Null for none: the row is not shown.
     // ###########################################################################################
-    // `LatestCommentIdOf`: the newest comment a shared collection's page shows, by its server id (step 3) - 0 when not known.
     internal sealed record CollectionContext(
         CollectionStore Store,
         string BoardKey,
@@ -25,7 +24,6 @@ namespace CRT
         string? Region,
         Func<Task<ScopeSettingsReading?>> ReadScopeSettings,
         Action<string> OpenCollection,
-        Func<string, long>? LatestCommentIdOf = null,
         // A collection's captures changed in this popup (its local id) - or, null, only the board's pick: every popup shows it.
         Action<string?>? CollectionChanged = null,
         Func<string, bool>? IsBeingShared = null,
@@ -134,10 +132,7 @@ namespace CRT
 
             var choices = new List<CollectionChoice> { new(null, false, ComponentInfoWindow.NoCollectionChoice) };
 
-            choices.AddRange(collections.Select(collection => new CollectionChoice(
-                collection.LocalId,
-                false,
-                CollectionSharing.LineOf(collection, collection.ServerId is { } serverId ? context.LatestCommentIdOf?.Invoke(serverId) ?? 0 : 0))));
+            choices.AddRange(collections.Select(collection => new CollectionChoice(collection.LocalId, false, CollectionSharing.LineOf(collection))));
             choices.Add(new CollectionChoice(null, true, ComponentInfoWindow.NewCollectionChoice));
 
             CollectionChoice pick = choices.FirstOrDefault(choice => !choice.IsNew && choice.LocalId == picked) ?? choices[0];
@@ -145,7 +140,7 @@ namespace CRT
             this.ShowCollectionButton.IsEnabled = picked is not null;
 
             // *** NEVER UNDER AN OPEN LIST, AND NOTHING DONE FOR CHOICES AS SHOWN (code review, 2026-11-27). *** This runs at every
-            // push of the oscilloscope's state and as the comment check answers: the list open, it was replaced under the pointer
+            // push of the oscilloscope's state: the list open, it was replaced under the pointer
             // and the item clicked was another. It waits for the list to close (OnCollectionDropDownClosed).
             if (this.CollectionComboBox.IsDropDownOpen)
             {

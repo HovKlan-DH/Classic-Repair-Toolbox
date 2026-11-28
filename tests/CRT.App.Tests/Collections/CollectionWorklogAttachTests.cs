@@ -14,6 +14,9 @@ namespace ClassicRepairToolbox.Tests.Collections;
 [Collection("Worklog")]
 public sealed class CollectionWorklogAttachTests : IDisposable
 {
+    // The key a shared collection's page is owned by - shared means shared under one (LocalCollection.IsShared).
+    private static readonly string Key = new('c', CollectionRules.OwnerKeyLength);
+
     private readonly TempWorkspace thisWorkspace = new();
 
     private readonly CollectionStore thisStore;
@@ -77,7 +80,7 @@ public sealed class CollectionWorklogAttachTests : IDisposable
     public void A_shared_collection_s_page_goes_in_as_a_link_of_interest_once()
     {
         (int workbookId, int entryId) = this.Worklog();
-        LocalCollection shared = this.Collection() with { ServerId = "k7mq3x9vbn2p", PageUrl = "https://classic-repair-toolbox.dk/collections/k7mq3x9vbn2p" };
+        LocalCollection shared = this.Collection() with { OwnerKey = Key, ServerId = "k7mq3x9vbn2p", PageUrl = "https://classic-repair-toolbox.dk/collections/k7mq3x9vbn2p" };
 
         Assert.True(CollectionWorklogAttach.ToEntry(workbookId, entryId, shared, sha => this.CapturePath(shared, sha)).Linked);
         CollectionWorklogAttach.ToEntry(workbookId, entryId, shared, sha => this.CapturePath(shared, sha));
@@ -94,6 +97,7 @@ public sealed class CollectionWorklogAttachTests : IDisposable
         (int workbookId, int entryId) = this.Worklog();
         LocalCollection stopped = this.Collection() with
         {
+            OwnerKey = Key,
             ServerId = "k7mq3x9vbn2p",
             PageUrl = "https://classic-repair-toolbox.dk/collections/k7mq3x9vbn2p",
             SharingStoppedUtc = DateTimeOffset.UtcNow
@@ -122,7 +126,7 @@ public sealed class CollectionWorklogAttachTests : IDisposable
     [Fact]
     public void A_new_worklog_gets_the_captures_and_the_link_through_its_editor()
     {
-        LocalCollection shared = this.Collection() with { ServerId = "k7mq3x9vbn2p", PageUrl = "https://x/collections/k7mq3x9vbn2p" };
+        LocalCollection shared = this.Collection() with { OwnerKey = Key, ServerId = "k7mq3x9vbn2p", PageUrl = "https://x/collections/k7mq3x9vbn2p" };
         var attached = new List<string>();
         var linked = new List<(string, string)>();
 

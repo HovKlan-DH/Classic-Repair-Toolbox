@@ -146,9 +146,8 @@ namespace CRT.Server.Tests
             // update" answer reaches the sender - see LegacyContributionEndpoints.
             { "POST", "/api/legacy/contribution", RequestBodyLimits.LegacyContributionBytes },
 
-            // The account web pages' forms (2026-11-25, AccountPageEndpoints): a name, an address, a password or a code,
-            // posted by anybody's browser - smaller than the default on purpose.
-            { "POST", "/account/register", RequestBodyLimits.FormBytes },
+            // The account web pages' forms (2026-11-25, AccountPageEndpoints): an address, a password or a code, posted by
+            // anybody's browser - smaller than the default on purpose.
             { "POST", "/account/forgot-password", RequestBodyLimits.FormBytes },
             { "POST", "/account/reset-password", RequestBodyLimits.FormBytes },
 
@@ -159,21 +158,10 @@ namespace CRT.Server.Tests
             { "PUT", "/api/collections/{id}", RequestBodyLimits.CollectionContentBytes },
             { "PUT", "/api/collections/{id}/sharing", RequestBodyLimits.DefaultBytes },
 
-            // Comments on a collection's captures (step 3): from CRT, a comment's text or a mark - at the default; from the
-            // page, a form with a comment's text, or only its token.
-            { "POST", "/api/collections/{id}/comments", RequestBodyLimits.DefaultBytes },
-            { "PUT", "/api/collections/{id}/comments/{commentId:long}", RequestBodyLimits.DefaultBytes },
-            { "PUT", "/api/collections/{id}/comments/{commentId:long}/hidden", RequestBodyLimits.DefaultBytes },
+            // The administrator's delete on a collection's page: only its token.
             { "POST", "/collections/{id}/delete", RequestBodyLimits.FormBytes },
-            { "POST", "/collections/accounts/{accountId:long}/lock", RequestBodyLimits.FormBytes },
-            { "POST", "/collections/accounts/{accountId:long}/unlock", RequestBodyLimits.FormBytes },
-            { "POST", "/collections/{id}/comments", RequestBodyLimits.CommentFormBytes },
-            { "POST", "/collections/{id}/comments/{commentId:long}/edit", RequestBodyLimits.CommentFormBytes },
-            { "POST", "/collections/{id}/comments/{commentId:long}/delete", RequestBodyLimits.FormBytes },
-            { "POST", "/collections/{id}/comments/{commentId:long}/hide", RequestBodyLimits.FormBytes },
-            { "POST", "/collections/{id}/comments/{commentId:long}/show", RequestBodyLimits.FormBytes },
 
-            // Signing in and out on the website (step 3): an address and a password, or a token.
+            // Signing in and out on the website (step 3) - the administrator's: an address and a password, or a token.
             { "POST", "/account/sign-in", RequestBodyLimits.FormBytes },
             { "POST", "/account/sign-out", RequestBodyLimits.FormBytes },
         };

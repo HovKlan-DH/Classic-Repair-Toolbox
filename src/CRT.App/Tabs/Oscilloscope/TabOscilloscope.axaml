@@ -442,8 +442,7 @@
 				     then have two tabs - one for "Debug" (or name this better if you can) and one for "Collections"";
 				     TabOscilloscope.Collections.cs): "Communication log", what CRT and the oscilloscope said to each other, and
 				     "Collections", every oscilloscope collection on this computer - opened, shared and deleted with no oscilloscope
-				     connected. Drawn as the "Maintainer" tab's screens are (ScreenTab), the badge counting the collections with
-				     comments not read. -->
+				     connected. Drawn as the "Maintainer" tab's screens are (ScreenTab). -->
 				<Grid Grid.Row="2"
 					  RowDefinitions="Auto,*">
 					<Border Grid.Row="0"
@@ -461,17 +460,9 @@
 							<Button x:Name="CollectionsTabButton"
 									Classes="ScreenTab"
 									Click="OnOutputTabClick">
-								<StackPanel Orientation="Horizontal"
-											Spacing="6">
-									<TextBlock Classes="ScreenTabLabel"
-											   Text="Collections"
-											   VerticalAlignment="Center" />
-									<Border x:Name="CollectionsBadge"
-											Classes="ModeBadge Attention"
-											IsVisible="False">
-										<TextBlock x:Name="CollectionsBadgeText" />
-									</Border>
-								</StackPanel>
+								<TextBlock Classes="ScreenTabLabel"
+										   Text="Collections"
+										   VerticalAlignment="Center" />
 							</Button>
 						</WrapPanel>
 					</Border>
@@ -528,17 +519,9 @@
 
 												<StackPanel Grid.Column="2"
 															Spacing="3">
-													<WrapPanel Orientation="Horizontal">
 														<TextBlock Text="{Binding Item.Name}"
 																   FontWeight="SemiBold"
-																   TextWrapping="Wrap"
-																   VerticalAlignment="Center"
-																   Margin="0,0,8,0" />
-														<Border Classes="ModeBadge Attention"
-																IsVisible="{Binding Item.HasNewComments}">
-															<TextBlock Text="New comments" />
-														</Border>
-													</WrapPanel>
+																   TextWrapping="Wrap" />
 													<TextBlock Text="{Binding Item.Board}"
 															   FontSize="12"
 															   TextWrapping="Wrap" />

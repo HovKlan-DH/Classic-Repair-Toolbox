@@ -17,8 +17,7 @@ namespace CRT
     //
     // *** "I FORGOT MY PASSWORD" ANSWERS THE SAME FOR EVERY ADDRESS. *** The server's neutral 202, so this view never tells
     // whether an address has an account - asking for a code shows the same sentence whatever it is. The code is typed into
-    // the same view, as on the account web page: a code mailed some other way (somebody registering this address again) needs
-    // no request first.
+    // the same view, as on the account web page: a code mailed some other way needs no request first.
     //
     // *** RESETTING A PASSWORD IS NOT SIGNING IN. *** The server issues no session for it, so the sign-in view comes back with
     // the address and the new password filled in - one press from signed in, with no session invented behind the person's back.

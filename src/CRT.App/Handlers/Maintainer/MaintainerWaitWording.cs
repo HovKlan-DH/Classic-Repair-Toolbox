@@ -41,11 +41,6 @@ namespace Handlers.MaintainerHandling
 
         public const string AcceptingInvitation = "Creating your account from the invitation...";
 
-        // CRT's account window (2026-11-25, accounts for everybody).
-        public const string CreatingAccount = "Making your account...";
-
-        public const string SendingVerificationAgain = "Mailing a new link to confirm your address...";
-
         // The "Your account" window (2026-10-03).
         public const string SavingName = "Saving your name...";
         public const string SendingEmailCode = "Mailing a code to the new address...";
@@ -179,13 +174,6 @@ namespace Handlers.MaintainerHandling
                 ? WaitWording.AfterTimeout(false, string.Empty, $"your address is still {before}.")
                 : WaitWording.AfterTimeout(true, $"your email address is now {now.Email}.", string.Empty);
         }
-
-        // Making an account (2026-11-25): it was made and mailed, or it was not - nothing to read back without signing in.
-        public static string CreateAccountNoAnswer =>
-            $"The server did not answer within {WaitWording.Limit}. Your account may have been made - look for the mail confirming your address before trying again.";
-
-        public static string VerificationAgainNoAnswer =>
-            $"The server did not answer within {WaitWording.Limit}. A new link may still arrive - wait a few minutes before asking again.";
 
         public static string InvitationNoAnswer =>
             $"The server did not answer within {WaitWording.Limit}. Your account may have been created - try signing in with the address the invitation was sent to and the password you chose - it is filled in - before using the code again.";

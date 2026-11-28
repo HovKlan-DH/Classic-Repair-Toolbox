@@ -176,9 +176,7 @@ namespace CRT.Server.Tests
         [Fact]
         public void Every_mail_with_a_working_link_or_code_is_marked_as_carrying_a_credential()
         {
-            Assert.True(EmailTemplates.Verification("a@example.com", "A", "https://example.com/verify?token=x", 24, "https://example.com/account/forgot-password").CarriesCredential);
             Assert.True(EmailTemplates.PasswordReset("a@example.com", "A", "CODECODECODECODECODE", 1, "https://example.com/account/forgot-password").CarriesCredential);
-            Assert.True(EmailTemplates.AlreadyRegistered("a@example.com", "A", "CODECODECODECODECODE", 1, "https://example.com/account/forgot-password").CarriesCredential);
             Assert.True(EmailTemplates.EmailChangeCode("a@example.com", "A", "CODECODECODECODECODE", 1).CarriesCredential);
             Assert.False(EmailTemplates.PasswordChanged("a@example.com", "A").CarriesCredential);
         }

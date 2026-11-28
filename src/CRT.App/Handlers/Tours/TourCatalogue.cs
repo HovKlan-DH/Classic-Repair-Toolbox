@@ -180,16 +180,15 @@ namespace Handlers.Tours
                         "Each thumbnail is one of the board's schematic images - click it to show it large.\n\n" +
                         "With components selected, the thumbnails holding them get a blue name bar, and the others are dimmed.\n\n" +
                         "Drag the edge of the thumbnail panel to make it wider or narrower - the thumbnails resize to fit."),
-                    // The theme's icon beside the data icon since 2026-11-17 (owner request) - one step for all the corner's icons,
-                    // as they stand together; the account's since 2026-11-25 (accounts for everybody), so the step is 4.1's and
-                    // comes back new to everybody who saw 4.0's.
+                    // The theme's icon beside the data icon since 2026-11-17 (owner request) - one step for both, as they stand
+                    // in the same corner. (An account icon stood beside them from 2026-11-25 to 2026-11-28, the step then 4.1's -
+                    // it went with the accounts for everybody, and the step is 4.0's again.)
                     new TourStep(
-                        Crt41,
-                        ["DataSyncStatusIconBorder", "ThemeToggle", "AccountButton"],
-                        "Newest data, light or dark, and your account",
+                        Crt4,
+                        ["DataSyncStatusIconBorder", "ThemeToggle"],
+                        "Newest data, light or dark",
                         "CRT looks for new or updated board data each time it starts. Click this icon to look again now - it turns while it does, and pointing at it says how it went.\n\n" +
-                        "The icon beside it switches between CRT's light and dark looks, from any tab: the moon to the dark one, the sun back to the light one.\n\n" +
-                        "The person is your account - one account, the same in CRT and on its website. Make one, sign in, or change your display name, address or password there."),
+                        "The icon beside it switches between CRT's light and dark looks, from any tab: the moon to the dark one, the sun back to the light one."),
                 ]),
 
             new TourOfTab(

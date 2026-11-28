@@ -37,15 +37,13 @@ namespace CRT.Server.Tests
 
         private static Argon2PasswordHasher Hasher() => new(SessionAndResetTests.Options());
 
-        // Registers and logs in, returning everything a session test needs.
+        // Makes an account and logs in, returning everything a session test needs.
         private static async Task<(FakeAccountStore Store, FakeEmailSender Mailer, string RefreshToken)> LoggedInAsync()
         {
             var store = new FakeAccountStore();
             var mailer = new FakeEmailSender();
 
-            await AccountFlows.RegisterAsync(
-                new RegistrationRequest("dennis@example.com", SessionAndResetTests.GoodPassword, "Dennis", null),
-                store, mailer, SessionAndResetTests.Hasher(), SessionAndResetTests.Options(), SessionAndResetTests.Now);
+            await store.AddAccountAsync("dennis@example.com", SessionAndResetTests.GoodPassword, "Dennis", SessionAndResetTests.Hasher(), SessionAndResetTests.Now);
 
             // Its link opened - an address not confirmed cannot sign in (since 2026-11-25).
             store.ConfirmAddress("dennis@example.com");
@@ -364,9 +362,7 @@ namespace CRT.Server.Tests
             var store = new FakeAccountStore();
             var mailer = new FakeEmailSender();
 
-            await AccountFlows.RegisterAsync(
-                new RegistrationRequest("dennis@example.com", SessionAndResetTests.GoodPassword, "Dennis", null),
-                store, mailer, SessionAndResetTests.Hasher(), SessionAndResetTests.Options(), SessionAndResetTests.Now);
+            await store.AddAccountAsync("dennis@example.com", SessionAndResetTests.GoodPassword, "Dennis", SessionAndResetTests.Hasher(), SessionAndResetTests.Now);
 
             Assert.False(store.Accounts.Values.Single().IsVerified);
 
@@ -442,18 +438,16 @@ namespace CRT.Server.Tests
         {
             // The twin of the verification-side test. One bug in a WHERE clause must not let a
             // verification link become a password reset - that would be a full account takeover
-            // from a link that is sent to every new registration.
+            // from a link that was sent to every new registration (before server 17.0.0).
             var store = new FakeAccountStore();
             var mailer = new FakeEmailSender();
 
-            await AccountFlows.RegisterAsync(
-                new RegistrationRequest("dennis@example.com", SessionAndResetTests.GoodPassword, "Dennis", null),
-                store, mailer, SessionAndResetTests.Hasher(), SessionAndResetTests.Options(), SessionAndResetTests.Now);
+            string verificationLink = await store.AddAccountAsync("dennis@example.com", SessionAndResetTests.GoodPassword, "Dennis", SessionAndResetTests.Hasher(), SessionAndResetTests.Now);
 
             Assert.Equal(
                 TokenRedemptionOutcome.Invalid,
                 await AccountFlows.CompletePasswordResetAsync(
-                    mailer.ExtractTokenFromLastMail(), "an attacker's password", store, mailer,
+                    verificationLink, "an attacker's password", store, mailer,
                     SessionAndResetTests.Hasher(), SessionAndResetTests.Now + TimeSpan.FromMinutes(1)));
         }
 

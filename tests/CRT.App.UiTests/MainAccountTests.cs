@@ -8,9 +8,9 @@ using Handlers.MaintainerHandling;
 namespace ClassicRepairToolbox.Tests.Ui;
 
 // ###########################################################################################
-// THE ACCOUNT ICON IN CRT'S TOP RIGHT CORNER (2026-11-25, accounts for everybody - Main.Account.cs): a person, a person with a
-// check while signed in, its tooltip saying who; a click opens the account window on the view for where the account stands;
-// and what the window signs in is the Maintainer tab's session - the one the whole of CRT uses (the Feedback tab's address).
+// THE ACCOUNT WINDOW OPENED FROM THE "MAINTAINER" TAB (Main.Account.cs): its "Sign in" opens it on the view for where the
+// account stands, and what the window signs in is the Maintainer tab's session - the one the whole of CRT uses (the Feedback
+// tab's address). The account icon in CRT's top right corner is GONE (owner decision, 2026-11-28: no accounts for everybody).
 //
 // Main is BUILT, never shown, with UserSettings and the workbook folder pointed at temp files - MainMaintainerTabTests' setup.
 // ###########################################################################################
@@ -39,26 +39,22 @@ public sealed class MainAccountTests : IDisposable
         UserSettings.LoadFrom(this.thisWorkspace.WriteFile(Guid.NewGuid().ToString("N") + ".json", "{}"));
     }
 
+    // Owner decision, 2026-11-28: "Entirely remove the new "Account" possibility" - nothing in CRT's window offers an account to
+    // everybody; the Maintainer tab's "Sign in" is the way in.
     [Fact]
-    public void The_account_icon_says_whether_and_as_whom_CRT_is_signed_in()
+    public void CRT_s_window_has_no_account_icon()
     {
         UiTest.Run(() =>
         {
             var window = new CRT.Main();
 
-            Assert.Equal((CRT.Main.SignedOutGlyph, CRT.Main.SignedOutTip), window.AccountIconForTests);
-
-            window.TabMaintainer.UseSessionForTests(MainAccountTests.Session);
-            Assert.Equal((CRT.Main.SignedInGlyph, "Signed in as Anna - your account"), window.AccountIconForTests);
-
-            window.TabMaintainer.UseSessionForTests(null);
-            Assert.Equal((CRT.Main.SignedOutGlyph, CRT.Main.SignedOutTip), window.AccountIconForTests);
+            Assert.Null(window.FindControl<Button>("AccountButton"));
         });
     }
 
-    // A click - or "Sign in" on the Maintainer tab - opens the window on the sign-in, or on "My account" while signed in.
+    // "Sign in" on the Maintainer tab opens the window on the sign-in, or on "My account" while signed in.
     [Fact]
-    public async Task The_icon_and_the_tabs_Sign_in_open_the_account_window_where_the_account_stands()
+    public async Task The_tabs_Sign_in_opens_the_account_window_where_the_account_stands()
     {
         await UiTest.RunAsync(async () =>
         {
@@ -70,8 +66,6 @@ public sealed class MainAccountTests : IDisposable
                 return Task.CompletedTask;
             };
 
-            await window.OpenAccountWindowAsync();
-
             window.TabMaintainer.GetControl<Button>("SignInButton").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
@@ -79,17 +73,16 @@ public sealed class MainAccountTests : IDisposable
             window.TabMaintainer.UseClientForTests(new ReviewApiClient("https://crt.example", new HttpClient(new AnsweringHttpHandler(_ => AnsweringHttpHandler.Refused()))));
             await window.OpenAccountWindowAsync();
 
-            Assert.Equal([AccountWindow.AccountView.SignIn, AccountWindow.AccountView.SignIn, AccountWindow.AccountView.SignedIn], opened);
+            Assert.Equal([AccountWindow.AccountView.SignIn, AccountWindow.AccountView.SignedIn], opened);
         });
     }
 
     // ###########################################################################################
     // *** WHAT THE ACCOUNT WINDOW SIGNS IN IS THE SIGN-IN OF THE WHOLE OF CRT. *** Through Main's own host: the Maintainer tab
-    // holds the session, the icon shows it, and the Feedback tab takes the account's address - with "Enable Maintainer tab"
-    // off, as most people have it.
+    // holds the session, and the Feedback tab takes the account's address - with "Enable Maintainer tab" off too.
     // ###########################################################################################
     [Fact]
-    public async Task A_sign_in_made_in_the_account_window_reaches_the_tab_the_icon_and_the_Feedback_tab()
+    public async Task A_sign_in_made_in_the_account_window_reaches_the_tab_and_the_Feedback_tab()
     {
         await UiTest.RunAsync(async () =>
         {
@@ -104,7 +97,6 @@ public sealed class MainAccountTests : IDisposable
             await window.AccountHostForWindow().UseSignIn(MainAccountTests.Session, client);
 
             Assert.Same(MainAccountTests.Session, window.TabMaintainer.SignedIn);
-            Assert.Equal(CRT.Main.SignedInGlyph, window.AccountIconForTests.Glyph);
             Assert.Equal("anna@example.com", window.TabFeedback.GetControl<TextBox>("EmailTextBox").Text);
         });
     }

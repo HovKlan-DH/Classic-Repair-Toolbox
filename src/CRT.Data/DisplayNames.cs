@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 
 namespace Handlers.DataHandling
 {
@@ -101,9 +102,13 @@ namespace Handlers.DataHandling
         // *** THE WORDS WRITTEN BESIDE A NAME ARE NOBODY'S NAME (code review, 2026-11-27, Security). *** With spaces and "()"
         // allowed, "Dennis (Administrator)" read in CRT's collection window exactly as an administrator's comment, and "You" as
         // the owner's own - the window writes a name and its badge as one line. So no name is "You", and none holds the word
-        // "Administrator" or "Owner" (whole words, capitals aside - "Ownership" is a word of its own).
+        // "Administrator" or "Owner" (whole words, capitals aside - "Ownership" is a word of its own). The comments went on
+        // 2026-11-28 (owner decision: accounts for everybody removed), the rule stays: a maintainer's name is still read in lists
+        // beside "the administrator".
         // ###########################################################################################
         public const string You = "You";
+
+        private static readonly string[] ReservedWords = ["Administrator", "Owner"];
 
         private static string? WordProblem(string name)
         {
@@ -112,8 +117,7 @@ namespace Handlers.DataHandling
 
             foreach (string word in name.Split([' ', '_', '+', '-', '/', '@', '.', '[', ']', '(', ')'], StringSplitOptions.RemoveEmptyEntries))
             {
-                if (string.Equals(word, CollectionComments.AdministratorBadge, StringComparison.OrdinalIgnoreCase) ||
-                    string.Equals(word, CollectionComments.OwnerBadge, StringComparison.OrdinalIgnoreCase))
+                if (DisplayNames.ReservedWords.Contains(word, StringComparer.OrdinalIgnoreCase))
                 {
                     return $"A display name cannot hold the word \"{word}\" - the pages write it beside the name of whoever it is.";
                 }

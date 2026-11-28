@@ -48,10 +48,7 @@ namespace CRT.Server.Tests
             var store = new FakeAccountStore();
             var mailer = new FakeEmailSender();
 
-            await AccountFlows.RegisterAsync(
-                new RegistrationRequest(email, EndpointAuthorizationTests.GoodPassword, "Dennis", null),
-                store, mailer, EndpointAuthorizationTests.Hasher(), EndpointAuthorizationTests.Options(),
-                EndpointAuthorizationTests.Now);
+            await store.AddAccountAsync(email, EndpointAuthorizationTests.GoodPassword, "Dennis", EndpointAuthorizationTests.Hasher(), EndpointAuthorizationTests.Now);
 
             // Its link opened - an address not confirmed cannot sign in (since 2026-11-25).
             store.ConfirmAddress(email);
@@ -88,10 +85,7 @@ namespace CRT.Server.Tests
             (FakeAccountStore store, FakeEmailSender mailer, string dennisToken) =
                 await EndpointAuthorizationTests.SignedInAsync();
 
-            await AccountFlows.RegisterAsync(
-                new RegistrationRequest("other@example.com", EndpointAuthorizationTests.GoodPassword, "Other", null),
-                store, mailer, EndpointAuthorizationTests.Hasher(), EndpointAuthorizationTests.Options(),
-                EndpointAuthorizationTests.Now);
+            await store.AddAccountAsync("other@example.com", EndpointAuthorizationTests.GoodPassword, "Other", EndpointAuthorizationTests.Hasher(), EndpointAuthorizationTests.Now);
 
             store.ConfirmAddress("other@example.com");
 

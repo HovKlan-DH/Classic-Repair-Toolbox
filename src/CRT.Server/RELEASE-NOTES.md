@@ -15,6 +15,19 @@ next push. The sections from 10.4.1 down to 1.0.0 were written from VERSION.md's
 - Plain ASCII punctuation.
 -->
 
+# 17.0.0, 2026-November-28
+--------------------------
+- Nobody can make an account any more - an account is made by an invitation to maintain a board; a maintainer's account works as before
+- The website's sign-in is the administrator's alone, and its "Create an account" page is gone
+- Sharing an oscilloscope collection needs no account - the collection's page belongs to the computer that shared it
+- A collection shared with an account before stays online until its deletion date, but can no longer be changed - sharing it again makes a new page
+- The daily limits on new collections and captures count per internet connection
+- Comments on collections are gone, on the pages and in CRT
+- A capture's "Link" also offers "Copy as HTML", for web pages, blogs and HTML mail
+- The website's "Your collections" is "All collections", the administrator's list of every shared collection
+- Locking an account from the website is gone
+- No more reminder mail before a collection is deleted, and no mail per comment
+
 # 16.1.0, 2026-November-28
 --------------------------
 - A collection's page names the board and the oscilloscope the captures were taken with under its title

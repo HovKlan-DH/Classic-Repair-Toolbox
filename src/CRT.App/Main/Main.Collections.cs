@@ -14,9 +14,9 @@ namespace CRT
     // ###########################################################################################
     // OSCILLOSCOPE COLLECTIONS, WIRED (2026-11-26; CRT.Data's CollectionRules says what one is). Main hands each component info
     // window what it needs to collect captures (CollectionContextForPopup - the board shown, the region shown, the oscilloscope's
-    // settings read back through the "Oscilloscope" tab) and opens a collection's window (OpenCollectionWindow) with the account
-    // CRT is signed in to - the "Maintainer" tab's session, as everything signed in in CRT - and the contribution server, the
-    // test instance's for a pre-release (AppConfig.ContributionServerRootUrl).
+    // settings read back through the "Oscilloscope" tab) and opens a collection's window (OpenCollectionWindow) with the
+    // contribution server, the test instance's for a pre-release (AppConfig.ContributionServerRootUrl). No account: a shared
+    // collection's page is owned by the key kept with it on this computer (owner decision, 2026-11-28; LocalCollection.OwnerKey).
     //
     // A collection's window open stays one: opened again, it comes forward. A change in it refreshes every popup's drop-down,
     // and the "Oscilloscope" tab's "Collections" list (TabOscilloscope.Collections.cs - every collection, opened and deleted
@@ -37,8 +37,6 @@ namespace CRT
                 CollectionStore.TakeOverEarlierFolder(earlier, AppConfig.CollectionsFolder);
         }
 
-        internal void UseCollectionsForTests(CollectionStore store) => this.thisCollections = store;
-
         // For a test: the server a collection's window shares with.
         internal CollectionClient? CollectionClientOverrideForTests { get; set; }
 
@@ -53,8 +51,6 @@ namespace CRT
             if (this.GetCurrentBoardEntry() is not { } board)
                 return null;
 
-            this.AskForNewCommentsSoon();
-
             return new CollectionContext(
                 this.Collections,
                 this.GetCurrentBoardKey(),
@@ -63,7 +59,6 @@ namespace CRT
                 regions.Count > 0 ? this._localRegion : null,
                 this.ReadScopeSettingsForCollectionAsync,
                 this.OpenCollectionWindow,
-                serverId => this.thisLatestCommentIds.GetValueOrDefault(serverId),
                 this.CollectionChangedInPopup,
                 localId => this.thisCollectionWindows.TryGetValue(localId, out CollectionWindow? open) && open.IsVisible && open.IsBusy,
                 () => this.TabOscilloscopeControl.ConnectedOscilloscopeName);
@@ -77,45 +72,6 @@ namespace CRT
 
             if (localId is not null && this.thisCollectionWindows.TryGetValue(localId, out CollectionWindow? open) && open.IsVisible)
                 open.ShowAgain();
-        }
-
-        // ###########################################################################################
-        // NEW COMMENTS (step 3): the server's list of the account's collections says the newest comment each page shows; a
-        // collection whose newest is newer than its owner read is marked in the popups' drop-downs ("new comments"). Asked
-        // as a popup is handed its collections - at most every CommentsAskedEvery, only signed in and with one shared - never
-        // on a timer of its own. The owner is mailed for every comment anyway (CollectionCommentFlows).
-        // ###########################################################################################
-        internal static readonly TimeSpan CommentsAskedEvery = TimeSpan.FromMinutes(5);
-
-        private readonly Dictionary<string, long> thisLatestCommentIds = new(StringComparer.Ordinal);
-
-        private DateTimeOffset thisCommentsAskedUtc = DateTimeOffset.MinValue;
-
-        private void AskForNewCommentsSoon()
-        {
-            if (this.TabMaintainer.SignedIn is not { } session ||
-                DateTimeOffset.UtcNow - this.thisCommentsAskedUtc < Main.CommentsAskedEvery ||
-                !this.Collections.All().Any(collection => collection.IsShared))
-            {
-                return;
-            }
-
-            this.thisCommentsAskedUtc = DateTimeOffset.UtcNow;
-
-            _ = HandlerGuard.RunAsync(
-                async () =>
-                {
-                    IReadOnlyList<CollectionSummaryAnswer>? mine = await this.CollectionClientInUse().ListMineAsync(session.BearerToken);
-
-                    if (mine is null)
-                        return;
-
-                    foreach (CollectionSummaryAnswer shared in mine)
-                        this.thisLatestCommentIds[shared.Id] = shared.LatestCommentId;
-
-                    this.ShowCollectionsAsTheyAre();
-                },
-                _ => { });
         }
 
         // ONE client for the run (code review, 2026-11-27: one made at every ask left an HttpClient and its connections behind).
@@ -132,8 +88,8 @@ namespace CRT
         // ###########################################################################################
         internal void OpenCollectionWindow(string localId) => this.ShowCollectionWindow(localId);
 
-        // "Delete collection" on the "Collections" list: its window, ASKING - the window's delete takes the page down, signs in and
-        // knows another account's collection, so the list has no second copy of it.
+        // "Delete collection" on the "Collections" list: its window, ASKING - the window's delete takes the page down too, so the
+        // list has no second copy of it.
         internal void OpenCollectionWindowToDelete(string localId) => this.ShowCollectionWindow(localId)?.AskToDelete();
 
         // The collection's window shown - the one open brought forward - or null when there is no such collection any more.
@@ -173,8 +129,6 @@ namespace CRT
         private void HandCollectionsToOscilloscopeTab() =>
             this.TabOscilloscopeControl.UseCollections(new OscilloscopeCollectionsHost(
                 () => this.Collections,
-                serverId => this.thisLatestCommentIds.GetValueOrDefault(serverId),
-                this.AskForNewCommentsSoon,
                 this.OpenCollectionWindow,
                 this.OpenCollectionWindowToDelete,
                 link => ExternalTargetLauncher.OpenOrSay(link)));
@@ -183,8 +137,6 @@ namespace CRT
             new(
                 this.Collections,
                 this.CollectionClientInUse(),
-                SignedIn: () => this.TabMaintainer.SignedIn,
-                SignIn: this.OpenAccountWindowAsync,
                 OpenLink: link => ExternalTargetLauncher.OpenOrSay(link),
                 CopyText: async text =>
                 {

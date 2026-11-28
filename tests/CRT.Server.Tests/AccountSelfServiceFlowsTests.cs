@@ -42,7 +42,7 @@ namespace CRT.Server.Tests
 
         private sealed record Setup(FakeAccountStore Store, FakeEmailSender Mailer, string Token, long AccountId);
 
-        // Registers and signs in one account, and empties the mail the registration sent.
+        // Makes and signs in one account, and empties the mail sent meanwhile.
         private static async Task<Setup> SignedInAsync(
             string email = "dennis@example.com",
             FakeAccountStore? store = null,
@@ -52,9 +52,7 @@ namespace CRT.Server.Tests
             store ??= new FakeAccountStore();
             mailer ??= new FakeEmailSender();
 
-            await AccountFlows.RegisterAsync(
-                new RegistrationRequest(email, AccountSelfServiceFlowsTests.GoodPassword, displayName, null),
-                store, mailer, AccountSelfServiceFlowsTests.Hasher(), AccountSelfServiceFlowsTests.Options(), AccountSelfServiceFlowsTests.Now);
+            await store.AddAccountAsync(email, AccountSelfServiceFlowsTests.GoodPassword, displayName, AccountSelfServiceFlowsTests.Hasher(), AccountSelfServiceFlowsTests.Now);
 
             // Its link opened - an address not confirmed cannot sign in (since 2026-11-25).
             store.ConfirmAddress(email);
@@ -64,17 +62,6 @@ namespace CRT.Server.Tests
             mailer.Sent.Clear();
 
             return new Setup(store, mailer, token, store.Accounts.Values.Single(account => account.NormalisedEmail == email.ToLowerInvariant()).Id);
-        }
-
-        // ###########################################################################################
-        // Signed in with an address NOT confirmed: a session from before server 14.0.0, when such an address could still sign
-        // in (AccountFlows.LoginAsync refuses it since 2026-11-25) - "Send the mail again" is for those.
-        // ###########################################################################################
-        private static async Task<Setup> SignedInUnconfirmedAsync()
-        {
-            Setup setup = await AccountSelfServiceFlowsTests.SignedInAsync();
-            setup.Store.Accounts[setup.AccountId] = setup.Store.Accounts[setup.AccountId] with { IsVerified = false };
-            return setup;
         }
 
         private static async Task<string> LogInAsync(FakeAccountStore store, string email, string password = GoodPassword)
@@ -455,10 +442,10 @@ namespace CRT.Server.Tests
             Assert.Equal("dennis@example.com -> bench@example.com", row.Detail);
         }
 
-        // The address-change mails come out of the same per-address budget registration and
-        // "I forgot my password" spend - and a refusal is said, not hidden behind "a code is on its way".
+        // The address-change mails come out of the same per-address budget "I forgot my password"
+        // spends - and a refusal is said, not hidden behind "a code is on its way".
         [Fact]
-        public async Task Asking_for_codes_is_limited_by_the_same_mail_budget_as_registration()
+        public async Task Asking_for_codes_is_limited_by_the_same_mail_budget_as_a_reset()
         {
             Setup setup = await AccountSelfServiceFlowsTests.SignedInAsync();
 
@@ -530,7 +517,7 @@ namespace CRT.Server.Tests
         // ###########################################################################################
         // *** WITH NO PASSWORD CHECK IN FRONT OF IT, THE HASHER IS GUARDED BY THE MAIL BUDGET. ***
         // A password change runs the ~128 MiB Argon2 hasher and sends a mail; spent from the same
-        // per-address budget as registration, it cannot be called without limit.
+        // per-address budget as "forgot my password", it cannot be called without limit.
         // ###########################################################################################
         [Fact]
         public async Task Password_changes_spend_the_mail_budget_before_the_hasher_runs()
@@ -564,69 +551,6 @@ namespace CRT.Server.Tests
             Assert.Equal(["Commodore/C128/310378", "Commodore/C64/250407"], answer.MaintainerOf);
             Assert.Equal("dennis@example.com", answer.Email);
             Assert.Equal("Dennis", answer.DisplayName);
-        }
-
-        // -----------------------------------------------------------------------------------
-        // The verification mail again (2026-11-25) - CRT's "Send the mail again".
-        // -----------------------------------------------------------------------------------
-
-        private static Task<AccountChangeOutcome> SendAgainAsync(Setup setup, string? token = null) =>
-            AccountSelfServiceFlows.SendVerificationAgainAsync(
-                token ?? setup.Token, AccountSelfServiceFlowsTests.Ip, setup.Store, setup.Mailer,
-                AccountSelfServiceFlowsTests.Options(), AccountSelfServiceFlowsTests.Now);
-
-        // A new link to the account's OWN address - nothing names another - which confirms it.
-        [Fact]
-        public async Task An_unconfirmed_address_is_mailed_a_new_link_that_confirms_it()
-        {
-            Setup setup = await AccountSelfServiceFlowsTests.SignedInUnconfirmedAsync();
-
-            AccountChangeOutcome outcome = await AccountSelfServiceFlowsTests.SendAgainAsync(setup);
-
-            Assert.True(outcome.IsDone);
-            Assert.Equal(AccountSelfServiceFlows.VerificationSentMessage("dennis@example.com"), outcome.Answer!.Message);
-
-            EmailMessage mail = Assert.Single(setup.Mailer.Sent);
-            Assert.Equal("dennis@example.com", mail.ToAddress);
-            Assert.StartsWith("Confirm your", mail.Subject, StringComparison.Ordinal);
-            Assert.Contains(setup.Store.Audit, entry => entry.Action == AccountSelfServiceFlows.VerificationResentAction);
-
-            TokenRedemptionOutcome verified = await AccountFlows.VerifyEmailAsync(
-                setup.Mailer.ExtractTokenFromLastMail(), setup.Store, setup.Mailer, AccountSelfServiceFlowsTests.Now);
-
-            Assert.Equal(TokenRedemptionOutcome.Success, verified);
-            Assert.True(AccountSelfServiceFlowsTests.Account(setup).IsVerified);
-        }
-
-        [Fact]
-        public async Task A_confirmed_address_is_told_so_and_nothing_is_sent()
-        {
-            Setup setup = await AccountSelfServiceFlowsTests.SignedInAsync();
-            await setup.Store.SetVerifiedAsync(setup.AccountId);
-
-            AccountChangeOutcome outcome = await AccountSelfServiceFlowsTests.SendAgainAsync(setup);
-
-            Assert.True(outcome.IsDone);
-            Assert.Equal(AccountSelfServiceFlows.AlreadyConfirmedMessage, outcome.Answer!.Message);
-            Assert.True(outcome.Answer.Account!.IsVerified);
-            Assert.Empty(setup.Mailer.Sent);
-        }
-
-        // Every mail spends the same budget (the flows' header) - and without a live session nothing is sent at all.
-        [Fact]
-        public async Task The_mail_again_spends_the_mail_budget_and_needs_a_live_session()
-        {
-            Setup setup = await AccountSelfServiceFlowsTests.SignedInUnconfirmedAsync();
-
-            Assert.True((await AccountSelfServiceFlowsTests.SendAgainAsync(setup, token: "not-a-token")).IsNotSignedIn);
-
-            for (int sent = 0; sent < AuthRateLimitPolicy.MaxMailRequestsPerAddress; sent++)
-                setup.Store.MailRequests.Add((AccountSelfServiceFlowsTests.Ip, AccountSelfServiceFlowsTests.Now - TimeSpan.FromMinutes(5)));
-
-            AccountChangeOutcome limited = await AccountSelfServiceFlowsTests.SendAgainAsync(setup);
-
-            Assert.NotNull(limited.RetryAfter);
-            Assert.Empty(setup.Mailer.Sent);
         }
     }
 }

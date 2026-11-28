@@ -1,44 +1,61 @@
 using System.Security.Cryptography;
+using System.Text;
 using CRT.Server.Handlers.Accounts;
-using CRT.Server.Handlers.Email;
 using Handlers.DataHandling;
 
 namespace CRT.Server.Handlers.Collections
 {
     // ###########################################################################################
     // EVERY DECISION ABOUT A SHARED COLLECTION (2026-11-26; CRT.Data's CollectionRules says what one is, CollectionContract how
-    // CRT sends it). Pure: the stores, the files and the mailer are handed in, so the tests run it on fakes.
+    // CRT sends it). Pure: the stores and the files are handed in, so the tests run it on fakes.
     //
-    //   - ONLY A SIGNED-IN ACCOUNT WITH A CONFIRMED ADDRESS shares (owner decision, 2026-11-25: accounts for everybody). An
-    //     address not confirmed cannot sign in since server 14.0.0; a session from before is told to confirm it.
-    //   - A collection shows only pictures ITS OWN ACCOUNT uploaded - a checksum read off somebody else's page is no way to
-    //     show their picture under another collection.
-    //   - A collection that is not the account's is "not found" - whether it exists is nobody else's business. Only the
-    //     administrator may delete another account's (step 4's moderation).
-    //   - Limits: CollectionRules' per account, the day's counted from the database; the space all captures take
-    //     (CollectionsMaxStoredBytes) and the disk's reserve (MinimumFreeDiskBytes, the blob store's).
+    //   - *** ANYBODY SHARES, NO ACCOUNT (owner decision, 2026-11-28: "Entirely remove the new "Account" possibility ... I do
+    //     not want the possibility for everyone to create an account"; asked, "Anybody, no account"; server 17.0.0). *** A
+    //     collection is OWNED BY ITS KEY - the one CRT made for it as it first shared it, kept with the collection on that
+    //     computer and sent with every request (CollectionRoutes.OwnerKeyHeader). Only its hash is kept (OwnerHashOf). A
+    //     collection another key owns is "not found" - whether it exists is nobody else's business. A collection shared with an
+    //     account before is owned by no key any more: it goes at its date, or by the administrator's delete on the website.
+    //   - A collection shows only pictures ITS OWN KEY uploaded - a checksum read off somebody else's page is no way to show
+    //     their picture under another collection.
+    //   - Limits: CollectionRules' per INTERNET CONNECTION (an IPv4 address, an IPv6 /64), the day's counted from the database;
+    //     the space all captures take (CollectionsMaxStoredBytes) and the disk's reserve (MinimumFreeDiskBytes, the blob store's).
+    //   - The website's only signed-in reader is the ADMINISTRATOR (the web sign-in, WebSessions): it sees every collection, an
+    //     offline one too, and deletes one. Nobody comments (the comments went with the accounts for everybody).
     // ###########################################################################################
     public static class CollectionFlows
     {
         public const string NotSetUp = "Sharing collections is not set up on this server yet.";
 
-        public const string AddressNotConfirmed =
-            "Confirm your address before you share a collection - the link is in the mail sent when the account was made. " +
-            "No mail? \"I forgot my password\" in the account window mails a code that confirms it too.";
+        public const string NoKey =
+            "The request carries no collection key - it comes from a CRT that shares with an account. Update CRT, then share the " +
+            "collection again.";
 
-        public const string NoSuchCollection = "There is no collection of yours with that id.";
+        public const string NoSuchCollection = "There is no collection with that id that this computer shared.";
 
         public const string NoRoom = "The server has no room for more captures right now. Try again in a few days.";
 
         public const string ChecksumMismatch = "The capture's bytes do not match its checksum - it was damaged on the way. Share it again.";
 
+        public const string NotACaptureAddress = "The address does not name a capture by its checksum.";
+
+        public const string OnlyTheAdministratorDeletesHere =
+            "Only the administrator deletes a collection on the website - whoever shared it deletes it in CRT.";
+
+        // When the connection a request came from is not known - counted as one, so an unknown sender is limited as a whole.
+        public const string UnknownConnection = "unknown";
+
         public static readonly TimeSpan UnusedUploadKept = TimeSpan.FromDays(1);
 
+        // The hash a key is kept by - lower-case hex SHA-256 of its characters - or null for no key of the right shape.
+        public static string? OwnerHashOf(string? key) =>
+            CollectionRules.IsOwnerKey(key) ? Convert.ToHexStringLower(SHA256.HashData(Encoding.ASCII.GetBytes(key!))) : null;
+
         // ###########################################################################################
-        // PUT /api/collections/images/<sha256> - one picture.
+        // PUT /api/collections/images/<sha256> - one picture, the key's.
         // ###########################################################################################
         public static async Task<CollectionOutcome> UploadImageAsync(
-            AccountRecord? account,
+            string? ownerKey,
+            string? connection,
             string? sha256,
             byte[] bytes,
             ICollectionStore store,
@@ -47,8 +64,8 @@ namespace CRT.Server.Handlers.Collections
             DateTimeOffset now,
             CancellationToken cancellationToken)
         {
-            if (CollectionFlows.Refuse(account) is { } refused)
-                return refused;
+            if (CollectionFlows.OwnerHashOf(ownerKey) is not { } owner)
+                return CollectionOutcome.Refused(CollectionVerdict.BadRequest, CollectionFlows.NoKey);
 
             if (!DataTreeLayout.IsSha256(sha256))
                 return CollectionOutcome.Refused(CollectionVerdict.BadRequest, CollectionFlows.NotACaptureAddress);
@@ -61,27 +78,29 @@ namespace CRT.Server.Handlers.Collections
             if (!picture.IsCapture)
                 return CollectionOutcome.Refused(CollectionVerdict.BadRequest, picture.Problem ?? CollectionPng.NotAPicture);
 
+            string from = connection ?? CollectionFlows.UnknownConnection;
+
             // The look, the day's count, the bytes and the row under ONE lock (code review, 2026-11-27: looked at first, a sweep
-            // between the look and the lock took the account's old row and the bytes, the upload wrote the bytes and no row - a
-            // file nothing named, never swept - and parallel uploads all passed the day's limit together).
+            // between the look and the lock took the old row and the bytes, the upload wrote the bytes and no row - a file nothing
+            // named, never swept - and parallel uploads all passed the day's limit together).
             await CollectionFlows.PicturesLock.WaitAsync(cancellationToken);
 
             try
             {
                 IReadOnlyDictionary<string, CollectionUploadRecord> earlier =
-                    await store.FindUploadsAsync(account!.Id, [sha256!], cancellationToken);
+                    await store.FindUploadsAsync(owner, [sha256!], cancellationToken);
 
                 bool isNew = !earlier.ContainsKey(sha256!);
 
                 if (isNew &&
-                    await store.CountUploadsSinceAsync(account.Id, now - TimeSpan.FromDays(1), cancellationToken) >= CollectionRules.MaximumUploadsPerDay)
+                    await store.CountUploadsSinceAsync(from, now - TimeSpan.FromDays(1), cancellationToken) >= CollectionRules.MaximumUploadsPerDay)
                 {
                     return CollectionOutcome.Refused(
                         CollectionVerdict.TooMany,
-                        $"An account shares at most {CollectionRules.MaximumUploadsPerDay} captures a day - share the rest tomorrow.");
+                        $"An internet connection shares at most {CollectionRules.MaximumUploadsPerDay} captures a day - share the rest tomorrow.");
                 }
 
-                // Bytes already kept - this account's or another's - take no more room.
+                // Bytes already kept - this key's or another's - take no more room.
                 if (!files.Has(sha256!))
                 {
                     if (!await storage.HasRoomForAsync(bytes.Length, store, cancellationToken))
@@ -94,7 +113,7 @@ namespace CRT.Server.Handlers.Collections
                 // from its LAST send - an old row no collection shows would go at the next sweep, before the collection it was
                 // sent again for is shared.
                 await store.AddUploadAsync(
-                    new CollectionUploadRecord(account.Id, sha256!, bytes.Length, picture.Width, picture.Height, now),
+                    new CollectionUploadRecord(owner, sha256!, bytes.Length, picture.Width, picture.Height, now, from),
                     cancellationToken);
             }
             finally
@@ -108,7 +127,7 @@ namespace CRT.Server.Handlers.Collections
         // ###########################################################################################
         // *** A PICTURE'S BYTES AND ITS UPLOAD ROWS ARE CHANGED UNDER ONE LOCK (code review, 2026-11-27). *** An upload finding
         // the bytes here writes none and adds its row; the sweep, finding no row left, deletes the bytes. Between the sweep's
-        // look and its delete, an upload of the same picture by another account lost its bytes for good - nothing asks for them
+        // look and its delete, an upload of the same picture by another key lost its bytes for good - nothing asks for them
         // again, as its row says it has them. So the lock is held by an upload (its look, write and row), a share (finding its
         // pictures and keeping its collection - CreateAsync, UpdateAsync) and the sweep (letting go of unused uploads and
         // deleting their bytes). The service is one process (the test instance another, with folders of its own), so the lock
@@ -117,38 +136,35 @@ namespace CRT.Server.Handlers.Collections
         private static readonly SemaphoreSlim PicturesLock = new(1, 1);
 
         // ###########################################################################################
-        // POST /api/collections - a collection shared for the first time.
-        // ###########################################################################################
-        // ###########################################################################################
-        // *** A FIRST SHARE SENT AGAIN UNDER ITS KEY CHANGES THE PAGE IT MADE (code review, 2026-11-27; migration 0027). *** CRT
-        // sends the collection's own local id (`clientKey`, the Idempotency-Key header). A share the server kept whose answer
-        // was lost made a second page at the next "Share", the first one's id never reaching CRT - so a collection of the
-        // account still shown under that key is the one changed, as PUT changes it, never a new one. A key of another shape
-        // is no key.
+        // POST /api/collections - a collection shared for the first time, owned by the key it is sent with.
+        //
+        // *** A FIRST SHARE SENT AGAIN UNDER ITS KEY CHANGES THE PAGE IT MADE (code review, 2026-11-27). *** A share the server
+        // kept whose answer was lost made a second page at the next "Share", the first one's id never reaching CRT - so the
+        // key's collection still shown is the one changed, as PUT changes it, never a new one.
         // ###########################################################################################
         public static async Task<CollectionOutcome> CreateAsync(
-            AccountRecord? account,
+            string? ownerKey,
+            string? connection,
             CollectionContentRequest? content,
-            string? clientKey,
             ICollectionStore store,
             CollectionFiles files,
             string siteBaseUrl,
             DateTimeOffset now,
             CancellationToken cancellationToken)
         {
-            if (CollectionFlows.Refuse(account) is { } refused)
-                return refused;
+            if (CollectionFlows.OwnerHashOf(ownerKey) is not { } owner)
+                return CollectionOutcome.Refused(CollectionVerdict.BadRequest, CollectionFlows.NoKey);
 
             IReadOnlyList<string> problems = CollectionRules.ProblemsOf(content, now);
 
             if (problems.Count > 0)
                 return CollectionOutcome.Refused(CollectionVerdict.BadRequest, problems);
 
-            string? key = CollectionRules.IsClientKey(clientKey) ? clientKey : null;
+            string from = connection ?? CollectionFlows.UnknownConnection;
 
-            // The key looked up, the account's limits counted, the pictures found and the collection kept under the pictures'
+            // The key looked up, the connection's limit counted, the pictures found and the collection kept under the pictures'
             // lock, as ONE step: the sweep lets go of an upload no collection shows, and between a look and the write it took one
-            // this collection shows; and looked at before the lock, shares sent at the same moment all passed the limits, and a
+            // this collection shows; and looked at before the lock, shares sent at the same moment all passed the limit, and a
             // first share retried while the first was being written found no page under its key and made a second (code reviews,
             // 2026-11-27).
             await CollectionFlows.PicturesLock.WaitAsync(cancellationToken);
@@ -160,33 +176,23 @@ namespace CRT.Server.Handlers.Collections
                 // One whose time is up is no page to change - a new one is made. The page made before is changed as PUT changes
                 // it, which takes the lock itself - so it is let go of first; the page is there, so a share retried meanwhile
                 // finds it too.
-                if (key is not null && await store.FindLiveByClientKeyAsync(account!.Id, key, cancellationToken) is { } madeBefore &&
-                    !CollectionFlows.IsGone(madeBefore, now))
+                if (await store.FindLiveByOwnerAsync(owner, cancellationToken) is { } madeBefore && !CollectionFlows.IsGone(madeBefore, now))
                 {
                     CollectionFlows.PicturesLock.Release();
                     locked = false;
 
-                    return await CollectionFlows.UpdateAsync(account, madeBefore.Id, content, store, files, siteBaseUrl, now, cancellationToken);
+                    return await CollectionFlows.UpdateAsync(ownerKey, madeBefore.Id, content, store, files, siteBaseUrl, now, cancellationToken);
                 }
 
-                IReadOnlyList<CollectionRecord> live = await store.ListLiveForAccountAsync(account!.Id, cancellationToken);
-
-                if (live.Count >= CollectionRules.MaximumLiveCollectionsPerAccount)
+                if (await store.CountCreatedSinceAsync(from, now - TimeSpan.FromDays(1), cancellationToken) >= CollectionRules.MaximumCollectionsPerDay)
                 {
                     return CollectionOutcome.Refused(
                         CollectionVerdict.TooMany,
-                        $"An account keeps at most {CollectionRules.MaximumLiveCollectionsPerAccount} shared collections - delete one it no longer needs first.");
-                }
-
-                if (await store.CountCreatedSinceAsync(account.Id, now - TimeSpan.FromDays(1), cancellationToken) >= CollectionRules.MaximumCollectionsPerDay)
-                {
-                    return CollectionOutcome.Refused(
-                        CollectionVerdict.TooMany,
-                        $"An account shares at most {CollectionRules.MaximumCollectionsPerDay} new collections a day - share this one tomorrow.");
+                        $"An internet connection shares at most {CollectionRules.MaximumCollectionsPerDay} new collections a day - share this one tomorrow.");
                 }
 
                 (IReadOnlyList<CollectionImageRecord>? images, CollectionOutcome? missing) =
-                    await CollectionFlows.ImagesOfAsync(account.Id, content!, store, files, cancellationToken);
+                    await CollectionFlows.ImagesOfAsync(owner, content!, store, files, cancellationToken);
 
                 if (missing is not null)
                     return missing;
@@ -194,7 +200,7 @@ namespace CRT.Server.Handlers.Collections
                 // An id taken is drawn again - 32^12 ids, so a second draw is all it can ever need; five is plenty.
                 for (int attempt = 0; attempt < 5; attempt++)
                 {
-                    var collection = CollectionFlows.RecordOf(CollectionRules.NewId(), account.Id, content!, images!, now, now) with { ClientKey = key };
+                    var collection = CollectionFlows.RecordOf(CollectionRules.NewId(), owner, content!, images!, now, now) with { Connection = from };
 
                     if (await store.AddAsync(collection, cancellationToken))
                         return CollectionOutcome.Created(CollectionFlows.AnswerOf(collection, siteBaseUrl));
@@ -210,10 +216,10 @@ namespace CRT.Server.Handlers.Collections
         }
 
         // ###########################################################################################
-        // PUT /api/collections/<id> - a collection shared before, as it is now. Its id, owner and creation stay.
+        // PUT /api/collections/<id> - a collection shared before, as it is now. Its id, key, connection and creation stay.
         // ###########################################################################################
         public static async Task<CollectionOutcome> UpdateAsync(
-            AccountRecord? account,
+            string? ownerKey,
             string? id,
             CollectionContentRequest? content,
             ICollectionStore store,
@@ -222,17 +228,10 @@ namespace CRT.Server.Handlers.Collections
             DateTimeOffset now,
             CancellationToken cancellationToken)
         {
-            if (CollectionFlows.Refuse(account) is { } refused)
+            (CollectionRecord? existing, string? owner, CollectionOutcome? refused) = await CollectionFlows.OwnedAsync(ownerKey, id, store, now, cancellationToken);
+
+            if (refused is not null)
                 return refused;
-
-            CollectionRecord? existing = CollectionRules.IsId(id) ? await store.FindAsync(id!, cancellationToken) : null;
-
-            if (existing is null || existing.AccountId != account!.Id)
-                return CollectionOutcome.Refused(CollectionVerdict.NotFound, CollectionFlows.NoSuchCollection);
-
-            // Gone - its time up too, as its page says: CRT then makes a new page, never brings the old one back.
-            if (CollectionFlows.IsGone(existing, now))
-                return CollectionOutcome.Refused(CollectionVerdict.Gone, CollectionFlows.DeletedLine(existing));
 
             IReadOnlyList<string> problems = CollectionRules.ProblemsOf(content, now);
 
@@ -245,13 +244,15 @@ namespace CRT.Server.Handlers.Collections
             try
             {
                 (IReadOnlyList<CollectionImageRecord>? images, CollectionOutcome? missing) =
-                    await CollectionFlows.ImagesOfAsync(account.Id, content!, store, files, cancellationToken);
+                    await CollectionFlows.ImagesOfAsync(owner!, content!, store, files, cancellationToken);
 
                 if (missing is not null)
                     return missing;
 
-                // Its RemindedUtc is what a new date would make of it - the store keeps the one decided before while the date stays.
-                CollectionRecord changed = CollectionFlows.RecordOf(existing.Id, account.Id, content!, images!, existing.CreatedUtc, now);
+                CollectionRecord changed = CollectionFlows.RecordOf(existing!.Id, owner!, content!, images!, existing.CreatedUtc, now) with
+                {
+                    Connection = existing.Connection
+                };
 
                 if (!await store.ReplaceContentAsync(changed, cancellationToken))
                     return CollectionOutcome.Refused(CollectionVerdict.Gone, "That collection was deleted meanwhile.");
@@ -265,9 +266,35 @@ namespace CRT.Server.Handlers.Collections
         }
 
         // ###########################################################################################
-        // DELETE /api/collections/<id> - by its owner, or by the administrator. Deleting what is deleted already is done.
+        // DELETE /api/collections/<id> - by its key. Deleting what is deleted already is done.
         // ###########################################################################################
         public static async Task<CollectionOutcome> DeleteAsync(
+            string? ownerKey,
+            string? id,
+            ICollectionStore store,
+            DateTimeOffset now,
+            CancellationToken cancellationToken)
+        {
+            if (CollectionFlows.OwnerHashOf(ownerKey) is not { } owner)
+                return CollectionOutcome.Refused(CollectionVerdict.BadRequest, CollectionFlows.NoKey);
+
+            CollectionRecord? existing = CollectionRules.IsId(id) ? await store.FindAsync(id!, cancellationToken) : null;
+
+            if (existing is null || !CollectionFlows.IsOwnedBy(existing, owner))
+                return CollectionOutcome.Refused(CollectionVerdict.NotFound, CollectionFlows.NoSuchCollection);
+
+            if (!existing.IsDeleted)
+                await store.MarkDeletedAsync(existing.Id, CollectionDeletedReasons.Owner, now, cancellationToken);
+
+            return CollectionOutcome.Removed();
+        }
+
+        // ###########################################################################################
+        // POST /collections/<id>/delete - THE WEBSITE'S DELETE IS THE ADMINISTRATOR'S ALONE (step 4): whoever shared a collection
+        // deletes it in CRT, whose window would otherwise not know of a delete made elsewhere until its next send. Anybody else
+        // is refused (Forbidden) before anything is looked up. Deleting what is deleted already is done.
+        // ###########################################################################################
+        public static async Task<CollectionOutcome> DeleteFromWebAsync(
             AccountRecord? account,
             string? id,
             ICollectionStore store,
@@ -277,21 +304,16 @@ namespace CRT.Server.Handlers.Collections
             if (account is null)
                 return CollectionOutcome.Refused(CollectionVerdict.Unauthorized, "Sign in first.");
 
+            if (!account.IsAdministrator)
+                return CollectionOutcome.Refused(CollectionVerdict.Forbidden, CollectionFlows.OnlyTheAdministratorDeletesHere);
+
             CollectionRecord? existing = CollectionRules.IsId(id) ? await store.FindAsync(id!, cancellationToken) : null;
 
-            bool isOwner = existing is not null && existing.AccountId == account.Id;
-
-            if (existing is null || (!isOwner && !account.IsAdministrator))
-                return CollectionOutcome.Refused(CollectionVerdict.NotFound, CollectionFlows.NoSuchCollection);
+            if (existing is null)
+                return CollectionOutcome.Refused(CollectionVerdict.NotFound, "There is no collection with that id.");
 
             if (!existing.IsDeleted)
-            {
-                await store.MarkDeletedAsync(
-                    existing.Id,
-                    isOwner ? CollectionDeletedReasons.Owner : CollectionDeletedReasons.Administrator,
-                    now,
-                    cancellationToken);
-            }
+                await store.MarkDeletedAsync(existing.Id, CollectionDeletedReasons.Administrator, now, cancellationToken);
 
             return CollectionOutcome.Removed();
         }
@@ -299,11 +321,11 @@ namespace CRT.Server.Handlers.Collections
         // ###########################################################################################
         // PUT /api/collections/<id>/sharing - ITS OWNER STOPS SHARING IT, OR SHARES IT AGAIN (owner decision, 2026-11-27: "Offline,
         // same link back"; migration 0028). Stopped, its page is offline - its link says it is not shared at the moment, its
-        // captures and comments are kept, its deletion date keeps counting; shared again, it is back under the same link. The
-        // owner's alone, as sharing it is: anybody else's is "not found". Doing what is done already is done.
+        // captures are kept, its deletion date keeps counting; shared again, it is back under the same link. Its key's alone:
+        // any other is "not found". Doing what is done already is done.
         // ###########################################################################################
         public static async Task<CollectionOutcome> SetSharedAsync(
-            AccountRecord? account,
+            string? ownerKey,
             string? id,
             bool shared,
             ICollectionStore store,
@@ -311,18 +333,12 @@ namespace CRT.Server.Handlers.Collections
             DateTimeOffset now,
             CancellationToken cancellationToken)
         {
-            if (CollectionFlows.Refuse(account) is { } refused)
+            (CollectionRecord? existing, _, CollectionOutcome? refused) = await CollectionFlows.OwnedAsync(ownerKey, id, store, now, cancellationToken);
+
+            if (refused is not null)
                 return refused;
 
-            CollectionRecord? existing = CollectionRules.IsId(id) ? await store.FindAsync(id!, cancellationToken) : null;
-
-            if (existing is null || existing.AccountId != account!.Id)
-                return CollectionOutcome.Refused(CollectionVerdict.NotFound, CollectionFlows.NoSuchCollection);
-
-            if (CollectionFlows.IsGone(existing, now))
-                return CollectionOutcome.Refused(CollectionVerdict.Gone, CollectionFlows.DeletedLine(existing));
-
-            if (!await store.SetUnsharedAsync(existing.Id, shared ? null : now, cancellationToken))
+            if (!await store.SetUnsharedAsync(existing!.Id, shared ? null : now, cancellationToken))
                 return CollectionOutcome.Refused(CollectionVerdict.Gone, "That collection was deleted meanwhile.");
 
             return CollectionOutcome.Done(CollectionFlows.AnswerOf(existing, siteBaseUrl));
@@ -331,14 +347,13 @@ namespace CRT.Server.Handlers.Collections
         // ###########################################################################################
         // DELETE /api/collections/<id>/images/<sha256> - ITS OWNER DELETES ONE CAPTURE, AND THE PAGE SHOWS IT NO MORE AT ONCE
         // (owner request, 2026-11-28: "The "Delete image" should also remove it right away from the shared page, and do not touch
-        // the expiry date. This date should only change when the USER does something"; server 16.2.0). Nothing else changes:
+        // the expiry date. This date should only change when the USER does something"; server 16.1.0). Nothing else changes:
         // the deletion date, whether it is shared, its words and its other captures stay as the last share left them - so a
-        // change typed in CRT and not shared yet stays CRT's until "Share". Its comments stay in the database, shown again
-        // should the very capture be shared again, as a share leaving a capture out has always done. The last capture may go
-        // too: the page then says it has none. Deleting what is not there is done. The owner's alone - anybody else's "not found".
+        // change typed in CRT and not shared yet stays CRT's until "Share". The last capture may go too: the page then says it
+        // has none. Deleting what is not there is done. Its key's alone - any other "not found".
         // ###########################################################################################
         public static async Task<CollectionOutcome> RemoveImageAsync(
-            AccountRecord? account,
+            string? ownerKey,
             string? id,
             string? sha256,
             ICollectionStore store,
@@ -346,21 +361,15 @@ namespace CRT.Server.Handlers.Collections
             DateTimeOffset now,
             CancellationToken cancellationToken)
         {
-            if (CollectionFlows.Refuse(account) is { } refused)
+            (CollectionRecord? existing, _, CollectionOutcome? refused) = await CollectionFlows.OwnedAsync(ownerKey, id, store, now, cancellationToken);
+
+            if (refused is not null)
                 return refused;
-
-            CollectionRecord? existing = CollectionRules.IsId(id) ? await store.FindAsync(id!, cancellationToken) : null;
-
-            if (existing is null || existing.AccountId != account!.Id)
-                return CollectionOutcome.Refused(CollectionVerdict.NotFound, CollectionFlows.NoSuchCollection);
-
-            if (CollectionFlows.IsGone(existing, now))
-                return CollectionOutcome.Refused(CollectionVerdict.Gone, CollectionFlows.DeletedLine(existing));
 
             if (!DataTreeLayout.IsSha256(sha256))
                 return CollectionOutcome.Refused(CollectionVerdict.BadRequest, CollectionFlows.NotACaptureAddress);
 
-            if (!await store.RemoveImageAsync(existing.Id, sha256!, now, cancellationToken))
+            if (!await store.RemoveImageAsync(existing!.Id, sha256!, now, cancellationToken))
                 return CollectionOutcome.Refused(CollectionVerdict.Gone, "That collection was deleted meanwhile.");
 
             return CollectionOutcome.Done(CollectionFlows.AnswerOf(
@@ -368,73 +377,14 @@ namespace CRT.Server.Handlers.Collections
                 siteBaseUrl));
         }
 
-        public const string NotACaptureAddress = "The address does not name a capture by its checksum.";
-
-        public const string OnlyTheAdministratorDeletesHere =
-            "Only the administrator deletes a collection on the website - its owner deletes it in CRT.";
-
         // ###########################################################################################
-        // POST /collections/<id>/delete - THE WEBSITE'S DELETE IS THE ADMINISTRATOR'S ALONE (step 4): the owner deletes their own
-        // in CRT, whose window would otherwise not know of a delete made elsewhere until its next send. Anybody else is refused
-        // (Forbidden) before anything is looked up; the administrator's is DeleteAsync's.
-        // ###########################################################################################
-        public static Task<CollectionOutcome> DeleteFromWebAsync(
-            AccountRecord? account,
-            string? id,
-            ICollectionStore store,
-            DateTimeOffset now,
-            CancellationToken cancellationToken)
-        {
-            if (account is null)
-                return Task.FromResult(CollectionOutcome.Refused(CollectionVerdict.Unauthorized, "Sign in first."));
-
-            return account.IsAdministrator
-                ? CollectionFlows.DeleteAsync(account, id, store, now, cancellationToken)
-                : Task.FromResult(CollectionOutcome.Refused(CollectionVerdict.Forbidden, CollectionFlows.OnlyTheAdministratorDeletesHere));
-        }
-
-        // ###########################################################################################
-        // GET /api/collections/mine.
-        // ###########################################################################################
-        public static async Task<CollectionOutcome> ListMineAsync(
-            AccountRecord? account,
-            ICollectionStore store,
-            string siteBaseUrl,
-            DateTimeOffset now,
-            CancellationToken cancellationToken)
-        {
-            if (account is null)
-                return CollectionOutcome.Refused(CollectionVerdict.Unauthorized, "Sign in first.");
-
-            IReadOnlyList<CollectionRecord> live = await store.ListLiveForAccountAsync(account.Id, cancellationToken);
-
-            return CollectionOutcome.Listed(new MyCollectionsAnswer(
-                live.Where(collection => !CollectionFlows.IsGone(collection, now)).Select(collection => new CollectionSummaryAnswer(
-                    collection.Id,
-                    CollectionRules.PageUrl(siteBaseUrl, collection.Id),
-                    collection.Title,
-                    collection.HardwareName,
-                    collection.BoardName,
-                    collection.Region,
-                    collection.ImageCount,
-                    collection.CreatedUtc,
-                    collection.UpdatedUtc,
-                    collection.DeleteAtUtc,
-                    collection.CommentCount,
-                    collection.LatestCommentId)).ToList()));
-        }
-
-        // ###########################################################################################
-        // THE HOURLY SWEEP (CollectionSweeper): collections whose time is up are deleted, their owners mailed 30 days before,
-        // and a picture no collection of its account shows any more goes a day after its upload - a day, so a capture
-        // uploaded for a collection about to be sent is not taken from under it.
+        // THE HOURLY SWEEP (CollectionSweeper): collections whose time is up are deleted, and a picture no collection of its key
+        // shows any more goes a day after its upload - a day, so a capture uploaded for a collection about to be sent is not
+        // taken from under it. (Nobody is reminded of the date any more: with no account there is nobody to mail.)
         // ###########################################################################################
         public static async Task<CollectionSweepResult> SweepAsync(
             ICollectionStore store,
             CollectionFiles files,
-            IAccountStore accounts,
-            IEmailSender mailer,
-            string siteBaseUrl,
             DateTimeOffset now,
             CancellationToken cancellationToken)
         {
@@ -444,31 +394,6 @@ namespace CRT.Server.Handlers.Collections
             {
                 if (await store.MarkDeletedAsync(id, CollectionDeletedReasons.Expired, now, cancellationToken))
                     expired++;
-            }
-
-            int reminded = 0;
-
-            foreach (CollectionRecord collection in await store.ListToRemindAsync(now + CollectionRules.ReminderBefore, cancellationToken))
-            {
-                AccountRecord? owner = await accounts.FindByIdAsync(collection.AccountId, cancellationToken);
-
-                // Marked either way: an owner gone or locked is reminded of nothing, and the next sweep does not ask again. One
-                // kept a month or so is never listed here - it was marked as its date was set (ReminderSettledAt).
-                if (owner is { IsVerified: true, IsLocked: false })
-                {
-                    await mailer.SendAsync(
-                        EmailTemplates.CollectionDeletingSoon(
-                            owner.Email,
-                            owner.DisplayName,
-                            CollectionPages.NameOf(collection),
-                            collection.DeleteAtUtc,
-                            CollectionRules.PageUrl(siteBaseUrl, collection.Id)),
-                        cancellationToken);
-
-                    reminded++;
-                }
-
-                await store.MarkRemindedAsync(collection.Id, now, cancellationToken);
             }
 
             int filesDeleted = 0;
@@ -490,8 +415,8 @@ namespace CRT.Server.Handlers.Collections
                 {
                     try
                     {
-                        // Another account may have an upload of the very same picture - its upload found the bytes here and
-                        // wrote none.
+                        // Another key may have an upload of the very same picture - its upload found the bytes here and wrote
+                        // none.
                         if (await store.IsUploadedAsync(sha256, CancellationToken.None))
                             continue;
 
@@ -509,42 +434,24 @@ namespace CRT.Server.Handlers.Collections
                 CollectionFlows.PicturesLock.Release();
             }
 
-            return new CollectionSweepResult(expired, reminded, filesDeleted, filesNotDeleted.Count == 0 ? null : filesNotDeleted);
+            return new CollectionSweepResult(expired, filesDeleted, filesNotDeleted.Count == 0 ? null : filesNotDeleted);
         }
 
         // ###########################################################################################
-        // A collection as anybody with its link may see it: none for an id of the wrong shape, none at all, or one whose owner's
-        // account is locked or gone - a locked account's collections go offline with it. A deleted one only when asked for (its
-        // page says when it went). The comments ask this; the page asks FindShownToAsync, which is this question with the reader,
-        // and a picture FindShownImageToAsync, the same with one capture's rows read.
-        // ###########################################################################################
-        public static async Task<CollectionRecord?> FindShownAsync(
-            string? id,
-            ICollectionStore store,
-            IAccountStore accounts,
-            DateTimeOffset now,
-            CancellationToken cancellationToken,
-            bool evenIfDeleted = false) =>
-            (await CollectionFlows.FindShownToAsync(id, viewer: null, store, accounts, now, cancellationToken, evenIfDeleted)) is { IsWithheld: false } shown
-                ? shown.Collection
-                : null;
-
-        // ###########################################################################################
-        // THE SAME QUESTION, ASKED BY A READER (code review, 2026-11-27: the administrator's "Every collection" linked a locked
-        // owner's collection, and its page said "There is no such collection" - no "Delete this collection", no hiding its
-        // comments): a collection offline for everybody else is the ADMINISTRATOR'S to see still, said so (`Offline`). `viewer`
-        // is asked only then - a picture's every request needs no session read for a collection shown to all.
+        // A collection as a reader may see it: none for an id of the wrong shape or none at all; a deleted one only when asked for
+        // (its page says when it went). One whose sharing was stopped is the ADMINISTRATOR'S to see still, said so (`Offline`) -
+        // to everybody else only that it is not shared at the moment (`IsWithheld`). `viewer` is asked only then - a picture's
+        // every request needs no session read for a collection shown to all.
         // ###########################################################################################
         public static async Task<ShownCollection?> FindShownToAsync(
             string? id,
             Func<CancellationToken, Task<AccountRecord?>>? viewer,
             ICollectionStore store,
-            IAccountStore accounts,
             DateTimeOffset now,
             CancellationToken cancellationToken,
             bool evenIfDeleted = false) =>
             CollectionRules.IsId(id)
-                ? await CollectionFlows.ShownToAsync(await store.FindAsync(id!, cancellationToken), viewer, accounts, now, cancellationToken, evenIfDeleted)
+                ? await CollectionFlows.ShownToAsync(await store.FindAsync(id!, cancellationToken), viewer, now, cancellationToken, evenIfDeleted)
                 : null;
 
         // ###########################################################################################
@@ -557,7 +464,6 @@ namespace CRT.Server.Handlers.Collections
             string? sha256,
             Func<CancellationToken, Task<AccountRecord?>>? viewer,
             ICollectionStore store,
-            IAccountStore accounts,
             DateTimeOffset now,
             CancellationToken cancellationToken)
         {
@@ -565,7 +471,7 @@ namespace CRT.Server.Handlers.Collections
                 return null;
 
             ShownCollection? shown = await CollectionFlows.ShownToAsync(
-                await store.FindWithImageAsync(id!, sha256!, cancellationToken), viewer, accounts, now, cancellationToken, evenIfDeleted: false);
+                await store.FindWithImageAsync(id!, sha256!, cancellationToken), viewer, now, cancellationToken, evenIfDeleted: false);
 
             // A capture, or a capture's pinout drawing (server 16.0.0).
             return shown is { IsWithheld: false } &&
@@ -577,51 +483,34 @@ namespace CRT.Server.Handlers.Collections
         private static async Task<ShownCollection?> ShownToAsync(
             CollectionRecord? collection,
             Func<CancellationToken, Task<AccountRecord?>>? viewer,
-            IAccountStore accounts,
             DateTimeOffset now,
             CancellationToken cancellationToken,
             bool evenIfDeleted)
         {
-            // Its time up is DELETED from that moment - the hourly sweep only makes it so in the database (code review,
-            // 2026-11-27: for up to an hour the page took comments under "Deleted on" a date passed).
+            // Its time up is DELETED from that moment - the hourly sweep only makes it so in the database.
             if (collection is not null && !collection.IsDeleted && CollectionFlows.IsGone(collection, now))
                 collection = collection with { DeletedUtc = collection.DeleteAtUtc, DeletedReason = CollectionDeletedReasons.Expired };
 
             if (collection is null || (collection.IsDeleted && !evenIfDeleted))
                 return null;
 
-            if (collection.IsDeleted)
+            if (collection.IsDeleted || !collection.IsSharingStopped)
                 return new ShownCollection(collection, CollectionOffline.No);
 
-            AccountRecord? owner = await accounts.FindByIdAsync(collection.AccountId, cancellationToken);
+            // ###########################################################################################
+            // ITS OWNER STOPPED SHARING IT (migration 0028; owner decision, 2026-11-27: "Offline, same link back"): the page to the
+            // administrator, said so - to everybody else only that it is not shared at the moment (`IsWithheld`), never its
+            // captures or words. The reader is asked only here.
+            // ###########################################################################################
+            bool administrator = viewer is not null && await viewer(cancellationToken) is { IsAdministrator: true };
 
-            if (owner is { IsLocked: false })
-            {
-                if (!collection.IsSharingStopped)
-                    return new ShownCollection(collection, CollectionOffline.No);
-
-                // ###########################################################################################
-                // ITS OWNER STOPPED SHARING IT (migration 0028; owner decision, 2026-11-27: "Offline, same link back"): its own
-                // page to its owner and the administrator, said so - to everybody else only that it is not shared at the moment
-                // (`IsWithheld`), never its captures, words or comments. The reader is asked only here.
-                // ###########################################################################################
-                AccountRecord? reader = viewer is null ? null : await viewer(cancellationToken);
-                bool mayRead = reader is not null && (reader.Id == collection.AccountId || reader.IsAdministrator);
-
-                return new ShownCollection(collection, CollectionOffline.SharingStopped, IsWithheld: !mayRead);
-            }
-
-            CollectionOffline offline = owner is null ? CollectionOffline.OwnerGone : CollectionOffline.OwnerLocked;
-
-            return viewer is not null && await viewer(cancellationToken) is { IsAdministrator: true }
-                ? new ShownCollection(collection, offline)
-                : null;
+            return new ShownCollection(collection, CollectionOffline.SharingStopped, IsWithheld: !administrator);
         }
 
         // ###########################################################################################
         // *** A COLLECTION IS GONE ONCE DELETED - OR ONCE ITS TIME IS UP, before the hourly sweep makes it so (code review,
-        // 2026-11-27). *** The one question the page, CRT's comment list and "Share", and every list of collections ask, so none
-        // of them shows for an hour what another says is gone.
+        // 2026-11-27). *** The one question the page, "Share", and the administrator's list ask, so none of them shows for an
+        // hour what another says is gone.
         // ###########################################################################################
         public static bool IsGone(CollectionRecord collection, DateTimeOffset now)
         {
@@ -630,36 +519,46 @@ namespace CRT.Server.Handlers.Collections
             return collection.IsDeleted || collection.DeleteAtUtc <= now;
         }
 
-        // ###########################################################################################
-        // *** WHETHER A REMINDER IS DUE IS DECIDED AS THE DELETION DATE IS SET (code review, 2026-11-27). *** A date set no more
-        // than twice the reminder's notice ahead - "1 month" - is told nothing: it is marked reminded at once (`now`), so the
-        // sweep passes it by. A date further ahead waits for its reminder (null). The store takes this only when the date
-        // CHANGES (ReplaceContentAsync); a share keeping its date keeps what was decided - measured from the last share instead,
-        // a caption changed 45 days before its date lost the reminder, and measured from the making, a year-old collection
-        // given one month more was reminded the day after.
-        // ###########################################################################################
-        public static DateTimeOffset? ReminderSettledAt(DateTimeOffset deleteAtUtc, DateTimeOffset now) =>
-            deleteAtUtc - now > CollectionRules.ReminderBefore * 2 ? null : now;
-
         // "Deleted on 2026-November-26" - said by the routes and the page.
         public static string DeletedLine(CollectionRecord collection) =>
             $"That collection was deleted on {CollectionRules.DateText(collection.DeletedUtc ?? collection.DeleteAtUtc)}.";
 
-        private static CollectionOutcome? Refuse(AccountRecord? account)
+        // Whether `ownerKeyHash` owns the collection - never one owned by no key (shared with an account before server 17.0.0).
+        public static bool IsOwnedBy(CollectionRecord collection, string ownerKeyHash)
         {
-            if (account is null)
-                return CollectionOutcome.Refused(CollectionVerdict.Unauthorized, "Sign in first.");
+            ArgumentNullException.ThrowIfNull(collection);
 
-            if (!account.IsVerified)
-                return CollectionOutcome.Refused(CollectionVerdict.Forbidden, CollectionFlows.AddressNotConfirmed);
+            return collection.OwnerKeyHash is { } kept &&
+                   CryptographicOperations.FixedTimeEquals(Encoding.ASCII.GetBytes(kept), Encoding.ASCII.GetBytes(ownerKeyHash));
+        }
 
-            return null;
+        // The collection `id` that the key owns, still shown - or why not: no key, another key's (or none) "not found", gone.
+        private static async Task<(CollectionRecord? Collection, string? Owner, CollectionOutcome? Refused)> OwnedAsync(
+            string? ownerKey,
+            string? id,
+            ICollectionStore store,
+            DateTimeOffset now,
+            CancellationToken cancellationToken)
+        {
+            if (CollectionFlows.OwnerHashOf(ownerKey) is not { } owner)
+                return (null, null, CollectionOutcome.Refused(CollectionVerdict.BadRequest, CollectionFlows.NoKey));
+
+            CollectionRecord? existing = CollectionRules.IsId(id) ? await store.FindAsync(id!, cancellationToken) : null;
+
+            if (existing is null || !CollectionFlows.IsOwnedBy(existing, owner))
+                return (null, null, CollectionOutcome.Refused(CollectionVerdict.NotFound, CollectionFlows.NoSuchCollection));
+
+            // Gone - its time up too, as its page says: CRT then makes a new page, never brings the old one back.
+            if (CollectionFlows.IsGone(existing, now))
+                return (null, null, CollectionOutcome.Refused(CollectionVerdict.Gone, CollectionFlows.DeletedLine(existing)));
+
+            return (existing, owner, null);
         }
 
         // The captures as kept - each with its picture's size from its upload - or the refusal naming the pictures the server
-        // does not hold for this account (uploaded by it, the bytes still here): the captures, and their pinout drawings.
+        // does not hold for this key (uploaded by it, the bytes still here): the captures, and their pinout drawings.
         private static async Task<(IReadOnlyList<CollectionImageRecord>? Images, CollectionOutcome? Missing)> ImagesOfAsync(
-            long accountId,
+            string owner,
             CollectionContentRequest content,
             ICollectionStore store,
             CollectionFiles files,
@@ -671,7 +570,7 @@ namespace CRT.Server.Handlers.Collections
                 .ToArray();
 
             IReadOnlyDictionary<string, CollectionUploadRecord> uploads =
-                await store.FindUploadsAsync(accountId, wanted, cancellationToken);
+                await store.FindUploadsAsync(owner, wanted, cancellationToken);
 
             List<string> missing = wanted.Where(sha => !uploads.ContainsKey(sha) || !files.Has(sha)).ToList();
 
@@ -691,14 +590,14 @@ namespace CRT.Server.Handlers.Collections
 
         private static CollectionRecord RecordOf(
             string id,
-            long accountId,
+            string owner,
             CollectionContentRequest content,
             IReadOnlyList<CollectionImageRecord> images,
             DateTimeOffset createdUtc,
             DateTimeOffset now) =>
             new(
                 id,
-                accountId,
+                owner,
                 content.HardwareName.Trim(),
                 content.BoardName.Trim(),
                 CollectionFlows.Blank(content.Region),
@@ -708,7 +607,6 @@ namespace CRT.Server.Handlers.Collections
                 createdUtc,
                 now,
                 CollectionFlows.WholeMilliseconds(content.DeleteAtUtc.ToUniversalTime()),
-                RemindedUtc: CollectionFlows.ReminderSettledAt(CollectionFlows.WholeMilliseconds(content.DeleteAtUtc.ToUniversalTime()), now),
                 DeletedUtc: null,
                 DeletedReason: null,
                 images,
@@ -750,8 +648,7 @@ namespace CRT.Server.Handlers.Collections
 
         // ###########################################################################################
         // The deletion date AS THE DATABASE KEEPS IT - whole milliseconds, its DATETIME(3) (code review, 2026-11-27). Kept to
-        // the tick, the same date shared again compared as LATER than the one stored - which MariaDB had rounded - and the
-        // month's reminder was mailed a second time.
+        // the tick, the same date shared again compared as LATER than the one stored - which MariaDB had rounded.
         // ###########################################################################################
         internal static DateTimeOffset WholeMilliseconds(DateTimeOffset when) =>
             new(when.UtcTicks - (when.UtcTicks % TimeSpan.TicksPerMillisecond), TimeSpan.Zero);
@@ -796,8 +693,7 @@ namespace CRT.Server.Handlers.Collections
         IReadOnlyList<string> Errors,
         CollectionAnswer? Answer = null,
         IReadOnlyList<string>? Missing = null,
-        CollectionImageUploadAnswer? Upload = null,
-        MyCollectionsAnswer? Mine = null)
+        CollectionImageUploadAnswer? Upload = null)
     {
         public static CollectionOutcome Refused(CollectionVerdict verdict, string error) => new(verdict, [error]);
 
@@ -812,19 +708,16 @@ namespace CRT.Server.Handlers.Collections
 
         public static CollectionOutcome Uploaded(CollectionImageUploadAnswer upload) => new(CollectionVerdict.Done, [], Upload: upload);
 
-        public static CollectionOutcome Listed(MyCollectionsAnswer mine) => new(CollectionVerdict.Done, [], Mine: mine);
-
         public static CollectionOutcome Removed() => new(CollectionVerdict.Removed, []);
     }
 
     // `FilesNotDeleted`: the pictures nobody shows any more that could not be deleted - named in the log, to delete by hand.
     // Null when every one went.
-    public sealed record CollectionSweepResult(int Expired, int Reminded, int FilesDeleted, IReadOnlyList<string>? FilesNotDeleted = null);
+    public sealed record CollectionSweepResult(int Expired, int FilesDeleted, IReadOnlyList<string>? FilesNotDeleted = null);
 
     // A collection a reader may see, and whether it is offline for everybody else (FindShownToAsync) - only ever so for the
-    // administrator, and for its owner when they stopped sharing it. `IsWithheld`: the reader may learn only that it is not
-    // shared at the moment - nothing of it is shown (its sharing stopped, and the reader neither its owner nor the
-    // administrator).
+    // administrator, its sharing stopped. `IsWithheld`: the reader may learn only that it is not shared at the moment - nothing
+    // of it is shown.
     public sealed record ShownCollection(CollectionRecord Collection, CollectionOffline Offline, bool IsWithheld = false)
     {
         public bool IsOffline => this.Offline != CollectionOffline.No;
@@ -833,8 +726,6 @@ namespace CRT.Server.Handlers.Collections
     public enum CollectionOffline
     {
         No,
-        OwnerLocked,
-        OwnerGone,
 
         // Its owner pressed "Stop sharing" in CRT (migration 0028).
         SharingStopped

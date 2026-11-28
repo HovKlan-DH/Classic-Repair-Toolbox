@@ -5,7 +5,10 @@ using Handlers.DataHandling;
 namespace CRT.Server.Handlers.Accounts
 {
     // ###########################################################################################
-    // Registration, verification, login, refresh, logout and password reset.
+    // Verification, login, refresh, logout and password reset. NO REGISTRATION since server 17.0.0
+    // (owner decision, 2026-11-28: "I do not want the possibility for everyone to create an
+    // account") - an account is made by accepting an invitation (MaintainerInvitationFlows), and
+    // POST /api/accounts/register only says so.
     //
     // THIS IS WHERE THE DECISIONS LIVE. The endpoints in Program.cs read a request into plain
     // values, call one of these, and map the verdict onto a status code - nothing more. Everything
@@ -15,18 +18,18 @@ namespace CRT.Server.Handlers.Accounts
     //
     // FOUR PROPERTIES THIS FILE EXISTS TO GUARANTEE:
     //
-    // 1. REGISTRATION AND RESET NEVER REVEAL WHETHER AN ADDRESS IS REGISTERED. Both answer the
-    //    same neutral result whatever they find. What differs is which mail is sent, which only
-    //    the mailbox owner sees. Any change that makes the RESULT depend on whether the account
-    //    existed reopens enumeration.
+    // 1. A RESET NEVER REVEALS WHETHER AN ADDRESS IS REGISTERED. It answers the same neutral
+    //    result whatever it finds. What differs is whether a mail is sent, which only the mailbox
+    //    owner sees. Any change that makes the RESULT depend on whether the account existed
+    //    reopens enumeration.
     //
-    //    *** AND NO SECOND REQUEST SAYS IT EITHER *** (project owner, 2026-11-25: "I do not think any
-    //    address should be revealed, no"). A registration that made an account was told apart by
-    //    what followed: signing in with the password just given worked only then, and a name asked
-    //    for was then held. So an address not confirmed cannot sign in (LoginAsync, answered as a
-    //    wrong password), and only a confirmed account holds a display name (ConfirmAddressAsync,
-    //    IAccountStore.IsDisplayNameTakenAsync) - a made account looks the same as none until its
-    //    mailbox's owner opens the link.
+    //    *** AND AN ACCOUNT NOT CONFIRMED SAYS NOTHING EITHER *** (project owner, 2026-11-25: "I do
+    //    not think any address should be revealed, no"). While anybody could register (server
+    //    13.0.0 to 16.1.0), an account made was told apart by what followed: signing in with the
+    //    password just given, and a name asked for being held. So an address not confirmed cannot
+    //    sign in (LoginAsync, answered as a wrong password), and only a confirmed account holds a
+    //    display name (ConfirmAddressAsync, IAccountStore.IsDisplayNameTakenAsync) - kept for the
+    //    accounts left unconfirmed from then.
     //
     // 2. A LOGIN THAT FAILS TELLS YOU NOTHING ABOUT WHY. Unknown address, wrong password and
     //    locked account are one answer, given after the same Argon2 work. "No such account" -
@@ -43,199 +46,19 @@ namespace CRT.Server.Handlers.Accounts
     // ###########################################################################################
     public static class AccountFlows
     {
-        // How long a verification link lasts. Long, because someone may register in the evening
-        // and read their mail the next day, and an expired link is a support burden for a
-        // volunteer project with no support desk.
-        // The number is CRT.Data's (AccountWording), so CRT's window and the web pages say what this is.
-        public static readonly TimeSpan VerificationTokenLifetime = TimeSpan.FromHours(AccountWording.VerificationLinkHours);
-
         // Short, because a reset link is a live credential for an account whose owner may not be
         // the person who requested it.
         public static readonly TimeSpan PasswordResetTokenLifetime = TimeSpan.FromHours(AccountWording.PasswordResetCodeHours);
 
         // ###########################################################################################
-        // REGISTER.
+        // VERIFY an email address from the link in the verification mail. Nothing mails such a link since server 17.0.0 - an
+        // account is made by invitation alone (owner decision, 2026-11-28: no accounts for everybody) - but a link mailed
+        // before still answers, and GET /api/accounts/verify stays mapped for it (an installed CRT 4.0's surface).
         //
-        // Answers the same neutral "accepted" for an available address and for one already taken.
-        // The difference is which mail goes out, and that is visible only to the mailbox owner.
-        //
-        // Validation failures DO answer differently, and that is correct: "your password is too
-        // short" is about the input, not about who exists.
-        // ###########################################################################################
-        public static async Task<RegistrationOutcome> RegisterAsync(
-            RegistrationRequest request,
-            IAccountStore store,
-            IEmailSender mailer,
-            Argon2PasswordHasher hasher,
-            ServerOptions options,
-            DateTimeOffset now,
-            CancellationToken cancellationToken = default)
-        {
-            ArgumentNullException.ThrowIfNull(request);
-            ArgumentNullException.ThrowIfNull(store);
-            ArgumentNullException.ThrowIfNull(mailer);
-            ArgumentNullException.ThrowIfNull(hasher);
-            ArgumentNullException.ThrowIfNull(options);
-
-            var failures = new List<string>();
-
-            if (!AccountRules.IsPlausibleEmail(request.Email))
-                failures.Add("That does not look like an email address.");
-
-            failures.AddRange(AccountRules.ValidatePassword(request.Password));
-            failures.AddRange(AccountRules.ValidateDisplayName(request.DisplayName));
-
-            if (failures.Count > 0)
-                return RegistrationOutcome.Invalid(failures);
-
-            // ---- A name another account has ----------------------------------------------------
-            //
-            // Unique since 2026-11-25 (owner request: "it needs to be unique for all users"). SAID, unlike a taken address:
-            // a display name is what others SEE, so saying it is taken tells nobody anything they could not read - and it
-            // is asked whatever the address is, so this answer says nothing of the address - and, held only by confirmed
-            // accounts, no name asked for here is held by the account this makes (property 1 in the header). Before the mail limit,
-            // so a person whose mail budget is spent is still told to pick another name rather than wait for a mail that
-            // never comes; the lookup costs one cheap query.
-            if (await store.IsDisplayNameTakenAsync(request.DisplayName!.Trim(), exceptAccountId: null, cancellationToken))
-                return RegistrationOutcome.Invalid([DisplayNames.Taken]);
-
-            // ---- The mail rate limit -----------------------------------------------------------
-            //
-            // *** BOTH BRANCHES BELOW SEND MAIL, so this endpoint is a way to put a message into
-            // any address somebody names. *** Unlimited, that is an inbox-flooding tool wearing
-            // this service's reputation, and the security model requires a limit here
-            // (NewContributeStrategy.md, threat 6).
-            //
-            // AFTER validation and BEFORE the account lookup: a malformed request costs nothing
-            // and must not spend the budget, while everything past this point either writes a row
-            // or sends a mail.
-            //
-            // A refusal answers the SAME neutral Accepted as everything else here. Saying "you
-            // are being rate limited" would tell a caller their probing was noticed, and - worse -
-            // a distinct answer that appeared only sometimes would itself be a signal to correlate
-            // against the addresses tried.
-            if (!await AccountFlows.MaySendMailAsync(request.IpAddress, store, now, cancellationToken))
-                return RegistrationOutcome.Accepted();
-
-            // IsPlausibleEmail and ValidateDisplayName have already rejected null for both of
-            // these, but the compiler cannot see that across the failure list - hence the
-            // assertions rather than a null-forgiving operator, so a future reordering of the
-            // checks fails loudly here instead of producing a NullReferenceException deeper in.
-            ArgumentException.ThrowIfNullOrWhiteSpace(request.Email);
-            ArgumentException.ThrowIfNullOrWhiteSpace(request.DisplayName);
-            ArgumentException.ThrowIfNullOrEmpty(request.Password);
-
-            string normalised = AccountRules.NormaliseEmail(request.Email);
-
-            // Hashed BEFORE the lookup, and thrown away when the address is taken (security
-            // review, 2026-10-11). Hashing only for a new account made a registration hundreds of
-            // milliseconds slower for an address nobody had - the same answer, told by the clock.
-            string passwordHash = await hasher.HashAsync(request.Password, cancellationToken);
-
-            AccountRecord? existing = await store.FindByNormalisedEmailAsync(normalised, cancellationToken);
-
-            if (existing is not null)
-            {
-                // The address is taken. Send the EXISTING owner a mail carrying a reset link,
-                // using THEIR display name - never the one supplied by whoever is registering,
-                // which would let a stranger put text into somebody else's inbox.
-                string resetToken = SecureToken.Create();
-
-                await store.CreateTokenAsync(
-                    new NewAccountToken(
-                        existing.Id,
-                        TokenPurpose.PasswordReset,
-                        SecureToken.Hash(resetToken),
-                        now,
-                        now + AccountFlows.PasswordResetTokenLifetime),
-                    cancellationToken);
-
-                await mailer.SendAsync(
-                    EmailTemplates.AlreadyRegistered(
-                        existing.Email,
-                        existing.DisplayName,
-                        resetToken,
-                        (int)AccountFlows.PasswordResetTokenLifetime.TotalHours,
-                        AccountPages.Link(AccountPages.BaseUrl(options.PublicApiBaseUrl), "forgot-password")),
-                    cancellationToken);
-
-                await store.WriteAuditAsync(
-                    new AuditEntry(
-                        existing.Id,
-                        existing.Email,
-                        "register.duplicate",
-                        $"account:{existing.Id}",
-                        "Registration attempted with an address that already has an account.",
-                        now),
-                    cancellationToken);
-
-                // The SAME outcome as a successful registration. This is the anti-enumeration
-                // guarantee; changing it reopens the hole.
-                return RegistrationOutcome.Accepted();
-            }
-
-            long accountId = await store.CreateAccountAsync(
-                new NewAccount(
-                    request.Email.Trim(),
-                    normalised,
-                    passwordHash,
-                    request.DisplayName!.Trim(),
-                    now),
-                cancellationToken);
-
-            await AccountFlows.SendVerificationAsync(
-                accountId, request.Email.Trim(), request.DisplayName.Trim(), store, mailer, options, now, cancellationToken);
-
-            await store.WriteAuditAsync(
-                new AuditEntry(accountId, request.Email.Trim(), "register", $"account:{accountId}", null, now),
-                cancellationToken);
-
-            return RegistrationOutcome.Accepted();
-        }
-
-        // ###########################################################################################
-        // THE VERIFICATION MAIL - a new single-use link, at registration and when a signed-in account asks for it again
-        // (AccountSelfServiceFlows.SendVerificationAgainAsync, CRT's "Send the mail again" - since 2026-11-25, when accounts
-        // opened to everybody: the link lasts a day, and a person who missed it had no way to another one). A link mailed
-        // before stays good until it expires: each confirms the same address.
-        // ###########################################################################################
-        internal static async Task SendVerificationAsync(
-            long accountId,
-            string email,
-            string displayName,
-            IAccountStore store,
-            IEmailSender mailer,
-            ServerOptions options,
-            DateTimeOffset now,
-            CancellationToken cancellationToken)
-        {
-            string verificationToken = SecureToken.Create();
-
-            await store.CreateTokenAsync(
-                new NewAccountToken(
-                    accountId,
-                    TokenPurpose.EmailVerification,
-                    SecureToken.Hash(verificationToken),
-                    now,
-                    now + AccountFlows.VerificationTokenLifetime),
-                cancellationToken);
-
-            await mailer.SendAsync(
-                EmailTemplates.Verification(
-                    email,
-                    displayName,
-                    AccountFlows.BuildLink(options, "verify", verificationToken),
-                    (int)AccountFlows.VerificationTokenLifetime.TotalHours,
-                    AccountPages.Link(AccountPages.BaseUrl(options.PublicApiBaseUrl), "forgot-password")),
-                cancellationToken);
-        }
-
-        // ###########################################################################################
-        // VERIFY an email address from the link in the verification mail.
-        //
-        // Unlike registration, this DOES distinguish its failures - an expired link and an invalid
-        // one need different things from the user (ask for a new one; check you copied it all).
-        // Neither answer reveals whether any account exists, because the token is the only subject.
+        // Unlike a reset request, this DOES distinguish its failures - an expired link and an invalid
+        // one need different things from the user ("I forgot my password", whose code confirms the
+        // address too; check you copied it all). Neither answer reveals whether any account exists,
+        // because the token is the only subject.
         // ###########################################################################################
         public static async Task<TokenRedemptionOutcome> VerifyEmailAsync(
             string? token,
@@ -277,11 +100,10 @@ namespace CRT.Server.Handlers.Accounts
         // ###########################################################################################
         // *** AN ADDRESS CONFIRMED - AND ITS DISPLAY NAME CLAIMED *** (project owner, 2026-11-25: "I do not think any address
         // should be revealed, no"). A name is held only by an account whose address is confirmed (IAccountStore
-        // .IsDisplayNameTakenAsync): held from registration on, a name taken told whether the account was made - register an
-        // address under a name nobody has, then try that name again - so whether the address had an account. So two
-        // unconfirmed accounts may ask for one name, and the second to confirm finds it held: it is given the name with "-2"
-        // after it (or the next number free, the whole within DisplayNames' 30) and told so by mail. Rare - two people picking
-        // one new name inside a day - and nothing a stranger can cause to anybody but an account of their own.
+        // .IsDisplayNameTakenAsync): while anybody could register (server 13.0.0 to 16.1.0), a name held from registration on
+        // told whether the account was made - so whether the address had an account. So two accounts left unconfirmed from then
+        // may hold one name, and the second to confirm finds it held: it is given the name with "-2" after it (or the next
+        // number free, the whole within DisplayNames' 30) and told so by mail.
         //
         // Every way an address becomes confirmed comes here: the mailed link (VerifyEmailAsync), a new password set with a
         // mailed code (CompletePasswordResetAsync) and a new address's code (AccountSelfServiceFlows). An accepted invitation
@@ -352,15 +174,14 @@ namespace CRT.Server.Handlers.Accounts
         //   5. Every failure answers the same thing.
         //
         // *** AN UNCONFIRMED ADDRESS CANNOT SIGN IN *** (project owner, 2026-11-25: "I do not think any
-        // address should be revealed, no"). Since accounts opened to everybody, signing in was the
-        // second request that told whether an address had an account: register it with a password of
-        // your own, then sign in with that password - it worked only when no account had existed. Now
-        // the right password of an unconfirmed account is a failure like any other: recorded for the
-        // limiter (a limiter that tripped only for wrong passwords would say the same thing), after the
-        // same Argon2 work, in the same words. An unconfirmed address has its link to open, and
-        // "I forgot my password" - whose code confirms the address too - for a link that expired, so
-        // nothing needs a session first. It was allowed until then for "resend my verification mail",
-        // which needs to know who is asking.
+        // address should be revealed, no"). While accounts were open to everybody (server 13.0.0 to
+        // 16.1.0), signing in was the second request that told whether an address had an account:
+        // register it with a password of your own, then sign in with that password - it worked only
+        // when no account had existed. So the right password of an unconfirmed account is a failure
+        // like any other: recorded for the limiter (a limiter that tripped only for wrong passwords
+        // would say the same thing), after the same Argon2 work, in the same words. An account left
+        // unconfirmed from then confirms its address with "I forgot my password", whose code confirms
+        // it too - nothing needs a session first.
         // ###########################################################################################
         public static async Task<LoginOutcome> LoginAsync(
             LoginRequest request,
@@ -706,9 +527,9 @@ namespace CRT.Server.Handlers.Accounts
         // ###########################################################################################
         // REQUEST A PASSWORD RESET.
         //
-        // Answers the same neutral result whatever it finds, exactly like registration. An unknown
-        // address gets NO MAIL AT ALL - mailing a stranger "you have no account here" turns this
-        // endpoint into a way to send unsolicited mail to any address.
+        // Answers the same neutral result whatever it finds. An unknown address gets NO MAIL AT ALL -
+        // mailing a stranger "you have no account here" turns this endpoint into a way to send
+        // unsolicited mail to any address.
         // ###########################################################################################
         public static async Task RequestPasswordResetAsync(
             string? email,
@@ -726,7 +547,7 @@ namespace CRT.Server.Handlers.Accounts
             if (string.IsNullOrWhiteSpace(email) || !AccountRules.IsPlausibleEmail(email))
                 return;
 
-            // The same mail budget registration spends from, and for the same reason: this sends a
+            // The per-IP mail budget (MaySendMailAsync), the signed-in email change's too: this sends a
             // message to an address the caller names. Returning silently is already this method's
             // answer for every other case, so a refusal is indistinguishable from an unknown
             // address - which is exactly the property the anti-enumeration design wants.
@@ -928,28 +749,6 @@ namespace CRT.Server.Handlers.Accounts
             await store.RecordMailRequestAsync(ipAddress, now, cancellationToken);
 
             return verdict;
-        }
-
-        // ###########################################################################################
-        // Builds a clickable mail link. The base URL is validated as an absolute https URL at
-        // startup, so this only has to join the parts without doubling or dropping the separator.
-        //
-        // *** ONLY "verify" MAY BE PASSED HERE, AND THAT IS NOT A STYLE POINT. *** A link in a mail
-        // is followed by a GET, so the path handed to this method must be one the server actually
-        // maps with MapGet. Exactly one does: "/verify". It was also called with "reset" until
-        // 2026-09-22, producing ".../api/accounts/reset?token=..." - a path nothing is mapped at,
-        // because resetting needs a new PASSWORD and so is POST /reset-password. Every reset mail
-        // ever sent therefore led to a 404, unnoticed from Phase 3 until the project owner clicked
-        // one. Reset mails carry a code to paste instead - into CRT's account window, or the account web page.
-        //
-        // Before adding a second caller, confirm the path is mapped with MapGet in
-        // AccountEndpoints - a wrong value here fails in a mail client days later, not at build.
-        // ###########################################################################################
-        private static string BuildLink(ServerOptions options, string path, string token)
-        {
-            string baseUrl = options.PublicApiBaseUrl!.TrimEnd('/');
-
-            return $"{baseUrl}/accounts/{path}?token={Uri.EscapeDataString(token)}";
         }
     }
 }

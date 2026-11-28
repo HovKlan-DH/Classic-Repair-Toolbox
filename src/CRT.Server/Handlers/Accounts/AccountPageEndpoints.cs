@@ -8,23 +8,22 @@ namespace CRT.Server.Handlers.Accounts
     // ###########################################################################################
     // THE ACCOUNT WEB PAGES ON HTTP (2026-11-25) - a RIM, as AccountEndpoints is: each reads the form into plain values,
     // calls the very flow the JSON route calls (AccountFlows), and hands the verdict to AccountPages, which makes the page.
-    // Not one decision is made here; the anti-enumeration answers, the rate limits and the mail budget are the flows'.
+    // Not one decision is made here but one - the sign-in's administrators alone; the anti-enumeration answers, the rate limits
+    // and the mail budget are the flows'. Nobody makes an account here since server 17.0.0 (owner decision, 2026-11-28).
     //
-    //   GET  /account/                 what an account is, and the ways in
-    //   GET  /account/register         the form          POST: AccountFlows.RegisterAsync
     //   GET  /account/verify?token=    the mailed link   (GET /api/accounts/verify answers the same)
     //   GET  /account/forgot-password  ask for a code and set a password with it
     //   POST /account/forgot-password  AccountFlows.RequestPasswordResetAsync
     //   POST /account/reset-password   AccountFlows.CompletePasswordResetAsync
-    //   GET  /account/sign-in          the website's sign-in (step 3)   POST: AccountFlows.LoginAsync, the cookie kept
+    //   GET  /account/sign-in          the website's sign-in - the administrator's   POST: AccountFlows.LoginAsync, the cookie kept
     //   POST /account/sign-out         the session ended, the cookie forgotten - only with the session's form token
     //
     // *** A FORM ANOTHER WEBSITE POSTS IS REFUSED *** (AccountPages.IsFromAnotherSite, before anything is read) - every form
-    // here and on the collections' pages. A forged form would ride on the visitor's own IP address: making an account and
-    // asking for a code mail somebody, and the mail budget is counted per IP address, so a hidden form on a busy page would
-    // spend every visitor's (code review, 2026-11-25, Security). WHAT ACTS ON A SIGNED-IN PERSON NEEDS THE SESSION'S TOKEN TOO
-    // (WebSessions.Csrf): the sign-out here, and every form of the collections' pages - signing in needs none, as it acts on no
-    // session. Read by hand from the request (ReadFormAsync), never through [FromForm], which would ask for the framework's
+    // here and on the collections' pages. A forged form would ride on the visitor's own IP address: asking for a code mails
+    // somebody, and the mail budget is counted per IP address, so a hidden form on a busy page would spend every visitor's
+    // (code review, 2026-11-25, Security). WHAT ACTS ON A SIGNED-IN PERSON NEEDS THE SESSION'S TOKEN TOO (WebSessions.Csrf): the
+    // sign-out here, and the administrator's delete on a collection's page - signing in needs none, as it acts on no session.
+    // Read by hand from the request (ReadFormAsync), never through [FromForm], which would ask for the framework's
     // anti-forgery middleware.
     //
     // A form's body is small, and limited where it is mapped (RequestBodyLimits.FormBytes). The pages are classified as the
@@ -38,15 +37,12 @@ namespace CRT.Server.Handlers.Accounts
 
             RouteGroupBuilder pages = app.MapGroup(AccountPages.Path);
 
-            pages.MapGet("/", AccountPageEndpoints.Landing);
-            pages.MapGet("/register", AccountPageEndpoints.RegisterForm);
-            pages.MapPost("/register", AccountPageEndpoints.RegisterAsync).WithBodyLimit(RequestBodyLimits.FormBytes);
             pages.MapGet("/verify", AccountPageEndpoints.VerifyAsync);
             pages.MapGet("/forgot-password", AccountPageEndpoints.ForgotPasswordForm);
             pages.MapPost("/forgot-password", AccountPageEndpoints.ForgotPasswordAsync).WithBodyLimit(RequestBodyLimits.FormBytes);
             pages.MapPost("/reset-password", AccountPageEndpoints.ResetPasswordAsync).WithBodyLimit(RequestBodyLimits.FormBytes);
 
-            // Signed in on the website, to comment on shared collections (step 3, 2026-11-26; WebSessions).
+            // Signed in on the website - the administrator, for every shared collection (WebSessions).
             pages.MapGet("/sign-in", AccountPageEndpoints.SignInForm);
             pages.MapPost("/sign-in", AccountPageEndpoints.SignInAsync).WithBodyLimit(RequestBodyLimits.FormBytes);
             pages.MapPost("/sign-out", AccountPageEndpoints.SignOutAsync).WithBodyLimit(RequestBodyLimits.FormBytes);
@@ -61,7 +57,9 @@ namespace CRT.Server.Handlers.Accounts
 
         // ###########################################################################################
         // POST /account/sign-in - AccountFlows.LoginAsync, the very sign-in CRT's is, its session kept in the browser's cookie;
-        // then back to the collection's page it came from, or "You are signed in". A refusal says no reason (AccountFlows).
+        // then back to the page it came from, or "You are signed in". A wrong address or password says no reason (AccountFlows).
+        // *** THE ADMINISTRATOR'S ALONE (owner decision, 2026-11-28): *** right ones of any other account are refused in words,
+        // and the session the sign-in made is ended at once - no cookie is ever written for it.
         // ###########################################################################################
         private static async Task<IResult> SignInAsync(
             HttpContext context,
@@ -92,6 +90,16 @@ namespace CRT.Server.Handlers.Accounts
                     context,
                     AccountPages.SignIn(baseUrl, email, returnTo, [outcome.IsRateLimited ? AccountPages.SignInSlowDown : AccountPages.SignInRefused]),
                     outcome.IsRateLimited ? StatusCodes.Status429TooManyRequests : StatusCodes.Status401Unauthorized);
+            }
+
+            if (!outcome.Account.IsAdministrator)
+            {
+                await AccountFlows.LogoutAsync(outcome.Session.RefreshToken, store, DateTimeOffset.UtcNow, CancellationToken.None);
+
+                return AccountPageEndpoints.Page(
+                    context,
+                    AccountPages.SignIn(baseUrl, email, returnTo, [AccountPages.SignInAdministratorsOnly]),
+                    StatusCodes.Status403Forbidden);
             }
 
             // A form from another site never gets this far (RefuseFromAnotherSite).
@@ -175,47 +183,6 @@ namespace CRT.Server.Handlers.Accounts
             return AccountPages.IsFromAnotherSite(headers["Sec-Fetch-Site"].ToString(), headers.Origin.ToString(), baseUrl)
                 ? AccountPageEndpoints.Page(context, AccountPages.FromAnotherSite(baseUrl), StatusCodes.Status403Forbidden)
                 : null;
-        }
-
-        private static IResult Landing(HttpContext context, ServerOptions options) =>
-            AccountPageEndpoints.Page(context, AccountPages.Landing(AccountPageEndpoints.BaseUrl(options)));
-
-        private static IResult RegisterForm(HttpContext context, ServerOptions options) =>
-            AccountPageEndpoints.Page(context, AccountPages.RegisterForm(AccountPageEndpoints.BaseUrl(options)));
-
-        private static async Task<IResult> RegisterAsync(
-            HttpContext context,
-            IAccountStore store,
-            IEmailSender mailer,
-            Argon2PasswordHasher hasher,
-            ServerOptions options,
-            CancellationToken cancellationToken)
-        {
-            if (AccountPageEndpoints.RefuseFromAnotherSite(context, options) is IResult refused)
-                return refused;
-
-            string baseUrl = AccountPageEndpoints.BaseUrl(options);
-            IFormCollection? form = await AccountPageEndpoints.FormOf(context, cancellationToken);
-
-            string? displayName = AccountPageEndpoints.Field(form, "displayName");
-            string? email = AccountPageEndpoints.Field(form, "email");
-
-            // The field no person sees, filled: answered as a made account would be, and nothing made or mailed.
-            if (!string.IsNullOrEmpty(AccountPageEndpoints.Field(form, AccountPages.TrapField)))
-                return AccountPageEndpoints.Page(context, AccountPages.Registered(baseUrl, email ?? string.Empty));
-
-            RegistrationOutcome outcome = await AccountFlows.RegisterAsync(
-                new RegistrationRequest(email, AccountPageEndpoints.Field(form, "password"), displayName, context.Connection.RemoteIpAddress?.ToString()),
-                store,
-                mailer,
-                hasher,
-                options,
-                DateTimeOffset.UtcNow,
-                cancellationToken);
-
-            return outcome.IsAccepted
-                ? AccountPageEndpoints.Page(context, AccountPages.Registered(baseUrl, email?.Trim() ?? string.Empty))
-                : AccountPageEndpoints.Page(context, AccountPages.RegisterForm(baseUrl, displayName, email, outcome.Failures), StatusCodes.Status400BadRequest);
         }
 
         private static async Task<IResult> VerifyAsync(

@@ -411,11 +411,13 @@ RequestHeader set X-Forwarded-Proto "https" "expr=%{HTTPS} == 'on'"
   the links in its mails from that header. (`ProxyPass` cannot go inside an `<If>` - Apache refuses it.)
 - **Place the block before any rewrite rule that catches unknown paths**, or `/api/` answers with the
   site's own page.
-- **`/account/` - the account web pages** (server 13.0.0): somebody with no CRT at hand makes an account,
-  confirms its address and sets a new password with a mailed code there. The service builds every link to
-  them from `PublicApiBaseUrl` less its `/api`, so the live pages are `https://classic-repair-toolbox.dk/account/`
-  and the test instance's `.../crt-test/account/` (its own lines, "A test instance for pre-releases", step 7).
-  The site has no `account` folder of its own, so nothing there is hidden by this.
+- **`/account/` - the account web pages** (server 13.0.0): a new password set with a mailed code, the
+  administrator's sign-in for the list of every shared collection, and the link a confirmation mail sent
+  before 17.0.0 carried. **Nobody makes an account there since 17.0.0** (owner decision, 2026-11-28) - an
+  account is made by an invitation. The service builds every link to them from `PublicApiBaseUrl` less its
+  `/api`, so the live pages are `https://classic-repair-toolbox.dk/account/` and the test instance's
+  `.../crt-test/account/` (its own lines, "A test instance for pre-releases", step 7). The site has no
+  `account` folder of its own, so nothing there is hidden by this.
 
 **The account web pages, on a box set up before 13.0.0** - add the two `/account/` lines above to the
 vhost (and the test instance's two), then check and reload:
@@ -423,9 +425,9 @@ vhost (and the test instance's two), then check and reload:
 ```bash
 sudo apachectl configtest && sudo systemctl reload httpd
 curl -s -m 10 -o /dev/null -D - --resolve classic-repair-toolbox.dk:443:127.0.0.1 \
-  https://classic-repair-toolbox.dk/account/register | grep -iE '^HTTP|^server|^content-security'
+  https://classic-repair-toolbox.dk/account/forgot-password | grep -iE '^HTTP|^server|^content-security'
 curl -s -m 10 -o /dev/null -D - --resolve classic-repair-toolbox.dk:443:127.0.0.1 \
-  https://classic-repair-toolbox.dk/crt-test/account/register | grep -iE '^HTTP|^server'
+  https://classic-repair-toolbox.dk/crt-test/account/forgot-password | grep -iE '^HTTP|^server'
 ```
 
 - **`--resolve ...:127.0.0.1`**, as every check here run on the box: the box cannot reach its own public address,
@@ -461,7 +463,7 @@ mysql -u root -e "SELECT id, email, display_name, created_utc, last_login_utc FR
 ```
 
 No rows (it prints nothing): nothing changes for anybody. A row: that person confirms the address with
-**I forgot my password** (in CRT's account window, or on the `/account/forgot-password` page) - setting a
+**I forgot my password** (under the "Maintainer" tab's "Sign in" in CRT, or on the `/account/forgot-password` page) - setting a
 password with the mailed code confirms it. Only for an address you know is that person's, confirm it by hand:
 
 ```bash
@@ -550,30 +552,31 @@ postconf message_size_limit                          # 26214400
 ## 10. The first administrator
 
 Nothing in the service or in CRT can make an administrator - an endpoint that could would be one to
-abuse - so the first one is made on the box. Register the account through the service, so its
-password is hashed properly:
+abuse - and since 17.0.0 nobody can make an account through the service at all but by an invitation,
+which an administrator sends. So the first one is made on the box: its row in SQL, with a password
+hash nothing can match (`!`), and then its real password set through the service's own "I forgot my
+password", so it is hashed properly. The address in lower case twice (`email_normalised` is what the
+service matches on), and a display name of 2 to 30 letters, digits, spaces and `+ - / @ . [ ] ( ) _`:
 
 ```bash
-curl -s -X POST https://classic-repair-toolbox.dk/api/accounts/register -H 'Content-Type: application/json' \
-  -d '{"email":"you@example.com","password":"a long passphrase","displayName":"Your name"}'
+mysql -u root -e "INSERT INTO crt_review.accounts (email, email_normalised, password_hash, display_name, created_utc, is_verified, is_administrator) VALUES ('you@example.com', 'you@example.com', '!', 'Your name', UTC_TIMESTAMP(3), 1, 1);"
 ```
 
-Open the link in the mail that arrives, then:
+Then open `https://classic-repair-toolbox.dk/account/forgot-password` (or, in CRT, the "Maintainer" tab's
+**Sign in** > **I forgot my password**), ask for a code to that address, and set the password with the code
+the mail brings. Check:
 
-```sql
-UPDATE crt_review.accounts SET is_administrator = 1 WHERE email_normalised = 'you@example.com';
-SELECT id, email, is_verified, is_administrator, is_locked FROM crt_review.accounts
- WHERE email_normalised = 'you@example.com';
+```bash
+mysql -u root -e "SELECT id, email, is_verified, is_administrator, is_locked, LEFT(password_hash, 10) AS hash FROM crt_review.accounts WHERE email_normalised = 'you@example.com';"
 ```
 
-(`email_normalised` is the address in lower case, which is what the service matches on.) Expect one
-row: verified, administrator, not locked. No restart is needed.
+Expect one row: verified 1, administrator 1, locked 0, and the hash starting `$argon2id$` once the password
+is set. No restart is needed.
 
 **Maintainers are added from CRT**, never in SQL: in CRT, check **Enable "Maintainer" tab** in the
-Configuration tab, sign in (the account icon in the top right corner of CRT's window, or "Sign in" on the
-Maintainer tab), and use **Management > Maintainers** - add somebody who has an account, or invite
-somebody new by email. You can add yourself too. Since server 13.0.0 anybody can make an account (in CRT,
-or on the `/account/` pages); an account is a maintainer only once it is in a board's pool.
+Configuration tab, sign in ("Sign in" on the Maintainer tab), and use **Management > Maintainers** - add
+somebody who has an account, or invite somebody new by email, whose invitation makes the account. You can
+add yourself too. An account is a maintainer only once it is in a board's pool.
 
 ## 11. Check it end to end
 
@@ -1009,20 +1012,20 @@ sudo systemctl restart smb      # a share picks up a new group only on a new con
 
 ## Accounts and sessions
 
-A sign-in in CRT (its account icon, or the Maintainer tab's "Sign in") lasts until it has not been used
-for `RefreshTokenDays`; every use
+An account is a maintainer's, made by an invitation (since 17.0.0 nobody makes one otherwise). A sign-in in
+CRT (the Maintainer tab's "Sign in") lasts until it has not been used for `RefreshTokenDays`; every use
 pushes the end further out. On Windows CRT keeps it encrypted to the Windows user; on Linux and macOS
-it keeps nothing, and asks at every launch. **From server 14.1.0 the website has a sign-in too**
-(`/account/sign-in`, for writing comments on a collection's page): the same kind of session, the same
-`RefreshTokenDays`, kept in the browser as a cookie only the service reads (`crt_session`, the test instance's
-`crt_session_crt_test`, each sent only to its own instance's collection pages and sign-out - from 15.0.0 never to the
-rest of the site). It is a row of `sessions` like CRT's, so
-the commands below sign it out too.
+it keeps nothing, and asks at every launch. **The website has a sign-in too** (`/account/sign-in`, from 14.1.0 -
+since 17.0.0 the ADMINISTRATOR'S alone, for "All collections" and taking a collection down; any other account's right
+password is refused there): the same kind of session, the same `RefreshTokenDays`, kept in the browser as a cookie
+only the service reads (`crt_session`, the test instance's `crt_session_crt_test`, each sent only to its own
+instance's collection pages and sign-out - from 15.0.0 never to the rest of the site). It is a row of `sessions` like
+CRT's, so the commands below sign it out too.
 
 | To | Do |
 | --- | --- |
 | Sign one computer out | **Account > My account > Sign out** in CRT |
-| Shut an account out at once | From 15.0.0, signed in on the website as the administrator: **"Lock account"** beside the account on "Your collections" (`/collections/`), and "Unlock" under its "Locked accounts" - its sessions end (on an unlock too, so it signs in again), its collections go offline and its comments are hidden from everybody but you; an administrator's account is never locked or unlocked there. By hand (its sessions kept, refused only while it is locked): `UPDATE crt_review.accounts SET is_locked = 1 WHERE email_normalised = '...';` - refused on its very next request |
+| Shut an account out at once | `UPDATE crt_review.accounts SET is_locked = 1 WHERE email_normalised = '...';` - refused on its very next request, its sessions kept but useless while it is locked (the website's "Lock account" went with 17.0.0) |
 | Sign an account out everywhere, without locking it | `UPDATE crt_review.sessions SET revoked_utc = UTC_TIMESTAMP() WHERE account_id = ...;` |
 
 Who is signed in, and when each session was last used:
@@ -1036,10 +1039,13 @@ SELECT s.id, a.email, s.created_utc, s.last_used_utc, s.expires_utc
 
 ## Shared oscilloscope collections
 
-From server 14.1.0 an account shares oscilloscope captures taken in CRT as a page anybody with its link can see -
-`https://classic-repair-toolbox.dk/collections/<id>`, the test instance's `.../crt-test/collections/<id>`. The pictures
-are kept in a folder of their own (`CollectionsRoot`), once each however many collections show them. **Until that
-setting is set, sharing is off** and CRT says so - the service runs as before.
+From server 14.1.0 CRT shares oscilloscope captures as a page anybody with its link can see -
+`https://classic-repair-toolbox.dk/collections/<id>`, the test instance's `.../crt-test/collections/<id>`. **Since 17.0.0
+no account is needed** (owner decision, 2026-11-28): a collection's page is owned by a key CRT makes as it first shares
+it and keeps with the collection on that computer, sent with every request (`X-CRT-Collection-Key`); the service keeps
+only its SHA-256, and only that computer changes or deletes the page. The pictures are kept in a folder of their own
+(`CollectionsRoot`), once each however many collections show them. **Until that setting is set, sharing is off** and CRT
+says so - the service runs as before.
 
 **On a box set up before 14.1.0, once per instance** (the test instance's names in brackets):
 
@@ -1083,59 +1089,53 @@ no such collection" page. `503` with Kestrel: the setting is not set yet. A 404 
 website answering, so the `ProxyPass` lines are not in effect.
 
 **What the service does by itself:** every hour it deletes the collections whose time is up (their pages then say
-when they went), mails each owner 30 days before (only for a collection kept longer than two months), and deletes a
-picture once no collection shows it, a day after its upload. An account keeps at most 100 collections, shares 20 new
-ones and 1,000 captures a day; all pictures together take at most `CollectionsMaxStoredBytes` (20 GiB by default).
-A first share carries the collection's key from CRT (15.0.0, migration 0027 - run by the service as it starts, nothing to
-do by hand), so one whose answer was lost and is sent again changes the page it made instead of making a second.
+when they went), and deletes a picture once no collection shows it, a day after its upload. An INTERNET CONNECTION (an
+IPv4 address, an IPv6 /64) shares 20 new collections and 1,000 captures a day; all pictures together take at most
+`CollectionsMaxStoredBytes` (20 GiB by default). A first share whose answer was lost and is sent again under its key
+changes the page it made instead of making a second. (Until 17.0.0 these limits were per account, an account kept at most
+100 collections, and its owner was mailed 30 days before a collection went - with no account there is nobody to mail.)
+
+**Collections shared before 17.0.0** (migration 0031 - run by the service as it starts, nothing to do by hand) were
+an account's: they keep their pages until their dates, or your delete on the website, but no key owns them, so nothing
+changes them - CRT forgets such a page and shares the collection anew under a key.
 
 **"Stop sharing"** (15.1.0, migration 0028 - run by the service as it starts, nothing to do by hand): the owner takes a
-page offline from CRT; its link then says it is not shared at the moment, its captures and comments stay, its date keeps
-counting, and "Share" brings it back under the same link. Only its owner and the administrator see it meanwhile. **"Download
+page offline from CRT; its link then says it is not shared at the moment, its captures stay, its date keeps counting,
+and "Share" brings it back under the same link. Only the administrator sees it meanwhile. **"Download
 all"** on a page (`/collections/<id>/download`, under the `/collections/` lines Apache has already) sends every capture in one
 ZIP, built in the service's own `/tmp` past 4 MB (`PrivateTmp=true` in the unit). **A deleted collection's page stays for
-good**, saying what it was and why it went - the row is kept, its words, captures and comments are not.
+good**, saying what it was and why it went - the row is kept, its words and captures are not.
 
 **What a capture shows** (16.0.0, migration 0029 - run by the service as it starts, nothing to do by hand): beside the
 picture large, the component as CRT's component info window shows it - its name, category, description, purpose, the
 picture of its pinout drawing and its pins, the pin captured marked; CRT's own baseline is no longer shown (0029 drops
 its columns), so the pages read nothing of the data trees. **A collection is kept at most a year ahead**, counted from
-the day it is shared - each "Share" starts the time again. Under each capture, "Link" copies its address for Lemon64,
-Forum64 or Reddit, opening that very capture large.
+the day it is shared - each "Share" starts the time again. Under each capture, "Link" copies its address as BBCode,
+Markdown, HTML or a plain link, opening that very capture large.
 
 **The oscilloscope** (16.1.0, migration 0030 - run by the service as it starts, nothing to do by hand): CRT sends the
 oscilloscope each capture was taken with, and the page names it under the title beside the board.
 
-**Comments** (also 14.1.0, migration 0026 - run by the service as it starts, nothing to do by hand): anybody signed in
-with a confirmed address writes them under each capture on the page (the page's own "Sign in" link), and the owner in
-CRT too. Plain text, at most 2,000 characters, 100 a day per account. The owner gets a mail per comment (not for their
-own); a writer edits and deletes their own; the owner and an administrator hide any (and show it again), an
-administrator deletes any. A collection deleted takes its comments. Nothing to set up: `/account/` and `/collections/`
-are forwarded already.
+**No comments since 17.0.0** (owner decision, 2026-11-28): the pages and CRT take none. Those written from 14.1.0 stay in
+`collection_comments`, shown nowhere - no migration drops the table; a collection deleted still takes its rows.
 
-**To see what is shared** (`crt_review_test` for the test instance):
+**To see what is shared** (`crt_review_test` for the test instance) - `connection` is where a collection was first
+shared from, `account` the name of the account one shared before 17.0.0 was:
 
 ```bash
-mysql -u root -e "SELECT c.id, a.display_name, c.hardware_name, c.board_name, c.title, c.created_utc, c.delete_at_utc, c.unshared_utc, (SELECT COUNT(*) FROM crt_review.collection_images i WHERE i.collection_id = c.id) AS captures FROM crt_review.collections c JOIN crt_review.accounts a ON a.id = c.account_id WHERE c.deleted_utc IS NULL ORDER BY c.created_utc DESC LIMIT 20;"
+mysql -u root -e "SELECT c.id, c.connection, a.display_name AS account, c.hardware_name, c.board_name, c.title, c.created_utc, c.delete_at_utc, c.unshared_utc, (SELECT COUNT(*) FROM crt_review.collection_images i WHERE i.collection_id = c.id) AS captures FROM crt_review.collections c LEFT JOIN crt_review.accounts a ON a.id = c.account_id WHERE c.deleted_utc IS NULL ORDER BY c.created_utc DESC LIMIT 20;"
 ```
 
-**"Your collections"** (15.0.0): `https://classic-repair-toolbox.dk/collections/` (the test instance's
-`.../crt-test/collections/`), signed in on the website, lists the collections you shared and those you commented on - and,
-for an administrator's account, every collection with whose it is (name and address, a locked owner's marked "offline")
-and the 50 newest comments, each a link to it on its page, where it is hidden or deleted - and "Lock account" beside
-each owner and writer, and "Locked accounts" to unlock one ("Accounts and sessions", above).
+**"All collections"**: `https://classic-repair-toolbox.dk/collections/` (the test instance's `.../crt-test/collections/`),
+signed in on the website as the administrator, lists every collection not deleted, newest first, each a link to its
+page - to check it looks right, and to take it down. Nobody else gets a list (until 17.0.0 it was "Your collections",
+with comments and "Lock account" beside each owner).
 
 **To take one down**, signed in on the website as the administrator: its page offers "Delete this collection" and asks
 first; its page then says it was removed, and the hourly sweep deletes its pictures. Without the website, in SQL:
 
 ```bash
 mysql -u root -e "UPDATE crt_review.collections SET deleted_utc = UTC_TIMESTAMP(3), deleted_reason = 'administrator', title = NULL, description = NULL, forum_links_json = NULL, components_json = NULL, oscilloscopes_json = NULL WHERE id = '<id>'; DELETE FROM crt_review.collection_images WHERE collection_id = '<id>'; DELETE FROM crt_review.collection_comments WHERE collection_id = '<id>';"
-```
-
-**To see the newest comments**:
-
-```bash
-mysql -u root -e "SELECT m.id, m.collection_id, a.display_name, m.created_utc, m.hidden_utc, m.deleted_utc, LEFT(m.body, 80) AS body FROM crt_review.collection_comments m JOIN crt_review.accounts a ON a.id = m.account_id ORDER BY m.id DESC LIMIT 20;"
 ```
 
 **Moving the pictures to another disk later** (owner, 2026-11-25: "will later be moved to a new USB device"): stop the
@@ -1434,12 +1434,11 @@ What it publishes is test data, seen by CRT's alphas and betas only.
 8. **Its first administrator** - as step 10, against its address and database:
 
    ```bash
-   curl -s -X POST https://classic-repair-toolbox.dk/crt-test/api/accounts/register -H 'Content-Type: application/json' \
-     -d '{"email":"you@example.com","password":"a long passphrase","displayName":"Your name"}'
+   mysql -u root -e "INSERT INTO crt_review_test.accounts (email, email_normalised, password_hash, display_name, created_utc, is_verified, is_administrator) VALUES ('you@example.com', 'you@example.com', '!', 'Your name', UTC_TIMESTAMP(3), 1, 1);"
    ```
 
-   Open the link in the mail ("Classic Repair Toolbox (test)"), then
-   `UPDATE crt_review_test.accounts SET is_administrator = 1 WHERE email_normalised = 'you@example.com';`
+   Then set its password on `https://classic-repair-toolbox.dk/crt-test/account/forgot-password` with the code the
+   mail ("Classic Repair Toolbox (test)") brings.
 
 9. **End to end, with a CRT pre-release**: CRT's account window says it signs in to the test server;
    Account > **Server version** shows the test instance's version and API 2 on both lines; CRT's log names

@@ -18,15 +18,15 @@ Once you are signed in, a red number on the tab tells you how much is waiting fo
 
 ## Your account
 
-Anybody can have a Classic Repair Toolbox account - one account, the same in CRT and on the website. The person icon in the top right corner of CRT's window opens it from any tab: **Sign in**, **Create an account**, **I forgot my password** and **I have an invitation**. Without CRT at hand, the same is on the website: https://classic-repair-toolbox.dk/account/
+A Classic Repair Toolbox account is a maintainer's: you get one by an invitation to maintain a board. The administrator invites you by email - and if you created a new board yourself, the invitation comes by itself once that board is accepted. **Sign in** on the Maintainer tab opens the account window: **Sign in**, **I forgot my password** and **I have an invitation**.
 
-An account is a maintainer's once the administrator has made it the maintainer of a board. The administrator does that for an account you already have, or invites you by email - and if you created a new board yourself, the invitation comes by itself once that board is accepted. To accept an invitation, open the account icon, choose **I have an invitation**, paste the code from the email, pick your display name and a password, and choose **Create my account**. Your account is made for the address the invitation was sent to, and you are taken back to signing in with that address and your password already filled in.
+To accept an invitation, choose **I have an invitation**, paste the code from the email, pick your display name and a password, and choose **Create my account**. Your account is made for the address the invitation was sent to, and you are taken back to signing in with that address and your password already filled in. An account is a maintainer's once it maintains a board - the administrator can also add an account you already have.
 
-Your **display name** is what others see. Nobody else can have the same name, and it may hold only the letters A-Z, the digits 0-9, single spaces and _ + - / @ . [ ] ( ), at most 30 characters. It cannot be "You", nor hold the word "Administrator" or "Owner" - those are written beside a name to say who it is. A name you chose before those rules stays until you change it.
+Your **display name** is what others see. Nobody else can have the same name, and it may hold only the letters A-Z, the digits 0-9, single spaces and _ + - / @ . [ ] ( ), at most 30 characters. It cannot be "You", nor hold the word "Administrator" or "Owner". A name you chose before those rules stays until you change it.
 
 ## Signing in
 
-Sign in with your email address and password in the account window - **Sign in** on the Maintainer tab opens it too. If you have forgotten your password, choose **I forgot my password**: ask for a code, which is sent to you by email, then type the code and the new password you want - in CRT, or on the website's page.
+Sign in with your email address and password in the account window - **Sign in** on the Maintainer tab opens it. If you have forgotten your password, choose **I forgot my password**: ask for a code, which is sent to you by email, then type the code and the new password you want - in CRT, or on the website's page: https://classic-repair-toolbox.dk/account/forgot-password
 
 On Windows, CRT remembers that you are signed in, and signs you back in by itself when it starts, so the number on the tab is there without opening the tab first. What it keeps is encrypted to your Windows user account and cannot be used from another computer or another user. On Linux and macOS there is no such safe place to keep it, so you sign in each time you open CRT - the account window says so under **Sign in**.
 
@@ -42,7 +42,7 @@ Under the list on the left, the tab always says who is signed in - **Signed in a
 
 ## My account
 
-Once you are signed in, the account icon opens **My account** - and **Account** > **My account** on the Maintainer tab is the same. It is where you change your own details, and sign out:
+Once you are signed in, **Account** > **My account** on the Maintainer tab is where it is. It is where you change your own details, and sign out:
 
 - **Display name** - what others see, by the rules above. Type the new one and choose **Save name**; a name breaking a rule is said under the box as you type.
 - **Email address** - type the new email address and choose **Send code**. A code is sent to the new email address; when it arrives, choose **I have received a code**, type the code in and choose **Change address**. Your address does not change until the code is used, so a mistyped address cannot lock you out. You can go to another screen, or close CRT, in between - the code works for 24 hours. Your old address then gets an email saying the address was changed.
@@ -188,8 +188,8 @@ For now, only the administrator publishes to the stable source: for everybody el
 - **Reset contribution data** - for going live: deletes everything sent and done through the
   contribution service while it was being tested. That is every submission and its uploaded files,
   every oscilloscope model sent in,
-  every account except the administrators' - so every maintainer and invitation too, every oscilloscope collection those
-  accounts shared (its page then says it was removed) and every comment on them or written by them - the history,
+  every account except the administrators' - so every maintainer and invitation too - every shared oscilloscope
+  collection (its page then says it was removed), the history,
   the board views and the API usage counts. The BETA and the stable data are not touched. It first
   shows how much of each would go; type `RESET` and press the red button to do it. It cannot be
   undone, and it works only while the server has been set to allow it - until then the tool says how

@@ -9,8 +9,8 @@ namespace ClassicRepairToolbox.Tests.Ui;
 
 // ###########################################################################################
 // The "Oscilloscope" tab's two tabs where the log stood alone (owner request, 2026-11-27): "Communication log" first, and
-// "Collections" - every collection on this computer, its card's buttons asking the host for the collection's window, and the
-// tab's badge counting the collections with comments not read. No oscilloscope anywhere.
+// "Collections" - every collection on this computer, its card's buttons asking the host for the collection's window. No
+// oscilloscope anywhere.
 // ###########################################################################################
 [Collection("HeadlessUi")]
 public sealed class TabOscilloscopeCollectionsTests : IDisposable
@@ -24,10 +24,6 @@ public sealed class TabOscilloscopeCollectionsTests : IDisposable
     private readonly List<string> thisAskedToDelete = [];
 
     private readonly List<string> thisLinks = [];
-
-    private int thisCommentAsks;
-
-    private long thisLatestCommentId;
 
     public TabOscilloscopeCollectionsTests()
     {
@@ -46,16 +42,16 @@ public sealed class TabOscilloscopeCollectionsTests : IDisposable
             new LocalCapture { ComponentLabel = "U7", Pin = "12", CapturedUtc = made }).Collection!;
     }
 
-    // Shared, its page up - and its comments read up to the first.
+    // Shared under its key, its page up.
     private LocalCollection Shared(LocalCollection collection)
     {
         LocalCollection shared = collection with
         {
+            OwnerKey = new string('c', Handlers.DataHandling.CollectionRules.OwnerKeyLength),
             ServerId = "k7mq3x9vbn2p",
             PageUrl = "https://classic-repair-toolbox.dk/collections/k7mq3x9vbn2p",
             SharedUtc = collection.CreatedUtc,
-            DeleteAtUtc = collection.CreatedUtc.AddYears(1),
-            SeenCommentId = 1
+            DeleteAtUtc = collection.CreatedUtc.AddYears(1)
         };
 
         Assert.True(this.thisStore.Save(shared));
@@ -65,8 +61,6 @@ public sealed class TabOscilloscopeCollectionsTests : IDisposable
     private OscilloscopeCollectionsHost Host() =>
         new(
             () => this.thisStore,
-            _ => this.thisLatestCommentId,
-            () => this.thisCommentAsks++,
             this.thisOpened.Add,
             this.thisAskedToDelete.Add,
             this.thisLinks.Add);
@@ -110,7 +104,6 @@ public sealed class TabOscilloscopeCollectionsTests : IDisposable
                 Assert.False(tab.CollectionsPanel.IsVisible);
                 Assert.Contains("Selected", tab.CommunicationLogTabButton.Classes);
 
-                int asksBefore = this.thisCommentAsks;
                 Click(tab.CollectionsTabButton);
 
                 Assert.True(tab.CollectionsPanel.IsVisible);
@@ -121,10 +114,6 @@ public sealed class TabOscilloscopeCollectionsTests : IDisposable
                 Assert.Equal(["Newest", "Older"], tab.CollectionRowsForTests.Select(row => row.Item.Name));
                 Assert.Equal("2 collections on this computer", tab.CollectionsHeadingText.Text);
                 Assert.True(tab.CollectionsIntroText.IsVisible);
-
-                // Picking "Collections" asks the server for new comments (Main asks at most every five minutes).
-                Assert.True(this.thisCommentAsks > asksBefore);
-
                 Click(tab.CommunicationLogTabButton);
 
                 Assert.True(tab.OutputTextBox.IsVisible);
@@ -151,7 +140,6 @@ public sealed class TabOscilloscopeCollectionsTests : IDisposable
                 Assert.Empty(tab.CollectionRowsForTests);
                 Assert.Equal(CollectionListing.NoneYet, tab.CollectionsHeadingText.Text);
                 Assert.False(tab.CollectionsIntroText.IsVisible);
-                Assert.False(tab.CollectionsBadge.IsVisible);
             }
             finally
             {
@@ -192,37 +180,6 @@ public sealed class TabOscilloscopeCollectionsTests : IDisposable
                 Assert.Equal([kept.LocalId], this.thisOpened);
                 Assert.Equal([shared.LocalId], this.thisAskedToDelete);
                 Assert.Equal([shared.PageUrl!], this.thisLinks);
-            }
-            finally
-            {
-                window.Close();
-            }
-        });
-    }
-
-    // The badge says how many collections have comments not read - before "Collections" is picked, so it can be seen.
-    [Fact]
-    public void The_tab_s_badge_counts_the_collections_with_new_comments()
-    {
-        this.Shared(this.Collection("Shared", DateTimeOffset.UtcNow));
-        this.Collection("Kept here", DateTimeOffset.UtcNow.AddDays(-1));
-        this.thisLatestCommentId = 3;
-
-        UiTest.Run(() =>
-        {
-            (Window window, TabOscilloscope tab) = this.Shown();
-
-            try
-            {
-                Assert.False(tab.IsCollectionsTabShown);
-                Assert.True(tab.CollectionsBadge.IsVisible);
-                Assert.Equal("1", tab.CollectionsBadgeText.Text);
-
-                // Read: no badge.
-                this.thisLatestCommentId = 1;
-                tab.ShowCollections();
-
-                Assert.False(tab.CollectionsBadge.IsVisible);
             }
             finally
             {

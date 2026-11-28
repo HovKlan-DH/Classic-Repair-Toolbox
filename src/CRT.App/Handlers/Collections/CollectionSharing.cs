@@ -24,25 +24,6 @@ namespace Handlers.Collections
                 .ThenBy(capture => capture.CapturedUtc)
                 .ToList();
 
-        // ###########################################################################################
-        // *** A SHARED COLLECTION IS ITS ACCOUNT'S (code review, 2026-11-27): the server answers "not found" for a collection that
-        // is not the caller's, so with another account signed in "Delete collection" read that as gone and deleted it here, its
-        // page left up, and "Share" forgot its page and made another. *** The sentence that stops such a share, delete or
-        // answer, or null when the account signed in is the one that shared it - or nothing says which did (shared before CRT
-        // kept it, or a session that does not know its account).
-        // ###########################################################################################
-        public static string? OtherAccountLine(LocalCollection collection, long signedInAccountId)
-        {
-            ArgumentNullException.ThrowIfNull(collection);
-
-            if (!collection.IsShared || collection.SharedByAccountId is not { } sharer || signedInAccountId == 0 || sharer == signedInAccountId)
-                return null;
-
-            string whose = string.IsNullOrWhiteSpace(collection.SharedByName) ? "another account" : $"the account [{collection.SharedByName}]";
-
-            return $"This collection was shared with {whose} - sign in to it (the account icon in the top right corner) to share, delete or answer it.";
-        }
-
         // A capture's settings as the collection window lists them - "This capture: T/DIV 50us | V/DIV 2V | Trigger level 1V".
         public static string SettingsLine(string whose, string? timePerDivision, string? voltsPerDivision, string? triggerLevel) =>
             $"{whose}: T/DIV {timePerDivision ?? "not read"} | V/DIV {voltsPerDivision ?? "not read"} | Trigger level {triggerLevel ?? "not read"}";
@@ -127,14 +108,9 @@ namespace Handlers.Collections
                 collection.SharedContentHash,
                 StringComparison.Ordinal);
 
-        // A collection as a line of the component info window's drop-down list - "new comments" while its page has comments
-        // newer than its owner has read (`latestCommentId`, from the server's list of the account's collections).
-        public static string LineOf(LocalCollection collection, long latestCommentId = 0) =>
-            $"{CollectionSharing.NameOf(collection)} ({collection.Captures.Count} capture{(collection.Captures.Count == 1 ? string.Empty : "s")}" +
-            (CollectionSharing.HasNewComments(collection, latestCommentId) ? ", new comments)" : ")");
-
-        public static bool HasNewComments(LocalCollection collection, long latestCommentId) =>
-            collection.IsShared && latestCommentId > collection.SeenCommentId;
+        // A collection as a line of the component info window's drop-down list.
+        public static string LineOf(LocalCollection collection) =>
+            $"{CollectionSharing.NameOf(collection)} ({collection.Captures.Count} capture{(collection.Captures.Count == 1 ? string.Empty : "s")})";
 
         public static string NameOf(LocalCollection collection) =>
             string.IsNullOrWhiteSpace(collection.Title) ? "Untitled collection" : collection.Title.Trim();
@@ -163,9 +139,14 @@ namespace Handlers.Collections
                 .Append(", shared with Classic Repair Toolbox")
                 .ToString();
 
-            return format == CollectionLinkFormat.Plain
-                ? CollectionLinkFormats.Write(format, url, CollectionSharing.NameOf(collection) + about)
-                : CollectionLinkFormats.Write(format, url, CollectionSharing.NameOf(collection)) + about;
+            return format switch
+            {
+                CollectionLinkFormat.Plain => CollectionLinkFormats.Write(format, url, CollectionSharing.NameOf(collection) + about),
+
+                // The line after the link is HTML too - a board's name with "&" in it stays a character.
+                CollectionLinkFormat.Html => CollectionLinkFormats.Write(format, url, CollectionSharing.NameOf(collection)) + System.Net.WebUtility.HtmlEncode(about),
+                _ => CollectionLinkFormats.Write(format, url, CollectionSharing.NameOf(collection)) + about
+            };
         }
 
         // ###########################################################################################

@@ -1,10 +1,11 @@
 using Handlers.Collections;
+using Handlers.DataHandling;
 
 namespace ClassicRepairToolbox.Tests.Collections;
 
 // ###########################################################################################
 // The "Oscilloscope" tab's "Collections" list (CollectionListing): every collection, the newest made first, and what each
-// card says - its board, its captures, where it stands, and comments not read.
+// card says - its board, its captures and where it stands.
 // ###########################################################################################
 public sealed class CollectionListingTests
 {
@@ -25,16 +26,16 @@ public sealed class CollectionListingTests
             Captures = captures
         };
 
-    // Shared as it is now - its page up, nothing changed since.
-    private static LocalCollection Shared(LocalCollection collection, DateTimeOffset deleteAt, long seenCommentId = 0) =>
+    // Shared as it is now, under its key - its page up, nothing changed since.
+    private static LocalCollection Shared(LocalCollection collection, DateTimeOffset deleteAt) =>
         collection with
         {
+            OwnerKey = new string('c', CollectionRules.OwnerKeyLength),
             ServerId = "k7mq3x9vbn2p",
             PageUrl = "https://classic-repair-toolbox.dk/collections/k7mq3x9vbn2p",
             SharedUtc = Made.AddDays(1),
             DeleteAtUtc = deleteAt,
-            SharedContentHash = CollectionSharing.ContentHash(CollectionSharing.RequestOf(collection, deleteAt)),
-            SeenCommentId = seenCommentId
+            SharedContentHash = CollectionSharing.ContentHash(CollectionSharing.RequestOf(collection, deleteAt))
         };
 
     [Fact]
@@ -45,8 +46,7 @@ public sealed class CollectionListingTests
             Collection("Older", Made),
             Collection("Newest", Made.AddDays(2)) with { HardwareName = "Commodore 128", BoardName = "310378" },
             Collection("Middle", Made.AddDays(1))
-        ],
-        _ => 0);
+        ]);
 
         Assert.Equal(["Newest", "Middle", "Older"], items.Select(item => item.Name));
         Assert.Equal("Commodore 128 - 310378 (PAL)", items[0].Board);
@@ -55,7 +55,7 @@ public sealed class CollectionListingTests
     [Fact]
     public void A_card_says_its_board_its_captures_and_the_day_it_was_made()
     {
-        CollectionListItem item = CollectionListing.ItemOf(Collection("No picture", Made, Capture('a', "U7", "12"), Capture('b', "U8", "1")), 0);
+        CollectionListItem item = CollectionListing.ItemOf(Collection("No picture", Made, Capture('a', "U7", "12"), Capture('b', "U8", "1")));
 
         Assert.Equal("No picture", item.Name);
         Assert.Equal("Commodore 64 - 250407 (PAL)", item.Board);
@@ -77,17 +77,17 @@ public sealed class CollectionListingTests
     [Fact]
     public void The_thumbnail_is_the_page_s_first_capture()
     {
-        CollectionListItem item = CollectionListing.ItemOf(Collection("x", Made, Capture('b', "U10", "1"), Capture('a', "U2", "12")), 0);
+        CollectionListItem item = CollectionListing.ItemOf(Collection("x", Made, Capture('b', "U10", "1"), Capture('a', "U2", "12")));
 
         Assert.Equal(new string('a', 64), item.FirstCaptureSha256);
-        Assert.Null(CollectionListing.ItemOf(Collection("x", Made), 0).FirstCaptureSha256);
-        Assert.Null(CollectionListing.ItemOf(Collection("x", Made, Capture('a', "U2", "12") with { Sha256 = "not one" }), 0).FirstCaptureSha256);
+        Assert.Null(CollectionListing.ItemOf(Collection("x", Made)).FirstCaptureSha256);
+        Assert.Null(CollectionListing.ItemOf(Collection("x", Made, Capture('a', "U2", "12") with { Sha256 = "not one" })).FirstCaptureSha256);
     }
 
     [Fact]
     public void A_collection_never_shared_is_on_this_computer_only()
     {
-        CollectionListItem item = CollectionListing.ItemOf(Collection("x", Made, Capture('a', "U7", "12")), 0);
+        CollectionListItem item = CollectionListing.ItemOf(Collection("x", Made, Capture('a', "U7", "12")));
 
         Assert.Equal("Not shared - it is on this computer only.", item.State);
         Assert.Null(item.PageUrl);
@@ -98,11 +98,22 @@ public sealed class CollectionListingTests
     [Fact]
     public void A_shared_collection_says_when_its_page_goes()
     {
-        CollectionListItem item = CollectionListing.ItemOf(Shared(Collection("x", Made, Capture('a', "U7", "12")), Made.AddYears(1)), 0);
+        CollectionListItem item = CollectionListing.ItemOf(Shared(Collection("x", Made, Capture('a', "U7", "12")), Made.AddYears(1)));
 
         Assert.Equal("Shared - its page is deleted on 2027-November-26.", item.State);
         Assert.Equal("https://classic-repair-toolbox.dk/collections/k7mq3x9vbn2p", item.PageUrl);
         Assert.True(item.IsShared);
+    }
+
+    // *** A COLLECTION SHARED WITH AN ACCOUNT BEFORE 2026-11-28 IS NOT SHARED ANY MORE FOR CRT. *** No key of this computer owns
+    // its old page, which goes at its date: the card says it is here only, and "Share" makes a new page under a key.
+    [Fact]
+    public void A_collection_shared_with_an_account_before_reads_as_not_shared()
+    {
+        CollectionListItem item = CollectionListing.ItemOf(Shared(Collection("x", Made, Capture('a', "U7", "12")), Made.AddYears(1)) with { OwnerKey = null });
+
+        Assert.Equal("Not shared - it is on this computer only.", item.State);
+        Assert.False(item.IsShared);
     }
 
     [Fact]
@@ -110,7 +121,7 @@ public sealed class CollectionListingTests
     {
         LocalCollection shared = Shared(Collection("x", Made, Capture('a', "U7", "12")), Made.AddYears(1));
 
-        CollectionListItem item = CollectionListing.ItemOf(shared with { Description = "Typed after it was shared." }, 0);
+        CollectionListItem item = CollectionListing.ItemOf(shared with { Description = "Typed after it was shared." });
 
         Assert.Equal("Shared, and changed since - its page is deleted on 2027-November-26.", item.State);
     }
@@ -122,41 +133,19 @@ public sealed class CollectionListingTests
     {
         LocalCollection stopped = Shared(Collection("x", Made, Capture('a', "U7", "12")), Made.AddYears(1)) with { SharingStoppedUtc = Made.AddDays(3) };
 
-        CollectionListItem item = CollectionListing.ItemOf(stopped, 0);
+        CollectionListItem item = CollectionListing.ItemOf(stopped);
 
         Assert.Equal("Not shared at the moment - its page is offline.", item.State);
         Assert.False(item.IsShared);
     }
 
-    // New comments: a shared page with a comment newer than its owner read - asked of the server by its id, never of a
-    // collection with no page.
     [Fact]
-    public void New_comments_are_those_newer_than_its_owner_read()
+    public void The_heading_counts_them()
     {
-        LocalCollection shared = Shared(Collection("Shared", Made, Capture('a', "U7", "12")), Made.AddYears(1), seenCommentId: 4);
-        LocalCollection kept = Collection("Kept here", Made.AddDays(1));
-        List<string> asked = [];
+        CollectionListItem one = CollectionListing.ItemOf(Collection("a", Made));
 
-        IReadOnlyList<CollectionListItem> items = CollectionListing.ItemsOf([shared, kept], serverId =>
-        {
-            asked.Add(serverId);
-            return 5;
-        });
-
-        Assert.Equal(["k7mq3x9vbn2p"], asked);
-        Assert.False(items.Single(item => item.Name == "Kept here").HasNewComments);
-        Assert.True(items.Single(item => item.Name == "Shared").HasNewComments);
-        Assert.False(CollectionListing.ItemOf(shared, 4).HasNewComments);
-    }
-
-    [Fact]
-    public void The_heading_counts_them_and_those_with_new_comments()
-    {
-        CollectionListItem quiet = CollectionListing.ItemOf(Collection("a", Made), 0);
-        CollectionListItem talked = quiet with { HasNewComments = true };
-
-        Assert.Equal("1 collection on this computer", CollectionListing.HeadingOf([quiet]));
-        Assert.Equal("3 collections on this computer - 2 with new comments", CollectionListing.HeadingOf([quiet, talked, talked]));
+        Assert.Equal("1 collection on this computer", CollectionListing.HeadingOf([one]));
+        Assert.Equal("3 collections on this computer", CollectionListing.HeadingOf([one, one, one]));
     }
 
     // A row unchanged is the same row - the list keeps it (InPlaceList), so a press on it is never thrown away.
@@ -165,7 +154,7 @@ public sealed class CollectionListingTests
     {
         LocalCollection collection = Collection("x", Made, Capture('a', "U7", "12"));
 
-        Assert.Equal(CollectionListing.ItemOf(collection, 0), CollectionListing.ItemOf(collection, 0));
-        Assert.NotEqual(CollectionListing.ItemOf(collection, 0), CollectionListing.ItemOf(collection with { Title = "y" }, 0));
+        Assert.Equal(CollectionListing.ItemOf(collection), CollectionListing.ItemOf(collection));
+        Assert.NotEqual(CollectionListing.ItemOf(collection), CollectionListing.ItemOf(collection with { Title = "y" }));
     }
 }

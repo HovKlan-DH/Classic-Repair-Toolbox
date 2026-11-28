@@ -70,50 +70,46 @@ Only the administrator sees it. The server keeps the IP address it came from - o
 
 While a submission is still open, CRT asks the server how it is getting on - at launch, and every minute while CRT's window is open and not minimised - using its number and the private code CRT was given when you sent it.
 
-## When you make an account
+## When you have an account
 
-An account is not needed for anything above. You can make one with the account icon in the top right corner of CRT's window, or on the website's [account page](https://classic-repair-toolbox.dk/account/) - the same account in both. The server keeps:
+An account is a maintainer's: it is made when you accept an invitation to maintain a board, and you sign in with it on the "Maintainer" tab. Nothing else in CRT needs one. The server keeps:
 
 - Your email address
   - To sign in with, and for the mails about your account. It is never shown to other people, only to the administrator - and to the maintainers of a board you send something to, as above.
 - Your display name
-  - Shown to the maintainers and the administrator beside what you send, and to everybody beside a comment you write on a shared oscilloscope collection (below).
+  - Shown to the maintainers and the administrator beside what you send.
 - Your password - only as a scrambled check value, never the password itself
 - Each sign-in: when it was made, the IP address it came from and the name your CRT gives itself (ex. `CRT 4.1.0`)
   - So the sign-ins of one account can be told apart. A sign-in ends when you sign out, or by itself when it has not been used for 30 days.
-- A record of what happened to the account - made, confirmed, signed in and out, a password that did not match, a changed address, name or password, locked or unlocked by the administrator - with the IP address of each sign-in and of each password that did not match
+- A record of what happened to the account - made, signed in and out, a password that did not match, a changed address, name or password, locked or unlocked by the administrator - with the IP address of each sign-in and of each password that did not match
   - Kept as the server's history, which only the administrator can read, to find out what happened if an account is ever misused.
 
 While you are signed in, CRT uses your account's email address in the "Feedback" tab, the submit dialog and when you send an oscilloscope model.
 
-To limit how often it can happen, the server also notes the IP address of each request that sends a mail (making an account, asking for a code or a new link) and of each failed sign-in. Those notes are deleted after a day.
+To limit how often it can happen, the server also notes the IP address of each request that sends a mail (asking for a code) and of each failed sign-in. Those notes are deleted after a day.
 
-If an account is misused - spam in the comments, say - the administrator can lock it. It can then no longer sign in, its shared collections go offline and its comments are no longer shown to anybody but the administrator. Unlocking it brings them back.
+If an account is misused, the administrator can lock it. It can then no longer sign in.
 
 ## When you share an oscilloscope collection
 
-Captures you collect in the component info window, under "Collect captures into", stay on your computer. Nothing is sent until you press **Share** in the collection's window - and sharing needs an account with a confirmed email address. Sharing sends:
+Captures you collect in the component info window, under "Collect captures into", stay on your computer. Nothing is sent until you press **Share** in the collection's window. No account is needed. Sharing sends:
 
-- Each capture: the picture of your oscilloscope's screen, the component and pin it is of, the signal name and the reading it should give, the settings your oscilloscope was read back at, when it was taken, your note on it and whether you marked it as looking wrong
-- For each capture CRT has a baseline of: which baseline it is and its settings - the baseline's picture itself is not sent, the page links CRT's published one
+- Each capture: the picture of your oscilloscope's screen, the component and pin it is of, the signal name and the reading it should give, the settings your oscilloscope was read back at, when it was taken and your note on it
+- For each component captured: what the component info window says of it - its name, category, description, purpose and pins - and a picture of its pinout drawing
+- The make and model of the oscilloscope each capture was taken with
 - The board, and the collection's title, description and links to forum threads, if you gave them
-- When it is to be deleted: in 1 month, 6 months, 1 year or 5 years, as you chose
+- When it is to be deleted: in 1 day, 1 week, 1 month or 1 year from that share, as you chose
+- The collection's key (below)
 
-The collection then gets a page of its own at `https://classic-repair-toolbox.dk/collections/` followed by a 12-character code, which anybody with the link can open. **The page does not name you**: not your name, not your email address - it shows the board, the captures, your words, the date it was shared and the date it will be deleted. Only when you comment on it yourself - on the page, or with **Answer** in CRT - is that comment shown with your display name and "Owner" beside it. Search engines are asked not to keep it.
+The collection then gets a page of its own at `https://classic-repair-toolbox.dk/collections/` followed by a 12-character code, which anybody with the link can open. **The page does not name you**: not your name, not your email address - it shows the board, the oscilloscope, the captures, your words, the date it was shared and the date it will be deleted. Search engines are asked not to keep it.
 
-The server keeps your captures' pictures, and which account sent each, so a collection only ever shows pictures its own account sent. It deletes the collection when its time is up - mailing you 30 days before, when you chose to keep it longer than two months - or when you press **Delete collection** in CRT; a picture no collection shows any more is deleted a day later. The administrator can see every collection and whose it is, and can delete one that should not be there. A deleted collection's page only says when and why it went.
+**The page belongs to the computer it was shared from.** The first time you share a collection, CRT makes a secret key for it and keeps it with the collection on your computer; the key goes with every share, and the server keeps only a scrambled check value of it. Only with that key can the page be changed, taken offline or deleted - so CRT on another computer cannot, and if the collection is gone from your computer, its page stays online until its deletion date.
 
-While you are signed in and have shared a collection, CRT asks the server at most every five minutes whether it has new comments, so the component info window can say so.
-
-## When you comment on a collection
-
-Anybody with an account with a confirmed email address can comment on each capture of a shared collection, on its page - or, for the collection's owner, in CRT. A comment is shown to everybody who opens the page, with your display name beside it and when you wrote it. Your email address is never shown.
-
-The collection's owner gets a mail for each comment, with your display name and your text - not your email address. You can change or delete your own comments; the collection's owner and the administrator can hide a comment, and the administrator can delete one. A collection deleted takes its comments with it.
+The server keeps your captures' pictures, each with the scrambled key it was sent with, so a collection only ever shows pictures sent with its own key. It also notes the internet connection a collection was first shared from and each picture was sent from - the IP address, or of an IPv6 address only its network part - to limit how many can be shared from one internet connection in a day. It deletes the collection when its time is up, or when you press **Delete collection** in CRT; a picture no collection shows any more is deleted a day later. The administrator can see every collection and can delete one that should not be there. A deleted collection's page only says when and why it went.
 
 ## Signing in on the website
 
-To comment on the website you sign in there with your account. You are then kept signed in by a cookie in your browser, which holds nothing but the sign-in, is sent only to the collection pages, the sign-in and the sign-out of `classic-repair-toolbox.dk` and cannot be read by scripts, and ends when you sign out - or by itself when it has not been used for 30 days. The account and collection pages set no other cookie and run no scripts.
+Only the site's administrator signs in on the website - to see every shared collection, and take one down. The sign-in is then kept by a cookie in the browser, which holds nothing but the sign-in, is sent only to the collection pages, the sign-in and the sign-out of `classic-repair-toolbox.dk` and cannot be read by scripts, and ends at sign-out - or by itself when it has not been used for 30 days. The account and collection pages set no other cookie. The account pages run no scripts; a collection's page runs one small script of its own, for its viewer's keys and for copying a link, and nothing else.
 
 ## When you discard a draft you have submitted
 

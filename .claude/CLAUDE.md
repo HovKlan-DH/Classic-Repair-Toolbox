@@ -2950,7 +2950,8 @@ repair on one board; it holds worklogs.
 **Captures taken in the component info window, shared as a page for a forum's help** (owner requests, 2026-11-25: "a
 possibility for a user to capture one or more oscilloscope images and make that a "collection". Then that collection can
 be shared to the internet on various forums like Lemon64, Forum64 or Reddit"; the plan's step 2, 2026-11-26, comments
-on each image step 3 and the website's "Your collections" step 4, the same day; decisions in the memory note).
+on each image step 3 and the website's "Your collections" step 4, the same day - the accounts, the comments and that list
+went again on 2026-11-28; decisions in the memory note).
 Every rule both ends keep is CRT.Data's (`CollectionRules` - id, "Delete in" 1 day / 1 week / 1 month / 1 year (default; owner
 request, 2026-11-28 - "6 months" kept by an earlier CRT reads as the year), never past a year ahead, limits, the page's anchors;
 `CollectionPng`; `CollectionContract`'s records), CRT
@@ -2959,6 +2960,21 @@ COUNTED FROM EVERY SHARE** (owner decision, 2026-11-27: "The max years a collect
 years - however, every time the user shares it again, it resets its time"; `CollectionSharing.DeleteAtFor`, server
 16.0.0): "Share" is always offered while it holds a capture, and sends the date anew; a "5y" an earlier CRT kept reads as
 the year.
+
+- **ANYBODY SHARES, NO ACCOUNT: A PAGE IS OWNED BY THE KEY KEPT WITH ITS COLLECTION ON THIS COMPUTER** (owner decision,
+  2026-11-28: asked who may share once accounts were no longer for everybody, "Anybody, no account"; server 17.0.0, migration
+  0031): `LocalCollection.OwnerKey` - CRT.Data's `CollectionRules.NewOwnerKey`, 64 lower-case hex characters, `IsOwnerKey` -
+  made and KEPT before the first share is sent (`CollectionWindow.WithOwnerKey`), so a first share whose answer was lost is
+  sent again under the same key and the server changes the page it made; every request carries it
+  (`CollectionRoutes.OwnerKeyHeader`, `X-CRT-Collection-Key`), the server keeping its SHA-256 alone and answering "not found"
+  for another key's collection (`CollectionFlows.OwnerHashOf`, `IsOwnedBy`). **So only this computer changes or deletes the
+  page, and the window SAYS SO** (owner request, the same day: "It must also be clear that the collection is then tied to the
+  computer, and reinstalling CRT on another computer will not give access to the online collections";
+  `CollectionWindow.ThisComputerOnly`, `NotSharedYet`, `FirstSharedLine`) - nothing promises a reinstall on the same
+  computer keeps it either. **`IsShared` asks for the key too**: a collection shared with an account before 2026-11-28 reads
+  as not shared, and "Share" makes its key and a NEW page - its old page, which no key owns, goes at its date or by the
+  administrator's delete. The limits are the server's per INTERNET CONNECTION (an IPv4 address, an IPv6 /64), 20 new
+  collections and 1,000 captures a day (`CollectionRules`).
 
 - **A collection is ONE BOARD'S and stays on this computer until "Share"** (`CollectionStore`: a folder per collection
   under `AppConfig.CollectionsFolder`, its captures by checksum - a test hands it a folder of its own, never the
@@ -2981,50 +2997,49 @@ the year.
   "Collections" ... we will show all collections and have a management interface for them"; `TabOscilloscope.Collections.cs`,
   every word CRT.App's `CollectionListing`): the log's place is two screen tabs (`ScreenTab`, the "Maintainer" tab's look, its
   `ModeBadge` App.axaml's since), "Communication log" - the black box, shown first - and "Collections": a card per collection
-  of every board, the newest made first, its first capture, board, captures, where it stands and "New comments", the tab's
-  badge counting those. **Its buttons open the collection's window** - "Open collection" (or the picture; "Show collection" until
-  2026-11-28 - owner request), and "Delete collection" opening it ASKING (`Main.OpenCollectionWindowToDelete`,
-  `CollectionWindow.AskToDelete`): the window's delete is the only one - it signs in, takes the page down, knows another account's
-  collection - never a second copy in the list; "Open shared page" only while it is shared (`CollectionListItem.IsShared`; offline
-  is not shared). Read again whenever Main says the collections changed (`Main.ShowCollectionsAsTheyAre` - the
-  popups' drop-downs and the list, ONE call), as the tab is shown and as "Collections" is picked, the server asked then for new
-  comments (`AskForNewCommentsSoon`, at most every five minutes). The store is asked for each time
+  of every board, the newest made first, its first capture, board, captures and where it stands. **Its buttons open the
+  collection's window** - "Open collection" (or the picture; "Show collection" until 2026-11-28 - owner request), and "Delete
+  collection" opening it ASKING (`Main.OpenCollectionWindowToDelete`, `CollectionWindow.AskToDelete`): the window's delete is
+  the only one - it takes the page down under the key, knows a page no key here owns - never a second copy in the list; "Open
+  shared page" only while it is shared (`CollectionListItem.IsShared`; offline is not shared). Read again whenever Main says
+  the collections changed (`Main.ShowCollectionsAsTheyAre` - the popups' drop-downs and the list, ONE call), as the tab is
+  shown and as "Collections" is picked. The store is asked for each time
   (`OscilloscopeCollectionsHost.Store`), as a test sets its own after Main is made. A tour step of 4.1.0 shows the tab.
-- **THE COLLECTIONS ARE KEPT PER SERVICE AND ARE THEIR ACCOUNT'S** (code review, 2026-11-27: a server id is one database's,
-  and the server answers "not found" for another account's collection - read as gone, "Delete collection" deleted it here
-  and left its page up): "Collections" for a release, "Collections-test" for a pre-release (`ContributionServer.FileNameFor`;
-  a 4.1.0 pre-release moves the folder it used before at `StartAsync` - `CollectionStore.TakesOverEarlierFolder`, never
-  once 4.1.0 is released), and a collection remembers the account it was shared with (`SharedByAccountId`) - nothing is
-  shared, deleted or answered from it with another signed in (`CollectionSharing.OtherAccountLine`).
-- **The collection window changes its rows IN PLACE** (thumbnails and comments notify; code review, 2026-11-27: each
-  thumbnail rebuilt the whole list, and comments read again took the keyboard from a note), **writes what the server
-  answered onto the collection AS KEPT AFTER THE WAIT** (an edit made meanwhile stays), and runs a comment action or the
-  delete one at a time under its `BusyOverlay` ("Share" says its own progress). **Its words** (owner requests, 2026-11-28): "Delete
-  image" ("Take out" until then), "Open shared page" ENABLED only while shared ("Open web page" until then), "Attach collection to
-  worklog", the date the page goes BOLD with "Clicking "Share" again will update the deletion day." (`DeleteDateLine`, `BoldRuns`),
-  and no "Shared on ..." line (`SharedStateLine` says nothing of a collection shared as it is). **"Delete image" TAKES A SHARED
+- **THE COLLECTIONS ARE KEPT PER SERVICE** (code review, 2026-11-27: a server id is one database's): "Collections" for a
+  release, "Collections-test" for a pre-release (`ContributionServer.FileNameFor`; a 4.1.0 pre-release moves the folder it
+  used before at `StartAsync` - `CollectionStore.TakesOverEarlierFolder`, never once 4.1.0 is released).
+- **The collection window changes its rows IN PLACE** (thumbnails notify; code review, 2026-11-27: each thumbnail rebuilt
+  the whole list, and a note being typed lost the keyboard), **writes what the server answered onto the collection AS KEPT
+  AFTER THE WAIT** (an edit made meanwhile stays), and runs "Delete image", "Stop sharing" or the delete one at a time under
+  its `BusyOverlay` ("Share" says its own progress). **Its words** (owner requests, 2026-11-28): **"Share" reads "Update share"
+  while the page is up** (`CollectionWindow.ShareLabel` - offline, "Share" again brings it back), "Delete image" ("Take out"
+  until then), "Open shared page" ENABLED only while shared ("Open web page" until then), "Attach collection to worklog", the
+  date the page goes BOLD with "Clicking "Update share" will update the deletion day." (`DeleteDateLine`, `BoldRuns`), and no
+  "Shared on ..." line - while shared, `SharedStateLine` says the page is this computer's alone. **"Delete image" TAKES A SHARED
   COLLECTION'S CAPTURE OFF ITS PAGE AT ONCE, ITS DELETION DATE UNTOUCHED** (owner request, 2026-11-28: "do not touch the expiry date.
   This date should only change when the USER does something"; `TakeOutAsync`, `CollectionClient.RemoveImageAsync`, `DELETE
   /api/collections/<id>/images/<sha256>`, server 16.1.0): that one capture and nothing else - never "Share", which sends a date -
-  signed in with the account that shared it, then off this computer; refused, it stays here too. **A collection in step with its page
+  under its key, then off this computer; refused, it stays here too. **A collection in step with its page
   stays so** (`DeleteHere`: the hash of what was shared moved to the collection as it now is), and one with a change not shared yet
   keeps saying so. The server keeps the collection's component facts and oscilloscopes as shared - only "Share" rewrites them, so a
   scope only the deleted capture was taken with stays named on the page until then. The popup's "Take out of the collection", for
   a capture just taken, stays local. **"Copy link" is ONE split button by FORMAT, never a button per forum** (owner decision,
-  2026-11-28: "OK to your proposal for the forum button"; CRT.Data's `CollectionLinkFormats` - BBCode, Markdown, a plain link -
+  2026-11-28: "OK to your proposal for the forum button"; CRT.Data's `CollectionLinkFormats` - BBCode, Markdown, HTML (owner
+  request, the same day: "add an option of "HTML" ... embed the link in "<a href>"" - its words HTML-encoded), a plain link -
   which the page's "Link" panel writes by too): a click copies in the format picked last, named on it ("Copy link (BBCode)"),
   remembered (`UserSettings.CollectionLinkFormat`, `collectionLinkFormat`, handed in as `CollectionWindowHost.LinkFormat`/
-  `RememberLinkFormat`); its arrow lists the three, each with where it works. **It opens where it was left, its size too** (`UserSettings.CollectionWindowPlace`, one for every
+  `RememberLinkFormat`); its arrow lists the four, each with where it works. **It opens where it was left, its size too** (`UserSettings.CollectionWindowPlace`, one for every
   collection's window, handed in by `CollectionWindowHost.Place`/`RememberPlace`) - **`KeptWindowPlace`, the ONE way a window keeps
   its place**, which "Capture from oscilloscope pin-by-pin" uses too (`WindowPlace`, `BaselineCaptureWindowPlace` until then) -
   **and Esc closes it**, or, a delete being asked, keeps the collection.
 - **Share sends the WHOLE collection; the server answers 409 naming the captures it lacks, which CRT uploads, then sends
-  it again** (`CollectionClient`). A collection shows only pictures ITS OWN ACCOUNT uploaded. **The collection keeps the
+  it again** (`CollectionClient`). A collection shows only pictures ITS OWN KEY uploaded. **The collection keeps the
   deletion date it SENT, never the server's echo** (`Result.SentDeleteAtUtc`; 2026-11-26: the database keeps
   milliseconds, so the echo read as "changed since it was shared" at once) - what was sent is a checksum of the request
   (`CollectionSharing.ContentHash`), the window saying "changed since it was shared" only once it differs.
 - **The page names nobody** (owner decision) - the board, the id, the dates shared and deleted, each capture with its
-  settings and note - built by the server, everything typed encoded, `noindex`. A locked owner's collections go offline.
+  settings and note - built by the server, everything typed encoded, `noindex`; nobody is behind a page but a key, whose hash
+  is never shown.
   **CRT's own baseline is NOT shown** (owner request, 2026-11-27: "Do not include the baseline image, as that is not
   relevant"; server 16.0.0, migration 0029 dropped its columns) - so the pages read nothing of the data trees. **In its
   place the component, as the component info window shows it** (owner request, the same day: "show sometihng like the
@@ -3051,7 +3066,8 @@ the year.
   and top back, right and bottom on, the side ones showing a light round arrow (dark captures hid a dark one). **"Link"
   under a capture opened large** (owner request, the same day: "copy a link to either Forum64, Lemon64 or Reddit. The link
   should then navigate to this exact image, and show it large"): a `<details>` with the address of "#view.<anchor>" and
-  "Copy as BBCode" (`[url=...]...[/url]`), "Copy as Markdown" (`[...](...)`) and "Copy plain link" (`words: address`), each with
+  "Copy as BBCode" (`[url=...]...[/url]`), "Copy as Markdown" (`[...](...)`), "Copy as HTML" (`<a href="...">...</a>`, server
+  17.0.0) and "Copy plain link" (`words: address`), each with
   where it works under it (`CollectionLinkFormats`, square brackets in the words made round - "Copy for Lemon64", "Copy for
   Forum64" and "Copy for Reddit" until 2026-11-28), the text naming the capture and the board. **The brand in the
   top left links to CRT's GitHub project** (`EmailTemplates.CrtProjectUrl`; owner request, the same day), never the
@@ -3060,11 +3076,11 @@ the year.
   async API** (measured by `CollectionFlowsTests`' async-only stream), and Kestrel refuses that.
 - **"STOP SHARING": THE PAGE OFFLINE, THE SAME LINK BACK** (owner decision, 2026-11-27: "Offline, same link back"; migration
   0028's `unshared_utc`, `PUT /api/collections/<id>/sharing`, `CollectionFlows.SetSharedAsync`; CRT's `SharingStoppedUtc`,
-  `IsOnline`): its link then says only that it is not shared at the moment (`ShownCollection.IsWithheld` - its pictures, "Download
-  all", its comments and "You commented on" too) to all but its owner and the administrator, who see it, said so; its captures,
-  comments and date stay. "Share" - the content sent again - brings it back (`ReplaceContentAsync` clears it).
+  `IsOnline`): its link then says only that it is not shared at the moment (`ShownCollection.IsWithheld` - its pictures and
+  "Download all" too) to all but the administrator, who sees it, said so; its captures and date stay. "Share" - the content sent again - brings it back (`ReplaceContentAsync` clears it).
 - **A DELETED COLLECTION'S PAGE STAYS FOR GOOD, AND SAYS WHAT IT WAS AND WHY IT WENT** (owner request, 2026-11-27: "keep this page
-  forever"; `CollectionPages.Deleted`): its row is never deleted - only its words, captures and comments (`MarkDeletedAsync`).
+  forever"; `CollectionPages.Deleted`): its row is never deleted - only its words and captures (`MarkDeletedAsync`, and the
+  comment rows of one from before 17.0.0).
   **And nothing deletes a collection from THIS COMPUTER but its own "Delete collection"** (owner request, the same day): a page
   whose time is up, or taken down, only makes CRT forget the page (`CollectionWindow.ForgetPage`); "Share" makes a new one.
 - **"Attach collection to worklog" COPIES the captures in** (owner decision, 2026-11-27: "A copy of its captures"; "Attach to
@@ -3081,53 +3097,35 @@ the year.
 - **The server's folder is an OPTIONAL setting, `CollectionsRoot`** - not set, sharing is off (503, in words) and the
   service starts; the units name it in `ReadWritePaths=` with a "-" (systemd starts without it). Moving the pictures to
   another disk later is a change to the shipped units.
-- **COMMENTS ON EACH CAPTURE** (step 3, 2026-11-26; owner decisions: "A mail per comment" to the owner, none to those who
-  comment "Not yet", "Writer deletes own, Owner hides comments, Writer edits own" - no "Report" link; rules CRT.Data's
-  `CollectionComments` - plain text, 2,000 characters, 100 a day per account; the server's `CollectionCommentFlows`):
-  written on the page by anybody signed in with a confirmed address, and by the owner from the collection's window in
-  CRT, which lists each capture's comments, marks those not read (`LocalCollection.SeenCommentId`) and hides, shows and
-  deletes them. The writer edits (marked "edited") and deletes their own; the owner or an administrator hides any; an
-  administrator deletes any; a hidden comment is shown only to the owner and an administrator - to its writer too it is
-  gone (`CollectionCommentFlows.ShownTo`). The popup's drop-down says which collection has comments not read, from `GET
-  /api/collections/mine`'s `latestCommentId`, asked at most every five minutes (`Main.AskForNewCommentsSoon`). A
-  collection deleted takes its comments. **What a page shows of a collection is ONE question, `CollectionFlows
-  .FindShownAsync`** (live - not deleted, its time not up, `IsGone` - and its owner not locked) - writing and editing a
-  comment ask it, the page and a picture ask it with the reader (`FindShownToAsync`, `FindShownImageToAsync`, which reads
-  that capture's rows alone: an offline collection is the administrator's to see); **deleting or hiding a comment asks
-  only that the collection is not gone**, so its writer takes it back and the administrator moderates a collection
-  offline for everybody else (code review, 2026-11-27); only the owner's own list in CRT reads the collection as the
-  owner's.
-- **THE WEBSITE'S SIGN-IN IS CRT'S SESSION IN A COOKIE** (owner: "30 days, like CRT"; `WebSessions`,
-  `/account/sign-in` and `/account/sign-out`): HttpOnly, Secure, SameSite=Lax, NAMED PER INSTANCE and **SENT ONLY WHERE IT
-  IS READ** (`WebSessions.CookiePaths`: `crt_session` on "/collections/", "/account/sign-out" and "/account/sign-in",
-  `crt_session_crt_test` on the same under "/crt-test/" - code review, 2026-11-27, Security: on "/" the live token, with
-  every right of the account, went to every page of the site, the test instance's among them; the "/" cookie of 14.1.0 is
-  taken away FIRST as one is kept, as ASP.NET's delete drops the headers before it whose path it is a prefix of),
-  **written again at every page signed in** so the browser keeps it as the session slides, **and a sign-in over one ends
-  the session the browser held** (`WebSessions.EndEarlierAsync` - the sign-in is where the cookie goes for that alone). **Every form that acts is refused from another website first**
-  (`AccountPages.IsFromAnotherSite`), **then needs the session AND its token** (`WebSessions.Csrf`: made from the session
-  token, so nothing is stored - a hidden field on each form; the page has no script). **After signing in it goes back to
-  a collection's page of this site only** (`WebSessions.ReturnPath`: `/collections/<id>`, a `#` anchor, or the list
-  `/collections/` - never a path a link names, which would be an open redirect). A signed-in page is `Cache-Control:
-  private, no-store`.
-- **"YOUR COLLECTIONS" IS THE ONE LIST OF THEM, AND ONLY THE ADMINISTRATOR'S NAMES OWNERS** (step 4, 2026-11-26; owner
-  decisions, 2026-11-25: "A signed-in user's web list: their own collections and those they commented on", nobody but the
-  administrator a list of all; `CollectionListFlows`, `CollectionPages.List`, `GET /collections/`): a reader's own, and
-  others' they commented on (a locked owner's left out); the administrator also every collection with its owner's name and
-  address, and the newest comments, hidden ones too, each a link to it. **The web deletes a collection for the
-  administrator alone** (`POST /collections/{id}/delete`, asked first at `?remove=1`): the owner deletes their own in CRT,
-  whose window would not know of a delete made elsewhere until its next send (`CollectionClient`'s `GoneFromServer`).
-  There is no administrator's screen for collections in CRT - the web list is it. Commenters get no mail of replies
-  (owner decision, 2026-11-27: "no, not for now").
-- **THE ADMINISTRATOR LOCKS AN ACCOUNT FROM THAT LIST** (owner decision, 2026-11-27: "yes, via web page where I as admin can
-  do this" - SQL alone until then; `AccountLockFlows`, `POST /collections/accounts/{a}/lock|unlock`, asked first at
-  `?lock=<a>`): "Lock account" beside each owner and comment writer, "Unlock" under "Locked accounts". **Never an
-  administrator's account** - that stays SQL, so no click locks the only one out; locking ends every session the account has
-  and is audited. **A locked account's comments are the administrator's alone to see** (the writer joined into
-  `CollectionCommentRecord.AuthorIsLocked` - `CollectionCommentFlows.ShownTo`, the owner's list in CRT, the counts of
-  `/api/collections/mine`), as
-  its collections go offline: locking a spammer takes the spam down, unlocking puts it back. Every form of the pages takes
-  the same three steps first, ONE helper (`CollectionPageEndpoints.SignedInFormAsync`).
+- **NO COMMENTS** (owner request, 2026-11-28: "do remove comment possibilities etc." - comments on each capture, written on the
+  page by anybody signed in and answered in CRT's window, lasted from 2026-11-26 until then, server 14.1.0 to 16.1.0; in git
+  history should they come back). The pages and CRT take none; those written stay in `collection_comments`, shown nowhere, no
+  migration dropping the table. **What a page shows of a collection is ONE question, `CollectionFlows.FindShownToAsync`** (and
+  `FindShownImageToAsync` for a picture, which reads that capture's rows alone): live - not deleted, its time not up
+  (`IsGone`) - and, its sharing stopped, the administrator's alone to see.
+- **THE WEBSITE'S SIGN-IN IS THE ADMINISTRATOR'S ALONE - CRT'S SESSION IN A COOKIE** (owner: "30 days, like CRT"; since
+  2026-11-28 - "I (as web admin) still want to be able to see all collections, so I can control it looks correct" - nobody else
+  signs in there: the right password of any other account is refused in words, `AccountPages.SignInAdministratorsOnly`, its
+  session ended at once; `WebSessions`, `/account/sign-in` and `/account/sign-out`): HttpOnly, Secure, SameSite=Lax, NAMED PER
+  INSTANCE and **SENT ONLY WHERE IT IS READ** (`WebSessions.CookiePaths`: `crt_session` on "/collections/",
+  "/account/sign-out" and "/account/sign-in", `crt_session_crt_test` on the same under "/crt-test/" - code review, 2026-11-27,
+  Security: on "/" the live token, with every right of the account, went to every page of the site, the test instance's
+  among them; the "/" cookie of 14.1.0 is taken away FIRST as one is kept, as ASP.NET's delete drops the headers before it
+  whose path it is a prefix of), **written again at every page signed in** so the browser keeps it as the session slides,
+  **and a sign-in over one ends the session the browser held** (`WebSessions.EndEarlierAsync`). **Every form that acts is
+  refused from another website first** (`AccountPages.IsFromAnotherSite`), **then needs the session AND its token**
+  (`WebSessions.Csrf`: made from the session token, so nothing is stored - a hidden field on each form). **After signing in
+  it goes back to a collection's page of this site only** (`WebSessions.ReturnPath`: `/collections/<id>`, a `#` anchor, or
+  the list `/collections/` - never a path a link names, which would be an open redirect). A signed-in page is
+  `Cache-Control: private, no-store`.
+- **"ALL COLLECTIONS" IS THE ADMINISTRATOR'S LIST, AND THE WEB'S DELETE THE ADMINISTRATOR'S** (`CollectionListFlows`,
+  `CollectionPages.List`, `GET /collections/`; "Your collections" until 2026-11-28, with a reader's own, those commented on,
+  the newest comments and "Lock account" beside each owner - account locks are SQL again): every collection not deleted,
+  newest first (at most 500), each a link to its page, its sharing stopped flagged; nobody else gets a list
+  (`ListSignedOut`). **The web deletes a collection for the administrator alone** (`POST /collections/{id}/delete`, asked
+  first at `?remove=1`): whoever shared it deletes it in CRT, whose window would not know of a delete made elsewhere until
+  its next send (`CollectionClient`'s `GoneFromServer`). There is no administrator's screen for collections in CRT - the web
+  list is it.
 
 #### Schematics (`Tabs/Schematics/`)
 
@@ -3242,41 +3240,44 @@ about its centre (`Main.DataSyncStatusIconSpinAngle`). **The "KiCad nets" panel 
   `Main.ShareMaintainerSignIn`): the Feedback tab and the Submit dialog use the account's address,
   read only, and submissions go with the account's token. `ContactAddress` is the one rule. It stays
   shared whatever the Configuration tab says, until signing out.
-- **ACCOUNTS FOR EVERYBODY, SIGNED IN WITH THE ACCOUNT ICON** (owner requests, 2026-11-25: "we now need a possibility to
-  have user accounts in CRT. This user account can then be used for "Maintainer" tab or this collection thing, but also
-  anyone else can register an account"; "Allow registration both places - it does not matter, but it should be clear that it
-  gives access to both"; step 1 of the oscilloscope collections, see the memory note): the person icon right of the theme's
-  in the window's top right corner (`Main.Account.cs`) opens `AccountWindow` (`Main/Account/`) - **Sign in**, **Create an
-  account**, **I forgot my password** (ask for a code, then the code and a password, the web page's two steps), **I have an
-  invitation**, and signed in **My account** (`MyAccountView`, ALSO still under the Maintainer tab's Account screen) with a
-  notice while the address is not confirmed and **Send the mail again**. The tab's sign-in form, reset panel and invitation
-  went there; the tab keeps what it is and a **Sign in** that opens the window (`SignInWanted`). **The session is still the
-  Maintainer tab's** - the window hands a sign-in over (`AccountHost.UseSignIn` -> `TabMaintainer.UseSignInAsync`) and works
-  on the tab's client; never give the window a session of its own. An account that maintains no board and is no
-  administrator is said so on the tab instead of the queue (`ApplyStanding`, from GET /api/accounts/me). The words a mail,
-  the window and the web pages share are CRT.Data's `AccountWording`.
-- **NO REQUEST SAYS WHETHER AN ADDRESS HAS AN ACCOUNT - NOT A SECOND ONE EITHER** (owner decision, 2026-11-25: "I do not
-  think any address should be revealed, no"): **an address not confirmed cannot sign in**, answered as a wrong password
-  (`AccountFlows.LoginAsync` - the same Argon2 work, a failure counted for the limiter), and **only a confirmed account holds
-  a display name** (`IAccountStore.IsDisplayNameTakenAsync`, `AccountFlows.ConfirmAddressAsync`: the second of two new
-  accounts to confirm one name gets it with "-2" after it, and a mail). Registering an address, then signing in with the
-  password given or asking for the name given again, told whether an account had been made. Every way an address becomes
-  confirmed goes through `ConfirmAddressAsync`; an expired link's way on is "I forgot my password", whose code confirms it.
+- **AN ACCOUNT IS A MAINTAINER'S, MADE BY AN INVITATION - NOT FOR EVERYBODY** (owner decision, 2026-11-28: "Entirely remove
+  the new "Account" possibility, as I have regret this implementation. It is too soon to ask for this, so I do not want the
+  possibility for everyone to create an account. This should of course continue to work as-is for the "Maintainer" tab" -
+  accounts for everybody, the account icon right of the theme's and "Create an account" lasted from 2026-11-25 until then,
+  in git history should they come back; server 17.0.0). The Maintainer tab's **Sign in** opens `AccountWindow`
+  (`Main/Account/`, `Main.Account.cs`, `SignInWanted`) - **Sign in**, **I forgot my password** (ask for a code, then the
+  code and a password, the web page's two steps), **I have an invitation**, and signed in **My account** (`MyAccountView`,
+  ALSO under the tab's Account screen) - and nothing else in CRT's window offers an account (`MainAccountTests`). **The
+  session is the Maintainer tab's** - the window hands a sign-in over (`AccountHost.UseSignIn` ->
+  `TabMaintainer.UseSignInAsync`) and works on the tab's client; never give the window a session of its own. An account that
+  maintains no board and is no administrator is said so on the tab instead of the queue (`ApplyStanding`, from GET
+  /api/accounts/me). The words a mail, the window and the web pages share are CRT.Data's `AccountWording`. **`POST
+  /api/accounts/register` stays MAPPED** - CRT 4.0.0's surface, `crt-4.0.0.txt` - and answers 403 in words
+  (`AccountEndpoints.RegistrationClosed`); `GET /api/accounts/verify` still answers a link mailed before. The first
+  administrator of a new database is a row put in by SQL and its password set with "I forgot my password" (INSTALLING.md,
+  step 10) - an invitation needs an administrator to send it.
+- **NO REQUEST SAYS WHETHER AN ADDRESS HAS AN ACCOUNT** (owner decision, 2026-11-25: "I do not think any address should be
+  revealed, no"): **an address not confirmed cannot sign in**, answered as a wrong password (`AccountFlows.LoginAsync` - the
+  same Argon2 work, a failure counted for the limiter), and **only a confirmed account holds a display name**
+  (`IAccountStore.IsDisplayNameTakenAsync`, `AccountFlows.ConfirmAddressAsync`: the second of two accounts to confirm one
+  name gets it with "-2" after it, and a mail). While anybody could register, an account made was told apart by what
+  followed; the rules stay for the accounts left unconfirmed from then. Every way an address becomes confirmed goes
+  through `ConfirmAddressAsync`; an account left unconfirmed confirms it with "I forgot my password", whose code does.
 - **A DISPLAY NAME IS UNIQUE AND OF ONE RULE** (owner requests, 2026-11-25: "it needs to be unique for all users", "only
   normal A-Z + 0-9 and then some common special charatcers like: +-/@.[]() ... max length 30"; 2026-11-26: spaces and "_"
   "allow those two also" - a space never twice in a row): CRT.Data's `DisplayNames`,
   2 to 30 characters, unique ignoring capitals, never "You" nor holding the WORD "Administrator" or "Owner" (code review,
   2026-11-27, Security: "Dennis (Administrator)" read in CRT's collection window as an administrator's comment; server
-  15.0.0) - asked of a name being SET (registering, "My account", an invitation), on the
-  server (`AccountRules.ValidateDisplayName`, `IAccountStore.IsDisplayNameTakenAsync`) and as it is typed in CRT. A name set
-  before is kept; no unique index holds it (old names may share one). Labelled **Display name**, "Name or handle" until then.
-- **THE ACCOUNT WEB PAGES** (server 13.0.0, `/account/` - Apache forwards it, INSTALLING.md): making an account, confirming
-  its address (`/api/accounts/verify` answers the same page), "I forgot my password" with the code typed on the page. A rim
+  15.0.0) - asked of a name being SET ("My account", an invitation), on the server (`AccountRules.ValidateDisplayName`,
+  `IAccountStore.IsDisplayNameTakenAsync`) and in CRT. A name set before is kept; no unique index holds it (old names may
+  share one). Labelled **Display name**, "Name or handle" until then.
+- **THE ACCOUNT WEB PAGES** (server 13.0.0, `/account/` - Apache forwards it, INSTALLING.md): "I forgot my password" with
+  the code typed on the page, the ADMINISTRATOR'S sign-in (since 17.0.0 - "THE WEBSITE'S SIGN-IN" under the oscilloscope
+  collections) and the page a confirmation link mailed before 17.0.0 opens (`/api/accounts/verify` answers it too). A rim
   over the very flows the JSON routes call (`AccountPageEndpoints`), the HTML pure and tested (`AccountPages`): every word
   typed encoded, no script, one style block allowed by its hash in the Content-Security-Policy - change `AccountPages.Css`
   and the hash follows by itself. **A page that acts on a signed-in person takes the website's sign-in AND its token**
-  (`WebSessions` - since server 14.1.0, the collections' comments, delete and account locks; "THE WEBSITE'S SIGN-IN" under
-  the oscilloscope collections) - never one without both. **A form posted from another
+  (`WebSessions` - the administrator's delete of a collection) - never one without both. **A form posted from another
   website is refused** (`AccountPages.IsFromAnotherSite` - `Sec-Fetch-Site`, else an older browser's `Origin`; code review,
   2026-11-25, Security: the mail budget is per IP address, so a hidden form elsewhere spent every visitor's), which is why
   the pages' `Referrer-Policy` is `strict-origin` - `no-referrer` makes a browser send `Origin: null` with their own forms.
@@ -3951,8 +3952,8 @@ Every rule lives in a pure class taking its stores and mailer as arguments, test
 
 Load-bearing, and easy to undo by accident:
 
-- **The status codes are the security design.** Registration and password reset always answer 202;
-  login answers 401 with no reason. A 409 for a taken address is an enumeration oracle.
+- **The status codes are the security design.** A password reset always answers 202 (registration did too, while it was
+  open - it answers 403 since 17.0.0); login answers 401 with no reason. A 409 for a taken address is an enumeration oracle.
 - **The rate limiter runs BEFORE the Argon2 hasher** (~128 MiB per verification).
 - **A request body's size limit is written on its ROUTE** (`.WithBodyLimit(...)`); everything else
   gets 64 KB. `RequestBodyLimitsTests` builds the real route table and fails on a body-reading route

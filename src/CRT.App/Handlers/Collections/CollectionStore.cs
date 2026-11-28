@@ -31,8 +31,11 @@ namespace Handlers.Collections
 
         public string Root => this.thisRoot;
 
-        // A local id: a GUID without dashes, lower case - the folder's name.
-        public static bool IsLocalId(string? id) => CollectionRules.IsClientKey(id);
+        // A local id: a GUID without dashes, lower case - the folder's name. Never sent: the server knows a collection by its
+        // OWNER KEY (CollectionRules.IsOwnerKey) since 17.0.0, when the local id stopped being the first share's
+        // Idempotency-Key - so the rule is CRT's alone.
+        public static bool IsLocalId(string? id) =>
+            id is { Length: 32 } && id.All(c => c is (>= '0' and <= '9') or (>= 'a' and <= 'f'));
 
         // ###########################################################################################
         // Every collection kept, newest first - one whose file cannot be read is left out (and said once in the log).

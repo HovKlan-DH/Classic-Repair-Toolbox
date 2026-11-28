@@ -442,66 +442,6 @@ namespace Handlers.MaintainerHandling
             this.PostAccountChangeAsync(
                 ReviewApiRoutes.ChangePassword(this.thisBaseAddress), new ChangePasswordRequest(newPassword), session, cancellationToken);
 
-        // A new link to confirm the account's own address (2026-11-25) - no body; an address confirmed already is said so.
-        public Task<ReviewApiResult<AccountChangeAnswer>> SendVerificationAgainAsync(
-            ReviewSession session,
-            CancellationToken cancellationToken = default) =>
-            this.PostAccountChangeAsync(
-                ReviewApiRoutes.SendVerificationAgain(this.thisBaseAddress), new { }, session, cancellationToken);
-
-        // ###########################################################################################
-        // MAKING AN ACCOUNT (2026-11-25, accounts for everybody - CRT's account window). Answered with the server's neutral
-        // sentence whatever the address (AccountFlows' header): "a message is on its way" whether or not it had an account, so
-        // nothing here can tell the two apart either. A 400's sentences - every rule broken, a name taken - are the useful
-        // part and are shown as they are.
-        // ###########################################################################################
-        public async Task<ReviewApiResult<string>> RegisterAsync(
-            string email,
-            string password,
-            string displayName,
-            CancellationToken cancellationToken = default)
-        {
-            string body = ReviewApiClient.Body(new RegisterAccountRequest(email, password, displayName));
-
-            try
-            {
-                using var content = new StringContent(body, Encoding.UTF8, "application/json");
-                using var request = new HttpRequestMessage(HttpMethod.Post, ReviewApiRoutes.Register(this.thisBaseAddress)) { Content = content };
-
-                using HttpResponseMessage response = await this.thisHttp.SendAsync(request, cancellationToken).ConfigureAwait(false);
-
-                string payload = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-
-                if (response.IsSuccessStatusCode)
-                {
-                    return ReviewApiResult<string>.Ok(
-                        ReviewApiParser.ParseMessage(payload) ?? "If that address can receive mail, a message is on its way to it.");
-                }
-
-                if (response.StatusCode == HttpStatusCode.BadRequest)
-                {
-                    return ReviewApiResult<string>.Failed(
-                        ReviewApiFailure.Refused,
-                        ReviewApiParser.ParseFirstError(payload) ?? ReviewApiParser.ParseMessage(payload) ?? "The account was not made.");
-                }
-
-                return await ReviewApiClient.StatusFailureAsync<string>(response, cancellationToken).ConfigureAwait(false)
-                    ?? ReviewApiResult<string>.Failed(ReviewApiFailure.ServerError, "The server could not make the account.");
-            }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-            {
-                throw;
-            }
-            catch (TaskCanceledException)
-            {
-                return ReviewApiResult<string>.Failed(ReviewApiFailure.Unreachable, "The server did not answer in time.");
-            }
-            catch (HttpRequestException exception)
-            {
-                return ReviewApiResult<string>.Failed(ReviewApiFailure.Unreachable, $"Could not reach the server: {exception.Message}");
-            }
-        }
-
         private async Task<ReviewApiResult<AccountChangeAnswer>> PostAccountChangeAsync(
             string route,
             object change,

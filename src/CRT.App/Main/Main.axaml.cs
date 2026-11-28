@@ -293,7 +293,7 @@ namespace CRT
                 boardId => UserSettings.MaintainerLastBoardId = boardId);
             this.TabMaintainer.UseTabBadge(() => this.MaintainerTabBadgeCanBeSeen, this.ShowMaintainerTabBadge);
             this.TabMaintainer.SignedInChanged += this.ShareMaintainerSignIn;
-            this.WireAccountIcon();
+            this.WireAccountWindow();
 
             // The "Oscilloscope" tab's "Collections" list (Main.Collections.cs).
             this.HandCollectionsToOscilloscopeTab();

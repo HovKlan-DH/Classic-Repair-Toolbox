@@ -132,7 +132,7 @@ namespace CRT.Server.Tests
             var hasher = new Argon2PasswordHasher(options);
             var store = new CRT.Server.Tests.Fakes.FakeAccountStore();
 
-            await AccountFlows.RegisterAsync(new RegistrationRequest("anna@example.com", "correct horse battery staple", "Anna", null), store, new CRT.Server.Tests.Fakes.FakeEmailSender(), hasher, options, now);
+            await store.AddAccountAsync("anna@example.com", "correct horse battery staple", "Anna", hasher, now);
             store.ConfirmAddress("anna@example.com");
 
             async Task<string> SignInAsync() =>
