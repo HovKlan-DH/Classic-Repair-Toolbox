@@ -41,6 +41,10 @@ namespace Handlers.DataHandling
 
         // PUT - the owner stops sharing a collection, or shares it again (CollectionSharingRequest; server 15.1.0).
         public static string SharingOf(string id) => $"{CollectionRoutes.Collections}/{id}/sharing";
+
+        // DELETE - the owner deletes one capture, and the page shows it no more at once, its deletion date left as it is
+        // (owner request, 2026-11-28; server 16.2.0). Answered with the collection's CollectionAnswer; 410 once it is deleted.
+        public static string ImageOf(string id, string sha256) => $"{CollectionRoutes.Collections}/{id}/images/{sha256}";
     }
 
     // ###########################################################################################
@@ -97,6 +101,9 @@ namespace Handlers.DataHandling
     //   Images                   the captures in the order the page shows them.
     //   Components               what CRT's component info window said of each component captured, as it was captured
     //                            (server 16.0.0) - the page shows it beside a capture seen large. Null from a CRT before it.
+    //   Oscilloscopes            the oscilloscopes the captures were taken with, each once - its vendor and model, "Rigol
+    //                            DS1054Z" (server 16.1.0; owner request, 2026-11-28: "the oscilloscope brand and model should be
+    //                            shown there"), shown in the page's top panel. Null from a CRT before it, or with none known.
     // ###########################################################################################
     public sealed record CollectionContentRequest(
         string HardwareName,
@@ -107,7 +114,8 @@ namespace Handlers.DataHandling
         IReadOnlyList<string>? ForumLinks,
         DateTimeOffset DeleteAtUtc,
         IReadOnlyList<CollectionImageEntry> Images,
-        IReadOnlyList<CollectionComponent>? Components = null);
+        IReadOnlyList<CollectionComponent>? Components = null,
+        IReadOnlyList<string>? Oscilloscopes = null);
 
     // ###########################################################################################
     // One capture: which pin it is of and what the oscilloscope was set to (read back from it, as a baseline stores them).

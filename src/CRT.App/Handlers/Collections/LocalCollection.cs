@@ -101,6 +101,10 @@ namespace Handlers.Collections
 
         [JsonPropertyName("pinoutSha256")] public string? PinoutSha256 { get; init; }
 
+        // The oscilloscope it was taken with - its vendor and model as the "Oscilloscope" tab had them picked ("Rigol DS1054Z";
+        // owner request, 2026-11-28: shown in the page's top panel). Null for one taken before CRT kept it.
+        [JsonPropertyName("oscilloscope")] public string? Oscilloscope { get; init; }
+
         [JsonPropertyName("caption")] public string? Caption { get; init; }
 
         [JsonPropertyName("capturedUtc")] public DateTimeOffset CapturedUtc { get; init; }

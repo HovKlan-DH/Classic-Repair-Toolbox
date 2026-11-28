@@ -58,6 +58,18 @@ namespace CRT.Server.Handlers.Collections
 
             body.Append("<section class=\"panel intro\">");
             body.Append($"<h1>{Encode(name)}</h1>");
+
+            // The board and the oscilloscope, under the title (owner request, 2026-11-28: "I want to have the board hardware and model
+            // shown in the "top user panel", where the collection headline is (move it there). Also the oscilloscope brand and model
+            // should be shown there") - the bar over the page keeps the date it goes.
+            body.Append("<p class=\"kit\">")
+                .Append($"<span>Board: <b>{Encode(CollectionPages.BoardLine(collection))}</b></span>");
+
+            if (collection.Oscilloscopes is { Count: > 0 } oscilloscopes)
+                body.Append($"<span>Oscilloscope: <b>{Encode(string.Join(", ", oscilloscopes))}</b></span>");
+
+            body.Append("</p>");
+
             body.Append("<p class=\"facts\">")
                 .Append($"Collection <code>{Encode(collection.Id)}</code>")
                 .Append($" | Shared {Encode(CollectionRules.DateText(collection.CreatedUtc))}")
@@ -111,7 +123,6 @@ namespace CRT.Server.Handlers.Collections
             body.Append(CollectionPages.Viewers(siteBaseUrl, collection, anchors));
 
             string middle =
-                $"<div class=\"meta-line1\">{Encode(CollectionPages.BoardLine(collection))}</div>" +
                 $"<div class=\"meta-line2\"><span class=\"badge-red\">Will be deleted <b>{Encode(CollectionRules.DateText(collection.DeleteAtUtc))}</b></span></div>";
 
             string actions = collection.Images.Count == 0
@@ -148,22 +159,16 @@ namespace CRT.Server.Handlers.Collections
         public static string DownloadUrl(string siteBaseUrl, string id) => $"{CollectionRules.PageUrl(siteBaseUrl, id)}/download";
 
         // ###########################################################################################
-        // THE GRID OF CAPTURES (the gallery's cards): each picture opens the viewer, its name goes to its section below. Three or
-        // fewer get larger cards, one a single wide card, as the gallery's few do.
+        // THE GRID OF CAPTURES (the gallery's cards): each picture opens the viewer, its headline goes to its section below. Every
+        // card a thumbnail, however few (owner request, 2026-11-28: "For the front page of a collection, then it should not show any
+        // large images - only the thumbnails") - the one or three before were larger cards, as the gallery's few were.
         // ###########################################################################################
         private static string Gallery(string siteBaseUrl, CollectionRecord collection, IReadOnlyList<string> anchors, CollectionPageView view)
         {
             if (collection.Images.Count == 0)
                 return "<section class=\"panel\"><p class=\"muted\">No captures.</p></section>";
 
-            string grid = collection.Images.Count switch
-            {
-                1 => "grid grid-few grid-single",
-                <= 3 => "grid grid-few",
-                _ => "grid"
-            };
-
-            var html = new StringBuilder($"<div class=\"{grid}\">");
+            var html = new StringBuilder("<div class=\"grid\">");
 
             for (int i = 0; i < collection.Images.Count; i++)
             {
@@ -179,13 +184,13 @@ namespace CRT.Server.Handlers.Collections
                     .Append($"<img class=\"thumb-img\" src=\"{Encode(CollectionPages.ImageUrl(siteBaseUrl, collection.Id, image.Sha256))}\" ")
                     .Append($"width=\"{collection.Images[i].Width}\" height=\"{collection.Images[i].Height}\" loading=\"lazy\" alt=\"{Encode($"Oscilloscope capture of {where}")}\">")
                     .Append("</a><figcaption class=\"caption\">")
-                    .Append($"<a class=\"cap-title\" href=\"#{anchors[i]}\">{Encode(where)}</a>")
+                    .Append($"<a class=\"cap-title\" href=\"#{anchors[i]}\">{CollectionPages.HeadlineOf(collection, image)}</a>")
                     .Append("<div class=\"cap-sub\">");
 
                 var sub = new List<string>();
 
-                if (image.SignalName is { } signal)
-                    sub.Add(Encode(signal));
+                if (CollectionPages.PinLineOf(image) is { Length: > 0 } pinLine)
+                    sub.Add(Encode(pinLine));
 
                 if (comments > 0)
                     sub.Add(CollectionPages.Counted(comments, "comment"));
@@ -196,6 +201,31 @@ namespace CRT.Server.Handlers.Collections
 
             return html.Append("</div>").ToString();
         }
+
+        // ###########################################################################################
+        // A CAPTURE'S HEADLINE (owner request, 2026-11-28: "For each image I want it to show the component display name as its
+        // headline - e.g. like this: "<b>U53</b> | <b>Dynamic RAM</b> | <b>4164</b>""): its component as CRT's component info window
+        // titles it, each part bold - else its label alone, a capture CRT sent no facts of - with its pin and signal under it
+        // (PinLineOf). Every word encoded.
+        // ###########################################################################################
+        public static string HeadlineOf(CollectionRecord collection, CollectionImageEntry image) =>
+            string.Join(" | ", CollectionPages.TitlePartsOf(collection, image).Select(part => $"<b>{Encode(part)}</b>"));
+
+        // The same as plain words - "U53 | Dynamic RAM | 4164".
+        public static string HeadlineTextOf(CollectionRecord collection, CollectionImageEntry image) =>
+            string.Join(" | ", CollectionPages.TitlePartsOf(collection, image));
+
+        private static IReadOnlyList<string> TitlePartsOf(CollectionRecord collection, CollectionImageEntry image)
+        {
+            string[] parts = (collection.ComponentOf(image)?.Title ?? string.Empty)
+                .Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
+            return parts.Length > 0 ? parts : [image.ComponentLabel];
+        }
+
+        // "Pin 12 - /RAS", "Pin 12", "/RAS" - or nothing.
+        public static string PinLineOf(CollectionImageEntry image) =>
+            string.Join(" - ", new[] { image.Pin is { } pin ? $"Pin {pin}" : null, image.SignalName }.Where(part => !string.IsNullOrWhiteSpace(part)));
 
         // ###########################################################################################
         // THE VIEWER - one per capture - opened by its id in the address (#view.U7-12), so a link to it opens the page with the
@@ -252,8 +282,8 @@ namespace CRT.Server.Handlers.Collections
                 html.Append("</div>")
                     .Append(info)
                     .Append("</div><div class=\"footer\"><div class=\"title\">")
-                    .Append($"<div class=\"m-name\">{Encode(where)}</div>")
-                    .Append($"<div class=\"m-time\">{Encode(CollectionPages.SettingsText(image.TimePerDivision, image.VoltsPerDivision, image.TriggerLevel))}</div></div>")
+                    .Append($"<div class=\"m-name\">{CollectionPages.HeadlineOf(collection, image)}</div>")
+                    .Append($"<div class=\"m-time\">{Encode(string.Join(" | ", new[] { CollectionPages.PinLineOf(image), CollectionPages.SettingsText(image.TimePerDivision, image.VoltsPerDivision, image.TriggerLevel) }.Where(part => part.Length > 0)))}</div></div>")
                     .Append("<div class=\"actions\">")
                     .Append(CollectionPages.LinkPanel(siteBaseUrl, collection, image, anchors[i]))
                     .Append($"<a class=\"btn\" href=\"{Encode(picture)}\" download=\"{Encode(CollectionPages.CaptureFileName(i, anchors[i]))}\">Download</a>")
@@ -267,33 +297,37 @@ namespace CRT.Server.Handlers.Collections
         // ###########################################################################################
         // "LINK" (owner request, 2026-11-27: "Every image (when viewing it large) should have a link, and clicking that link will
         // expand an option to copy a link to either Forum64, Lemon64 or Reddit. The link should then navigate to this exact image,
-        // and show it large"): a <details> - opened with no script - holding the viewer's address and a "Copy" for each forum's
-        // way of writing a link (Script copies the button's data-copy). The words are the capture's place and the board.
+        // and show it large"): a <details> - opened with no script - holding the viewer's address and a "Copy" for each way of
+        // writing a link (owner decision, 2026-11-28: by format, never a button per forum - CRT.Data's CollectionLinkFormats, as
+        // CRT's "Copy link" writes it; Script copies the button's data-copy), where each works said under it. The words are the
+        // capture's place and the board.
         // ###########################################################################################
         public static string CaptureLinkText(CollectionRecord collection, CollectionImageEntry image) =>
             CollectionRules.WhereOf(image) + (image.SignalName is { } signal ? $" - {signal}" : string.Empty) +
             $" ({collection.HardwareName} {collection.BoardName})";
 
-        // Lemon64's phpBB, Forum64's WoltLab and Reddit's Markdown each write a link their own way.
-        public static string ForLemon64(string url, string text) => $"[url={url}]{text}[/url]";
-
-        public static string ForForum64(string url, string text) => $"[url='{url}']{text}[/url]";
-
-        public static string ForReddit(string url, string text) =>
-            $"[{text.Replace("[", "(", StringComparison.Ordinal).Replace("]", ")", StringComparison.Ordinal)}]({url})";
+        // A button's label on the panel - "Copy as BBCode", "Copy as Markdown", "Copy plain link".
+        public static string CopyLabelOf(CollectionLinkFormat format) =>
+            format == CollectionLinkFormat.Plain ? "Copy plain link" : $"Copy as {CollectionLinkFormats.NameOf(format)}";
 
         private static string LinkPanel(string siteBaseUrl, CollectionRecord collection, CollectionImageEntry image, string anchor)
         {
             string url = CollectionPages.ViewerUrl(siteBaseUrl, collection.Id, anchor);
             string text = CollectionPages.CaptureLinkText(collection, image);
 
-            return "<details class=\"share\"><summary class=\"btn\">Link</summary><div class=\"share-panel\">" +
-                   "<label>A link to this capture, shown large:</label>" +
-                   $"<input class=\"share-url\" type=\"text\" readonly value=\"{Encode(url)}\" aria-label=\"The capture's link\">" +
-                   $"<button type=\"button\" class=\"btn\" data-copy=\"{Encode(CollectionPages.ForLemon64(url, text))}\">Copy for Lemon64</button>" +
-                   $"<button type=\"button\" class=\"btn\" data-copy=\"{Encode(CollectionPages.ForForum64(url, text))}\">Copy for Forum64</button>" +
-                   $"<button type=\"button\" class=\"btn\" data-copy=\"{Encode(CollectionPages.ForReddit(url, text))}\">Copy for Reddit</button>" +
-                   "</div></details>";
+            var html = new StringBuilder("<details class=\"share\"><summary class=\"btn\">Link</summary><div class=\"share-panel\">")
+                .Append("<label>A link to this capture, shown large:</label>")
+                .Append($"<input class=\"share-url\" type=\"text\" readonly value=\"{Encode(url)}\" aria-label=\"The capture's link\">");
+
+            foreach (CollectionLinkFormat format in CollectionLinkFormats.All)
+            {
+                html.Append("<div class=\"share-way\">")
+                    .Append($"<button type=\"button\" class=\"btn\" data-copy=\"{Encode(CollectionLinkFormats.Write(format, url, text))}\">{Encode(CollectionPages.CopyLabelOf(format))}</button>")
+                    .Append($"<span>{Encode(CollectionLinkFormats.WhereOf(format))}</span>")
+                    .Append("</div>");
+            }
+
+            return html.Append("</div></details>").ToString();
         }
 
         // ###########################################################################################
@@ -400,7 +434,7 @@ namespace CRT.Server.Handlers.Collections
             {
                 CollectionDeletedReasons.Expired =>
                     $"It was deleted on {when}, as the time it was shared for had passed. Whoever shares a collection chooses how long " +
-                    "it stays online - a month, six months or a year from the last time it was shared - and when that time is up, " +
+                    "it stays online - a day, a week, a month or a year from the last time it was shared - and when that time is up, " +
                     "its captures and comments go.",
                 CollectionDeletedReasons.Owner =>
                     $"Its owner deleted it on {when}, and its captures and comments went with it.",
@@ -740,7 +774,9 @@ namespace CRT.Server.Handlers.Collections
         }
 
         // ###########################################################################################
-        // One capture: the picture, its settings, what it should read, and the owner's note.
+        // One capture: its headline, its picture as a THUMBNAIL beside its settings, what it should read and the owner's note - no
+        // picture large on the page itself (owner request, 2026-11-28: "it should not show any large images - only the
+        // thumbnails"); the thumbnail opens the viewer.
         // ###########################################################################################
         private static string CaptureSection(
             string siteBaseUrl,
@@ -756,20 +792,18 @@ namespace CRT.Server.Handlers.Collections
             var html = new StringBuilder();
 
             html.Append($"<section class=\"panel capture\" id=\"{anchor}\">");
-            html.Append($"<h2>{Encode(where)}");
+            html.Append($"<h2>{CollectionPages.HeadlineOf(collection, image)}");
 
-            if (image.SignalName is { } signal)
-                html.Append($" <span class=\"signal\">{Encode(signal)}</span>");
+            if (CollectionPages.PinLineOf(image) is { Length: > 0 } pinLine)
+                html.Append($" <span class=\"signal\">{Encode(pinLine)}</span>");
 
-            // The picture opens the viewer (Viewers), as the grid's cards do.
-            html.Append("</h2><div class=\"pair\">");
-            html.Append("<figure>")
-                .Append($"<a class=\"framed\" href=\"#{CollectionPages.ViewerId(anchor)}\">")
+            // The thumbnail opens the viewer (Viewers), as the grid's cards do.
+            html.Append("</h2><div class=\"capture-body\">");
+            html.Append($"<a class=\"framed capture-thumb\" href=\"#{CollectionPages.ViewerId(anchor)}\" aria-label=\"{Encode($"Open {where} large")}\">")
                 .Append($"<img src=\"{Encode(CollectionPages.ImageUrl(siteBaseUrl, collection.Id, image.Sha256))}\" width=\"{capture.Width}\" height=\"{capture.Height}\" loading=\"lazy\" alt=\"{Encode($"Oscilloscope capture of {where}")}\">")
-                .Append("</a></figure>");
+                .Append("</a>");
 
-            html.Append("</div>");
-
+            html.Append("<div class=\"capture-facts\">");
             html.Append("<table class=\"settings\"><tbody>");
             html.Append(CollectionPages.SettingRow("T/DIV", image.TimePerDivision));
             html.Append(CollectionPages.SettingRow("V/DIV", image.VoltsPerDivision));
@@ -781,6 +815,8 @@ namespace CRT.Server.Handlers.Collections
 
             if (image.Caption is { } caption)
                 html.Append($"<p class=\"text\">{Encode(caption)}</p>");
+
+            html.Append("</div></div>");
 
             html.Append(CollectionPages.CommentsOf(siteBaseUrl, collection, image.Sha256, anchor, view));
 
@@ -990,7 +1026,7 @@ namespace CRT.Server.Handlers.Collections
             ".brand-title{font-size:20px;font-weight:750;letter-spacing:.2px;line-height:1.15;white-space:nowrap;color:var(--text);text-decoration:none}" +
             ".brand-title:hover{text-decoration:underline}.brand-sub{font-size:14px;color:var(--muted);line-height:1.15;white-space:nowrap}" +
             ".meta{grid-column:2;justify-self:center;display:flex;flex-direction:column;align-items:center;gap:4px;text-align:center;white-space:nowrap;font-size:12px;color:var(--muted)}" +
-            ".meta-line1{font-size:18px;color:rgba(15,23,42,.78)}.meta-line2{font-size:14px}.header-actions{grid-column:3;justify-self:end;display:flex;align-items:center;gap:10px}" +
+            ".meta-line2{font-size:14px}.header-actions{grid-column:3;justify-self:end;display:flex;align-items:center;gap:10px}" +
             ".badge-red,.badge-grey{display:inline-block;padding:.35em .65em;font-size:.85em;line-height:1.1;border-radius:.375rem;color:#fff;" +
             "border:1px solid rgba(0,0,0,.08);box-shadow:0 1px 2px rgba(0,0,0,.1)}.badge-red{background:var(--red)}.badge-grey{background:#5b6472}" +
             ".badge-large{font-size:1.3em;padding:.45em .8em}" +
@@ -1003,9 +1039,8 @@ namespace CRT.Server.Handlers.Collections
             ".lead{font-size:1.1em}.facts{color:var(--muted);font-size:.9em}.muted{color:var(--muted)}" +
             "code{font-size:.95em;background:rgba(2,132,199,.08);border:1px solid rgba(2,132,199,.18);padding:1px 6px;border-radius:999px;color:var(--link)}" +
             ".text{white-space:pre-wrap;overflow-wrap:anywhere}.discussion{overflow-wrap:anywhere}" +
-            ".grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:16px;margin:0 0 18px}" +
-            ".grid.grid-few{grid-template-columns:repeat(auto-fit,minmax(320px,1fr))}" +
-            ".grid.grid-single{justify-content:center}.grid.grid-single>.card{grid-column:1/-1;max-width:640px;width:100%;justify-self:center}" +
+            ".kit{display:flex;flex-wrap:wrap;gap:4px 22px;margin:0 0 8px;font-size:1.02em}" +
+            ".grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:16px;margin:0 0 18px}" +
             ".card{margin:0;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);" +
             "transition:transform 140ms ease,box-shadow 140ms ease,border-color 140ms ease}" +
             ".card:hover{transform:translateY(-2px);box-shadow:0 16px 38px rgba(15,23,42,.26);border-color:var(--border2)}" +
@@ -1019,7 +1054,8 @@ namespace CRT.Server.Handlers.Collections
             ".signal{color:var(--muted);font-weight:normal}" +
             ".flag{display:inline-block;font-size:.75em;font-weight:600;color:var(--red);border:1px solid var(--red);border-radius:10px;padding:0 8px;vertical-align:middle}" +
             ".badge{display:inline-block;font-size:.75em;font-weight:600;color:#fff;background:var(--link);border-radius:10px;padding:0 8px;vertical-align:middle}" +
-            "figure{margin:0}.pair{display:flex;flex-wrap:wrap;gap:16px;margin-bottom:12px}.pair figure{flex:1 1 400px;max-width:100%}" +
+            "figure{margin:0}.capture-body{display:flex;flex-wrap:wrap;align-items:flex-start;gap:16px;margin-bottom:12px}" +
+            ".capture-thumb{flex:0 0 240px;max-width:100%}.capture-facts{flex:1 1 260px;min-width:0}.capture-facts>:last-child{margin-bottom:0}" +
             ".settings{border-collapse:collapse;margin-bottom:12px}.settings th,.settings td{text-align:left;padding:4px 14px 4px 0}" +
             ".steps{font-size:.9em;color:var(--muted);margin:0}.signedin{font-size:.9em;color:var(--muted);margin:0 0 12px}" +
             ".comments{margin:8px 0 12px;padding:12px 16px;border:1px solid var(--border);border-radius:10px;background:var(--card2)}" +
@@ -1074,18 +1110,21 @@ namespace CRT.Server.Handlers.Collections
             ".modal .actions{grid-column:3;justify-self:end;display:flex;align-items:center;gap:10px;margin:0;font-size:13px}" +
             "button.btn{font:inherit;font-weight:650;cursor:pointer}" +
             ".share{position:relative}.share>summary{list-style:none;cursor:pointer}.share>summary::-webkit-details-marker{display:none}" +
-            ".share-panel{position:absolute;right:0;bottom:calc(100% + 8px);z-index:3;width:330px;display:grid;gap:6px;padding:12px;" +
+            ".share-panel{position:absolute;right:0;bottom:calc(100% + 8px);z-index:3;width:380px;display:grid;gap:6px;padding:12px;" +
             "background:#fff;border:1px solid var(--border2);border-radius:12px;box-shadow:var(--shadow)}" +
             ".share-panel label{margin:0;font-size:12px}" +
             ".share-url{width:100%;padding:6px 8px;font:12px ui-monospace,Consolas,monospace;color:var(--text);border:1px solid var(--border2);border-radius:6px}" +
+            ".share-way{display:grid;grid-template-columns:150px 1fr;align-items:center;gap:8px}.share-way .btn{width:100%;padding-left:6px;padding-right:6px}" +
+            ".share-way span{font-size:12px;line-height:1.3;color:var(--muted)}" +
             "@media (max-width:720px){.topbar{position:static;height:auto;grid-template-columns:1fr;justify-items:center;padding:10px 14px;gap:8px}" +
             ".brand,.meta,.header-actions{grid-column:1;justify-self:center;align-items:center;text-align:center}.meta{white-space:normal}" +
-            ".container{padding:14px 10px 6px}html{scroll-padding-top:12px}.grid.grid-few{grid-template-columns:1fr}.panel{padding:14px}" +
+            ".container{padding:14px 10px 6px}html{scroll-padding-top:12px}.panel{padding:14px}" +
             "footer{width:calc(100% - 20px)}.dialog{width:96vw;height:96vh;margin:2vh auto}.zone span{width:34px;height:34px;font-size:26px}" +
             ".vbody{grid-template-columns:minmax(0,1fr);grid-template-rows:minmax(0,55%) minmax(0,45%)}.vbody.wide{grid-template-rows:minmax(0,1fr)}" +
             ".info{border-left:0;border-top:1px solid var(--border)}" +
             ".modal .footer{grid-template-columns:1fr;justify-items:center}.modal .title,.modal .actions{grid-column:1;justify-self:center}" +
-            ".share-panel{right:auto;left:50%;transform:translateX(-50%);width:min(330px,90vw)}}";
+            // A phone's "Link" stands left of the middle, so a panel centred on it ran off the screen: the screen's middle instead.
+            ".share-panel{position:fixed;left:50%;top:50%;right:auto;bottom:auto;transform:translate(-50%,-50%);width:min(380px,92vw)}}";
 
         public static readonly string StyleHash =
             "sha256-" + Convert.ToBase64String(SHA256.HashData(Encoding.UTF8.GetBytes(CollectionPages.Css)));
@@ -1093,7 +1132,7 @@ namespace CRT.Server.Handlers.Collections
         // ###########################################################################################
         // THE PAGE'S ONE SCRIPT - what the viewer cannot do in CSS (owner requests, 2026-11-27): Esc closes it; Left and Up go to
         // the previous capture, Right and Down to the next, and so does the WHEEL - one step per turn, at most one every 350 ms,
-        // never over the component's facts, which scroll; and "Copy for ..." puts its data-copy on the clipboard, saying
+        // never over the component's facts, which scroll; and "Copy as ..." puts its data-copy on the clipboard, saying
         // "Copied". Nothing else: the viewer itself is CSS (:target) and works without it. Fixed text, nothing anybody typed in
         // it - the words copied are the button's attribute, encoded on the page - and allowed by its hash alone (ScriptHash).
         // The address is REPLACED, so the keys and the wheel leave no trail of captures for "Back" to walk through.

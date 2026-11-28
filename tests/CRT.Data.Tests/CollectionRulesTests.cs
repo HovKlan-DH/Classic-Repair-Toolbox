@@ -39,24 +39,49 @@ namespace CRT.Data.Tests
         public void Anything_else_is_no_id(string? id) => Assert.False(CollectionRules.IsId(id));
 
         [Theory]
+        [InlineData("1d", 2026, 11, 27)]
+        [InlineData("1w", 2026, 12, 3)]
         [InlineData("1m", 2026, 12, 26)]
-        [InlineData("6m", 2027, 5, 26)]
         [InlineData("1y", 2027, 11, 26)]
+        [InlineData("6m", 2027, 11, 26)]
         [InlineData("5y", 2027, 11, 26)]
         [InlineData("2y", 2027, 11, 26)]
         [InlineData(null, 2027, 11, 26)]
         public void Each_lifetime_counts_from_the_day_it_is_chosen_and_anything_else_is_a_year(string? key, int year, int month, int day) =>
             Assert.Equal(new DateTimeOffset(year, month, day, 12, 0, 0, TimeSpan.Zero), CollectionRules.DeleteAt(Now, key));
 
-        // Owner decision, 2026-11-25: "no need to show the "2 years"".
+        // Owner request, 2026-11-28: "Update the "Delete in" list of options to: 1 day, 1 week, 1 month, 1 year".
         [Fact]
-        public void The_choices_are_a_month_six_months_and_a_year_the_default()
+        public void The_choices_are_a_day_a_week_a_month_and_a_year_the_default()
         {
-            Assert.Equal(["1 month", "6 months", "1 year"], CollectionRules.Lifetimes.Select(lifetime => lifetime.Words));
+            Assert.Equal(["1 day", "1 week", "1 month", "1 year"], CollectionRules.Lifetimes.Select(lifetime => lifetime.Words));
             Assert.Equal("1 year", CollectionRules.LifetimeOf(CollectionRules.DefaultLifetimeKey).Words);
 
-            // A "5 years" an earlier CRT kept reads as the default (owner decision, 2026-11-27: at most a year).
+            // A "5 years" or "6 months" an earlier CRT kept reads as the default (owner decisions, 2026-11-27 and 2026-11-28).
             Assert.Equal("1 year", CollectionRules.LifetimeOf("5y").Words);
+            Assert.Equal("1 year", CollectionRules.LifetimeOf("6m").Words);
+        }
+
+        // The shortest choice shares a collection the server takes: a day ahead is no date passed.
+        [Fact]
+        public void A_collection_kept_a_day_is_taken() =>
+            Assert.Empty(CollectionRules.ProblemsOf(Content(Image(Sha)) with { DeleteAtUtc = CollectionRules.DeleteAt(Now, "1d") }, Now));
+
+        // The oscilloscopes the captures were taken with (server 16.1.0): a few, each named.
+        [Fact]
+        public void The_oscilloscopes_are_held_to_their_limits()
+        {
+            Assert.Empty(CollectionRules.ProblemsOf(Content(Image(Sha)) with { Oscilloscopes = ["Rigol DS1054Z"] }, Now));
+
+            Assert.Contains(
+                $"A collection names at most {CollectionRules.MaximumOscilloscopes} oscilloscopes.",
+                CollectionRules.ProblemsOf(Content(Image(Sha)) with { Oscilloscopes = Enumerable.Range(0, CollectionRules.MaximumOscilloscopes + 1).Select(i => $"Scope {i}").ToList() }, Now));
+
+            Assert.Contains("An oscilloscope's name is empty.", CollectionRules.ProblemsOf(Content(Image(Sha)) with { Oscilloscopes = [" "] }, Now));
+
+            Assert.Contains(
+                $"An oscilloscope's name is at most {CollectionRules.MaximumNameLength} characters.",
+                CollectionRules.ProblemsOf(Content(Image(Sha)) with { Oscilloscopes = [new string('x', CollectionRules.MaximumNameLength + 1)] }, Now));
         }
 
         [Fact]

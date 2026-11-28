@@ -67,8 +67,10 @@ public sealed class SharedTableColourKeysTests
         IReadOnlyList<string> keys = KeysTheMaintainerTabNames();
 
         // A parse that found nothing cannot pass: two of the keys that came over from the separate
-        // application.
-        Assert.Contains("Badge_Attention_Bg", keys);
+        // application. (Badge_Attention_Bg was one until 2026-11-27, when the screen tabs' badge styles
+        // moved to App.axaml - the "Oscilloscope" tab's "Collections" wears one too; ThemeContrastTests
+        // resolves it in both themes.)
+        Assert.Contains("Queue_Divider", keys);
         Assert.Contains("Badge_NewBoard_Bg", keys);
 
         SharedTableColourKeysTests.AssertResolvesInBothThemes(keys);

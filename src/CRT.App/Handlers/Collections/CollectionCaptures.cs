@@ -19,6 +19,7 @@ namespace Handlers.Collections
             ComponentImageEntry shown,
             ScopeSettingsReading? reading,
             CollectionComponent? component,
+            string? oscilloscope,
             DateTimeOffset now)
         {
             ArgumentNullException.ThrowIfNull(shown);
@@ -33,8 +34,25 @@ namespace Handlers.Collections
                 VoltsPerDivision = BaselineSettingWords.VoltsDiv(reading?.VoltsDivVolts),
                 TriggerLevel = BaselineSettingWords.TriggerLevel(reading?.TriggerLevelVolts),
                 Component = component,
+                Oscilloscope = CollectionCaptures.Cut(oscilloscope, CollectionRules.MaximumNameLength),
                 CapturedUtc = now
             };
+        }
+
+        // ###########################################################################################
+        // THE OSCILLOSCOPE A CAPTURE IS TAKEN WITH (owner request, 2026-11-28: "the oscilloscope brand and model should be shown"):
+        // its vendor and model as the "Oscilloscope" tab lists them - "Rigol" and "DS1054Z", "Rigol DS1054Z" - a model whose name
+        // says its vendor already said once. Null with neither.
+        // ###########################################################################################
+        public static string? OscilloscopeNameOf(string? vendor, string? model)
+        {
+            string? brand = CollectionCaptures.Blank(vendor);
+            string? series = CollectionCaptures.Blank(model);
+
+            if (brand is null || series is null)
+                return series ?? brand;
+
+            return series.StartsWith(brand, StringComparison.OrdinalIgnoreCase) ? series : $"{brand} {series}";
         }
 
         // ###########################################################################################

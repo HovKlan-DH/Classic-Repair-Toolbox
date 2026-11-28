@@ -50,6 +50,7 @@ namespace CRT.Server.Handlers.Collections
             collections.MapPut("/{id}", CollectionEndpoints.UpdateAsync).WithBodyLimit(RequestBodyLimits.CollectionContentBytes);
             collections.MapDelete("/{id}", CollectionEndpoints.DeleteAsync);
             collections.MapPut("/{id}/sharing", CollectionEndpoints.SetSharingAsync);
+            collections.MapDelete("/{id}/images/{sha256}", CollectionEndpoints.RemoveImageAsync);
 
             // Its comments, for the owner's CRT (step 3) - CollectionCommentFlows. Small bodies, at the default limit.
             collections.MapGet("/{id}/comments", CollectionEndpoints.ListCommentsAsync);
@@ -230,6 +231,24 @@ namespace CRT.Server.Handlers.Collections
                 await CollectionEndpoints.AccountOfAsync(context, accounts, options, cancellationToken),
                 id,
                 store,
+                DateTimeOffset.UtcNow,
+                cancellationToken));
+
+        // "Delete image" in CRT - the capture off the page at once, nothing else changed.
+        private static async Task<IResult> RemoveImageAsync(
+            string id,
+            string sha256,
+            HttpContext context,
+            IAccountStore accounts,
+            ICollectionStore store,
+            ServerOptions options,
+            CancellationToken cancellationToken) =>
+            CollectionEndpoints.Result(await CollectionFlows.RemoveImageAsync(
+                await CollectionEndpoints.AccountOfAsync(context, accounts, options, cancellationToken),
+                id,
+                sha256,
+                store,
+                AccountPages.BaseUrl(options.PublicApiBaseUrl),
                 DateTimeOffset.UtcNow,
                 cancellationToken));
 

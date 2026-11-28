@@ -205,6 +205,9 @@ namespace Handlers.DataHandling
         // A region of a board's own picked on that board (2026-11-09) - "region" stays PAL or NTSC, as CRT 3.x reads it.
         [JsonPropertyName("regionByBoard")] public Dictionary<string, string> RegionByBoard { get; set; } = new();
         [JsonPropertyName("collectionByBoard")] public Dictionary<string, string> CollectionByBoard { get; set; } = new();
+
+        // The format "Copy link" writes a collection's link in, by name (CollectionLinkFormats; owner decision, 2026-11-28).
+        [JsonPropertyName("collectionLinkFormat")] public string CollectionLinkFormat { get; set; } = "BbCode";
         [JsonPropertyName("theme")] public string ThemeVariant { get; set; } = "Light";
         [JsonPropertyName("hasWindowPlacement")] public bool HasWindowPlacement { get; set; } = false;
         [JsonPropertyName("windowState")] public string WindowState { get; set; } = "Normal";
@@ -232,6 +235,14 @@ namespace Handlers.DataHandling
         [JsonPropertyName("baselineCaptureWindowHeight")] public double BaselineCaptureWindowHeight { get; set; } = 820.0;
         [JsonPropertyName("baselineCaptureWindowX")] public int BaselineCaptureWindowX { get; set; } = 0;
         [JsonPropertyName("baselineCaptureWindowY")] public int BaselineCaptureWindowY { get; set; } = 0;
+        // A collection's window, one place for all (owner request, 2026-11-28: "do save its size and position, so it will open same
+        // size and place the next time the user opens it").
+        [JsonPropertyName("hasCollectionWindowLayout")] public bool HasCollectionWindowLayout { get; set; } = false;
+        [JsonPropertyName("collectionWindowState")] public string CollectionWindowState { get; set; } = "Normal";
+        [JsonPropertyName("collectionWindowWidth")] public double CollectionWindowWidth { get; set; } = 980.0;
+        [JsonPropertyName("collectionWindowHeight")] public double CollectionWindowHeight { get; set; } = 720.0;
+        [JsonPropertyName("collectionWindowX")] public int CollectionWindowX { get; set; } = 0;
+        [JsonPropertyName("collectionWindowY")] public int CollectionWindowY { get; set; } = 0;
         [JsonPropertyName("hasWorklogEntryWindowLayout")] public bool HasWorklogEntryWindowLayout { get; set; } = false;
         [JsonPropertyName("worklogEntryWindowState")] public string WorklogEntryWindowState { get; set; } = "Normal";
         [JsonPropertyName("worklogEntryWindowWidth")] public double WorklogEntryWindowWidth { get; set; } = 1200.0;
@@ -1602,9 +1613,9 @@ namespace Handlers.DataHandling
         // "Capture from oscilloscope pin-by-pin"'s window - its state and its Normal size and position, null while never saved
         // (BaselineCaptureWindow, handed in by TabDrafts.Initialize, so a test's window touches no settings).
         // ###########################################################################################
-        public static BaselineCaptureWindowPlace? BaselineCaptureWindowPlace =>
+        public static WindowPlace? BaselineCaptureWindowPlace =>
             _data.HasBaselineCaptureWindowLayout
-                ? new BaselineCaptureWindowPlace(
+                ? new WindowPlace(
                     _data.BaselineCaptureWindowState,
                     _data.BaselineCaptureWindowWidth,
                     _data.BaselineCaptureWindowHeight,
@@ -1612,7 +1623,7 @@ namespace Handlers.DataHandling
                     _data.BaselineCaptureWindowY)
                 : null;
 
-        public static void SaveBaselineCaptureWindowPlace(BaselineCaptureWindowPlace place)
+        public static void SaveBaselineCaptureWindowPlace(WindowPlace place)
         {
             ArgumentNullException.ThrowIfNull(place);
 
@@ -1623,6 +1634,52 @@ namespace Handlers.DataHandling
             _data.BaselineCaptureWindowX = place.X;
             _data.BaselineCaptureWindowY = place.Y;
             Logger.Info($"Setting changed: [BaselineCaptureWindowLayout] [{place.State}] [{place.Width:F0}x{place.Height:F0}] [Position: {place.X},{place.Y}]");
+            Save();
+        }
+
+        // ###########################################################################################
+        // A collection's window - its state and its Normal size and position, null while never saved (CollectionWindow, handed in by
+        // Main.CollectionWindowHost, so a test's window touches no settings).
+        // ###########################################################################################
+        public static WindowPlace? CollectionWindowPlace =>
+            _data.HasCollectionWindowLayout
+                ? new WindowPlace(
+                    _data.CollectionWindowState,
+                    _data.CollectionWindowWidth,
+                    _data.CollectionWindowHeight,
+                    _data.CollectionWindowX,
+                    _data.CollectionWindowY)
+                : null;
+
+        // ###########################################################################################
+        // The format a collection window's "Copy link" writes the link in - the one picked last, so one click repeats it (owner
+        // decision, 2026-11-28). Handed in by Main.CollectionWindowHost, so a test's window touches no settings.
+        // ###########################################################################################
+        public static CollectionLinkFormat CollectionLinkFormat => CollectionLinkFormats.Parse(_data.CollectionLinkFormat);
+
+        public static void SetCollectionLinkFormat(CollectionLinkFormat format)
+        {
+            string name = format.ToString();
+
+            if (string.Equals(_data.CollectionLinkFormat, name, StringComparison.Ordinal))
+                return;
+
+            _data.CollectionLinkFormat = name;
+            Logger.Info($"Setting changed: [CollectionLinkFormat] [{name}]");
+            Save();
+        }
+
+        public static void SaveCollectionWindowPlace(WindowPlace place)
+        {
+            ArgumentNullException.ThrowIfNull(place);
+
+            _data.HasCollectionWindowLayout = true;
+            _data.CollectionWindowState = place.State;
+            _data.CollectionWindowWidth = place.Width;
+            _data.CollectionWindowHeight = place.Height;
+            _data.CollectionWindowX = place.X;
+            _data.CollectionWindowY = place.Y;
+            Logger.Info($"Setting changed: [CollectionWindowLayout] [{place.State}] [{place.Width:F0}x{place.Height:F0}] [Position: {place.X},{place.Y}]");
             Save();
         }
 
@@ -2005,6 +2062,7 @@ namespace Handlers.DataHandling
                 Logger.Info($"        [DetachPinoutInComponentPopup] [{DetachPinoutInComponentPopup}]");
                 Logger.Info($"        [PinoutWindowPlace] [Position: {_data.PinoutWindowX},{_data.PinoutWindowY}]");
                 Logger.Info($"        [BaselineCaptureWindowLayout] [{_data.BaselineCaptureWindowState}] [{_data.BaselineCaptureWindowWidth:F0}x{_data.BaselineCaptureWindowHeight:F0}] [Position: {_data.BaselineCaptureWindowX},{_data.BaselineCaptureWindowY}]");
+                Logger.Info($"        [CollectionWindowLayout] [{_data.CollectionWindowState}] [{_data.CollectionWindowWidth:F0}x{_data.CollectionWindowHeight:F0}] [Position: {_data.CollectionWindowX},{_data.CollectionWindowY}]");
                 Logger.Info($"        [SchematicsThumbnailsWindowLayout] [{_data.SchematicsThumbnailsWindowState}] [{_data.SchematicsThumbnailsWindowWidth:F0}x{_data.SchematicsThumbnailsWindowHeight:F0}] [Position: {_data.SchematicsThumbnailsWindowX},{_data.SchematicsThumbnailsWindowY}]");
                 Logger.Info($"        [ComponentInfoKeyboardHandling] [{ComponentInfoKeyboardHandling}]");
                 Logger.Info($"        [ComponentInfoScrollAction] [{ComponentInfoScrollAction}]");

@@ -1094,6 +1094,42 @@
 		</Style>
 
 		<!--
+		The count on a screen tab - the "Maintainer" tab's screens, and the "Oscilloscope" tab's "Collections" (moved here
+		from the "Maintainer" tab on 2026-11-27, when the second came). ATTENTION (Review, BETA, collections with new comments)
+		is filled and only there when something waits; COUNT (Boards) is the discreet one the owner asked for - grey, always
+		there once the list is read.
+		-->
+		<Style Selector="Border.ModeBadge">
+			<Setter Property="CornerRadius" Value="8" />
+			<Setter Property="Padding" Value="4,0" />
+			<Setter Property="MinWidth" Value="16" />
+			<Setter Property="VerticalAlignment" Value="Center" />
+		</Style>
+
+		<Style Selector="Border.ModeBadge TextBlock">
+			<Setter Property="FontSize" Value="11" />
+			<Setter Property="HorizontalAlignment" Value="Center" />
+		</Style>
+
+		<Style Selector="Border.ModeBadge.Attention">
+			<Setter Property="Background" Value="{DynamicResource Badge_Attention_Bg}" />
+		</Style>
+
+		<Style Selector="Border.ModeBadge.Attention TextBlock">
+			<Setter Property="Foreground" Value="{DynamicResource Badge_Attention_Fg}" />
+			<Setter Property="FontWeight" Value="SemiBold" />
+		</Style>
+
+		<Style Selector="Border.ModeBadge.Count">
+			<Setter Property="Background" Value="{DynamicResource Badge_Count_Bg}" />
+		</Style>
+
+		<Style Selector="Border.ModeBadge.Count TextBlock">
+			<Setter Property="Foreground" Value="{DynamicResource Badge_Count_Fg}" />
+			<Setter Property="FontWeight" Value="Normal" />
+		</Style>
+
+		<!--
 		A JOINED SWITCH (2026-10-01): a submission's views and a board's on the Maintainer tab, and "UI" or
 		"Table" on the Contribute tab (owner request, 2026-11-04: "a button-group instead, as those circles
 		looks just wrong"). Square inner corners, rounded outer ones, neighbours sharing one border line (each

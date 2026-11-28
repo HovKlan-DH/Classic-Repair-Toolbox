@@ -295,6 +295,9 @@ namespace CRT
             this.TabMaintainer.SignedInChanged += this.ShareMaintainerSignIn;
             this.WireAccountIcon();
 
+            // The "Oscilloscope" tab's "Collections" list (Main.Collections.cs).
+            this.HandCollectionsToOscilloscopeTab();
+
             // "CRT has to be updated" on either tab: its one button (Main.UpdateRequired.cs).
             this.TabDrafts.UpdateRequiredActionClicked += this.OnUpdateRequiredAction;
             this.TabMaintainer.UpdateRequiredActionClicked += this.OnUpdateRequiredAction;

@@ -41,6 +41,8 @@ namespace CRT
         //   TabOscilloscope.ModelSubmit.cs - "Submit this model": an own model sent in for everybody
         //   TabOscilloscope.Baselines.cs   - the oscilloscope for the component pane's baselines (IBaselineScope),
         //                                   and its settings read back
+        //   TabOscilloscope.Collections.cs - the output column's two tabs, "Communication log" and "Collections" - every
+        //                                   oscilloscope collection on this computer, opened and deleted from here
         // ###########################################################################################
 
         private double? thisLastTriggerLevelVolts;
@@ -89,6 +91,7 @@ namespace CRT
             this.PublishOscilloscopeSelectionInputs();
 
             this.InitializeModelEditor();
+            this.InitializeCollectionsTab();
         }
 
         // ###########################################################################################

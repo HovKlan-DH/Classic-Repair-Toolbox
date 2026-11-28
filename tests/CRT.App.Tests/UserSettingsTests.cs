@@ -1598,7 +1598,7 @@ public sealed class UserSettingsTests : IDisposable
 
         Assert.Null(UserSettings.BaselineCaptureWindowPlace);
 
-        UserSettings.SaveBaselineCaptureWindowPlace(new BaselineCaptureWindowPlace("Maximized", 1100, 700, 40, -30));
+        UserSettings.SaveBaselineCaptureWindowPlace(new WindowPlace("Maximized", 1100, 700, 40, -30));
 
         JsonNode json = ReadJson(path);
         Assert.True(json["hasBaselineCaptureWindowLayout"]!.GetValue<bool>());
@@ -1606,7 +1606,49 @@ public sealed class UserSettingsTests : IDisposable
         Assert.Equal(-30, json["baselineCaptureWindowY"]!.GetValue<int>());
 
         UserSettings.LoadFrom(path);
-        Assert.Equal(new BaselineCaptureWindowPlace("Maximized", 1100, 700, 40, -30), UserSettings.BaselineCaptureWindowPlace);
+        Assert.Equal(new WindowPlace("Maximized", 1100, 700, 40, -30), UserSettings.BaselineCaptureWindowPlace);
+    }
+
+    // A collection's window is opened where it was left (owner request, 2026-11-28: "do save its size and position, so it will
+    // open same size and place the next time the user opens it") - one place for every collection's - and nowhere in particular
+    // before it ever was. Kept apart from the capture window's.
+    [Fact]
+    public void The_collection_windows_place_round_trips_and_is_none_before_it_is_saved()
+    {
+        string path = this.LoadSettings("{}");
+
+        Assert.Null(UserSettings.CollectionWindowPlace);
+
+        UserSettings.SaveCollectionWindowPlace(new WindowPlace("Normal", 1040, 760, 120, 80));
+
+        JsonNode json = ReadJson(path);
+        Assert.True(json["hasCollectionWindowLayout"]!.GetValue<bool>());
+        Assert.Equal(1040, json["collectionWindowWidth"]!.GetValue<double>());
+        Assert.Equal(80, json["collectionWindowY"]!.GetValue<int>());
+
+        UserSettings.LoadFrom(path);
+        Assert.Equal(new WindowPlace("Normal", 1040, 760, 120, 80), UserSettings.CollectionWindowPlace);
+        Assert.Null(UserSettings.BaselineCaptureWindowPlace);
+    }
+
+    // The format "Copy link" wrote in last (owner decision, 2026-11-28), kept by name - BBCode before any was picked, and a name
+    // this CRT does not know.
+    [Fact]
+    public void The_collection_link_format_round_trips_by_name_and_is_BBCode_before_one_is_picked()
+    {
+        string path = this.LoadSettings("{}");
+
+        Assert.Equal(CollectionLinkFormat.BbCode, UserSettings.CollectionLinkFormat);
+
+        UserSettings.SetCollectionLinkFormat(CollectionLinkFormat.Markdown);
+
+        Assert.Equal("Markdown", ReadJson(path)["collectionLinkFormat"]!.GetValue<string>());
+
+        UserSettings.LoadFrom(path);
+        Assert.Equal(CollectionLinkFormat.Markdown, UserSettings.CollectionLinkFormat);
+
+        this.LoadSettings("{\"collectionLinkFormat\":\"Telegraph\"}");
+        Assert.Equal(CollectionLinkFormat.BbCode, UserSettings.CollectionLinkFormat);
     }
 
     [Fact]

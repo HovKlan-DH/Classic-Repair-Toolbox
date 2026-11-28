@@ -67,40 +67,8 @@ its closing prompt are all CRT's window's now (TabMaintainer.axaml.cs explains w
         <!-- A submission's three views are one joined switch (TabMaintainer.SubmissionViews.cs) - a
              different look from the tab strip on purpose: Button.Segment, App.axaml's. -->
 
-        <!--
-        The count on a button. ATTENTION (Review, BETA) is filled and only there when something waits
-        for this account; COUNT (Boards) is the discreet one the owner asked for - grey, always there
-        once the list is read.
-        -->
-        <Style Selector="Border.ModeBadge">
-            <Setter Property="CornerRadius" Value="8" />
-            <Setter Property="Padding" Value="4,0" />
-            <Setter Property="MinWidth" Value="16" />
-            <Setter Property="VerticalAlignment" Value="Center" />
-        </Style>
-
-        <Style Selector="Border.ModeBadge TextBlock">
-            <Setter Property="FontSize" Value="11" />
-            <Setter Property="HorizontalAlignment" Value="Center" />
-        </Style>
-
-        <Style Selector="Border.ModeBadge.Attention">
-            <Setter Property="Background" Value="{DynamicResource Badge_Attention_Bg}" />
-        </Style>
-
-        <Style Selector="Border.ModeBadge.Attention TextBlock">
-            <Setter Property="Foreground" Value="{DynamicResource Badge_Attention_Fg}" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-        </Style>
-
-        <Style Selector="Border.ModeBadge.Count">
-            <Setter Property="Background" Value="{DynamicResource Badge_Count_Bg}" />
-        </Style>
-
-        <Style Selector="Border.ModeBadge.Count TextBlock">
-            <Setter Property="Foreground" Value="{DynamicResource Badge_Count_Fg}" />
-            <Setter Property="FontWeight" Value="Normal" />
-        </Style>
+        <!-- The count on a screen tab (Border.ModeBadge) is App.axaml's since 2026-11-27, as the "Oscilloscope" tab's
+             "Collections" carries one too. -->
     </UserControl.Styles>
 
     <!--

@@ -37,9 +37,9 @@ namespace CRT
 
         // Where "Capture from oscilloscope pin-by-pin"'s window was left, and how to remember it - the host's (UserSettings, set by
         // TabDrafts.Initialize); a test's pane keeps none.
-        internal Func<BaselineCaptureWindowPlace?>? CaptureWindowPlace { get; set; }
+        internal Func<WindowPlace?>? CaptureWindowPlace { get; set; }
 
-        internal Action<BaselineCaptureWindowPlace>? RememberCaptureWindowPlace { get; set; }
+        internal Action<WindowPlace>? RememberCaptureWindowPlace { get; set; }
 
         // For a test: the screen of CRT's window the capture window opens over - its working area and scaling - in place of the
         // headless platform's one large screen.

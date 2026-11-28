@@ -29,11 +29,12 @@ public sealed class CollectionCapturesTests
     [Fact]
     public void A_capture_keeps_its_pin_the_settings_read_back_and_its_component()
     {
-        LocalCapture capture = CollectionCaptures.CaptureOf(Baseline(), new ScopeSettingsReading(50e-6, 2, 1.4), Vic, Now);
+        LocalCapture capture = CollectionCaptures.CaptureOf(Baseline(), new ScopeSettingsReading(50e-6, 2, 1.4), Vic, " Rigol DS1054Z ", Now);
 
         Assert.Equal(("U7", "12", "/RAS", "Pulsing"), (capture.ComponentLabel, capture.Pin, capture.SignalName, capture.ExpectedReading));
         Assert.Equal(("50us", "2V", "1.4V"), (capture.TimePerDivision, capture.VoltsPerDivision, capture.TriggerLevel));
         Assert.Same(Vic, capture.Component);
+        Assert.Equal("Rigol DS1054Z", capture.Oscilloscope);
         Assert.Equal(Now, capture.CapturedUtc);
     }
 
@@ -41,18 +42,31 @@ public sealed class CollectionCapturesTests
     [Fact]
     public void A_setting_not_read_back_is_left_out()
     {
-        LocalCapture capture = CollectionCaptures.CaptureOf(Baseline(), new ScopeSettingsReading(null, 9.9e37, null), null, Now);
+        LocalCapture capture = CollectionCaptures.CaptureOf(Baseline(), new ScopeSettingsReading(null, 9.9e37, null), null, null, Now);
 
         Assert.Null(capture.TimePerDivision);
         Assert.Null(capture.VoltsPerDivision);
         Assert.Null(capture.TriggerLevel);
-        Assert.Null(CollectionCaptures.CaptureOf(Baseline(), null, null, Now).TimePerDivision);
+        Assert.Null(capture.Oscilloscope);
+        Assert.Null(CollectionCaptures.CaptureOf(Baseline(), null, null, null, Now).TimePerDivision);
     }
 
     // A component's picture (no pin) shown as the capture was taken is of no pin.
     [Fact]
     public void A_capture_taken_over_a_picture_is_of_no_pin() =>
-        Assert.Null(CollectionCaptures.CaptureOf(Baseline(pin: string.Empty), null, null, Now).Pin);
+        Assert.Null(CollectionCaptures.CaptureOf(Baseline(pin: string.Empty), null, null, null, Now).Pin);
+
+    // The oscilloscope as the "Oscilloscope" tab lists it - vendor and model - its vendor said once (owner request, 2026-11-28:
+    // "the oscilloscope brand and model should be shown").
+    [Theory]
+    [InlineData("Rigol", "DS1054Z", "Rigol DS1054Z")]
+    [InlineData("Rigol", "Rigol DS1054Z", "Rigol DS1054Z")]
+    [InlineData("Siglent", "siglent SDS1104X-E", "siglent SDS1104X-E")]
+    [InlineData(" ", "DS1054Z", "DS1054Z")]
+    [InlineData("Rigol", null, "Rigol")]
+    [InlineData(null, " ", null)]
+    public void The_oscilloscope_is_named_by_its_vendor_and_model(string? vendor, string? model, string? name) =>
+        Assert.Equal(name, CollectionCaptures.OscilloscopeNameOf(vendor, model));
 
     // The window's facts and pin list as they are shown - blank fields as none, the purpose as its words, the pins listed.
     [Fact]

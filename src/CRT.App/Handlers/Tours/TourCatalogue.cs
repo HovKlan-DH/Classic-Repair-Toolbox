@@ -309,6 +309,15 @@ namespace Handlers.Tours
                         "Use it while you repair",
                         "Once connected, picking an oscilloscope baseline in a component's information window sets your oscilloscope up as that baseline was taken, so you can compare what you measure with it.\n\n" +
                         "Pictures you capture from your oscilloscope's screen are saved in the folder chosen here."),
+
+                    // Owner request, 2026-11-27: the log's place became two tabs, "Collections" the new one.
+                    new TourStep(
+                        Crt41,
+                        ["TabOscilloscope/CollectionsTabButton"],
+                        "Your collections",
+                        "Captures you collect in a component's information window, to show them on a forum and ask for help, are kept in collections.\n\n" +
+                        "<b>Collections</b> lists them all - open one to share it, read its comments or delete it, with or without your oscilloscope connected. " +
+                        "<b>Communication log</b> shows what CRT and your oscilloscope say to each other."),
                 ]),
 
             new TourOfTab(

@@ -129,11 +129,10 @@ namespace CRT
             (ComponentPaneWording.FactAppliesTo, 3, 4),
         ];
 
-        // The window's place (UserSettings through the pane) - and its Normal size and position, as it is moved and sized.
-        private Action<BaselineCaptureWindowPlace>? thisRememberPlace;
-        private double thisNormalWidth;
-        private double thisNormalHeight;
-        private PixelPoint thisNormalPosition;
+        // The window's place (UserSettings through the pane) - and its Normal size and position, as it is moved and sized
+        // (KeptWindowPlace, the collection window's too since 2026-11-28).
+        private Action<WindowPlace>? thisRememberPlace;
+        private readonly KeptWindowPlace thisPlace;
 
         public BaselineCaptureWindow()
         {
@@ -152,23 +151,7 @@ namespace CRT
 
             this.AddHandler(InputElement.KeyDownEvent, this.OnWindowKeyDown, RoutingStrategies.Tunnel);
 
-            this.thisNormalWidth = this.Width;
-            this.thisNormalHeight = this.Height;
-            this.SizeChanged += (_, _) =>
-            {
-                if (this.WindowState == WindowState.Normal && this.ClientSize is { Width: > 0, Height: > 0 } size)
-                {
-                    this.thisNormalWidth = size.Width;
-                    this.thisNormalHeight = size.Height;
-                }
-            };
-            this.PositionChanged += (_, _) =>
-            {
-                if (this.WindowState == WindowState.Normal)
-                {
-                    this.thisNormalPosition = this.Position;
-                }
-            };
+            this.thisPlace = new KeptWindowPlace(this);
             this.Closing += this.OnClosing;
             this.Closed += this.OnClosed;
         }
@@ -209,8 +192,8 @@ namespace CRT
             ComponentPane pane,
             IReadOnlyList<BaselineRunPin> pins,
             bool connected,
-            BaselineCaptureWindowPlace? place,
-            Action<BaselineCaptureWindowPlace>? rememberPlace)
+            WindowPlace? place,
+            Action<WindowPlace>? rememberPlace)
         {
             ArgumentNullException.ThrowIfNull(pane);
             ArgumentNullException.ThrowIfNull(pins);
@@ -228,17 +211,11 @@ namespace CRT
 
             if (place is not null)
             {
-                this.UsePlace(place, ownerScreen);
+                this.thisPlace.Use(place, ownerScreen);
             }
             else if (ownerScreen is { } screen)
             {
-                (Size size, _) = DialogPlacement.KeptPlaceOn(
-                    new Size(this.Width, this.Height), new Size(this.MinWidth, this.MinHeight), default, screen.WorkingArea, screen.Scaling);
-
-                this.Width = size.Width;
-                this.Height = size.Height;
-                this.thisNormalWidth = this.Width;
-                this.thisNormalHeight = this.Height;
+                this.thisPlace.FitTo(screen);
             }
 
             var picked = BaselineRunPins.FirstChoice(pins).ToHashSet();
@@ -306,57 +283,8 @@ namespace CRT
                 : null;
         }
 
-        private void UsePlace(BaselineCaptureWindowPlace place, (PixelRect WorkingArea, double Scaling)? ownerScreen)
-        {
-            // A place no screen shows any more - a screen taken away - is given up: it opens over CRT's window, as the first time,
-            // fitted to that window's screen.
-            var saved = new PixelPoint(place.X, place.Y);
-            Screen? onScreen = this.Screens.ScreenFromPoint(saved);
-
-            // Made to fit the screen it opens on - a smaller one than where it was left kept its buttons off the bottom (code review,
-            // 2026-11-21).
-            (Size size, PixelPoint position) = DialogPlacement.KeptPlaceOn(
-                new Size(place.Width, place.Height),
-                new Size(this.MinWidth, this.MinHeight),
-                saved,
-                onScreen?.WorkingArea ?? ownerScreen?.WorkingArea ?? default,
-                onScreen?.Scaling ?? ownerScreen?.Scaling ?? 1.0);
-
-            this.Width = size.Width;
-            this.Height = size.Height;
-            this.thisNormalWidth = this.Width;
-            this.thisNormalHeight = this.Height;
-
-            if (onScreen is not null)
-            {
-                this.WindowStartupLocation = WindowStartupLocation.Manual;
-                this.Position = position;
-                this.thisNormalPosition = position;
-            }
-
-            if (string.Equals(place.State, "Maximized", StringComparison.Ordinal))
-            {
-                this.WindowState = WindowState.Maximized;
-            }
-        }
-
-        // Where it is left - its Normal size and position as they are now, or, maximized, as they were before.
-        private void RememberPlace()
-        {
-            if (this.WindowState == WindowState.Normal && this.ClientSize is { Width: > 0, Height: > 0 } size)
-            {
-                this.thisNormalWidth = size.Width;
-                this.thisNormalHeight = size.Height;
-                this.thisNormalPosition = this.Position;
-            }
-
-            this.thisRememberPlace?.Invoke(new BaselineCaptureWindowPlace(
-                this.WindowState == WindowState.Maximized ? "Maximized" : "Normal",
-                this.thisNormalWidth,
-                this.thisNormalHeight,
-                this.thisNormalPosition.X,
-                this.thisNormalPosition.Y));
-        }
+        // Where it is left (KeptWindowPlace) - its Normal size and position as they are now, or, maximized, as they were before.
+        private void RememberPlace() => this.thisRememberPlace?.Invoke(this.thisPlace.Current());
 
         // ###########################################################################################
         // The oscilloscope there or gone, from the pane: gone, nothing is captured or sent to it, and the window says so - what was

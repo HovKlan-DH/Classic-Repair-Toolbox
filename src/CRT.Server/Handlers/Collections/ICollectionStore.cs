@@ -40,6 +40,10 @@ namespace CRT.Server.Handlers.Collections
         // kept either way (migration 0028). False when it is deleted.
         Task<bool> SetUnsharedAsync(string id, DateTimeOffset? unsharedUtc, CancellationToken cancellationToken = default);
 
+        // Takes one capture off a collection (server 16.2.0) - its deletion date, its sharing, its words and its other captures
+        // left as they are; updated_utc set to `whenUtc`. True also when the capture was not on it; false when it is deleted.
+        Task<bool> RemoveImageAsync(string id, string sha256, DateTimeOffset whenUtc, CancellationToken cancellationToken = default);
+
         // Deletes a collection: its captures' rows go, its words are emptied, and the row stays so the page can say when it
         // went. False when it was deleted already.
         Task<bool> MarkDeletedAsync(string id, string reason, DateTimeOffset whenUtc, CancellationToken cancellationToken = default);
@@ -147,6 +151,7 @@ namespace CRT.Server.Handlers.Collections
     // A collection as kept. The images are the contract's own entries with the picture's size (from its upload).
     // `UnsharedUtc`: when its owner stopped sharing it - its page offline until "Share" brings it back (migration 0028).
     // `Components`: what CRT's component info window said of each component captured (migration 0029).
+    // `Oscilloscopes`: the oscilloscopes the captures were taken with, each once (migration 0030).
     // ###########################################################################################
     public sealed record CollectionRecord(
         string Id,
@@ -169,7 +174,8 @@ namespace CRT.Server.Handlers.Collections
         long LatestCommentId = 0,
         string? ClientKey = null,
         DateTimeOffset? UnsharedUtc = null,
-        IReadOnlyList<CollectionComponent>? Components = null)
+        IReadOnlyList<CollectionComponent>? Components = null,
+        IReadOnlyList<string>? Oscilloscopes = null)
     {
         public bool IsDeleted => this.DeletedUtc is not null;
 

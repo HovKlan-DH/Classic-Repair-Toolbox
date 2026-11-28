@@ -1,5 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:CRT"
              x:Class="CRT.TabOscilloscope">
 
 	<Grid>
@@ -437,7 +438,145 @@
 							  ResizeDirection="Rows"
 							  HorizontalAlignment="Stretch" />
 
-				<TextBox Grid.Row="2"
+				<!-- TWO TABS WHERE THE LOG STOOD ALONE (owner request, 2026-11-27: "where we now have the "debug window" ... can we
+				     then have two tabs - one for "Debug" (or name this better if you can) and one for "Collections"";
+				     TabOscilloscope.Collections.cs): "Communication log", what CRT and the oscilloscope said to each other, and
+				     "Collections", every oscilloscope collection on this computer - opened, shared and deleted with no oscilloscope
+				     connected. Drawn as the "Maintainer" tab's screens are (ScreenTab), the badge counting the collections with
+				     comments not read. -->
+				<Grid Grid.Row="2"
+					  RowDefinitions="Auto,*">
+					<Border Grid.Row="0"
+							Classes="ScreenTabStrip"
+							Padding="8,4,8,0">
+						<WrapPanel Orientation="Horizontal"
+								   ItemSpacing="4">
+							<Button x:Name="CommunicationLogTabButton"
+									Classes="ScreenTab Selected"
+									Click="OnOutputTabClick">
+								<TextBlock Classes="ScreenTabLabel"
+										   Text="Communication log"
+										   VerticalAlignment="Center" />
+							</Button>
+							<Button x:Name="CollectionsTabButton"
+									Classes="ScreenTab"
+									Click="OnOutputTabClick">
+								<StackPanel Orientation="Horizontal"
+											Spacing="6">
+									<TextBlock Classes="ScreenTabLabel"
+											   Text="Collections"
+											   VerticalAlignment="Center" />
+									<Border x:Name="CollectionsBadge"
+											Classes="ModeBadge Attention"
+											IsVisible="False">
+										<TextBlock x:Name="CollectionsBadgeText" />
+									</Border>
+								</StackPanel>
+							</Button>
+						</WrapPanel>
+					</Border>
+
+					<!-- "Collections": a card per collection, the newest made first (CollectionListing says every word). -->
+					<Grid Grid.Row="1"
+						  x:Name="CollectionsPanel"
+						  IsVisible="False"
+						  RowDefinitions="Auto,*"
+						  Margin="16,12,4,8">
+						<StackPanel Grid.Row="0"
+									Spacing="4"
+									Margin="0,0,12,10">
+							<TextBlock x:Name="CollectionsHeadingText"
+									   FontWeight="SemiBold"
+									   TextWrapping="Wrap" />
+							<TextBlock x:Name="CollectionsIntroText"
+									   FontSize="12"
+									   TextWrapping="Wrap" />
+						</StackPanel>
+
+						<ScrollViewer Grid.Row="1"
+									  HorizontalScrollBarVisibility="Disabled"
+									  VerticalScrollBarVisibility="Auto">
+							<ItemsControl x:Name="CollectionsList"
+										  Margin="0,0,12,0">
+								<ItemsControl.ItemTemplate>
+									<DataTemplate x:DataType="local:CollectionListRow">
+										<Border BorderBrush="{DynamicResource Form_Border}"
+												BorderThickness="1"
+												CornerRadius="4"
+												Padding="10"
+												Margin="0,0,0,8">
+											<Grid ColumnDefinitions="160,12,*">
+												<!-- Its first capture - clicked, the collection opens. -->
+												<Border Grid.Column="0"
+														Width="160"
+														MinHeight="60"
+														VerticalAlignment="Top"
+														Cursor="Hand"
+														Tapped="OnCollectionThumbnailTapped">
+													<Grid>
+														<Image Source="{Binding Thumbnail}"
+															   Stretch="Uniform"
+															   VerticalAlignment="Top" />
+														<TextBlock Text="No captures yet"
+																   IsVisible="{Binding HasNoCapture}"
+																   FontSize="12"
+																   TextWrapping="Wrap"
+																   VerticalAlignment="Center"
+																   HorizontalAlignment="Center" />
+													</Grid>
+												</Border>
+
+												<StackPanel Grid.Column="2"
+															Spacing="3">
+													<WrapPanel Orientation="Horizontal">
+														<TextBlock Text="{Binding Item.Name}"
+																   FontWeight="SemiBold"
+																   TextWrapping="Wrap"
+																   VerticalAlignment="Center"
+																   Margin="0,0,8,0" />
+														<Border Classes="ModeBadge Attention"
+																IsVisible="{Binding Item.HasNewComments}">
+															<TextBlock Text="New comments" />
+														</Border>
+													</WrapPanel>
+													<TextBlock Text="{Binding Item.Board}"
+															   FontSize="12"
+															   TextWrapping="Wrap" />
+													<TextBlock Text="{Binding Item.Facts}"
+															   FontSize="12"
+															   TextWrapping="Wrap" />
+													<TextBlock Text="{Binding Item.State}"
+															   FontSize="12"
+															   TextWrapping="Wrap" />
+													<WrapPanel Orientation="Horizontal"
+															   ItemSpacing="6"
+															   LineSpacing="6"
+															   Margin="0,6,0,0">
+														<Button Content="Open collection"
+																FontSize="12"
+																Padding="8,4"
+																Click="OnShowCollectionClick" />
+														<Button Content="Open shared page"
+																IsVisible="{Binding HasSharedPage}"
+																FontSize="12"
+																Padding="8,4"
+																Click="OnOpenCollectionPageClick" />
+														<Button Classes="Danger"
+																Content="Delete collection"
+																FontSize="12"
+																Padding="8,4"
+																Click="OnDeleteCollectionClick" />
+													</WrapPanel>
+												</StackPanel>
+											</Grid>
+										</Border>
+									</DataTemplate>
+								</ItemsControl.ItemTemplate>
+							</ItemsControl>
+						</ScrollViewer>
+					</Grid>
+
+				<TextBox Grid.Row="1"
 					 x:Name="OutputTextBox"
 					 Margin="0,0,0,0"
 					 IsReadOnly="True"
@@ -474,6 +613,7 @@
 						</Style>
 					</TextBox.Styles>
 				</TextBox>
+				</Grid>
 			</Grid>
 		</Border>
 	</Grid>

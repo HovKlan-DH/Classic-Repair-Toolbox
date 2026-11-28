@@ -1103,6 +1103,9 @@ its columns), so the pages read nothing of the data trees. **A collection is kep
 the day it is shared - each "Share" starts the time again. Under each capture, "Link" copies its address for Lemon64,
 Forum64 or Reddit, opening that very capture large.
 
+**The oscilloscope** (16.1.0, migration 0030 - run by the service as it starts, nothing to do by hand): CRT sends the
+oscilloscope each capture was taken with, and the page names it under the title beside the board.
+
 **Comments** (also 14.1.0, migration 0026 - run by the service as it starts, nothing to do by hand): anybody signed in
 with a confirmed address writes them under each capture on the page (the page's own "Sign in" link), and the owner in
 CRT too. Plain text, at most 2,000 characters, 100 a day per account. The owner gets a mail per comment (not for their
@@ -1126,7 +1129,7 @@ each owner and writer, and "Locked accounts" to unlock one ("Accounts and sessio
 first; its page then says it was removed, and the hourly sweep deletes its pictures. Without the website, in SQL:
 
 ```bash
-mysql -u root -e "UPDATE crt_review.collections SET deleted_utc = UTC_TIMESTAMP(3), deleted_reason = 'administrator', title = NULL, description = NULL, forum_links_json = NULL, components_json = NULL WHERE id = '<id>'; DELETE FROM crt_review.collection_images WHERE collection_id = '<id>'; DELETE FROM crt_review.collection_comments WHERE collection_id = '<id>';"
+mysql -u root -e "UPDATE crt_review.collections SET deleted_utc = UTC_TIMESTAMP(3), deleted_reason = 'administrator', title = NULL, description = NULL, forum_links_json = NULL, components_json = NULL, oscilloscopes_json = NULL WHERE id = '<id>'; DELETE FROM crt_review.collection_images WHERE collection_id = '<id>'; DELETE FROM crt_review.collection_comments WHERE collection_id = '<id>';"
 ```
 
 **To see the newest comments**:

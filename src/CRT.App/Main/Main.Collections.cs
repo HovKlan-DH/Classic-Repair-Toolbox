@@ -18,7 +18,9 @@ namespace CRT
     // CRT is signed in to - the "Maintainer" tab's session, as everything signed in in CRT - and the contribution server, the
     // test instance's for a pre-release (AppConfig.ContributionServerRootUrl).
     //
-    // A collection's window open stays one: opened again, it comes forward. A change in it refreshes every popup's drop-down.
+    // A collection's window open stays one: opened again, it comes forward. A change in it refreshes every popup's drop-down,
+    // and the "Oscilloscope" tab's "Collections" list (TabOscilloscope.Collections.cs - every collection, opened and deleted
+    // with no oscilloscope connected; owner request, 2026-11-27).
     // ###########################################################################################
     public partial class Main
     {
@@ -63,14 +65,15 @@ namespace CRT
                 this.OpenCollectionWindow,
                 serverId => this.thisLatestCommentIds.GetValueOrDefault(serverId),
                 this.CollectionChangedInPopup,
-                localId => this.thisCollectionWindows.TryGetValue(localId, out CollectionWindow? open) && open.IsVisible && open.IsBusy);
+                localId => this.thisCollectionWindows.TryGetValue(localId, out CollectionWindow? open) && open.IsVisible && open.IsBusy,
+                () => this.TabOscilloscopeControl.ConnectedOscilloscopeName);
         }
 
         // A capture added or taken out in a popup, or another collection picked there: every popup's drop-down, and the
         // collection's window if one is open.
         private void CollectionChangedInPopup(string? localId)
         {
-            this.ShowCollectionChoicesInPopups();
+            this.ShowCollectionsAsTheyAre();
 
             if (localId is not null && this.thisCollectionWindows.TryGetValue(localId, out CollectionWindow? open) && open.IsVisible)
                 open.ShowAgain();
@@ -110,7 +113,7 @@ namespace CRT
                     foreach (CollectionSummaryAnswer shared in mine)
                         this.thisLatestCommentIds[shared.Id] = shared.LatestCommentId;
 
-                    this.ShowCollectionChoicesInPopups();
+                    this.ShowCollectionsAsTheyAre();
                 },
                 _ => { });
         }
@@ -127,21 +130,29 @@ namespace CRT
         // ###########################################################################################
         // A collection's window, over CRT's - the one open for it brought forward.
         // ###########################################################################################
-        internal void OpenCollectionWindow(string localId)
+        internal void OpenCollectionWindow(string localId) => this.ShowCollectionWindow(localId);
+
+        // "Delete collection" on the "Collections" list: its window, ASKING - the window's delete takes the page down, signs in and
+        // knows another account's collection, so the list has no second copy of it.
+        internal void OpenCollectionWindowToDelete(string localId) => this.ShowCollectionWindow(localId)?.AskToDelete();
+
+        // The collection's window shown - the one open brought forward - or null when there is no such collection any more.
+        private CollectionWindow? ShowCollectionWindow(string localId)
         {
             if (this.thisCollectionWindows.TryGetValue(localId, out CollectionWindow? open) && open.IsVisible)
             {
                 open.Activate();
-                return;
+                return open;
             }
 
             var window = new CollectionWindow();
 
-            // Gone meanwhile - deleted from its window, say: no window, and every popup shows the collections as they are.
+            // Gone meanwhile - deleted from its window, say: no window, and every popup and the list show the collections as
+            // they are.
             if (!window.Initialize(this.CollectionWindowHost(), localId))
             {
-                this.ShowCollectionChoicesInPopups();
-                return;
+                this.ShowCollectionsAsTheyAre();
+                return null;
             }
 
             window.Closed += (_, _) =>
@@ -152,7 +163,21 @@ namespace CRT
 
             this.thisCollectionWindows[localId] = window;
             window.Show(this);
+            return window;
         }
+
+        // ###########################################################################################
+        // The "Oscilloscope" tab's "Collections" list (owner request, 2026-11-27): the store asked for each time - a test sets its
+        // own after Main is made - and every action the collection's window's.
+        // ###########################################################################################
+        private void HandCollectionsToOscilloscopeTab() =>
+            this.TabOscilloscopeControl.UseCollections(new OscilloscopeCollectionsHost(
+                () => this.Collections,
+                serverId => this.thisLatestCommentIds.GetValueOrDefault(serverId),
+                this.AskForNewCommentsSoon,
+                this.OpenCollectionWindow,
+                this.OpenCollectionWindowToDelete,
+                link => ExternalTargetLauncher.OpenOrSay(link)));
 
         internal CollectionWindowHost CollectionWindowHost() =>
             new(
@@ -166,7 +191,11 @@ namespace CRT
                     if (TopLevel.GetTopLevel(this)?.Clipboard is { } clipboard)
                         await clipboard.SetTextAsync(text);
                 },
-                Changed: this.ShowCollectionChoicesInPopups,
+                Changed: this.ShowCollectionsAsTheyAre,
+                Place: () => UserSettings.CollectionWindowPlace,
+                RememberPlace: UserSettings.SaveCollectionWindowPlace,
+                LinkFormat: () => UserSettings.CollectionLinkFormat,
+                RememberLinkFormat: UserSettings.SetCollectionLinkFormat,
                 WorklogIsOn: () => UserSettings.EnableWorklog,
                 AttachToWorklog: this.AttachCollectionToWorklogAsync);
 
@@ -247,13 +276,16 @@ namespace CRT
             return editor.WasSaved ? CollectionWorklogAttach.Said(added, "a new worklog") : null;
         }
 
-        // Every component info window open shows the board's collections as they now are.
-        private void ShowCollectionChoicesInPopups()
+        // Every component info window open shows the board's collections as they now are, and the "Collections" list every
+        // collection.
+        private void ShowCollectionsAsTheyAre()
         {
             this._singleComponentInfoWindow?.ShowCollectionChoices();
 
             foreach (ComponentInfoWindow popup in this._componentInfoWindowsByKey.Values.ToList())
                 popup.ShowCollectionChoices();
+
+            this.TabOscilloscopeControl.ShowCollections();
         }
     }
 }

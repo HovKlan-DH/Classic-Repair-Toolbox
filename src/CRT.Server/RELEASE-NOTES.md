@@ -15,6 +15,15 @@ next push. The sections from 10.4.1 down to 1.0.0 were written from VERSION.md's
 - Plain ASCII punctuation.
 -->
 
+# 16.1.0, 2026-November-28
+--------------------------
+- A collection's page names the board and the oscilloscope the captures were taken with under its title
+- Each capture's headline is its component, as in CRT's component info window - "U53 | Dynamic RAM | 4164"
+- The page shows its captures as thumbnails - large only when one is opened
+- A deleted collection's page tells of the new "Delete in" choices - a day, a week, a month or a year
+- An image deleted in CRT is off its collection's page at once - the page's deletion date stays as it was
+- A capture's "Link" offers "Copy as BBCode", "Copy as Markdown" and "Copy plain link", each saying where it works, in place of one button per forum
+
 # 16.0.1, 2026-November-27
 --------------------------
 - A capture opened large is shown whole, no longer running under the viewer's footer on a wide window

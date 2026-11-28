@@ -2951,8 +2951,9 @@ repair on one board; it holds worklogs.
 possibility for a user to capture one or more oscilloscope images and make that a "collection". Then that collection can
 be shared to the internet on various forums like Lemon64, Forum64 or Reddit"; the plan's step 2, 2026-11-26, comments
 on each image step 3 and the website's "Your collections" step 4, the same day; decisions in the memory note).
-Every rule both ends keep is CRT.Data's (`CollectionRules` - id, "Delete in" 1 month / 6 months / 1 year (default),
-never past a year ahead, limits, the page's anchors; `CollectionPng`; `CollectionContract`'s records), CRT
+Every rule both ends keep is CRT.Data's (`CollectionRules` - id, "Delete in" 1 day / 1 week / 1 month / 1 year (default; owner
+request, 2026-11-28 - "6 months" kept by an earlier CRT reads as the year), never past a year ahead, limits, the page's anchors;
+`CollectionPng`; `CollectionContract`'s records), CRT
 asking before it sends and the server again (`CollectionFlows`, server 14.1.0). **A collection is kept at most a YEAR,
 COUNTED FROM EVERY SHARE** (owner decision, 2026-11-27: "The max years a collection can be shared is 1 year, and not 5
 years - however, every time the user shares it again, it resets its time"; `CollectionSharing.DeleteAtFor`, server
@@ -2967,11 +2968,28 @@ the year.
   SHOWS IT** (`CollectionCaptures.ComponentOf`: its title, category line, description, purpose and pins with net and
   reading) **and a picture of its pinout drawing** (`ComponentInfoWindow.PinoutPictureForCollection` - the popup's ON-SCREEN
   drawing pictured, as a control drawn off screen finds no theme resources; its ground drawn under it on a second bitmap, as
-  `RenderTargetBitmap.Render` clears; kept by checksum beside the captures, `CollectionStore.AddCapture(..., pinout)`), both
-  taken before anything is awaited (`CollectionCaptures`); the
+  `RenderTargetBitmap.Render` clears; kept by checksum beside the captures, `CollectionStore.AddCapture(..., pinout)`) - **and
+  the oscilloscope it was taken with** (`LocalCapture.Oscilloscope`, the "Oscilloscope" tab's vendor and model while a session is
+  open - `TabOscilloscope.ConnectedOscilloscopeName`, `CollectionCaptures.OscilloscopeNameOf`; sent once each as the request's
+  `Oscilloscopes`, server 16.1.0, migration 0030; owner request, 2026-11-28), all taken before anything is awaited
+  (`CollectionCaptures`); the
   banner offers "Take out of the collection" - only for a capture that click ADDED (`CaptureAdded`: the very same screen is
   one capture, and a screen `CollectionPng` refuses is said at the capture). Main hands each popup a `CollectionContext`
   (`Main.Collections.cs`).
+- **THE "Oscilloscope" TAB'S "Collections" LISTS THEM ALL, NO OSCILLOSCOPE NEEDED** (owner request, 2026-11-27: "where we now
+  have the "debug window" ... can we then have two tabs - one for "Debug" (or name this better if you can) and one for
+  "Collections" ... we will show all collections and have a management interface for them"; `TabOscilloscope.Collections.cs`,
+  every word CRT.App's `CollectionListing`): the log's place is two screen tabs (`ScreenTab`, the "Maintainer" tab's look, its
+  `ModeBadge` App.axaml's since), "Communication log" - the black box, shown first - and "Collections": a card per collection
+  of every board, the newest made first, its first capture, board, captures, where it stands and "New comments", the tab's
+  badge counting those. **Its buttons open the collection's window** - "Open collection" (or the picture; "Show collection" until
+  2026-11-28 - owner request), and "Delete collection" opening it ASKING (`Main.OpenCollectionWindowToDelete`,
+  `CollectionWindow.AskToDelete`): the window's delete is the only one - it signs in, takes the page down, knows another account's
+  collection - never a second copy in the list; "Open shared page" only while it is shared (`CollectionListItem.IsShared`; offline
+  is not shared). Read again whenever Main says the collections changed (`Main.ShowCollectionsAsTheyAre` - the
+  popups' drop-downs and the list, ONE call), as the tab is shown and as "Collections" is picked, the server asked then for new
+  comments (`AskForNewCommentsSoon`, at most every five minutes). The store is asked for each time
+  (`OscilloscopeCollectionsHost.Store`), as a test sets its own after Main is made. A tour step of 4.1.0 shows the tab.
 - **THE COLLECTIONS ARE KEPT PER SERVICE AND ARE THEIR ACCOUNT'S** (code review, 2026-11-27: a server id is one database's,
   and the server answers "not found" for another account's collection - read as gone, "Delete collection" deleted it here
   and left its page up): "Collections" for a release, "Collections-test" for a pre-release (`ContributionServer.FileNameFor`;
@@ -2981,7 +2999,25 @@ the year.
 - **The collection window changes its rows IN PLACE** (thumbnails and comments notify; code review, 2026-11-27: each
   thumbnail rebuilt the whole list, and comments read again took the keyboard from a note), **writes what the server
   answered onto the collection AS KEPT AFTER THE WAIT** (an edit made meanwhile stays), and runs a comment action or the
-  delete one at a time under its `BusyOverlay` ("Share" says its own progress).
+  delete one at a time under its `BusyOverlay` ("Share" says its own progress). **Its words** (owner requests, 2026-11-28): "Delete
+  image" ("Take out" until then), "Open shared page" ENABLED only while shared ("Open web page" until then), "Attach collection to
+  worklog", the date the page goes BOLD with "Clicking "Share" again will update the deletion day." (`DeleteDateLine`, `BoldRuns`),
+  and no "Shared on ..." line (`SharedStateLine` says nothing of a collection shared as it is). **"Delete image" TAKES A SHARED
+  COLLECTION'S CAPTURE OFF ITS PAGE AT ONCE, ITS DELETION DATE UNTOUCHED** (owner request, 2026-11-28: "do not touch the expiry date.
+  This date should only change when the USER does something"; `TakeOutAsync`, `CollectionClient.RemoveImageAsync`, `DELETE
+  /api/collections/<id>/images/<sha256>`, server 16.1.0): that one capture and nothing else - never "Share", which sends a date -
+  signed in with the account that shared it, then off this computer; refused, it stays here too. **A collection in step with its page
+  stays so** (`DeleteHere`: the hash of what was shared moved to the collection as it now is), and one with a change not shared yet
+  keeps saying so. The server keeps the collection's component facts and oscilloscopes as shared - only "Share" rewrites them, so a
+  scope only the deleted capture was taken with stays named on the page until then. The popup's "Take out of the collection", for
+  a capture just taken, stays local. **"Copy link" is ONE split button by FORMAT, never a button per forum** (owner decision,
+  2026-11-28: "OK to your proposal for the forum button"; CRT.Data's `CollectionLinkFormats` - BBCode, Markdown, a plain link -
+  which the page's "Link" panel writes by too): a click copies in the format picked last, named on it ("Copy link (BBCode)"),
+  remembered (`UserSettings.CollectionLinkFormat`, `collectionLinkFormat`, handed in as `CollectionWindowHost.LinkFormat`/
+  `RememberLinkFormat`); its arrow lists the three, each with where it works. **It opens where it was left, its size too** (`UserSettings.CollectionWindowPlace`, one for every
+  collection's window, handed in by `CollectionWindowHost.Place`/`RememberPlace`) - **`KeptWindowPlace`, the ONE way a window keeps
+  its place**, which "Capture from oscilloscope pin-by-pin" uses too (`WindowPlace`, `BaselineCaptureWindowPlace` until then) -
+  **and Esc closes it**, or, a delete being asked, keeps the collection.
 - **Share sends the WHOLE collection; the server answers 409 naming the captures it lacks, which CRT uploads, then sends
   it again** (`CollectionClient`). A collection shows only pictures ITS OWN ACCOUNT uploaded. **The collection keeps the
   deletion date it SENT, never the server's echo** (`Result.SentDeleteAtUtc`; 2026-11-26: the database keeps
@@ -2999,8 +3035,14 @@ the year.
   the pin captured marked, Net and Expected reading only when any pin has one).
 - **THE PAGES LOOK AS THE OWNER'S OSCILLOSCOPE NETWORK CAPTURE GALLERY DID** (owner request, 2026-11-27: "find heavy inspiration
   in my other project ... a nice dark view with nice UI functionalities" - the archived `Z:\mydir\http\!OLD\commodore-repair-toolbox.dk\public_html\onc`;
-  `CollectionPages.Css`, server 15.1.0): a dark slate page under a frosted bar (CRT, the board and the red "Will be deleted"
-  badge, "Download N captures"), the captures as cards, each capture's VIEWER made of CSS alone (`:target`, ids
+  `CollectionPages.Css`, server 15.1.0): a dark slate page under a frosted bar (CRT, the red "Will be deleted" badge, "Download N
+  captures"), **the board and the oscilloscope under the title** (owner request, 2026-11-28: "the board hardware and model shown in
+  the "top user panel", where the collection headline is (move it there). Also the oscilloscope brand and model"; `p.kit`, server
+  16.1.0 - the bar held the board until then), **each capture headlined by its component, each part bold** ("**U53** | **Dynamic
+  RAM** | **4164**" - `CollectionPages.HeadlineOf`, its label alone without its facts; its pin and signal under it, `PinLineOf`) on
+  its card, its section and its viewer, **and THUMBNAILS ONLY on the page itself** (owner request, the same day: "it should not
+  show any large images - only the thumbnails"): every card one however few, each section's picture a thumbnail beside its
+  settings (`capture-body`) - large only in the viewer. The captures as cards, each capture's VIEWER made of CSS alone (`:target`, ids
   "view.<anchor>" - a "." no anchor holds), and **ONE small fixed script** - the viewer's keys (Left/Up back, Right/Down on,
   Esc), its mouse wheel (on, back; not over the component's facts or the link panel, nor with Ctrl, which zooms) and the
   link panel's copy buttons - allowed by its hash (`CollectionPages.Script`/`ScriptHash` in the Content-Security-Policy) -
@@ -3009,8 +3051,9 @@ the year.
   and top back, right and bottom on, the side ones showing a light round arrow (dark captures hid a dark one). **"Link"
   under a capture opened large** (owner request, the same day: "copy a link to either Forum64, Lemon64 or Reddit. The link
   should then navigate to this exact image, and show it large"): a `<details>` with the address of "#view.<anchor>" and
-  "Copy for Lemon64" (`[url=...]...[/url]`), "Copy for Forum64" (`[url='...']...[/url]`) and "Copy for Reddit"
-  (`[...](...)`, square brackets in the text made round), the text naming the capture and the board. **The brand in the
+  "Copy as BBCode" (`[url=...]...[/url]`), "Copy as Markdown" (`[...](...)`) and "Copy plain link" (`words: address`), each with
+  where it works under it (`CollectionLinkFormats`, square brackets in the words made round - "Copy for Lemon64", "Copy for
+  Forum64" and "Copy for Reddit" until 2026-11-28), the text naming the capture and the board. **The brand in the
   top left links to CRT's GitHub project** (`EmailTemplates.CrtProjectUrl`; owner request, the same day), never the
   website. "Download all" (`/collections/<id>/download`, `CollectionDownload`) **goes through
   ASP.NET's `FileBufferingWriteStream`: .NET 10's ZipArchive writes each entry's data descriptor SYNCHRONOUSLY even through its
@@ -3024,7 +3067,8 @@ the year.
   forever"; `CollectionPages.Deleted`): its row is never deleted - only its words, captures and comments (`MarkDeletedAsync`).
   **And nothing deletes a collection from THIS COMPUTER but its own "Delete collection"** (owner request, the same day): a page
   whose time is up, or taken down, only makes CRT forget the page (`CollectionWindow.ForgetPage`); "Share" makes a new one.
-- **"Attach to worklog" COPIES the captures in** (owner decision, 2026-11-27: "A copy of its captures"; `CollectionWorklogAttach`,
+- **"Attach collection to worklog" COPIES the captures in** (owner decision, 2026-11-27: "A copy of its captures"; "Attach to
+  worklog" until 2026-11-28 - owner request; `CollectionWorklogAttach`,
   `Main.AttachCollectionToWorklogAsync`): each a photo of a worklog of the workbook worked in on the COLLECTION'S board, picked in
   the capture's own dialog (`WorklogAttachCaptureWindow.InitializeForCollection`, no comment box), its comment its place,
   settings, reading and note (`CollectionSharing.WorklogCommentOf`), and the page's link under "Links of interest"

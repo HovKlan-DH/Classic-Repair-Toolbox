@@ -47,6 +47,7 @@
 				<ComboBox x:Name="LifetimeComboBox"
 						  HorizontalAlignment="Stretch"
 						  SelectionChanged="OnLifetimePicked" />
+				<!-- Its date bold (BoldRuns.ShowMarked - CollectionWindow.DeleteDateLine). -->
 				<TextBlock x:Name="DeleteDateText" TextWrapping="Wrap" FontSize="12" />
 
 				<TextBlock x:Name="SharedStateText" TextWrapping="Wrap" Margin="0,10,0,0" />
@@ -193,7 +194,7 @@
 
 										<Button Grid.Column="4"
 												Classes="Danger"
-												Content="Take out"
+												Content="Delete image"
 												VerticalAlignment="Top"
 												Tag="{Binding Sha256}"
 												Click="OnTakeOutClick" />
@@ -222,15 +223,20 @@
 						Click="OnDeleteClick" />
 				<Button x:Name="AttachToWorklogButton"
 						Classes="Accept"
-						Content="Attach to worklog"
+						Content="Attach collection to worklog"
 						Click="OnAttachToWorklogClick" />
 			</StackPanel>
 
 			<WrapPanel x:Name="ButtonsPanel" Grid.Column="2" HorizontalAlignment="Right" ItemSpacing="6" LineSpacing="6">
 				<Button x:Name="ShareButton" Classes="Accept" Content="Share" Click="OnShareClick" />
-				<Button x:Name="OpenPageButton" Content="Open web page" Click="OnOpenPageClick" />
-				<Button x:Name="CopyForForumButton" Content="Copy for forum" Click="OnCopyForForumClick" />
-				<Button x:Name="CopyForRedditButton" Content="Copy for Reddit" Click="OnCopyForRedditClick" />
+				<Button x:Name="OpenPageButton" Content="Open shared page" Click="OnOpenPageClick" />
+				<!-- "Copy link" (owner decision, 2026-11-28): a click copies in the format picked last, its arrow lists the
+				     three - BBCode, Markdown and a plain link, each saying where it works (CollectionLinkFormats). -->
+				<SplitButton x:Name="CopyLinkButton" Content="Copy link" Click="OnCopyLinkClick">
+					<SplitButton.Flyout>
+						<MenuFlyout Placement="TopEdgeAlignedRight" />
+					</SplitButton.Flyout>
+				</SplitButton>
 				<Button Content="Close" Click="OnCloseClick" />
 			</WrapPanel>
 

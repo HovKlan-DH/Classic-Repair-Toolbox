@@ -39,11 +39,66 @@ namespace CRT.Server.Tests
             string html = Page(Collection(Capture(ShaA, "U7", "12")));
 
             Assert.Contains("<h1>No picture after changing the PLA</h1>", html, StringComparison.Ordinal);
-            Assert.Contains("Commodore 64 - 250407 (PAL)", html, StringComparison.Ordinal);
             Assert.Contains("<code>k7mq3x9vbn2p</code>", html, StringComparison.Ordinal);
             Assert.Contains("Shared 2026-November-26", html, StringComparison.Ordinal);
             Assert.Contains("<span class=\"badge-red\">Will be deleted <b>2027-November-26</b></span>", html, StringComparison.Ordinal);
             Assert.Contains("Shared with Classic Repair Toolbox", html, StringComparison.Ordinal);
+        }
+
+        // Owner request, 2026-11-28: "I want to have the board hardware and model shown in the "top user panel", where the collection
+        // headline is (move it there). Also the oscilloscope brand and model should be shown there" - the bar over the page keeps
+        // only the date it goes.
+        [Fact]
+        public void The_board_and_the_oscilloscope_stand_under_the_title()
+        {
+            string html = Page(Collection(Capture(ShaA, "U7", "12")) with { Oscilloscopes = ["Rigol DS1054Z", "Siglent <SDS>"] });
+
+            Assert.Contains(
+                "<h1>No picture after changing the PLA</h1><p class=\"kit\"><span>Board: <b>Commodore 64 - 250407 (PAL)</b></span>" +
+                "<span>Oscilloscope: <b>Rigol DS1054Z, Siglent &lt;SDS&gt;</b></span></p>",
+                html,
+                StringComparison.Ordinal);
+
+            string meta = html[html.IndexOf("<div class=\"meta\">", StringComparison.Ordinal)..html.IndexOf("<div class=\"header-actions\">", StringComparison.Ordinal)];
+            Assert.DoesNotContain("Commodore 64", meta, StringComparison.Ordinal);
+
+            // No oscilloscope known (captures from before CRT kept it): the board alone.
+            Assert.Contains(
+                "<p class=\"kit\"><span>Board: <b>Commodore 64 - 250407 (PAL)</b></span></p>",
+                Page(Collection(Capture(ShaA, "U7", "12"))),
+                StringComparison.Ordinal);
+        }
+
+        // Owner request, 2026-11-28: "For each image I want it to show the component display name as its headline - e.g. like this:
+        // "<b>U53</b> | <b>Dynamic RAM</b> | <b>4164</b>"" - on its card, its section and its viewer; its label alone when CRT told
+        // nothing of its component. The pin and signal under it.
+        [Fact]
+        public void A_capture_s_headline_is_its_component_each_part_bold()
+        {
+            CollectionComponent component = new("U53", "U53 | Dynamic <RAM> | 4164", null, null, null, null);
+
+            string html = Page(Collection(Capture(ShaA, "U53", "2"), Capture(ShaB, "U8", "3")) with { Components = [component] });
+
+            Assert.Contains("<a class=\"cap-title\" href=\"#U53-2\"><b>U53</b> | <b>Dynamic &lt;RAM&gt;</b> | <b>4164</b></a>", html, StringComparison.Ordinal);
+            Assert.Contains("<h2><b>U53</b> | <b>Dynamic &lt;RAM&gt;</b> | <b>4164</b> <span class=\"signal\">Pin 2 - /RAS</span></h2>", html, StringComparison.Ordinal);
+            Assert.Contains("<div class=\"m-name\"><b>U53</b> | <b>Dynamic &lt;RAM&gt;</b> | <b>4164</b></div>", html, StringComparison.Ordinal);
+            Assert.Contains("<div class=\"cap-sub\">Pin 2 - /RAS</div>", html, StringComparison.Ordinal);
+
+            Assert.Contains("<a class=\"cap-title\" href=\"#U8-3\"><b>U8</b></a>", html, StringComparison.Ordinal);
+        }
+
+        // Owner request, 2026-11-28: "For the front page of a collection, then it should not show any large images - only the
+        // thumbnails": every card a thumbnail however few, and each capture's section its picture as a thumbnail beside its
+        // settings - large only in the viewer.
+        [Fact]
+        public void The_page_itself_shows_its_captures_as_thumbnails()
+        {
+            string html = Page(Collection(Capture(ShaA, "U7", "12")));
+
+            Assert.Contains("<div class=\"grid\">", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("grid-few", html, StringComparison.Ordinal);
+            Assert.Contains("<div class=\"capture-body\"><a class=\"framed capture-thumb\" href=\"#view.U7-12\"", html, StringComparison.Ordinal);
+            Assert.Contains(".capture-thumb{flex:0 0 240px;", CollectionPages.Css, StringComparison.Ordinal);
         }
 
         // Owner decision, 2026-11-25: "For the name of the collection I do not think any user identification should be shown".
@@ -156,7 +211,7 @@ namespace CRT.Server.Tests
             Assert.Contains("<span class=\"counter\">2 / 2</span>", html, StringComparison.Ordinal);
             Assert.Contains($"href=\"{Site}/collections/k7mq3x9vbn2p/{ShaA}.png\" download=\"001-U7-12.png\"", html, StringComparison.Ordinal);
             Assert.Contains($"href=\"#{CollectionPages.ViewerClosed}\"", html, StringComparison.Ordinal);
-            Assert.Contains("<div class=\"m-time\">T/DIV 100us | V/DIV 2V | Trigger level 1V</div>", html, StringComparison.Ordinal);
+            Assert.Contains("<div class=\"m-time\">Pin 12 - /RAS | T/DIV 100us | V/DIV 2V | Trigger level 1V</div>", html, StringComparison.Ordinal);
         }
 
         // One capture: nothing to step to.
@@ -166,7 +221,6 @@ namespace CRT.Server.Tests
             string html = Page(Collection(Capture(ShaA, "U7", "12")));
 
             Assert.DoesNotContain("class=\"zone ", html, StringComparison.Ordinal);
-            Assert.Contains("class=\"grid grid-few grid-single\"", html, StringComparison.Ordinal);
         }
 
         // The viewers' ids hold a ".", which no capture's anchor does - so no capture can take a viewer's place.
@@ -216,18 +270,21 @@ namespace CRT.Server.Tests
         }
 
         // Owner request, 2026-11-27: "a link, and clicking that link will expand an option to copy a link to either Forum64,
-        // Lemon64 or Reddit. The link should then navigate to this exact image, and show it large."
+        // Lemon64 or Reddit. The link should then navigate to this exact image, and show it large." By FORMAT since 2026-11-28
+        // (owner: "OK to your proposal for the forum button"), each saying where it works - CRT.Data's one rule.
         [Fact]
-        public void A_capture_seen_large_offers_its_own_link_for_each_forum()
+        public void A_capture_seen_large_offers_its_own_link_in_each_format()
         {
             string html = Page(Collection(Capture(ShaA, "U7", "12")));
             string url = $"{Site}/collections/k7mq3x9vbn2p#view.U7-12";
+            const string words = "U7, pin 12 - /RAS (Commodore 64 250407)";
 
             Assert.Contains("<details class=\"share\"><summary class=\"btn\">Link</summary>", html, StringComparison.Ordinal);
             Assert.Contains($"<input class=\"share-url\" type=\"text\" readonly value=\"{url}\"", html, StringComparison.Ordinal);
-            Assert.Contains($"data-copy=\"[url={url}]U7, pin 12 - /RAS (Commodore 64 250407)[/url]\">Copy for Lemon64</button>", html, StringComparison.Ordinal);
-            Assert.Contains($"data-copy=\"[url=&#39;{url}&#39;]U7, pin 12 - /RAS (Commodore 64 250407)[/url]\">Copy for Forum64</button>", html, StringComparison.Ordinal);
-            Assert.Contains($"data-copy=\"[U7, pin 12 - /RAS (Commodore 64 250407)]({url})\">Copy for Reddit</button>", html, StringComparison.Ordinal);
+            Assert.Contains($"data-copy=\"[url={url}]{words}[/url]\">Copy as BBCode</button><span>Lemon64, Forum64,", html, StringComparison.Ordinal);
+            Assert.Contains($"data-copy=\"[{words}]({url})\">Copy as Markdown</button><span>Reddit,", html, StringComparison.Ordinal);
+            Assert.Contains($"data-copy=\"{words}: {url}\">Copy plain link</button><span>Facebook groups,", html, StringComparison.Ordinal);
+            Assert.DoesNotContain("Copy for ", html, StringComparison.Ordinal);
         }
 
         // Owner request, 2026-11-27: the top left corner leads to CRT's project page, not the site's front page.
@@ -359,7 +416,7 @@ namespace CRT.Server.Tests
             Assert.Contains("<p class=\"text\">Check R7.</p>", html, StringComparison.Ordinal);
             Assert.Contains($"{Site}/account/sign-in?return=%2Fcollections%2Fk7mq3x9vbn2p%23comments-U7-12", html, StringComparison.Ordinal);
             Assert.DoesNotContain("<textarea", html, StringComparison.Ordinal);
-            Assert.Contains("<div class=\"cap-sub\">/RAS | 1 comment</div>", html, StringComparison.Ordinal);
+            Assert.Contains("<div class=\"cap-sub\">Pin 12 - /RAS | 1 comment</div>", html, StringComparison.Ordinal);
         }
 
         [Fact]
@@ -429,7 +486,7 @@ namespace CRT.Server.Tests
 
             // The grid of captures counts what the capture's section shows this reader - the owner sees the hidden one, so it
             // counts (code review, 2026-11-27: the two counts differed).
-            Assert.Contains("<div class=\"cap-sub\">/RAS | 1 comment</div>", html, StringComparison.Ordinal);
+            Assert.Contains("<div class=\"cap-sub\">Pin 12 - /RAS | 1 comment</div>", html, StringComparison.Ordinal);
         }
 
         [Fact]

@@ -1293,6 +1293,7 @@ body POST /api/collections | .images[].signalName string
 body POST /api/collections | .images[].timePerDivision string
 body POST /api/collections | .images[].triggerLevel string
 body POST /api/collections | .images[].voltsPerDivision string
+body POST /api/collections | .oscilloscopes array of string
 body POST /api/collections | .region string
 body POST /api/collections | .title string
 body POST /api/collections/{id}/comments | (root) object
@@ -1823,6 +1824,7 @@ body PUT /api/collections/{id} | .images[].signalName string
 body PUT /api/collections/{id} | .images[].timePerDivision string
 body PUT /api/collections/{id} | .images[].triggerLevel string
 body PUT /api/collections/{id} | .images[].voltsPerDivision string
+body PUT /api/collections/{id} | .oscilloscopes array of string
 body PUT /api/collections/{id} | .region string
 body PUT /api/collections/{id} | .title string
 body PUT /api/collections/{id}/comments/{commentId:long} | (root) object
@@ -1874,6 +1876,7 @@ enum ValidationSeverity | Error -> 1
 enum ValidationSeverity | Warning -> 0
 route DELETE /api/collections/{id}
 route DELETE /api/collections/{id}/comments/{commentId:long}
+route DELETE /api/collections/{id}/images/{sha256}
 route GET /api/accounts/me
 route GET /api/accounts/verify
 route GET /api/admin/accounts

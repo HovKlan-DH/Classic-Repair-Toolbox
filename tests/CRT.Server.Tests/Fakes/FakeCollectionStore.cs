@@ -161,6 +161,20 @@ namespace CRT.Server.Tests.Fakes
             return Task.FromResult(true);
         }
 
+        public Task<bool> RemoveImageAsync(string id, string sha256, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
+        {
+            if (!this.Collections.TryGetValue(id, out CollectionRecord? existing) || existing.IsDeleted)
+                return Task.FromResult(false);
+
+            this.Collections[id] = existing with
+            {
+                UpdatedUtc = whenUtc,
+                Images = existing.Images.Where(image => !string.Equals(image.Entry.Sha256, sha256, StringComparison.Ordinal)).ToList()
+            };
+
+            return Task.FromResult(true);
+        }
+
         public Task<bool> MarkDeletedAsync(string id, string reason, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
         {
             if (!this.Collections.TryGetValue(id, out CollectionRecord? existing) || existing.IsDeleted)
@@ -174,6 +188,7 @@ namespace CRT.Server.Tests.Fakes
                 Description = null,
                 ForumLinks = [],
                 Components = null,
+                Oscilloscopes = null,
                 Images = [],
                 ImageCount = 0
             };

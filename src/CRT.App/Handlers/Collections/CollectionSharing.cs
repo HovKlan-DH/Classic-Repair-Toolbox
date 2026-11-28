@@ -10,19 +10,10 @@ namespace Handlers.Collections
 {
     // ###########################################################################################
     // A COLLECTION AS IT IS SHARED (2026-11-26) - pure: what CRT sends the server (CollectionContract's request), the order its
-    // captures are shown in, whether it changed since it was shared, and what "Copy for forum" puts on the clipboard.
+    // captures are shown in, whether it changed since it was shared, and what "Copy link" puts on the clipboard.
     // ###########################################################################################
     public static class CollectionSharing
     {
-        public enum ForumFormat
-        {
-            // Lemon64, Forum64 and most forums.
-            BbCode,
-
-            // Reddit and the like.
-            Markdown
-        }
-
         // ###########################################################################################
         // THE PAGE'S ORDER: by component (as every list of labels CRT shows - U2 before U10), then by pin, then as taken.
         // ###########################################################################################
@@ -83,6 +74,16 @@ namespace Handlers.Collections
                 .OrderBy(component => component.Label, NaturalLabelComparer.Instance)
                 .ToList();
 
+            // The oscilloscopes they were taken with, each once, as first taken (owner request, 2026-11-28) - a few at most.
+            List<string> oscilloscopes = captures
+                .OrderBy(capture => capture.CapturedUtc)
+                .Select(capture => capture.Oscilloscope?.Trim())
+                .OfType<string>()
+                .Where(name => name.Length > 0)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(CollectionRules.MaximumOscilloscopes)
+                .ToList();
+
             return new(
                 collection.HardwareName,
                 collection.BoardName,
@@ -92,7 +93,8 @@ namespace Handlers.Collections
                 collection.ForumLinks,
                 deleteAtUtc,
                 captures.Select(CollectionSharing.EntryOf).ToList(),
-                components.Count == 0 ? null : components);
+                components.Count == 0 ? null : components,
+                oscilloscopes.Count == 0 ? null : oscilloscopes);
         }
 
         public static CollectionImageEntry EntryOf(LocalCapture capture) =>
@@ -142,25 +144,28 @@ namespace Handlers.Collections
             $"{componentLabel} captures, {CollectionRules.DateText(now)}";
 
         // ###########################################################################################
-        // "COPY FOR FORUM": the link with a line saying what it is. BBCode for Lemon64 and Forum64, Markdown for Reddit. (Each
-        // capture marked "Looks wrong" was linked on its own too, until the mark went - owner request, 2026-11-27.)
+        // "COPY LINK": the link with a line saying what it is, in the format picked (owner decision, 2026-11-28 - by format, never
+        // a button per forum; CRT.Data's CollectionLinkFormats, as the page's "Link" panel writes it): its title as the link's
+        // words and the line after it, or - a plain link - the title and the line, then the address. ("Copy for forum" and "Copy
+        // for Reddit" until then.)
         // ###########################################################################################
-        public static string ForumText(LocalCollection collection, ForumFormat format)
+        public static string ForumText(LocalCollection collection, CollectionLinkFormat format)
         {
+            ArgumentNullException.ThrowIfNull(collection);
+
             if (collection.PageUrl is not { } url)
                 return string.Empty;
 
-            string link = format == ForumFormat.BbCode
-                ? $"[url={url}]{CollectionSharing.NameOf(collection)}[/url]"
-                : $"[{CollectionSharing.NameOf(collection)}]({url})";
-
-            return new StringBuilder()
-                .Append(link)
+            string about = new StringBuilder()
                 .Append($" - {collection.Captures.Count} oscilloscope capture{(collection.Captures.Count == 1 ? string.Empty : "s")} of ")
                 .Append($"{collection.HardwareName} {collection.BoardName}")
                 .Append(collection.Region is { } region ? $" ({region})" : string.Empty)
                 .Append(", shared with Classic Repair Toolbox")
                 .ToString();
+
+            return format == CollectionLinkFormat.Plain
+                ? CollectionLinkFormats.Write(format, url, CollectionSharing.NameOf(collection) + about)
+                : CollectionLinkFormats.Write(format, url, CollectionSharing.NameOf(collection)) + about;
         }
 
         // ###########################################################################################

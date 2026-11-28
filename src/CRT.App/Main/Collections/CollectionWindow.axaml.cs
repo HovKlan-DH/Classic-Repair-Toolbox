@@ -12,14 +12,16 @@ using Avalonia.Media.Imaging;
 using Handlers.Collections;
 using Handlers.DataHandling;
 using Handlers.MaintainerHandling;
+using Handlers.Theming;
 
 namespace CRT
 {
     // ###########################################################################################
     // WHAT THE COLLECTION WINDOW NEEDS FROM CRT (Main.Collections.cs): the collections on this computer, the server, the
-    // account CRT is signed in to and the way to sign in, opening a link, and the clipboard - and, for "Attach to worklog",
-    // whether the worklog is turned on and the attach itself (what came of it in words, or null for nothing done). A test
-    // hands its own.
+    // account CRT is signed in to and the way to sign in, opening a link, and the clipboard - and, for "Attach collection to
+    // worklog", whether the worklog is turned on and the attach itself (what came of it in words, or null for nothing done) - and
+    // where the window was left and how to remember it, and the format "Copy link" wrote in last and how to remember it
+    // (UserSettings; owner requests, 2026-11-28). A test hands its own.
     // ###########################################################################################
     internal sealed record CollectionWindowHost(
         CollectionStore Store,
@@ -30,7 +32,11 @@ namespace CRT
         Func<string, Task> CopyText,
         Action Changed,
         Func<bool>? WorklogIsOn = null,
-        Func<LocalCollection, Window, Task<string?>>? AttachToWorklog = null);
+        Func<LocalCollection, Window, Task<string?>>? AttachToWorklog = null,
+        Func<WindowPlace?>? Place = null,
+        Action<WindowPlace>? RememberPlace = null,
+        Func<CollectionLinkFormat>? LinkFormat = null,
+        Action<CollectionLinkFormat>? RememberLinkFormat = null);
 
     // ###########################################################################################
     // ONE CAPTURE AS THE WINDOW LISTS IT - a view of the collection's capture; the note is what the window writes back
@@ -114,12 +120,20 @@ namespace CRT
     //     icon), and asks to sign in when there is none.
     //   - "Stop sharing" takes the page offline - its link then says it is not shared at the moment, its captures and comments
     //     kept on the server (owner decision, 2026-11-27: "Offline, same link back").
-    //   - "Delete in" is how long the server keeps the page - a month, six or a year, counted from EVERY share (owner decision,
-    //     2026-11-27: "every time the user shares it again, it resets its time"), so "Share" is offered for a shared collection
-    //     with nothing changed too: it keeps the page for another stretch.
-    //   - "Open web page", and the link with a line about it for a forum ("Copy for forum", BBCode) or Reddit (Markdown).
-    //   - "Attach to worklog" copies every capture into a worklog as photos (owner decision, 2026-11-27: "A copy of its
-    //     captures"; CollectionWorklogAttach).
+    //   - "Delete in" is how long the server keeps the page - a day, a week, a month or a year, counted from EVERY share (owner
+    //     decisions, 2026-11-27: "every time the user shares it again, it resets its time"; 2026-11-28 the four), so "Share" is
+    //     offered for a shared collection with nothing changed too: it keeps the page for another stretch. The date it goes is
+    //     said bold (DeleteDateLine).
+    //   - "Open shared page" while it is shared (owner request, 2026-11-28: "only if it is shared - if not shared, this button
+    //     should be disabled"; "Open web page" until then), and "Copy link" - the link with a line about it, in the format picked
+    //     last, its arrow listing BBCode, Markdown and a plain link with where each works (owner decision, 2026-11-28; "Copy for
+    //     forum" and "Copy for Reddit" until then).
+    //   - "Delete image" ("Take out" until 2026-11-28 - owner request) takes a capture out of it - and off a shared page AT ONCE,
+    //     its deletion date left alone (owner request, 2026-11-28: "do not touch the expiry date").
+    //   - "Attach collection to worklog" ("Attach to worklog" until 2026-11-28 - owner request) copies every capture into a
+    //     worklog as photos (owner decision, 2026-11-27: "A copy of its captures"; CollectionWorklogAttach).
+    //   - It opens where it was left, its size too (KeptWindowPlace; owner request, 2026-11-28), and Esc closes it - or, a delete
+    //     being asked, keeps the collection.
     //   - "Delete collection" takes it off this computer and its page off the server, after asking. NOTHING ELSE EVER DELETES
     //     IT FROM THIS COMPUTER (owner request, 2026-11-27): a page whose time is up only forgets its page (ForgetPage).
     //
@@ -140,9 +154,16 @@ namespace CRT
         // row, and the box being typed in, as it is.
         private readonly System.Collections.ObjectModel.ObservableCollection<CollectionCaptureRow> thisRows = [];
 
+        // Where it was left, followed as it is moved and sized - remembered as it closes (the host's RememberPlace).
+        private readonly KeptWindowPlace thisPlace;
+
         public CollectionWindow()
         {
             this.InitializeComponent();
+
+            this.thisPlace = new KeptWindowPlace(this);
+
+            this.BuildCopyLinkMenu();
 
             // No taller than the screen it opens on - its buttons stay in reach on a laptop's 768 (code review, 2026-11-27); the
             // captures scroll. Never re-centred as it is resized: it is a window people size themselves.
@@ -163,7 +184,14 @@ namespace CRT
             if (host.Store.Find(localId) is not { } collection)
                 return false;
 
+            // Where a collection's window was left (owner request, 2026-11-28) - a place on no screen any more is given up, and it
+            // opens over CRT's window as the first time.
+            if (host.Place?.Invoke() is { } place)
+                this.thisPlace.Use(place, ownerScreen: null);
+
             this.LifetimeComboBox.ItemsSource = CollectionRules.Lifetimes.Select(lifetime => lifetime.Words).ToList();
+            this.thisLinkFormat = host.LinkFormat?.Invoke() ?? CollectionLinkFormat.BbCode;
+            this.ShowLinkFormat();
             this.Show(collection);
 
             // Its comments, when it is shared and CRT is signed in - read as it opens, never asking to sign in for them.
@@ -205,7 +233,7 @@ namespace CRT
                 this.TitleBox.Text = collection.Title ?? string.Empty;
                 this.DescriptionBox.Text = collection.Description ?? string.Empty;
                 this.ForumLinksBox.Text = string.Join("\n", collection.ForumLinks);
-                this.BoardText.Text = $"{collection.HardwareName} - {collection.BoardName}" + (collection.Region is { } region ? $" ({region})" : string.Empty);
+                this.BoardText.Text = CollectionListing.BoardOf(collection);
                 this.LifetimeComboBox.SelectedItem = CollectionRules.LifetimeOf(collection.Lifetime).Words;
 
                 IReadOnlyList<LocalCapture> captures = CollectionSharing.InPageOrder(collection.Captures);
@@ -498,42 +526,50 @@ namespace CRT
         private void ShowSharedState(LocalCollection collection)
         {
             bool changed = CollectionSharing.HasChangesNotShared(collection);
-            string sharedOn = CollectionRules.DateText(collection.SharedUtc ?? collection.CreatedUtc);
 
-            this.SharedStateText.Text = CollectionWindow.SharedStateLine(collection, changed, sharedOn);
+            string state = CollectionWindow.SharedStateLine(collection, changed);
+            this.SharedStateText.Text = state;
+            this.SharedStateText.IsVisible = state.Length > 0;
 
-            this.DeleteDateText.Text = CollectionWindow.DeleteDateLine(collection);
+            BoldRuns.ShowMarked(this.DeleteDateText, CollectionWindow.DeleteDateLine(collection));
 
             // Shared, "Share" is offered changed or not: it keeps the page another stretch, counted from that day.
             this.ShareButton.IsEnabled = !this.thisBusy && collection.Captures.Count > 0;
             this.StopSharingButton.IsVisible = collection.IsOnline;
             this.StopSharingButton.IsEnabled = !this.thisBusy;
-            this.OpenPageButton.IsEnabled = !this.thisBusy && collection.PageUrl is not null;
+
+            // Only while it is shared - offline, or never shared, there is no page to show anybody (owner request, 2026-11-28).
+            this.OpenPageButton.IsEnabled = !this.thisBusy && collection.IsOnline && collection.PageUrl is not null;
 
             // What is copied is the page's link - changed since, the page is not what was described (code review, 2026-11-27):
             // "Share" first. And its sharing stopped, the link says only that it is not shared at the moment.
-            this.CopyForForumButton.IsEnabled = !this.thisBusy && collection.IsOnline && !changed;
-            this.CopyForRedditButton.IsEnabled = !this.thisBusy && collection.IsOnline && !changed;
+            this.CopyLinkButton.IsEnabled = !this.thisBusy && collection.IsOnline && !changed;
             this.DeleteButton.IsEnabled = !this.thisBusy;
 
             this.AttachToWorklogButton.IsVisible = this.thisHost?.AttachToWorklog is not null && this.thisHost.WorklogIsOn?.Invoke() != false;
             this.AttachToWorklogButton.IsEnabled = !this.thisBusy && collection.Captures.Count > 0;
         }
 
-        // When the page goes, and what "Share" does to it - counted from every share (owner decision, 2026-11-27).
+        // ###########################################################################################
+        // When the page goes, its date bold, and what "Share" does to it - counted from every share (owner decision, 2026-11-27;
+        // the words the owner's, 2026-11-28: "Its page is deleted on <b>2027-November-28</b>. Clicking "Share" again will update the
+        // deletion day."). Marked for BoldRuns.ShowMarked.
+        // ###########################################################################################
         internal static string DeleteDateLine(LocalCollection collection)
         {
             ArgumentNullException.ThrowIfNull(collection);
 
-            string lifetime = CollectionRules.LifetimeOf(collection.Lifetime).Words;
-
             return collection.IsShared && collection.DeleteAtUtc is { } deleteAt
-                ? $"Its page is deleted on {CollectionRules.DateText(deleteAt)} - \"Share\" again keeps it {lifetime} from that day."
-                : $"Counted from the day it is shared - {lifetime}.";
+                ? $"Its page is deleted on <b>{CollectionRules.DateText(deleteAt)}</b>. Clicking \"Share\" again will update the deletion day."
+                : $"Counted from the day it is shared - {CollectionRules.LifetimeOf(collection.Lifetime).Words}.";
         }
 
-        // Where the collection stands, in a sentence - kept here only, shared, shared and changed since, or shared and stopped.
-        internal static string SharedStateLine(LocalCollection collection, bool changedSinceShared, string sharedOn)
+        // ###########################################################################################
+        // Where the collection stands, in a sentence - kept here only, shared and changed since, or shared and stopped; shared as it
+        // is, NOTHING (owner request, 2026-11-28, of "Shared on 2026-...": "no need for that") - the date it goes and "Open shared
+        // page" say the rest.
+        // ###########################################################################################
+        internal static string SharedStateLine(LocalCollection collection, bool changedSinceShared)
         {
             ArgumentNullException.ThrowIfNull(collection);
 
@@ -546,9 +582,7 @@ namespace CRT
                        $"link: {collection.PageUrl}";
             }
 
-            return changedSinceShared
-                ? $"Shared on {sharedOn}, and changed since - \"Share\" sends the change."
-                : $"Shared on {sharedOn}: {collection.PageUrl}";
+            return changedSinceShared ? "Changed since it was shared - \"Share\" sends the change." : string.Empty;
         }
 
         internal void Say(string text) => this.StatusText.Text = text;
@@ -685,13 +719,21 @@ namespace CRT
 
         internal const string WaitForTheShare = "Wait for the server to answer - a capture is taken out once it has.";
 
-        private void OnTakeOutClick(object? sender, RoutedEventArgs e)
+        private async void OnTakeOutClick(object? sender, RoutedEventArgs e)
         {
             if (sender is Button { Tag: string sha256 })
-                this.TakeOut(sha256);
+                await HandlerGuard.RunAsync(() => this.TakeOutAsync(sha256), this.Say);
         }
 
-        internal void TakeOut(string sha256)
+        // ###########################################################################################
+        // "DELETE IMAGE". A shared collection's capture goes from its page AT ONCE (owner request, 2026-11-28: "should also remove it
+        // right away from the shared page, and do not touch the expiry date. This date should only change when the USER does
+        // something") - that one capture alone is taken off the server, signed in with the account that shared it, under the
+        // window's BusyOverlay; then from this computer. Nothing else is sent: the date, the sharing and a change not shared yet
+        // stay as they are. A server that cannot take it off keeps it here too, so it can be tried again; a page the server no
+        // longer has is forgotten, and the capture deleted here.
+        // ###########################################################################################
+        internal async Task TakeOutAsync(string sha256)
         {
             if (this.thisHost is not { } host)
                 return;
@@ -704,12 +746,96 @@ namespace CRT
 
             this.SaveEdits();
 
-            if (host.Store.RemoveCapture(this.thisLocalId, sha256) is { } changed)
+            if (this.Collection is not { ServerId: { } serverId })
             {
-                this.Show(changed);
-                host.Changed();
+                this.DeleteHere(sha256, CollectionWindow.ImageDeleted);
+                return;
+            }
+
+            if (host.SignedIn() is null)
+            {
+                this.Say(CollectionWindow.SignInToDeleteImage);
+                await host.SignIn();
+            }
+
+            if (this.thisBusy || host.SignedIn() is not { } session || this.Collection is not { } collection)
+                return;
+
+            if (CollectionSharing.OtherAccountLine(collection, session.AccountId) is { } otherAccount)
+            {
+                this.Say(otherAccount);
+                return;
+            }
+
+            this.SetBusy(true);
+
+            try
+            {
+                WaitResult<CollectionClient.Result> waited =
+                    await BusyOverlay.RunAsync(this, "Deleting the image from its shared page", _ => host.Client.RemoveImageAsync(serverId, sha256, session.BearerToken));
+
+                if (waited.IsTimedOut)
+                    this.Say(CollectionWindow.NoAnswerYet);
+
+                CollectionClient.Result result = waited.IsTimedOut ? await waited.Work : waited.Value!;
+
+                switch (result.Kind)
+                {
+                    case CollectionClient.Outcome.Done:
+                        this.DeleteHere(sha256, CollectionWindow.ImageDeletedShared);
+                        break;
+
+                    case CollectionClient.Outcome.GoneFromServer:
+                        this.ForgetPage();
+                        this.DeleteHere(sha256, $"{CollectionWindow.ImageDeleted} {CollectionWindow.PageGone}");
+                        break;
+
+                    default:
+                        this.Say(result.Message);
+                        break;
+                }
+            }
+            finally
+            {
+                this.SetBusy(false);
             }
         }
+
+        // ###########################################################################################
+        // The capture deleted from this computer, and what is said. ON A PAGE THAT SHOWED EVERYTHING THE COLLECTION HOLDS, IT STILL
+        // DOES: its page is the collection less that capture now, so what was shared is taken to be this collection as it now is -
+        // "changed since it was shared" is not said for a delete the page has followed. A collection with a change not shared yet
+        // keeps saying so.
+        // ###########################################################################################
+        private void DeleteHere(string sha256, string said)
+        {
+            if (this.thisHost is not { } host)
+                return;
+
+            bool wasInStep = this.Collection is { } before && before.IsShared && !CollectionSharing.HasChangesNotShared(before);
+
+            if (host.Store.RemoveCapture(this.thisLocalId, sha256) is not { } changed)
+                return;
+
+            if (wasInStep && changed.IsShared && changed.DeleteAtUtc is { } deleteAt &&
+                host.Store.Update(
+                    this.thisLocalId,
+                    current => current with { SharedContentHash = CollectionSharing.ContentHash(CollectionSharing.RequestOf(current, deleteAt)) },
+                    out _) is { } inStep)
+            {
+                changed = inStep;
+            }
+
+            this.Show(changed);
+            host.Changed();
+            this.Say(said);
+        }
+
+        internal const string ImageDeleted = "The image is deleted from this collection.";
+
+        internal const string ImageDeletedShared = "The image is deleted from this collection and from its shared page.";
+
+        internal const string SignInToDeleteImage = "Sign in first - the account that shared it takes the image off its shared page.";
 
         // ###########################################################################################
         // "SHARE": signed in first, then the collection as it is now, and what came of it kept and said.
@@ -825,7 +951,7 @@ namespace CRT
                     if (shared is not null)
                         this.ShowSharedState(shared);
 
-                    this.Say($"Shared - anybody with the link sees it: {answer.Url}. \"Copy for forum\" puts the link on the clipboard, with a line about it.");
+                    this.Say($"Shared - anybody with the link sees it: {answer.Url}. \"Copy link\" puts the link on the clipboard, with a line about it.");
                     break;
 
                 case CollectionClient.Outcome.GoneFromServer:
@@ -1011,30 +1137,95 @@ namespace CRT
                 this.thisHost?.OpenLink(url);
         }
 
-        private async void OnCopyForForumClick(object? sender, RoutedEventArgs e) =>
-            await HandlerGuard.RunAsync(() => this.CopyAsync(CollectionSharing.ForumFormat.BbCode), this.Say);
+        // ###########################################################################################
+        // "COPY LINK" (owner decision, 2026-11-28: "OK to your proposal for the forum button"): forums differ only in how they
+        // write a link, so a FORMAT is picked, never a forum - CRT.Data's CollectionLinkFormats, as the page's "Link" panel
+        // offers them. A click copies in the one picked last (the host's LinkFormat, UserSettings), which the button names; the
+        // arrow lists all three, each with where it works, and the one picked there is copied and remembered.
+        // ###########################################################################################
+        private CollectionLinkFormat thisLinkFormat = CollectionLinkFormat.BbCode;
 
-        private async void OnCopyForRedditClick(object? sender, RoutedEventArgs e) =>
-            await HandlerGuard.RunAsync(() => this.CopyAsync(CollectionSharing.ForumFormat.Markdown), this.Say);
+        private readonly List<MenuItem> thisLinkFormatItems = [];
 
-        internal async Task CopyAsync(CollectionSharing.ForumFormat format)
+        private void BuildCopyLinkMenu()
+        {
+            foreach (CollectionLinkFormat format in CollectionLinkFormats.All)
+            {
+                // Wrapped, never cut: a menu is no wider than Fluent's flyout (456), and an item measures its header with no
+                // limit, so the words carry their own.
+                var words = new TextBlock { TextWrapping = Avalonia.Media.TextWrapping.Wrap, MaxWidth = 360 };
+                BoldRuns.ShowMarked(words, $"<b>{CollectionLinkFormats.NameOf(format)}</b> - {CollectionLinkFormats.WhereOf(format)}");
+
+                var item = new MenuItem
+                {
+                    Header = words,
+                    Tag = format,
+                    ToggleType = MenuItemToggleType.Radio,
+                    GroupName = "CollectionLinkFormat"
+                };
+
+                item.Click += async (_, _) => await HandlerGuard.RunAsync(() => this.CopyAsync(format, remember: true), this.Say);
+
+                this.thisLinkFormatItems.Add(item);
+                ((MenuFlyout)this.CopyLinkButton.Flyout!).Items.Add(item);
+            }
+        }
+
+        // The format a click copies in, named on the button and checked in its list.
+        private void ShowLinkFormat()
+        {
+            this.CopyLinkButton.Content = CollectionWindow.CopyLinkLabel(this.thisLinkFormat);
+
+            foreach (MenuItem item in this.thisLinkFormatItems)
+                item.IsChecked = item.Tag is CollectionLinkFormat format && format == this.thisLinkFormat;
+        }
+
+        // "Copy link (BBCode)", "Copy link (Markdown)", "Copy link (plain)".
+        internal static string CopyLinkLabel(CollectionLinkFormat format) =>
+            format == CollectionLinkFormat.Plain ? "Copy link (plain)" : $"Copy link ({CollectionLinkFormats.NameOf(format)})";
+
+        internal CollectionLinkFormat LinkFormatShown => this.thisLinkFormat;
+
+        internal IReadOnlyList<MenuItem> LinkFormatItemsForTests => this.thisLinkFormatItems;
+
+        private async void OnCopyLinkClick(object? sender, RoutedEventArgs e) =>
+            await HandlerGuard.RunAsync(() => this.CopyAsync(this.thisLinkFormat), this.Say);
+
+        internal async Task CopyAsync(CollectionLinkFormat format, bool remember = false)
         {
             if (this.thisHost is not { } host || this.Collection is not { } collection || collection.PageUrl is null)
                 return;
 
+            if (remember && format != this.thisLinkFormat)
+            {
+                this.thisLinkFormat = format;
+                host.RememberLinkFormat?.Invoke(format);
+            }
+
+            this.ShowLinkFormat();
+
             await host.CopyText(CollectionSharing.ForumText(collection, format));
-            this.Say(format == CollectionSharing.ForumFormat.BbCode
-                ? "Copied - paste it into the forum post (Lemon64, Forum64 and most forums read it as a link)."
-                : "Copied - paste it into the Reddit post.");
+            this.Say(CollectionWindow.CopiedLine(format));
         }
+
+        internal static string CopiedLine(CollectionLinkFormat format) => format switch
+        {
+            CollectionLinkFormat.Markdown => "Copied as Markdown - paste it into the post (Reddit, Discord, GitHub and Discourse show it as a link).",
+            CollectionLinkFormat.Plain => "Copied - the link after a line saying what it is, to paste anywhere.",
+            _ => "Copied as BBCode - paste it into the forum post (Lemon64, Forum64 and most forums show it as a link)."
+        };
 
         // ###########################################################################################
         // "DELETE COLLECTION": asked first, in place of the buttons - then its page off the server (signed in), and it off this
         // computer. A page the server cannot take down now is said, and the collection kept, so it can be tried again.
         // ###########################################################################################
-        private void OnDeleteClick(object? sender, RoutedEventArgs e)
+        private void OnDeleteClick(object? sender, RoutedEventArgs e) => this.AskToDelete();
+
+        // Also from the "Oscilloscope" tab's "Collections" list, which opens the window to ask (Main.OpenCollectionWindowToDelete)
+        // - not while a share or another wait is on: the window shows that, and asks nothing over it.
+        internal void AskToDelete()
         {
-            if (this.Collection is not { } collection)
+            if (this.thisBusy || this.Collection is not { } collection)
                 return;
 
             this.thisLocalDeleteAsked = false;
@@ -1179,7 +1370,34 @@ namespace CRT
             }
 
             this.SaveEdits();
+
+            // Opened there again, its size too (owner request, 2026-11-28).
+            this.thisHost?.RememberPlace?.Invoke(this.thisPlace.Current());
+
             base.OnClosing(e);
+        }
+
+        // ###########################################################################################
+        // ESC CLOSES IT (owner request, 2026-11-28: "ESC should also be able to close the window") - or, a delete being asked, keeps
+        // the collection, as "Keep it" does. An open drop-down list takes its Esc first and closes itself.
+        // ###########################################################################################
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            base.OnKeyDown(e);
+
+            if (e.Handled || e.Key != Key.Escape || e.KeyModifiers != KeyModifiers.None)
+                return;
+
+            e.Handled = true;
+
+            if (this.DeleteQuestion.IsVisible)
+            {
+                this.thisLocalDeleteAsked = false;
+                this.ShowDeleteQuestion(false);
+                return;
+            }
+
+            this.Close();
         }
 
         private static string? Blank(string? text) => string.IsNullOrWhiteSpace(text) ? null : text.Trim();

@@ -51,7 +51,7 @@ namespace CRT.Server.Handlers.Collections
                 return refused;
 
             if (!DataTreeLayout.IsSha256(sha256))
-                return CollectionOutcome.Refused(CollectionVerdict.BadRequest, "The address does not name a capture by its checksum.");
+                return CollectionOutcome.Refused(CollectionVerdict.BadRequest, CollectionFlows.NotACaptureAddress);
 
             if (!string.Equals(Convert.ToHexStringLower(SHA256.HashData(bytes)), sha256, StringComparison.Ordinal))
                 return CollectionOutcome.Refused(CollectionVerdict.BadRequest, CollectionFlows.ChecksumMismatch);
@@ -327,6 +327,48 @@ namespace CRT.Server.Handlers.Collections
 
             return CollectionOutcome.Done(CollectionFlows.AnswerOf(existing, siteBaseUrl));
         }
+
+        // ###########################################################################################
+        // DELETE /api/collections/<id>/images/<sha256> - ITS OWNER DELETES ONE CAPTURE, AND THE PAGE SHOWS IT NO MORE AT ONCE
+        // (owner request, 2026-11-28: "The "Delete image" should also remove it right away from the shared page, and do not touch
+        // the expiry date. This date should only change when the USER does something"; server 16.2.0). Nothing else changes:
+        // the deletion date, whether it is shared, its words and its other captures stay as the last share left them - so a
+        // change typed in CRT and not shared yet stays CRT's until "Share". Its comments stay in the database, shown again
+        // should the very capture be shared again, as a share leaving a capture out has always done. The last capture may go
+        // too: the page then says it has none. Deleting what is not there is done. The owner's alone - anybody else's "not found".
+        // ###########################################################################################
+        public static async Task<CollectionOutcome> RemoveImageAsync(
+            AccountRecord? account,
+            string? id,
+            string? sha256,
+            ICollectionStore store,
+            string siteBaseUrl,
+            DateTimeOffset now,
+            CancellationToken cancellationToken)
+        {
+            if (CollectionFlows.Refuse(account) is { } refused)
+                return refused;
+
+            CollectionRecord? existing = CollectionRules.IsId(id) ? await store.FindAsync(id!, cancellationToken) : null;
+
+            if (existing is null || existing.AccountId != account!.Id)
+                return CollectionOutcome.Refused(CollectionVerdict.NotFound, CollectionFlows.NoSuchCollection);
+
+            if (CollectionFlows.IsGone(existing, now))
+                return CollectionOutcome.Refused(CollectionVerdict.Gone, CollectionFlows.DeletedLine(existing));
+
+            if (!DataTreeLayout.IsSha256(sha256))
+                return CollectionOutcome.Refused(CollectionVerdict.BadRequest, CollectionFlows.NotACaptureAddress);
+
+            if (!await store.RemoveImageAsync(existing.Id, sha256!, now, cancellationToken))
+                return CollectionOutcome.Refused(CollectionVerdict.Gone, "That collection was deleted meanwhile.");
+
+            return CollectionOutcome.Done(CollectionFlows.AnswerOf(
+                existing with { Images = existing.Images.Where(image => !string.Equals(image.Entry.Sha256, sha256, StringComparison.Ordinal)).ToList() },
+                siteBaseUrl));
+        }
+
+        public const string NotACaptureAddress = "The address does not name a capture by its checksum.";
 
         public const string OnlyTheAdministratorDeletesHere =
             "Only the administrator deletes a collection on the website - its owner deletes it in CRT.";
@@ -671,7 +713,8 @@ namespace CRT.Server.Handlers.Collections
                 DeletedReason: null,
                 images,
                 images.Count,
-                Components: (content.Components ?? []).Select(CollectionFlows.Tidied).ToList());
+                Components: (content.Components ?? []).Select(CollectionFlows.Tidied).ToList(),
+                Oscilloscopes: (content.Oscilloscopes ?? []).Select(oscilloscope => oscilloscope.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).ToList());
 
         private static CollectionComponent Tidied(CollectionComponent component) =>
             new(

@@ -1,17 +1,19 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using Avalonia.Controls;
 using ClassicRepairToolbox.Tests.Maintainer;
 using CRT;
 using Handlers.Collections;
 using Handlers.DataHandling;
 using Handlers.MaintainerHandling;
+using Handlers.Theming;
 
 namespace ClassicRepairToolbox.Tests.Ui;
 
 // ###########################################################################################
 // A collection's window (CollectionWindow): edits kept on this computer, "Share" signing in first and keeping the page it
-// made, a page the server no longer has forgotten, "Copy for forum", and "Delete collection" asking first - on a fake server.
+// made, a page the server no longer has forgotten, "Copy link", and "Delete collection" asking first - on a fake server.
 // ###########################################################################################
 [Collection("HeadlessUi")]
 public sealed class CollectionWindowTests : IDisposable
@@ -62,7 +64,14 @@ public sealed class CollectionWindowTests : IDisposable
     // The bodies of the requests sent, as JSON.
     private readonly List<string> thisBodies = [];
 
-    private CollectionWindow Window(LocalCollection collection, Func<bool>? worklogIsOn = null, Func<LocalCollection, Avalonia.Controls.Window, Task<string?>>? attach = null)
+    private CollectionWindow Window(
+        LocalCollection collection,
+        Func<bool>? worklogIsOn = null,
+        Func<LocalCollection, Avalonia.Controls.Window, Task<string?>>? attach = null,
+        Func<WindowPlace?>? place = null,
+        Action<WindowPlace>? rememberPlace = null,
+        Func<CollectionLinkFormat>? linkFormat = null,
+        Action<CollectionLinkFormat>? rememberLinkFormat = null)
     {
         var client = new CollectionClient("https://classic-repair-toolbox.dk", new HttpClient(new AnsweringHttpHandler(async (request, _) =>
         {
@@ -101,7 +110,11 @@ public sealed class CollectionWindowTests : IDisposable
             },
             Changed: () => { },
             WorklogIsOn: worklogIsOn,
-            AttachToWorklog: attach);
+            AttachToWorklog: attach,
+            Place: place,
+            RememberPlace: rememberPlace,
+            LinkFormat: linkFormat,
+            RememberLinkFormat: rememberLinkFormat);
 
         var window = new CollectionWindow();
         window.Initialize(host, collection.LocalId);
@@ -160,19 +173,243 @@ public sealed class CollectionWindowTests : IDisposable
             Assert.Equal("https://classic-repair-toolbox.dk/collections/k7mq3x9vbn2p", kept.PageUrl);
             Assert.False(CollectionSharing.HasChangesNotShared(kept));
             Assert.Contains("https://classic-repair-toolbox.dk/collections/k7mq3x9vbn2p", window.StatusText.Text, StringComparison.Ordinal);
-            Assert.True(window.CopyForForumButton.IsEnabled);
+            Assert.True(window.CopyLinkButton.IsEnabled);
+            Assert.True(window.OpenPageButton.IsEnabled);
 
             // Owner decision, 2026-11-27: every share counts its time again, so "Share" is offered with nothing changed too -
-            // and the window says what it does.
+            // and the window says what it does, the date bold, in the owner's words (2026-11-28) - and no "Shared on" line.
             Assert.True(window.ShareButton.IsEnabled);
-            Assert.EndsWith("- \"Share\" again keeps it 1 year from that day.", window.DeleteDateText.Text, StringComparison.Ordinal);
+            string deleteAt = CollectionRules.DateText(kept.DeleteAtUtc!.Value);
+            Assert.Equal(
+                $"Its page is deleted on {deleteAt}. Clicking \"Share\" again will update the deletion day.",
+                Handlers.Theming.BoldRuns.TextOf(window.DeleteDateText));
+            Assert.Contains(window.DeleteDateText.Inlines!, inline => inline is Avalonia.Controls.Documents.Run { Text: var text, FontWeight: Avalonia.Media.FontWeight.Bold } && text == deleteAt);
+            Assert.False(window.SharedStateText.IsVisible);
 
             // Changed since: "Share" sends the change.
             window.DescriptionBox.Text = "It went black.";
             window.SaveEdits();
 
             Assert.True(window.ShareButton.IsEnabled);
-            Assert.Contains("changed since", window.SharedStateText.Text, StringComparison.Ordinal);
+            Assert.True(window.SharedStateText.IsVisible);
+            Assert.Equal("Changed since it was shared - \"Share\" sends the change.", window.SharedStateText.Text);
+        });
+    }
+
+    // Owner request, 2026-11-28: "Rename "Open web page" to "Open shared page", but only if it is shared - if not shared, this button
+    // should be disabled" - its page offline ("Stop sharing") is not shared either.
+    [Fact]
+    public void Open_shared_page_is_offered_only_while_it_is_shared()
+    {
+        LocalCollection collection = this.Collection();
+
+        UiTest.Run(() =>
+        {
+            Assert.False(this.Window(collection).OpenPageButton.IsEnabled);
+
+            this.thisStore.Save(this.thisStore.Find(collection.LocalId)! with
+            {
+                ServerId = "k7mq3x9vbn2p",
+                PageUrl = "https://x/collections/k7mq3x9vbn2p",
+                SharingStoppedUtc = DateTimeOffset.UtcNow
+            });
+
+            Assert.False(this.Window(collection).OpenPageButton.IsEnabled);
+
+            this.thisStore.Save(this.thisStore.Find(collection.LocalId)! with { SharingStoppedUtc = null });
+
+            Assert.True(this.Window(collection).OpenPageButton.IsEnabled);
+        });
+    }
+
+    // Owner request, 2026-11-28: "Rename "Take out" button to "Delete image"". A collection never shared asks the server nothing.
+    [Fact]
+    public async Task Delete_image_on_a_collection_never_shared_deletes_it_here_and_asks_the_server_nothing()
+    {
+        LocalCollection collection = this.Collection();
+
+        await UiTest.RunAsync(async () =>
+        {
+            CollectionWindow window = this.Window(collection);
+
+            await window.TakeOutAsync(collection.Captures[0].Sha256);
+
+            Assert.Empty(this.thisStore.Find(collection.LocalId)!.Captures);
+            Assert.Equal(CollectionWindow.ImageDeleted, window.StatusText.Text);
+            Assert.Empty(this.thisRequests);
+        });
+    }
+
+    // A shared collection of two captures, as shared - its second capture's checksum with it.
+    private (LocalCollection Collection, string Second) SharedWithTwo()
+    {
+        LocalCollection shared = this.SharedCollection();
+        LocalCollection two = this.thisStore.AddCapture(
+            shared.LocalId,
+            CRT.Data.Tests.TestPng.Rgb(16, 10, 2),
+            new LocalCapture { ComponentLabel = "U7", Pin = "13", CapturedUtc = DateTimeOffset.UtcNow }).Collection!;
+
+        this.thisStore.Save(two with { SharedContentHash = CollectionSharing.ContentHash(CollectionSharing.RequestOf(two, two.DeleteAtUtc!.Value)) });
+
+        return (this.thisStore.Find(shared.LocalId)!, two.Captures.Single(capture => capture.Pin == "13").Sha256);
+    }
+
+    // Owner request, 2026-11-28: "The "Delete image" should also remove it right away from the shared page, and do not touch the
+    // expiry date. This date should only change when the USER does something" - that capture alone off the server, then here; the
+    // page followed, so nothing is said to be "changed since it was shared".
+    [Fact]
+    public async Task Delete_image_on_a_shared_collection_takes_it_off_its_page_at_once_and_keeps_its_date()
+    {
+        (LocalCollection collection, string second) = this.SharedWithTwo();
+        DateTimeOffset deleteAt = collection.DeleteAtUtc!.Value;
+
+        this.thisSession = Session();
+        this.thisAnswer = request => request.Method == HttpMethod.Get
+            ? Json(HttpStatusCode.OK, new CollectionCommentsAnswer([]))
+            : Json(HttpStatusCode.OK, new CollectionAnswer("k7mq3x9vbn2p", "https://x/collections/k7mq3x9vbn2p", DateTimeOffset.UtcNow, deleteAt, 1));
+
+        await UiTest.RunAsync(async () =>
+        {
+            CollectionWindow window = this.Window(collection);
+
+            await window.TakeOutAsync(second);
+
+            Assert.Equal((HttpMethod.Delete, $"/api/collections/k7mq3x9vbn2p/images/{second}"), this.thisRequests.Last());
+            Assert.DoesNotContain(this.thisRequests, sent => sent.Method == HttpMethod.Put);
+
+            LocalCollection kept = this.thisStore.Find(collection.LocalId)!;
+
+            Assert.Single(kept.Captures);
+            Assert.Equal(deleteAt, kept.DeleteAtUtc);
+            Assert.False(CollectionSharing.HasChangesNotShared(kept));
+            Assert.Equal(CollectionWindow.ImageDeletedShared, window.StatusText.Text);
+            Assert.DoesNotContain("Changed since", window.SharedStateText.Text ?? string.Empty, StringComparison.Ordinal);
+        });
+    }
+
+    // A change typed and not shared yet stays one - "Share" still sends it.
+    [Fact]
+    public async Task Delete_image_leaves_a_change_not_shared_yet_to_Share()
+    {
+        (LocalCollection collection, string second) = this.SharedWithTwo();
+        this.thisStore.Save(collection with { Title = "A title not shared yet" });
+
+        this.thisSession = Session();
+        this.thisAnswer = request => request.Method == HttpMethod.Get
+            ? Json(HttpStatusCode.OK, new CollectionCommentsAnswer([]))
+            : Json(HttpStatusCode.OK, new CollectionAnswer("k7mq3x9vbn2p", "https://x/collections/k7mq3x9vbn2p", DateTimeOffset.UtcNow, collection.DeleteAtUtc!.Value, 1));
+
+        await UiTest.RunAsync(async () =>
+        {
+            CollectionWindow window = this.Window(collection);
+
+            await window.TakeOutAsync(second);
+
+            Assert.True(CollectionSharing.HasChangesNotShared(this.thisStore.Find(collection.LocalId)!));
+        });
+    }
+
+    // The server could not take it off: kept here too, what it said said, so it can be tried again.
+    [Fact]
+    public async Task Delete_image_the_server_refuses_keeps_the_capture_here()
+    {
+        (LocalCollection collection, string second) = this.SharedWithTwo();
+
+        this.thisSession = Session();
+        this.thisAnswer = request => request.Method == HttpMethod.Get
+            ? Json(HttpStatusCode.OK, new CollectionCommentsAnswer([]))
+            : Json(HttpStatusCode.ServiceUnavailable, new CollectionRefusalAnswer(["Sharing collections is not set up on this server."]));
+
+        await UiTest.RunAsync(async () =>
+        {
+            CollectionWindow window = this.Window(collection);
+
+            await window.TakeOutAsync(second);
+
+            Assert.Equal(2, this.thisStore.Find(collection.LocalId)!.Captures.Count);
+            Assert.Equal("Sharing collections is not set up on this server.", window.StatusText.Text);
+        });
+    }
+
+    // Signed out, signing in is asked for first - and nothing is deleted when it does not happen.
+    [Fact]
+    public async Task Delete_image_on_a_shared_collection_signed_out_asks_to_sign_in_and_deletes_nothing_without()
+    {
+        (LocalCollection collection, string second) = this.SharedWithTwo();
+        this.thisSignInSucceeds = false;
+
+        await UiTest.RunAsync(async () =>
+        {
+            CollectionWindow window = this.Window(collection);
+
+            await window.TakeOutAsync(second);
+
+            Assert.Equal(1, this.thisSignIns);
+            Assert.Equal(2, this.thisStore.Find(collection.LocalId)!.Captures.Count);
+            Assert.Equal(CollectionWindow.SignInToDeleteImage, window.StatusText.Text);
+        });
+    }
+
+    // Owner request, 2026-11-28: "ESC should also be able to close the window" - a delete being asked, Esc keeps the collection
+    // first, as "Keep it" does.
+    [Fact]
+    public void Escape_keeps_a_collection_being_deleted_then_closes_the_window()
+    {
+        LocalCollection collection = this.Collection();
+
+        UiTest.Run(() =>
+        {
+            CollectionWindow window = this.Window(collection);
+            window.Show();
+
+            try
+            {
+                window.AskToDelete();
+                Assert.True(window.DeleteQuestion.IsVisible);
+
+                window.RaiseEvent(new Avalonia.Input.KeyEventArgs { RoutedEvent = Avalonia.Input.InputElement.KeyDownEvent, Key = Avalonia.Input.Key.Escape });
+
+                Assert.False(window.DeleteQuestion.IsVisible);
+                Assert.True(window.IsVisible);
+                Assert.NotNull(this.thisStore.Find(collection.LocalId));
+
+                window.RaiseEvent(new Avalonia.Input.KeyEventArgs { RoutedEvent = Avalonia.Input.InputElement.KeyDownEvent, Key = Avalonia.Input.Key.Escape });
+
+                Assert.False(window.IsVisible);
+            }
+            finally
+            {
+                window.Close();
+            }
+        });
+    }
+
+    // Owner request, 2026-11-28: "do save its size and position, so it will open same size and place the next time the user opens
+    // it" - the place kept used as it opens, and what it was left at handed back as it closes.
+    [Fact]
+    public void The_window_opens_where_it_was_left_and_remembers_where_it_is_left()
+    {
+        LocalCollection collection = this.Collection();
+        WindowPlace? remembered = null;
+
+        UiTest.Run(() =>
+        {
+            CollectionWindow window = this.Window(
+                collection,
+                place: () => new WindowPlace("Normal", 1000, 700, 60, 70),
+                rememberPlace: kept => remembered = kept);
+
+            Assert.Equal(1000, window.Width);
+            Assert.Equal(700, window.Height);
+            Assert.Equal(Avalonia.Controls.WindowStartupLocation.Manual, window.WindowStartupLocation);
+            Assert.Equal(new Avalonia.PixelPoint(60, 70), window.Position);
+
+            window.Show();
+            window.Close();
+
+            Assert.NotNull(remembered);
+            Assert.Equal("Normal", remembered.State);
+            Assert.Equal(new Avalonia.PixelPoint(60, 70), new Avalonia.PixelPoint(remembered.X, remembered.Y));
         });
     }
 
@@ -231,21 +468,61 @@ public sealed class CollectionWindowTests : IDisposable
         });
     }
 
+    // Owner decision, 2026-11-28 ("OK to your proposal for the forum button"): "Copy link" copies in the format picked last - BBCode
+    // the first time - and names it.
     [Fact]
-    public async Task Copy_for_forum_puts_the_link_on_the_clipboard()
+    public async Task Copy_link_copies_in_the_format_picked_last_and_names_it()
     {
         LocalCollection collection = this.Collection();
         this.thisStore.Save(this.thisStore.Find(collection.LocalId)! with { ServerId = "k7mq3x9vbn2p", PageUrl = "https://x/collections/k7mq3x9vbn2p" });
 
         await UiTest.RunAsync(async () =>
         {
-            CollectionWindow window = this.Window(collection);
+            CollectionWindow first = this.Window(collection);
 
-            await window.CopyAsync(CollectionSharing.ForumFormat.BbCode);
+            Assert.Equal("Copy link (BBCode)", first.CopyLinkButton.Content);
 
-            string copied = Assert.Single(this.thisCopied);
+            await first.CopyAsync(first.LinkFormatShown);
 
-            Assert.StartsWith("[url=https://x/collections/k7mq3x9vbn2p]No picture[/url]", copied, StringComparison.Ordinal);
+            Assert.StartsWith("[url=https://x/collections/k7mq3x9vbn2p]No picture[/url]", Assert.Single(this.thisCopied), StringComparison.Ordinal);
+            Assert.Equal(CollectionWindow.CopiedLine(CollectionLinkFormat.BbCode), first.StatusText.Text);
+
+            CollectionWindow remembered = this.Window(collection, linkFormat: () => CollectionLinkFormat.Markdown);
+
+            Assert.Equal("Copy link (Markdown)", remembered.CopyLinkButton.Content);
+            Assert.Equal(CollectionLinkFormat.Markdown, remembered.LinkFormatShown);
+        });
+    }
+
+    // The arrow lists the three formats, each saying where it works, the one a click copies in checked; one picked there is copied
+    // and remembered, so the next click repeats it.
+    [Fact]
+    public async Task A_format_picked_from_the_list_is_copied_and_remembered()
+    {
+        LocalCollection collection = this.Collection();
+        this.thisStore.Save(this.thisStore.Find(collection.LocalId)! with { ServerId = "k7mq3x9vbn2p", PageUrl = "https://x/collections/k7mq3x9vbn2p" });
+        List<CollectionLinkFormat> remembered = [];
+
+        await UiTest.RunAsync(async () =>
+        {
+            CollectionWindow window = this.Window(collection, rememberLinkFormat: remembered.Add);
+
+            Assert.Equal(
+                ["BBCode - Lemon64, Forum64, AtariAge, VOGONS and most other forums", "Markdown - Reddit, Discord, GitHub and Discourse", "Plain link - Facebook groups, email and anything else"],
+                window.LinkFormatItemsForTests.Select(item => BoldRuns.TextOf((TextBlock)item.Header!)));
+            Assert.Equal([true, false, false], window.LinkFormatItemsForTests.Select(item => item.IsChecked));
+
+            await window.CopyAsync(CollectionLinkFormat.Plain, remember: true);
+
+            Assert.Equal([CollectionLinkFormat.Plain], remembered);
+            Assert.EndsWith(": https://x/collections/k7mq3x9vbn2p", this.thisCopied.Last(), StringComparison.Ordinal);
+            Assert.Equal("Copy link (plain)", window.CopyLinkButton.Content);
+            Assert.Equal([false, false, true], window.LinkFormatItemsForTests.Select(item => item.IsChecked));
+
+            await window.CopyAsync(window.LinkFormatShown);
+
+            Assert.EndsWith(": https://x/collections/k7mq3x9vbn2p", this.thisCopied.Last(), StringComparison.Ordinal);
+            Assert.Single(remembered);
         });
     }
 
@@ -274,6 +551,28 @@ public sealed class CollectionWindowTests : IDisposable
 
             Assert.Equal([(HttpMethod.Delete, "/api/collections/k7mq3x9vbn2p")], this.thisRequests);
             Assert.Null(this.thisStore.Find(collection.LocalId));
+        });
+    }
+
+    // "Delete collection" on the "Oscilloscope" tab's "Collections" list opens the window ASKING (Main.OpenCollectionWindowToDelete)
+    // - the very question its own button asks, and nothing deleted or sent until it is answered.
+    [Fact]
+    public void Asked_to_delete_from_outside_the_window_asks_its_own_question()
+    {
+        LocalCollection collection = this.Collection();
+
+        UiTest.Run(() =>
+        {
+            CollectionWindow window = this.Window(collection);
+            this.thisRequests.Clear();
+
+            window.AskToDelete();
+
+            Assert.True(window.DeleteQuestion.IsVisible);
+            Assert.False(window.ButtonsPanel.IsVisible);
+            Assert.Equal("Delete [No picture] from this computer?", window.DeleteQuestionText.Text);
+            Assert.NotNull(this.thisStore.Find(collection.LocalId));
+            Assert.Empty(this.thisRequests);
         });
     }
 
@@ -511,13 +810,12 @@ public sealed class CollectionWindowTests : IDisposable
         {
             CollectionWindow window = this.Window(collection);
 
-            Assert.True(window.CopyForForumButton.IsEnabled);
+            Assert.True(window.CopyLinkButton.IsEnabled);
 
             window.DescriptionBox.Text = "Changed";
             window.SaveEdits();
 
-            Assert.False(window.CopyForForumButton.IsEnabled);
-            Assert.False(window.CopyForRedditButton.IsEnabled);
+            Assert.False(window.CopyLinkButton.IsEnabled);
             return Task.CompletedTask;
         });
     }
@@ -904,7 +1202,7 @@ public sealed class CollectionWindowTests : IDisposable
             Assert.Equal(CollectionWindow.SharingStopped, window.StatusText.Text);
             Assert.StartsWith("Not shared at the moment", window.SharedStateText.Text, StringComparison.Ordinal);
             Assert.False(window.StopSharingButton.IsVisible);
-            Assert.False(window.CopyForForumButton.IsEnabled);
+            Assert.False(window.CopyLinkButton.IsEnabled);
 
             // Nothing changed, and still "Share" brings it back - the collection sent again under its id.
             Assert.True(window.ShareButton.IsEnabled);
@@ -1009,7 +1307,7 @@ public sealed class CollectionWindowTests : IDisposable
 
             Task sharing = window.ShareAsync();
 
-            window.TakeOut(sha);
+            await window.TakeOutAsync(sha);
 
             Assert.Equal(CollectionWindow.WaitForTheShare, window.StatusText.Text);
             Assert.False(window.LifetimeComboBox.IsEnabled);

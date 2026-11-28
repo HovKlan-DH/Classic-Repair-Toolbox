@@ -5,7 +5,7 @@ namespace ClassicRepairToolbox.Tests.Collections;
 
 // ###########################################################################################
 // A collection as it is shared (CollectionSharing): the request sent, the page's order, a change since it was shared, and
-// what "Copy for forum" puts on the clipboard.
+// what "Copy link" puts on the clipboard.
 // ###########################################################################################
 public sealed class CollectionSharingTests
 {
@@ -51,6 +51,23 @@ public sealed class CollectionSharingTests
             ordered.Select(capture => $"{capture.ComponentLabel} {capture.Pin}" + (capture.Pin == "12" ? $" {capture.CapturedUtc.Minute}" : string.Empty)));
     }
 
+    // The oscilloscopes the captures were taken with, each once as first taken (owner request, 2026-11-28) - none known, none sent,
+    // so a collection shared before CRT kept them reads as unchanged.
+    [Fact]
+    public void The_request_names_each_oscilloscope_once_as_first_taken()
+    {
+        CollectionContentRequest request = CollectionSharing.RequestOf(
+            Collection(
+                Capture("U2", "1", minute: 3) with { Oscilloscope = "Siglent SDS1104X-E" },
+                Capture("U1", "1", minute: 1) with { Oscilloscope = "Rigol DS1054Z" },
+                Capture("U3", "1", minute: 5) with { Oscilloscope = "rigol ds1054z" },
+                Capture("U4", "1", minute: 7)),
+            Now.AddYears(1));
+
+        Assert.Equal(["Rigol DS1054Z", "Siglent SDS1104X-E"], request.Oscilloscopes);
+        Assert.Null(CollectionSharing.RequestOf(Collection(Capture("U1", "1")), Now.AddYears(1)).Oscilloscopes);
+    }
+
     [Fact]
     public void The_request_carries_every_capture_in_the_page_s_order_and_its_pinout_drawing()
     {
@@ -86,11 +103,14 @@ public sealed class CollectionSharingTests
     [Fact]
     public void The_deletion_date_is_the_choice_counted_from_the_share()
     {
-        LocalCollection collection = Collection() with { Lifetime = "6m" };
+        LocalCollection collection = Collection() with { Lifetime = "1w" };
 
-        Assert.Equal(Now.AddMonths(6), CollectionSharing.DeleteAtFor(collection, Now));
-        Assert.Equal(Now.AddMonths(6), CollectionSharing.DeleteAtFor(collection with { DeleteAtUtc = Now.AddMonths(1) }, Now));
+        Assert.Equal(Now.AddDays(7), CollectionSharing.DeleteAtFor(collection, Now));
+        Assert.Equal(Now.AddDays(7), CollectionSharing.DeleteAtFor(collection with { DeleteAtUtc = Now.AddMonths(1) }, Now));
         Assert.Equal(Now.AddYears(1), CollectionSharing.DeleteAtFor(collection with { Lifetime = "5y" }, Now));
+
+        // "6 months" is no choice since 2026-11-28 (owner request: "1 day, 1 week, 1 month, 1 year") - kept, it reads as a year.
+        Assert.Equal(Now.AddYears(1), CollectionSharing.DeleteAtFor(collection with { Lifetime = "6m" }, Now));
     }
 
     [Fact]
@@ -109,10 +129,10 @@ public sealed class CollectionSharingTests
         Assert.False(CollectionSharing.HasChangesNotShared(shared with { ServerId = null, Description = "x" }));
     }
 
-    // The link and a line saying what it is - each capture's own link went with the "Looks wrong" mark (owner request,
-    // 2026-11-27).
+    // The link and a line saying what it is, in each format (owner decision, 2026-11-28) - each capture's own link went with the
+    // "Looks wrong" mark (owner request, 2026-11-27).
     [Fact]
-    public void Copy_for_forum_is_the_link_and_its_line()
+    public void Copy_link_is_the_link_and_its_line_in_each_format()
     {
         LocalCollection shared = Collection(Capture("U7", "12"), Capture("U8", "1")) with
         {
@@ -121,11 +141,15 @@ public sealed class CollectionSharingTests
 
         Assert.Equal(
             "[url=https://classic-repair-toolbox.dk/collections/k7mq3x9vbn2p]No picture[/url] - 2 oscilloscope captures of Commodore 64 250407 (PAL), shared with Classic Repair Toolbox",
-            CollectionSharing.ForumText(shared, CollectionSharing.ForumFormat.BbCode));
+            CollectionSharing.ForumText(shared, CollectionLinkFormat.BbCode));
 
         Assert.Equal(
             "[No picture](https://classic-repair-toolbox.dk/collections/k7mq3x9vbn2p) - 2 oscilloscope captures of Commodore 64 250407 (PAL), shared with Classic Repair Toolbox",
-            CollectionSharing.ForumText(shared, CollectionSharing.ForumFormat.Markdown));
+            CollectionSharing.ForumText(shared, CollectionLinkFormat.Markdown));
+
+        Assert.Equal(
+            "No picture - 2 oscilloscope captures of Commodore 64 250407 (PAL), shared with Classic Repair Toolbox: https://classic-repair-toolbox.dk/collections/k7mq3x9vbn2p",
+            CollectionSharing.ForumText(shared, CollectionLinkFormat.Plain));
     }
 
     // A capture copied into a worklog as a photo (owner decision, 2026-11-27: "A copy of its captures") says where it was taken,
@@ -165,7 +189,7 @@ public sealed class CollectionSharingTests
 
     [Fact]
     public void A_collection_not_shared_has_nothing_to_copy() =>
-        Assert.Equal(string.Empty, CollectionSharing.ForumText(Collection(Capture("U7", "12")), CollectionSharing.ForumFormat.BbCode));
+        Assert.Equal(string.Empty, CollectionSharing.ForumText(Collection(Capture("U7", "12")), CollectionLinkFormat.BbCode));
 
     // Comments newer than the owner read in CRT mark the collection in the popups' drop-downs (step 3).
     [Fact]

@@ -811,8 +811,8 @@ public sealed class BaselineCaptureWindowTests : IDisposable
         {
             (ComponentPane pane, Window host) = Shown(session, new FakeBaselineScope());
 
-            BaselineCaptureWindowPlace? remembered = null;
-            pane.CaptureWindowPlace = () => new BaselineCaptureWindowPlace("Normal", 1200, 760, 40, 50);
+            WindowPlace? remembered = null;
+            pane.CaptureWindowPlace = () => new WindowPlace("Normal", 1200, 760, 40, 50);
             pane.RememberCaptureWindowPlace = place => remembered = place;
 
             BaselineCaptureWindow window = Open(pane);
@@ -824,17 +824,17 @@ public sealed class BaselineCaptureWindowTests : IDisposable
             Dispatcher.UIThread.RunJobs();
             window.Close();
 
-            Assert.Equal(new BaselineCaptureWindowPlace("Normal", 1250, 760, 60, 70), remembered);
+            Assert.Equal(new WindowPlace("Normal", 1250, 760, 60, 70), remembered);
 
             // Maximized: opened maximized, and its size and place before kept for when it is restored.
             pane.CaptureWindowPlace = () => remembered! with { State = "Maximized" };
             window = Open(pane);
             Assert.Equal(WindowState.Maximized, window.WindowState);
             window.Close();
-            Assert.Equal(new BaselineCaptureWindowPlace("Maximized", 1250, 760, 60, 70), remembered);
+            Assert.Equal(new WindowPlace("Maximized", 1250, 760, 60, 70), remembered);
 
             // A place on no screen: over CRT's window, at the size it had.
-            pane.CaptureWindowPlace = () => new BaselineCaptureWindowPlace("Normal", 1200, 760, 1_000_000, 1_000_000);
+            pane.CaptureWindowPlace = () => new WindowPlace("Normal", 1200, 760, 1_000_000, 1_000_000);
             window = Open(pane);
             Assert.Equal(WindowStartupLocation.CenterOwner, window.WindowStartupLocation);
             Assert.NotEqual(new PixelPoint(1_000_000, 1_000_000), window.Position);
@@ -843,7 +843,7 @@ public sealed class BaselineCaptureWindowTests : IDisposable
 
             // Left larger than the screen it opens on: made to fit it, its foot - the button bar - on the screen (code review,
             // 2026-11-21: left on a large monitor, it opened off the bottom of a laptop's).
-            pane.CaptureWindowPlace = () => new BaselineCaptureWindowPlace("Normal", 1200, 100_000, 40, 50);
+            pane.CaptureWindowPlace = () => new WindowPlace("Normal", 1200, 100_000, 40, 50);
             window = Open(pane);
             Avalonia.Platform.Screen screen = window.Screens.ScreenFromPoint(new PixelPoint(40, 50))!;
             double foot = window.Position.Y + ((window.Height + DialogPlacement.FrameAllowance.Height) * screen.Scaling);
@@ -1424,7 +1424,7 @@ public sealed class BaselineCaptureWindowTests : IDisposable
             Assert.Equal((1280d, 688d), (window.Width, window.Height));
             window.Close();
 
-            pane.CaptureWindowPlace = () => new BaselineCaptureWindowPlace("Normal", 1200, 1000, 1_000_000, 1_000_000);
+            pane.CaptureWindowPlace = () => new WindowPlace("Normal", 1200, 1000, 1_000_000, 1_000_000);
             window = Open(pane);
             Assert.Equal((1200d, 688d), (window.Width, window.Height));
             window.Close();

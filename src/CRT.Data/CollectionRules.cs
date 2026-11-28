@@ -17,7 +17,7 @@ namespace Handlers.DataHandling
     //     is shared (CRT's own store) - only an account may share one, and only from CRT.
     //   - Its page is https://classic-repair-toolbox.dk/collections/<id> - anybody with the link sees it, nobody gets a list of
     //     them, no search engine is asked to keep it, and it names nobody (owner decision, 2026-11-25).
-    //   - "Delete in" 1 month, 6 months or 1 year (the default), counted from every share - never past a year ahead.
+    //   - "Delete in" 1 day, 1 week, 1 month or 1 year (the default), counted from every share - never past a year ahead.
     // ###########################################################################################
     public static class CollectionRules
     {
@@ -52,17 +52,19 @@ namespace Handlers.DataHandling
 
         // ---------------------------------------------------------------------------------------
         // "DELETE IN" (owner decisions, 2026-11-25: "no need to show the "2 years""; 2026-11-27: "The max years a collection can
-        // be shared is 1 year, and not 5 years - however, every time the user shares it again, it resets its time"). Counted
-        // from the day it is SHARED - every share, so sharing it again keeps it another month, six or a year - never more
-        // than MaximumYearsAhead ahead. A "5y" an earlier CRT kept reads as the default (LifetimeOf).
+        // be shared is 1 year, and not 5 years - however, every time the user shares it again, it resets its time"; 2026-11-28:
+        // "1 day, 1 week, 1 month, 1 year"). Counted from the day it is SHARED - every share, so sharing it again keeps it another
+        // day, week, month or year - never more than MaximumYearsAhead ahead. A "5y" or "6m" an earlier CRT kept reads as the
+        // default (LifetimeOf).
         // ---------------------------------------------------------------------------------------
-        public sealed record Lifetime(string Key, string Words, int Months);
+        public sealed record Lifetime(string Key, string Words, int Days, int Months);
 
         public static readonly IReadOnlyList<Lifetime> Lifetimes =
         [
-            new("1m", "1 month", 1),
-            new("6m", "6 months", 6),
-            new("1y", "1 year", 12)
+            new("1d", "1 day", 1, 0),
+            new("1w", "1 week", 7, 0),
+            new("1m", "1 month", 0, 1),
+            new("1y", "1 year", 0, 12)
         ];
 
         public const string DefaultLifetimeKey = "1y";
@@ -73,8 +75,12 @@ namespace Handlers.DataHandling
             CollectionRules.Lifetimes.FirstOrDefault(lifetime => string.Equals(lifetime.Key, key, StringComparison.Ordinal)) ??
             CollectionRules.Lifetimes.First(lifetime => lifetime.Key == CollectionRules.DefaultLifetimeKey);
 
-        public static DateTimeOffset DeleteAt(DateTimeOffset from, string? lifetimeKey) =>
-            from.ToUniversalTime().AddMonths(CollectionRules.LifetimeOf(lifetimeKey).Months);
+        public static DateTimeOffset DeleteAt(DateTimeOffset from, string? lifetimeKey)
+        {
+            Lifetime lifetime = CollectionRules.LifetimeOf(lifetimeKey);
+
+            return from.ToUniversalTime().AddMonths(lifetime.Months).AddDays(lifetime.Days);
+        }
 
         // The latest a deletion may be set to from `now` - a day of room, so a date worked out on a computer whose clock is a
         // little ahead is not refused.
@@ -102,6 +108,9 @@ namespace Handlers.DataHandling
         public const int MaximumForumLinks = 10;
 
         public const int MaximumLinkLength = 500;
+
+        // The oscilloscopes the captures were taken with (server 16.1.0) - a few at most, each its vendor and model.
+        public const int MaximumOscilloscopes = 10;
 
         // How many collections one account keeps at once, and how many it may make, and captures it may upload, in a day -
         // the server's (CollectionFlows), said here so CRT says the same numbers.
@@ -204,6 +213,19 @@ namespace Handlers.DataHandling
             }
 
             CollectionRules.ComponentProblems(problems, content.Components ?? []);
+
+            IReadOnlyList<string?> oscilloscopes = content.Oscilloscopes ?? [];
+
+            if (oscilloscopes.Count > CollectionRules.MaximumOscilloscopes)
+                problems.Add($"A collection names at most {CollectionRules.MaximumOscilloscopes} oscilloscopes.");
+
+            foreach (string? oscilloscope in oscilloscopes)
+            {
+                if (string.IsNullOrWhiteSpace(oscilloscope))
+                    problems.Add("An oscilloscope's name is empty.");
+                else
+                    CollectionRules.AtMost(problems, oscilloscope, CollectionRules.MaximumNameLength, "An oscilloscope's name");
+            }
 
             return problems;
         }

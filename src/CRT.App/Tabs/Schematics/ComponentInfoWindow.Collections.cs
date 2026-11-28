@@ -28,7 +28,10 @@ namespace CRT
         Func<string, long>? LatestCommentIdOf = null,
         // A collection's captures changed in this popup (its local id) - or, null, only the board's pick: every popup shows it.
         Action<string?>? CollectionChanged = null,
-        Func<string, bool>? IsBeingShared = null);
+        Func<string, bool>? IsBeingShared = null,
+        // The oscilloscope a capture is taken with - its vendor and model as the "Oscilloscope" tab has them, null without a session
+        // (owner request, 2026-11-28: shown on the page).
+        Func<string?>? OscilloscopeName = null);
 
     // ###########################################################################################
     // "COLLECT CAPTURES INTO" (owner request, 2026-11-25: "the UI for this should ... be visible from the component info window,
@@ -240,6 +243,7 @@ namespace CRT
 
             CollectionComponent? component = this.ComponentShownForCollection();
             byte[]? pinout = this.PinoutPictureForCollection();
+            string? oscilloscope = context.OscilloscopeName?.Invoke();
 
             try
             {
@@ -256,7 +260,7 @@ namespace CRT
 
                 byte[] png = await Task.Run(() => File.ReadAllBytes(savedFilePath));
 
-                LocalCapture capture = CollectionCaptures.CaptureOf(shown, reading, component, DateTimeOffset.UtcNow);
+                LocalCapture capture = CollectionCaptures.CaptureOf(shown, reading, component, oscilloscope, DateTimeOffset.UtcNow);
                 CaptureAdded added = await Task.Run(() => context.Store.AddCapture(collection.LocalId, png, capture, pinout));
 
                 // *** THE BANNER IS THE CAPTURE ON SCREEN'S (code review, 2026-11-27). *** Moved to another image while the settings

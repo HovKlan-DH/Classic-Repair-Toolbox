@@ -13,7 +13,8 @@ namespace CRT.Server.Handlers.Collections
     {
         private const string CollectionColumns =
             "c.id, c.account_id, c.hardware_name, c.board_name, c.region, c.title, c.description, c.forum_links_json, " +
-            "c.created_utc, c.updated_utc, c.delete_at_utc, c.reminded_utc, c.deleted_utc, c.deleted_reason, c.unshared_utc, c.components_json";
+            "c.created_utc, c.updated_utc, c.delete_at_utc, c.reminded_utc, c.deleted_utc, c.deleted_reason, c.unshared_utc, c.components_json, " +
+            "c.oscilloscopes_json";
 
         private const string ImageColumns =
             "position, sha256, width, height, component_label, pin, signal_name, expected_reading, time_per_division, " +
@@ -136,8 +137,8 @@ namespace CRT.Server.Handlers.Collections
             {
                 collections.Add(MySqlCollectionStore.ReadCollection(reader) with
                 {
-                    CommentCount = Convert.ToInt32(reader.GetValue(17)),
-                    LatestCommentId = Convert.ToInt64(reader.GetValue(18))
+                    CommentCount = Convert.ToInt32(reader.GetValue(18)),
+                    LatestCommentId = Convert.ToInt64(reader.GetValue(19))
                 });
             }
 
@@ -168,8 +169,9 @@ namespace CRT.Server.Handlers.Collections
                 insert.Transaction = transaction;
                 insert.CommandText =
                     "INSERT IGNORE INTO collections (id, account_id, client_key, hardware_name, board_name, region, title, description, " +
-                    "forum_links_json, components_json, created_utc, updated_utc, delete_at_utc, reminded_utc) VALUES " +
-                    "(@id, @account, @clientKey, @hardware, @board, @region, @title, @description, @links, @components, @created, @updated, @deleteAt, @reminded);";
+                    "forum_links_json, components_json, oscilloscopes_json, created_utc, updated_utc, delete_at_utc, reminded_utc) VALUES " +
+                    "(@id, @account, @clientKey, @hardware, @board, @region, @title, @description, @links, @components, @oscilloscopes, @created, " +
+                    "@updated, @deleteAt, @reminded);";
                 MySqlCollectionStore.AddContent(insert, collection);
                 insert.Parameters.AddWithValue("@account", collection.AccountId);
                 insert.Parameters.AddWithValue("@clientKey", (object?)collection.ClientKey ?? DBNull.Value);
@@ -217,7 +219,8 @@ namespace CRT.Server.Handlers.Collections
                 update.Transaction = transaction;
                 update.CommandText =
                     "UPDATE collections SET hardware_name = @hardware, board_name = @board, region = @region, title = @title, " +
-                    "description = @description, forum_links_json = @links, components_json = @components, updated_utc = @updated, " +
+                    "description = @description, forum_links_json = @links, components_json = @components, " +
+                    "oscilloscopes_json = @oscilloscopes, updated_utc = @updated, " +
                     // A new date takes what the flow decided of its reminder (CollectionFlows.ReminderSettledAt); the same date keeps
                     // what was decided - the sweep's mark too, set meanwhile. Before delete_at_utc's own assignment, which MariaDB
                     // makes in order.
@@ -262,6 +265,39 @@ namespace CRT.Server.Handlers.Collections
             return Convert.ToInt32(await update.ExecuteScalarAsync(cancellationToken)) > 0;
         }
 
+        public async Task<bool> RemoveImageAsync(string id, string sha256, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
+        {
+            await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
+            await using MySqlTransaction transaction = await connection.BeginTransactionAsync(cancellationToken);
+
+            // The collection's row first, so a delete or a share running at the same time waits for it - and only while it is
+            // not deleted. Its date, its reminder and its sharing are never named here.
+            await using (MySqlCommand update = connection.CreateCommand())
+            {
+                update.Transaction = transaction;
+                update.CommandText =
+                    "UPDATE collections SET updated_utc = @updated WHERE id = @id AND deleted_utc IS NULL;" +
+                    "SELECT COUNT(*) FROM collections WHERE id = @id AND deleted_utc IS NULL;";
+                update.Parameters.AddWithValue("@id", id);
+                update.Parameters.AddWithValue("@updated", whenUtc.UtcDateTime);
+
+                if (Convert.ToInt32(await update.ExecuteScalarAsync(cancellationToken)) == 0)
+                    return false;
+            }
+
+            await using (MySqlCommand delete = connection.CreateCommand())
+            {
+                delete.Transaction = transaction;
+                delete.CommandText = "DELETE FROM collection_images WHERE collection_id = @id AND sha256 = @sha256;";
+                delete.Parameters.AddWithValue("@id", id);
+                delete.Parameters.AddWithValue("@sha256", sha256);
+                await delete.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+            return true;
+        }
+
         public async Task<bool> MarkDeletedAsync(string id, string reason, DateTimeOffset whenUtc, CancellationToken cancellationToken = default)
         {
             await using MySqlConnection connection = await this.OpenAsync(cancellationToken);
@@ -272,7 +308,7 @@ namespace CRT.Server.Handlers.Collections
                 update.Transaction = transaction;
                 update.CommandText =
                     "UPDATE collections SET deleted_utc = @when, deleted_reason = @reason, title = NULL, description = NULL, " +
-                    "forum_links_json = NULL, components_json = NULL WHERE id = @id AND deleted_utc IS NULL;";
+                    "forum_links_json = NULL, components_json = NULL, oscilloscopes_json = NULL WHERE id = @id AND deleted_utc IS NULL;";
                 update.Parameters.AddWithValue("@id", id);
                 update.Parameters.AddWithValue("@when", whenUtc.UtcDateTime);
                 update.Parameters.AddWithValue("@reason", reason);
@@ -647,6 +683,7 @@ namespace CRT.Server.Handlers.Collections
             command.Parameters.AddWithValue("@description", (object?)collection.Description ?? DBNull.Value);
             command.Parameters.AddWithValue("@links", collection.ForumLinks.Count == 0 ? DBNull.Value : JsonSerializer.Serialize(collection.ForumLinks));
             command.Parameters.AddWithValue("@components", collection.Components is not { Count: > 0 } components ? DBNull.Value : JsonSerializer.Serialize(components));
+            command.Parameters.AddWithValue("@oscilloscopes", collection.Oscilloscopes is not { Count: > 0 } oscilloscopes ? DBNull.Value : JsonSerializer.Serialize(oscilloscopes));
             command.Parameters.AddWithValue("@updated", collection.UpdatedUtc.UtcDateTime);
             command.Parameters.AddWithValue("@deleteAt", collection.DeleteAtUtc.UtcDateTime);
             command.Parameters.AddWithValue("@reminded", collection.RemindedUtc is { } reminded ? reminded.UtcDateTime : DBNull.Value);
@@ -718,10 +755,13 @@ namespace CRT.Server.Handlers.Collections
                 reader.IsDBNull(12) ? null : MySqlCollectionStore.Utc(reader.GetDateTime(12)),
                 MySqlCollectionStore.Text(reader, 13),
                 [],
-                Convert.ToInt32(reader.GetValue(16)),
+                Convert.ToInt32(reader.GetValue(17)),
                 UnsharedUtc: reader.IsDBNull(14) ? null : MySqlCollectionStore.Utc(reader.GetDateTime(14)),
                 Components: MySqlCollectionStore.Text(reader, 15) is { } components
                     ? JsonSerializer.Deserialize<List<CollectionComponent>>(components) ?? []
+                    : [],
+                Oscilloscopes: MySqlCollectionStore.Text(reader, 16) is { } oscilloscopes
+                    ? JsonSerializer.Deserialize<List<string>>(oscilloscopes) ?? []
                     : []);
         }
 

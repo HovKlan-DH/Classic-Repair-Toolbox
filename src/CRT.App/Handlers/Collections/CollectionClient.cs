@@ -157,6 +157,20 @@ namespace Handlers.Collections
             this.CommentRequestAsync(HttpMethod.Put, CollectionRoutes.SharingOf(Uri.EscapeDataString(serverId)), bearerToken, new CollectionSharingRequest(shared), cancellationToken);
 
         // ###########################################################################################
+        // "DELETE IMAGE" on a shared collection (owner request, 2026-11-28: "should also remove it right away from the shared
+        // page, and do not touch the expiry date"; server 16.2.0): that one capture off its page now, nothing else sent - its
+        // deletion date, its sharing and any change not shared yet stay as they are. Done; a page the server no longer has
+        // (410) is GoneFromServer.
+        // ###########################################################################################
+        public Task<Result> RemoveImageAsync(string serverId, string sha256, string bearerToken, CancellationToken cancellationToken = default) =>
+            this.CommentRequestAsync(
+                HttpMethod.Delete,
+                CollectionRoutes.ImageOf(Uri.EscapeDataString(serverId), Uri.EscapeDataString(sha256)),
+                bearerToken,
+                null,
+                cancellationToken);
+
+        // ###########################################################################################
         // COMMENTS (step 3, 2026-11-26) - the owner's: every comment on the collection, hidden ones too; answering one capture;
         // deleting the owner's own; hiding and showing others'. Editing is the page's.
         // ###########################################################################################

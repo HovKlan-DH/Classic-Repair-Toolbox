@@ -929,6 +929,109 @@ namespace CRT.Server.Tests
             Assert.Single(toAnna.Own);
         }
 
+        // ---- One capture deleted from the page at once (owner request, 2026-11-28; server 16.2.0) -------------------------------
+
+        private Task<CollectionOutcome> RemoveImageAsync(AccountRecord? account, string id, string? sha256, DateTimeOffset? when = null) =>
+            CollectionFlows.RemoveImageAsync(account, id, sha256, this.thisStore, Site, when ?? Now, CancellationToken.None);
+
+        // A collection of two captures, shared by Anna - and the two checksums.
+        private async Task<(CollectionAnswer Shared, string First, string Second)> SharedWithTwoAsync()
+        {
+            byte[] first = TestPng.Rgb(32, 20, 1);
+            byte[] second = TestPng.Rgb(32, 20, 2);
+            await this.UploadAsync(Anna, first);
+            await this.UploadAsync(Anna, second);
+
+            CollectionOutcome created = await this.CreateAsync(Anna, Content(Image(ShaOf(first)), Image(ShaOf(second), pin: "13")));
+
+            Assert.Equal(CollectionVerdict.Created, created.Verdict);
+            return (created.Answer!, ShaOf(first), ShaOf(second));
+        }
+
+        // "This date should only change when the USER does something": the capture goes, and the date, the sharing, the words and
+        // the other capture stay as the share left them.
+        [Fact]
+        public async Task Deleting_a_capture_takes_it_off_the_page_and_leaves_the_deletion_date_and_the_rest_alone()
+        {
+            (CollectionAnswer shared, string first, string second) = await this.SharedWithTwoAsync();
+            CollectionRecord before = this.thisStore.Collections[shared.Id];
+
+            CollectionOutcome removed = await this.RemoveImageAsync(Anna, shared.Id, first, Now.AddDays(40));
+
+            Assert.Equal(CollectionVerdict.Done, removed.Verdict);
+            Assert.Equal(1, removed.Answer!.ImageCount);
+            Assert.Equal(shared.DeleteAtUtc, removed.Answer.DeleteAtUtc);
+
+            CollectionRecord kept = this.thisStore.Collections[shared.Id];
+
+            Assert.Equal([second], kept.Images.Select(image => image.Entry.Sha256));
+            Assert.Equal(before.DeleteAtUtc, kept.DeleteAtUtc);
+            Assert.Equal(before.RemindedUtc, kept.RemindedUtc);
+            Assert.Equal(before.UnsharedUtc, kept.UnsharedUtc);
+            Assert.Equal(before.Title, kept.Title);
+            Assert.Equal(Now.AddDays(40), kept.UpdatedUtc);
+        }
+
+        // The page reads the collection as it is now - the capture is not on it any more.
+        [Fact]
+        public async Task A_deleted_capture_is_on_the_page_no_more()
+        {
+            (CollectionAnswer shared, string first, _) = await this.SharedWithTwoAsync();
+
+            await this.RemoveImageAsync(Anna, shared.Id, first);
+
+            ShownCollection? page = await this.ShownToAsync(shared.Id, null);
+
+            Assert.DoesNotContain(page!.Collection.Images, image => image.Entry.Sha256 == first);
+        }
+
+        // The last one may go too - the page then says it has none - and one deleted twice, or never there, is done.
+        [Fact]
+        public async Task The_last_capture_may_go_and_one_not_there_is_done()
+        {
+            CollectionAnswer shared = await this.SharedAsync(Anna);
+            string only = this.thisStore.Collections[shared.Id].Images[0].Entry.Sha256;
+
+            Assert.Equal(CollectionVerdict.Done, (await this.RemoveImageAsync(Anna, shared.Id, only)).Verdict);
+            Assert.Equal(CollectionVerdict.Done, (await this.RemoveImageAsync(Anna, shared.Id, only)).Verdict);
+            Assert.Empty(this.thisStore.Collections[shared.Id].Images);
+            Assert.False(this.thisStore.Collections[shared.Id].IsDeleted);
+        }
+
+        // Its owner's alone - anybody else's "not found", the administrator's too (who deletes a whole collection on the website);
+        // a deleted collection is gone; an address naming no checksum is refused.
+        [Fact]
+        public async Task Only_its_owner_deletes_a_capture_and_a_deleted_collection_is_gone()
+        {
+            (CollectionAnswer shared, string first, _) = await this.SharedWithTwoAsync();
+
+            Assert.Equal(CollectionVerdict.NotFound, (await this.RemoveImageAsync(Bo, shared.Id, first)).Verdict);
+            Assert.Equal(CollectionVerdict.NotFound, (await this.RemoveImageAsync(TheAdministrator, shared.Id, first)).Verdict);
+            Assert.Equal(CollectionVerdict.Unauthorized, (await this.RemoveImageAsync(null, shared.Id, first)).Verdict);
+            Assert.Equal(CollectionVerdict.BadRequest, (await this.RemoveImageAsync(Anna, shared.Id, first.ToUpperInvariant())).Verdict);
+            Assert.Equal(2, this.thisStore.Collections[shared.Id].Images.Count);
+
+            await CollectionFlows.DeleteAsync(Anna, shared.Id, this.thisStore, Now, CancellationToken.None);
+
+            Assert.Equal(CollectionVerdict.Gone, (await this.RemoveImageAsync(Anna, shared.Id, first)).Verdict);
+        }
+
+        // ---- The oscilloscopes the captures were taken with (owner request, 2026-11-28; migration 0030) --------------------------
+
+        [Fact]
+        public async Task The_oscilloscopes_sent_are_kept_trimmed_each_once()
+        {
+            byte[] capture = TestPng.Rgb(32, 20, 1);
+            await this.UploadAsync(Anna, capture);
+
+            CollectionOutcome created = await this.CreateAsync(
+                Anna,
+                Content(Image(ShaOf(capture))) with { Oscilloscopes = [" Rigol DS1054Z ", "rigol ds1054z", "Siglent SDS1104X-E"] });
+
+            Assert.Equal(CollectionVerdict.Created, created.Verdict);
+            Assert.Equal(["Rigol DS1054Z", "Siglent SDS1104X-E"], this.thisStore.Collections[created.Answer!.Id].Oscilloscopes);
+        }
+
         // ---- A capture's component and pinout drawing (owner request, 2026-11-27; migration 0029) ------------------------------
 
         // The drawing is a picture of the account's as a capture is: asked for when not uploaded, then kept with the capture, its
