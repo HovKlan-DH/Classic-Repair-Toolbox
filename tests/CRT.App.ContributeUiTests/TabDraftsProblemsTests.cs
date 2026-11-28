@@ -1170,12 +1170,19 @@ public sealed class TabDraftsProblemsTests : IDisposable
 
             tab.PickComponentForTests("U9");
 
-            for (int attempt = 0; attempt < 200 && tab.ComponentPaneForTests.Label != "U9"; attempt++)
+            // *** UNTIL THE OPEN HAS ENDED, NOT ONLY THE PANE SHOWING U9 (CI on Linux, 2026-11-28). *** The pane shows the pick
+            // partway through the open; the list narrowed meanwhile, and the open's last step (ShowNavSelection) puts the
+            // selection back on the row picked - read in between, on a slow runner, the selection was null.
+            static bool Settled(TabDrafts tab, ListBox list) =>
+                tab.ComponentPaneForTests.Label == "U9" && (list.SelectedItem as ComponentListItem)?.BoardLabel == "U9";
+
+            for (int attempt = 0; attempt < 300 && !Settled(tab, list); attempt++)
             {
                 Dispatcher.UIThread.RunJobs();
                 await Task.Delay(10);
             }
 
+            Assert.True(Settled(tab, list), "U9 picked was not open in the pane and selected in the list within three seconds");
             Assert.Equal("U9", tab.ComponentPaneForTests.Label);
             Assert.Equal(["U9"], Listed(tab));
             Assert.Equal("U9", (list.SelectedItem as ComponentListItem)?.BoardLabel);
